@@ -1,0 +1,62 @@
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION
+CREATE EXTENSION IF NOT EXISTS lanterndb;
+CREATE EXTENSION
+CREATE TABLE small_world (
+    id varchar(3),
+    vector vector(3)
+);
+CREATE TABLE
+INSERT INTO small_world (id, vector) VALUES 
+('000', '[0,0,0]'),
+('001', '[0,0,1]'),
+('010', '[0,1,0]'),
+('011', '[0,1,1]'),
+('100', '[1,0,0]'),
+('101', '[1,0,1]'),
+('110', '[1,1,0]'),
+('111', '[1,1,1]');
+INSERT 0 8
+SHOW hnsw.init_k;
+ hnsw.init_k 
+-------------
+ 10
+(1 row)
+
+CREATE INDEX ON small_world USING embedding (vector);
+psql:test/sql/debug_helpers.sql:8: INFO:  usearch_init_options_t: metric_kind: 1, metric: 0x0, quantization: 0, dimensions: 3, connectivity: 16, expansion_add: 128, expansion_search: 64
+psql:test/sql/debug_helpers.sql:8: INFO:  done init usearch index
+psql:test/sql/debug_helpers.sql:8: INFO:  inserted 8 elements
+psql:test/sql/debug_helpers.sql:8: INFO:  done saving 8 vectors
+CREATE INDEX
+                                              Table "public.small_world"
+ Column |         Type         | Collation | Nullable | Default | Storage  | Compression | Stats target | Description 
+--------+----------------------+-----------+----------+---------+----------+-------------+--------------+-------------
+ id     | character varying(3) |           |          |         | extended |             |              | 
+ vector | vector(3)            |           |          |         | extended |             |              | 
+Indexes:
+    "small_world_vector_idx" embedding (vector)
+Access method: heap
+
+SHOW hnsw.init_k;
+ hnsw.init_k 
+-------------
+ 10
+(1 row)
+
+SET hnsw.init_k = 45;
+SET
+SHOW hnsw.init_k;
+ hnsw.init_k 
+-------------
+ 45
+(1 row)
+
+RESET ALL;
+RESET
+SHOW hnsw.init_k;
+ hnsw.init_k 
+-------------
+ 10
+(1 row)
+

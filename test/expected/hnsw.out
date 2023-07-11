@@ -1,0 +1,209 @@
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION
+CREATE EXTENSION IF NOT EXISTS lanterndb;
+CREATE EXTENSION
+
+SELECT '[1,2,3]'::vector;
+ vector  
+---------
+ [1,2,3]
+(1 row)
+
+CREATE TABLE items (id bigserial PRIMARY KEY, trait_ai vector(3));
+CREATE TABLE
+INSERT INTO items (trait_ai) VALUES ('[1,2,3]'), ('[4,5,6]');
+INSERT 0 2
+SELECT * FROM items ORDER BY trait_ai <-> '[3,1,2]' LIMIT 5;
+ id | trait_ai 
+----+----------
+  1 | [1,2,3]
+  2 | [4,5,6]
+(2 rows)
+
+CREATE INDEX ON items USING embedding (trait_ai vector_l2_ops);
+psql:test/sql/hnsw.sql:17: INFO:  usearch_init_options_t: metric_kind: 1, metric: 0x0, quantization: 0, dimensions: 3, connectivity: 16, expansion_add: 128, expansion_search: 64
+psql:test/sql/hnsw.sql:17: INFO:  done init usearch index
+psql:test/sql/hnsw.sql:17: INFO:  inserted 2 elements
+psql:test/sql/hnsw.sql:17: INFO:  done saving 2 vectors
+CREATE INDEX
+CREATE TABLE large_vector (v vector(2001));
+CREATE TABLE
+CREATE INDEX ON large_vector USING embedding (v);
+psql:test/sql/hnsw.sql:21: ERROR:  vector dimension 2001 is too large. LanternDB currently supports up to 2000dim vectors
+CREATE TABLE small_world (
+    id varchar(3),
+    vector vector(3)
+);
+CREATE TABLE
+INSERT INTO small_world (id, vector) VALUES 
+('000', '[0,0,0]'),
+('001', '[0,0,1]'),
+('010', '[0,1,0]'),
+('011', '[0,1,1]'),
+('100', '[1,0,0]'),
+('101', '[1,0,1]'),
+('110', '[1,1,0]'),
+('111', '[1,1,1]');
+INSERT 0 8
+SET enable_seqscan = off;
+SET
+begin;
+BEGIN
+CREATE INDEX ON small_world USING embedding (vector);
+psql:test/sql/hnsw.sql:43: INFO:  usearch_init_options_t: metric_kind: 1, metric: 0x0, quantization: 0, dimensions: 3, connectivity: 16, expansion_add: 128, expansion_search: 64
+psql:test/sql/hnsw.sql:43: INFO:  done init usearch index
+psql:test/sql/hnsw.sql:43: INFO:  inserted 8 elements
+psql:test/sql/hnsw.sql:43: INFO:  done saving 8 vectors
+CREATE INDEX
+                                              Table "public.small_world"
+ Column |         Type         | Collation | Nullable | Default | Storage  | Compression | Stats target | Description 
+--------+----------------------+-----------+----------+---------+----------+-------------+--------------+-------------
+ id     | character varying(3) |           |          |         | extended |             |              | 
+ vector | vector(3)            |           |          |         | extended |             |              | 
+Indexes:
+    "small_world_vector_idx" embedding (vector)
+Access method: heap
+
+SELECT id, ROUND( (vector <-> '[0,0,0]')::numeric, 2) as dist
+FROM small_world 
+ORDER BY vector <-> '[0,0,0]' LIMIT 5;
+psql:test/sql/hnsw.sql:47: INFO:  cost estimate
+psql:test/sql/hnsw.sql:47: INFO:  returning small cost to always use the index
+psql:test/sql/hnsw.sql:47: INFO:  began scanning with 0 keys and 1 orderbys
+psql:test/sql/hnsw.sql:47: INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
+psql:test/sql/hnsw.sql:47: INFO:  usearch index initialized
+ id  | dist 
+-----+------
+ 000 | 0.00
+ 100 | 1.00
+ 010 | 1.00
+ 001 | 1.00
+ 110 | 1.41
+(5 rows)
+
+SELECT id, ROUND( (vector <-> '[0,1,0]')::numeric, 2) as dist
+FROM small_world 
+ORDER BY vector <-> '[0,1,0]' LIMIT 5;
+psql:test/sql/hnsw.sql:50: INFO:  cost estimate
+psql:test/sql/hnsw.sql:50: INFO:  returning small cost to always use the index
+psql:test/sql/hnsw.sql:50: INFO:  began scanning with 0 keys and 1 orderbys
+psql:test/sql/hnsw.sql:50: INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
+psql:test/sql/hnsw.sql:50: INFO:  usearch index initialized
+ id  | dist 
+-----+------
+ 010 | 0.00
+ 110 | 1.00
+ 011 | 1.00
+ 000 | 1.00
+ 111 | 1.41
+(5 rows)
+
+rollback;
+ROLLBACK
+begin;
+BEGIN
+CREATE INDEX ON small_world USING embedding (vector) WITH (M=2, ef=11, ef_construction=12);
+psql:test/sql/hnsw.sql:55: INFO:  usearch_init_options_t: metric_kind: 1, metric: 0x0, quantization: 0, dimensions: 3, connectivity: 2, expansion_add: 12, expansion_search: 11
+psql:test/sql/hnsw.sql:55: INFO:  done init usearch index
+psql:test/sql/hnsw.sql:55: INFO:  inserted 8 elements
+psql:test/sql/hnsw.sql:55: INFO:  done saving 8 vectors
+CREATE INDEX
+                                              Table "public.small_world"
+ Column |         Type         | Collation | Nullable | Default | Storage  | Compression | Stats target | Description 
+--------+----------------------+-----------+----------+---------+----------+-------------+--------------+-------------
+ id     | character varying(3) |           |          |         | extended |             |              | 
+ vector | vector(3)            |           |          |         | extended |             |              | 
+Indexes:
+    "small_world_vector_idx" embedding (vector) WITH (m='2', ef='11', ef_construction='12')
+Access method: heap
+
+SELECT id, ROUND( (vector <-> '[0,0,0]')::numeric, 2) as dist
+FROM small_world 
+ORDER BY vector <-> '[0,0,0]' LIMIT 5;
+psql:test/sql/hnsw.sql:59: INFO:  cost estimate
+psql:test/sql/hnsw.sql:59: INFO:  returning small cost to always use the index
+psql:test/sql/hnsw.sql:59: INFO:  began scanning with 0 keys and 1 orderbys
+psql:test/sql/hnsw.sql:59: INFO:  starting scan with dimensions=3 M=2 efConstruction=12 ef=11
+psql:test/sql/hnsw.sql:59: INFO:  usearch index initialized
+ id  | dist 
+-----+------
+ 000 | 0.00
+ 100 | 1.00
+ 010 | 1.00
+ 001 | 1.00
+ 110 | 1.41
+(5 rows)
+
+SELECT id, ROUND( (vector <-> '[0,1,0]')::numeric, 2) as dist
+FROM small_world 
+ORDER BY vector <-> '[0,1,0]' LIMIT 5;
+psql:test/sql/hnsw.sql:62: INFO:  cost estimate
+psql:test/sql/hnsw.sql:62: INFO:  returning small cost to always use the index
+psql:test/sql/hnsw.sql:62: INFO:  began scanning with 0 keys and 1 orderbys
+psql:test/sql/hnsw.sql:62: INFO:  starting scan with dimensions=3 M=2 efConstruction=12 ef=11
+psql:test/sql/hnsw.sql:62: INFO:  usearch index initialized
+ id  | dist 
+-----+------
+ 010 | 0.00
+ 110 | 1.00
+ 011 | 1.00
+ 000 | 1.00
+ 111 | 1.41
+(5 rows)
+
+rollback;
+ROLLBACK
+begin;
+BEGIN
+CREATE INDEX ON small_world USING embedding (vector) WITH (M=11, ef=2, ef_construction=2);
+psql:test/sql/hnsw.sql:66: INFO:  usearch_init_options_t: metric_kind: 1, metric: 0x0, quantization: 0, dimensions: 3, connectivity: 11, expansion_add: 2, expansion_search: 2
+psql:test/sql/hnsw.sql:66: INFO:  done init usearch index
+psql:test/sql/hnsw.sql:66: INFO:  inserted 8 elements
+psql:test/sql/hnsw.sql:66: INFO:  done saving 8 vectors
+CREATE INDEX
+                                              Table "public.small_world"
+ Column |         Type         | Collation | Nullable | Default | Storage  | Compression | Stats target | Description 
+--------+----------------------+-----------+----------+---------+----------+-------------+--------------+-------------
+ id     | character varying(3) |           |          |         | extended |             |              | 
+ vector | vector(3)            |           |          |         | extended |             |              | 
+Indexes:
+    "small_world_vector_idx" embedding (vector) WITH (m='11', ef='2', ef_construction='2')
+Access method: heap
+
+SELECT id, ROUND( (vector <-> '[0,0,0]')::numeric, 2) as dist
+FROM small_world 
+ORDER BY vector <-> '[0,0,0]' LIMIT 5;
+psql:test/sql/hnsw.sql:70: INFO:  cost estimate
+psql:test/sql/hnsw.sql:70: INFO:  returning small cost to always use the index
+psql:test/sql/hnsw.sql:70: INFO:  began scanning with 0 keys and 1 orderbys
+psql:test/sql/hnsw.sql:70: INFO:  starting scan with dimensions=3 M=11 efConstruction=2 ef=2
+psql:test/sql/hnsw.sql:70: INFO:  usearch index initialized
+ id  | dist 
+-----+------
+ 000 | 0.00
+ 100 | 1.00
+ 010 | 1.00
+ 001 | 1.00
+ 110 | 1.41
+(5 rows)
+
+SELECT id, ROUND( (vector <-> '[0,1,0]')::numeric, 2) as dist
+FROM small_world 
+ORDER BY vector <-> '[0,1,0]' LIMIT 5;
+psql:test/sql/hnsw.sql:73: INFO:  cost estimate
+psql:test/sql/hnsw.sql:73: INFO:  returning small cost to always use the index
+psql:test/sql/hnsw.sql:73: INFO:  began scanning with 0 keys and 1 orderbys
+psql:test/sql/hnsw.sql:73: INFO:  starting scan with dimensions=3 M=11 efConstruction=2 ef=2
+psql:test/sql/hnsw.sql:73: INFO:  usearch index initialized
+ id  | dist 
+-----+------
+ 010 | 0.00
+ 110 | 1.00
+ 011 | 1.00
+ 000 | 1.00
+ 111 | 1.41
+(5 rows)
+
+rollback;
+ROLLBACK
+"Done with hnsw.sql test!"

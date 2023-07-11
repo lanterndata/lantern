@@ -1,0 +1,2 @@
+SET enable_seqscan = off;
+-- todo::
