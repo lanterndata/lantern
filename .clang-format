@@ -1,0 +1,44 @@
+Language: Cpp
+BasedOnStyle: Google
+Standard: Cpp11
+
+BinPackArguments: false
+BinPackParameters: false
+BraceWrapping:
+    AfterClass: true
+    AfterControlStatement: false
+    AfterEnum : true
+    AfterFunction : true
+    AfterNamespace : true
+    AfterStruct : true
+    AfterUnion : true
+    BeforeCatch : true
+    # BeforeElse : true
+    IndentBraces : false
+BreakBeforeBraces: Custom
+BreakBeforeBinaryOperators: All
+IndentCaseLabels: true
+IndentWidth: 4
+SpaceBeforeParens: Never
+SpaceInEmptyParentheses: false
+SpacesBeforeTrailingComments: 2
+SpacesInAngles: true
+SpacesInCStyleCastParentheses: false
+SpacesInContainerLiterals: true
+SpacesInSquareBrackets: true
+AlignConsecutiveDeclarations: true
+AlignConsecutiveMacros: true
+UseTab: Never
+ColumnLimit: 120
+IncludeCategories:
+  - Regex:           '^"postgres.*"'
+    Priority:        -1
+  - Regex:           '^<postgres.*>'
+    Priority:        -1
+  - Regex:           '^<.*>'
+    Priority:        1
+  - Regex:           '^".*"'
+    Priority:        2
+SortIncludes: true
+IncludeBlocks: Regroup
+
