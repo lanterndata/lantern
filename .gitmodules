@@ -1,0 +1,8 @@
+[submodule "third_party/usearch"]
+	path = third_party/usearch
+	url = https://github.com/ngalstyan4/usearch
+	branch = pg
+[submodule "third_party/hnswlib"]
+	path = third_party/hnswlib
+	url = https://github.com/ngalstyan4/hnswlib
+	branch = pg
