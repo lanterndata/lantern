@@ -39,8 +39,8 @@ from sift_base10k order by dist limit 10;
 
 \set GROUP_LIMIT 10000
 
--- CREATE INDEX ON sift_base1m USING embedding (v vector_l2_ops) WITH (M=2, ef_construction=14, alg="diskann");
-CREATE INDEX ON sift_base10k USING embedding (v vector_l2_ops) WITH (M=2, ef_construction=10, ef=4, alg="diskann");
+-- CREATE INDEX ON sift_base1m USING hnsw (v vector_l2_ops) WITH (M=2, ef_construction=14, alg="diskann");
+CREATE INDEX ON sift_base10k USING hnsw (v vector_l2_ops) WITH (M=2, ef_construction=10, ef=4, alg="diskann");
 CREATE INDEX ON sift_base10k USING ivfflat (v vector_l2_ops);
 
 \echo "running" v4444 "vector queries"

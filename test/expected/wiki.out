@@ -86,13 +86,13 @@ select id, page_title,  context_page_description_ai <-> (select context_page_des
  81846 | Frank Carlucci                       | 7.2480450046710105
 (10 rows)
 
-CREATE INDEX ON tsv_data USING embedding (context_page_description_ai vector_l2_ops);
+CREATE INDEX ON tsv_data USING hnsw (context_page_description_ai vector_l2_ops);
 psql:test/sql/wiki.sql:65: INFO:  usearch_init_options_t: metric_kind: 1, metric: 0x0, quantization: 0, dimensions: 512, connectivity: 16, expansion_add: 128, expansion_search: 64
 psql:test/sql/wiki.sql:65: INFO:  done init usearch index
 psql:test/sql/wiki.sql:65: INFO:  inserted 100 elements
 psql:test/sql/wiki.sql:65: INFO:  done saving 100 vectors
 CREATE INDEX
-CREATE INDEX ON tsv_data USING embedding (context_page_description_ai) with (ef = 100, ef_construction=150 , M=11, alg="hnswlib");
+CREATE INDEX ON tsv_data USING hnsw (context_page_description_ai) with (ef = 100, ef_construction=150 , M=11, alg="hnswlib");
 psql:test/sql/wiki.sql:66: INFO:  usearch_init_options_t: metric_kind: 1, metric: 0x0, quantization: 0, dimensions: 512, connectivity: 11, expansion_add: 150, expansion_search: 100
 psql:test/sql/wiki.sql:66: INFO:  done init usearch index
 psql:test/sql/wiki.sql:66: INFO:  inserted 100 elements

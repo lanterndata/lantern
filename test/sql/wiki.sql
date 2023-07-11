@@ -62,8 +62,8 @@ ALTER TABLE ONLY tsv_data
 select id, page_title,  context_page_description_ai <-> (select context_page_description_ai from tsv_data where id = 81386) as dist
  from tsv_data order by dist
  limit 10;
-CREATE INDEX ON tsv_data USING embedding (context_page_description_ai vector_l2_ops);
-CREATE INDEX ON tsv_data USING embedding (context_page_description_ai) with (ef = 100, ef_construction=150 , M=11, alg="hnswlib");
+CREATE INDEX ON tsv_data USING hnsw (context_page_description_ai vector_l2_ops);
+CREATE INDEX ON tsv_data USING hnsw (context_page_description_ai) with (ef = 100, ef_construction=150 , M=11, alg="hnswlib");
 set enable_seqscan=false;
 select id, page_title, context_page_description_ai <-> (select context_page_description_ai from tsv_data where id = 81386) as dist
  from tsv_data order by dist limit 10;

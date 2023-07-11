@@ -14,11 +14,11 @@ SELECT '[1,2,3]'::vector;
 CREATE TABLE items (id bigserial PRIMARY KEY, trait_ai vector(3));
 INSERT INTO items (trait_ai) VALUES ('[1,2,3]'), ('[4,5,6]');
 SELECT * FROM items ORDER BY trait_ai <-> '[3,1,2]' LIMIT 5;
-CREATE INDEX ON items USING embedding (trait_ai vector_l2_ops);
+CREATE INDEX ON items USING hnsw (trait_ai vector_l2_ops);
 
 CREATE TABLE large_vector (v vector(2001));
 \set ON_ERROR_STOP off
-CREATE INDEX ON large_vector USING embedding (v);
+CREATE INDEX ON large_vector USING hnsw (v);
 \set ON_ERROR_STOP on
 
 CREATE TABLE small_world (
@@ -40,7 +40,7 @@ INSERT INTO small_world (id, vector) VALUES
 SET enable_seqscan = off;
 
 begin;
-CREATE INDEX ON small_world USING embedding (vector);
+CREATE INDEX ON small_world USING hnsw (vector);
 \d+ small_world
 SELECT id, ROUND( (vector <-> '[0,0,0]')::numeric, 2) as dist
 FROM small_world 
@@ -52,7 +52,7 @@ rollback;
 
 
 begin;
-CREATE INDEX ON small_world USING embedding (vector) WITH (M=2, ef=11, ef_construction=12);
+CREATE INDEX ON small_world USING hnsw (vector) WITH (M=2, ef=11, ef_construction=12);
 \d+ small_world
 SELECT id, ROUND( (vector <-> '[0,0,0]')::numeric, 2) as dist
 FROM small_world 
@@ -63,7 +63,7 @@ ORDER BY vector <-> '[0,1,0]' LIMIT 5;
 rollback;
 
 begin;
-CREATE INDEX ON small_world USING embedding (vector) WITH (M=11, ef=2, ef_construction=2);
+CREATE INDEX ON small_world USING hnsw (vector) WITH (M=11, ef=2, ef_construction=2);
 \d+ small_world
 SELECT id, ROUND( (vector <-> '[0,0,0]')::numeric, 2) as dist
 FROM small_world 

@@ -135,8 +135,8 @@ static bool hnswvalidate(Oid opclassoid) { return true; }
  *
  * See https://www.postgresql.org/docs/current/index-api.html
  */
-PGDLLEXPORT PG_FUNCTION_INFO_V1(embedding_handler);
-Datum       embedding_handler(PG_FUNCTION_ARGS)
+PGDLLEXPORT PG_FUNCTION_INFO_V1(hnsw_handler);
+Datum       hnsw_handler(PG_FUNCTION_ARGS)
 {
     IndexAmRoutine *amroutine = makeNode(IndexAmRoutine);
 

@@ -20,7 +20,7 @@ SELECT * FROM items ORDER BY trait_ai <-> '[3,1,2]' LIMIT 5;
   2 | [4,5,6]
 (2 rows)
 
-CREATE INDEX ON items USING embedding (trait_ai vector_l2_ops);
+CREATE INDEX ON items USING hnsw (trait_ai vector_l2_ops);
 psql:test/sql/hnsw.sql:17: INFO:  usearch_init_options_t: metric_kind: 1, metric: 0x0, quantization: 0, dimensions: 3, connectivity: 16, expansion_add: 128, expansion_search: 64
 psql:test/sql/hnsw.sql:17: INFO:  done init usearch index
 psql:test/sql/hnsw.sql:17: INFO:  inserted 2 elements
@@ -28,7 +28,7 @@ psql:test/sql/hnsw.sql:17: INFO:  done saving 2 vectors
 CREATE INDEX
 CREATE TABLE large_vector (v vector(2001));
 CREATE TABLE
-CREATE INDEX ON large_vector USING embedding (v);
+CREATE INDEX ON large_vector USING hnsw (v);
 psql:test/sql/hnsw.sql:21: ERROR:  vector dimension 2001 is too large. LanternDB currently supports up to 2000dim vectors
 CREATE TABLE small_world (
     id varchar(3),
@@ -49,7 +49,7 @@ SET enable_seqscan = off;
 SET
 begin;
 BEGIN
-CREATE INDEX ON small_world USING embedding (vector);
+CREATE INDEX ON small_world USING hnsw (vector);
 psql:test/sql/hnsw.sql:43: INFO:  usearch_init_options_t: metric_kind: 1, metric: 0x0, quantization: 0, dimensions: 3, connectivity: 16, expansion_add: 128, expansion_search: 64
 psql:test/sql/hnsw.sql:43: INFO:  done init usearch index
 psql:test/sql/hnsw.sql:43: INFO:  inserted 8 elements
@@ -61,7 +61,7 @@ CREATE INDEX
  id     | character varying(3) |           |          |         | extended |             |              | 
  vector | vector(3)            |           |          |         | extended |             |              | 
 Indexes:
-    "small_world_vector_idx" embedding (vector)
+    "small_world_vector_idx" hnsw (vector)
 Access method: heap
 
 SELECT id, ROUND( (vector <-> '[0,0,0]')::numeric, 2) as dist
@@ -102,7 +102,7 @@ rollback;
 ROLLBACK
 begin;
 BEGIN
-CREATE INDEX ON small_world USING embedding (vector) WITH (M=2, ef=11, ef_construction=12);
+CREATE INDEX ON small_world USING hnsw (vector) WITH (M=2, ef=11, ef_construction=12);
 psql:test/sql/hnsw.sql:55: INFO:  usearch_init_options_t: metric_kind: 1, metric: 0x0, quantization: 0, dimensions: 3, connectivity: 2, expansion_add: 12, expansion_search: 11
 psql:test/sql/hnsw.sql:55: INFO:  done init usearch index
 psql:test/sql/hnsw.sql:55: INFO:  inserted 8 elements
@@ -114,7 +114,7 @@ CREATE INDEX
  id     | character varying(3) |           |          |         | extended |             |              | 
  vector | vector(3)            |           |          |         | extended |             |              | 
 Indexes:
-    "small_world_vector_idx" embedding (vector) WITH (m='2', ef='11', ef_construction='12')
+    "small_world_vector_idx" hnsw (vector) WITH (m='2', ef='11', ef_construction='12')
 Access method: heap
 
 SELECT id, ROUND( (vector <-> '[0,0,0]')::numeric, 2) as dist
@@ -155,7 +155,7 @@ rollback;
 ROLLBACK
 begin;
 BEGIN
-CREATE INDEX ON small_world USING embedding (vector) WITH (M=11, ef=2, ef_construction=2);
+CREATE INDEX ON small_world USING hnsw (vector) WITH (M=11, ef=2, ef_construction=2);
 psql:test/sql/hnsw.sql:66: INFO:  usearch_init_options_t: metric_kind: 1, metric: 0x0, quantization: 0, dimensions: 3, connectivity: 11, expansion_add: 2, expansion_search: 2
 psql:test/sql/hnsw.sql:66: INFO:  done init usearch index
 psql:test/sql/hnsw.sql:66: INFO:  inserted 8 elements
@@ -167,7 +167,7 @@ CREATE INDEX
  id     | character varying(3) |           |          |         | extended |             |              | 
  vector | vector(3)            |           |          |         | extended |             |              | 
 Indexes:
-    "small_world_vector_idx" embedding (vector) WITH (m='11', ef='2', ef_construction='2')
+    "small_world_vector_idx" hnsw (vector) WITH (m='11', ef='2', ef_construction='2')
 Access method: heap
 
 SELECT id, ROUND( (vector <-> '[0,0,0]')::numeric, 2) as dist

@@ -5,7 +5,7 @@ CREATE EXTENSION IF NOT EXISTS lanterndb;
 \ir test_helpers/small_world.sql
 SHOW hnsw.init_k;
 
-CREATE INDEX ON small_world USING embedding (vector);
+CREATE INDEX ON small_world USING hnsw (vector);
 \d+ small_world
 
 -- it exists after we create an index

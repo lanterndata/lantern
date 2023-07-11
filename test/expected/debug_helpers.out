@@ -23,7 +23,7 @@ SHOW hnsw.init_k;
  10
 (1 row)
 
-CREATE INDEX ON small_world USING embedding (vector);
+CREATE INDEX ON small_world USING hnsw (vector);
 psql:test/sql/debug_helpers.sql:8: INFO:  usearch_init_options_t: metric_kind: 1, metric: 0x0, quantization: 0, dimensions: 3, connectivity: 16, expansion_add: 128, expansion_search: 64
 psql:test/sql/debug_helpers.sql:8: INFO:  done init usearch index
 psql:test/sql/debug_helpers.sql:8: INFO:  inserted 8 elements
@@ -35,7 +35,7 @@ CREATE INDEX
  id     | character varying(3) |           |          |         | extended |             |              | 
  vector | vector(3)            |           |          |         | extended |             |              | 
 Indexes:
-    "small_world_vector_idx" embedding (vector)
+    "small_world_vector_idx" hnsw (vector)
 Access method: heap
 
 SHOW hnsw.init_k;
