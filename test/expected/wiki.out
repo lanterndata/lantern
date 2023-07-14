@@ -69,73 +69,72 @@ ALTER TABLE ONLY tsv_data
 ALTER TABLE
 COPY  tsv_data FROM STDIN DELIMITER E'\t';
 COPY 100
-select id, page_title,  context_page_description_ai <-> (select context_page_description_ai from tsv_data where id = 81386) as dist
+with t as (select id, page_title,  context_page_description_ai <-> (select context_page_description_ai from tsv_data where id = 81386) as dist
  from tsv_data order by dist
- limit 10;
-  id   |              page_title              |        dist        
--------+--------------------------------------+--------------------
- 81386 | Madge Elliott                        |                  0
- 81735 | Frank Hall Crane                     |  5.530589137876187
- 95321 | Miriam Van Waters                    |  6.487261860557181
- 81583 | Emile P. Moses                       |  6.556191837965934
- 81417 | Victor Iamandi                       |  6.917446804350846
- 81601 | Graciela                             |  6.959552382510196
- 81377 | Robert Christie (Ontario politician) |   7.04102269273351
- 81375 | Ralph Dacre, 3rd Baron Dacre         |  7.121137347316711
- 95386 | Alexandre Étienne Choron             |   7.13683763115891
- 81846 | Frank Carlucci                       | 7.2480450046710105
+ limit 10) select id, page_title, ROUND( dist::numeric, 2) from t;
+  id   |              page_title              | round 
+-------+--------------------------------------+-------
+ 81386 | Madge Elliott                        |  0.00
+ 81735 | Frank Hall Crane                     |  5.53
+ 95321 | Miriam Van Waters                    |  6.49
+ 81583 | Emile P. Moses                       |  6.56
+ 81417 | Victor Iamandi                       |  6.92
+ 81601 | Graciela                             |  6.96
+ 81377 | Robert Christie (Ontario politician) |  7.04
+ 81375 | Ralph Dacre, 3rd Baron Dacre         |  7.12
+ 95386 | Alexandre Étienne Choron             |  7.14
+ 81846 | Frank Carlucci                       |  7.25
 (10 rows)
 
 CREATE INDEX ON tsv_data USING hnsw (context_page_description_ai vector_l2_ops);
-psql:test/sql/wiki.sql:65: INFO:  usearch_init_options_t: metric_kind: 1, metric: 0x0, quantization: 0, dimensions: 512, connectivity: 16, expansion_add: 128, expansion_search: 64
-psql:test/sql/wiki.sql:65: INFO:  done init usearch index
-psql:test/sql/wiki.sql:65: INFO:  inserted 100 elements
-psql:test/sql/wiki.sql:65: INFO:  done saving 100 vectors
-CREATE INDEX
-CREATE INDEX ON tsv_data USING hnsw (context_page_description_ai) with (ef = 100, ef_construction=150 , M=11, alg="hnswlib");
-psql:test/sql/wiki.sql:66: INFO:  usearch_init_options_t: metric_kind: 1, metric: 0x0, quantization: 0, dimensions: 512, connectivity: 11, expansion_add: 150, expansion_search: 100
 psql:test/sql/wiki.sql:66: INFO:  done init usearch index
 psql:test/sql/wiki.sql:66: INFO:  inserted 100 elements
 psql:test/sql/wiki.sql:66: INFO:  done saving 100 vectors
 CREATE INDEX
+CREATE INDEX ON tsv_data USING hnsw (context_page_description_ai) with (ef = 100, ef_construction=150 , M=11, alg="hnswlib");
+psql:test/sql/wiki.sql:67: INFO:  done init usearch index
+psql:test/sql/wiki.sql:67: INFO:  inserted 100 elements
+psql:test/sql/wiki.sql:67: INFO:  done saving 100 vectors
+CREATE INDEX
 set enable_seqscan=false;
 SET
-select id, page_title, context_page_description_ai <-> (select context_page_description_ai from tsv_data where id = 81386) as dist
- from tsv_data order by dist limit 10;
-psql:test/sql/wiki.sql:69: INFO:  cost estimate
-psql:test/sql/wiki.sql:69: INFO:  returning small cost to always use the index
-psql:test/sql/wiki.sql:69: INFO:  cost estimate
-psql:test/sql/wiki.sql:69: INFO:  returning small cost to always use the index
-psql:test/sql/wiki.sql:69: INFO:  began scanning with 0 keys and 1 orderbys
-psql:test/sql/wiki.sql:69: INFO:  starting scan with dimensions=512 M=11 efConstruction=150 ef=100
-psql:test/sql/wiki.sql:69: INFO:  usearch index initialized
-  id   |              page_title              |        dist        
--------+--------------------------------------+--------------------
- 81386 | Madge Elliott                        |                  0
- 81735 | Frank Hall Crane                     |  5.530589137876187
- 95321 | Miriam Van Waters                    |  6.487261860557181
- 81583 | Emile P. Moses                       |  6.556191837965934
- 81417 | Victor Iamandi                       |  6.917446804350846
- 81601 | Graciela                             |  6.959552382510196
- 81377 | Robert Christie (Ontario politician) |   7.04102269273351
- 81375 | Ralph Dacre, 3rd Baron Dacre         |  7.121137347316711
- 95386 | Alexandre Étienne Choron             |   7.13683763115891
- 81846 | Frank Carlucci                       | 7.2480450046710105
-(10 rows)
+explain with t as (select id, page_title, context_page_description_ai <-> (select context_page_description_ai from tsv_data where id = 81386) as dist
+ from tsv_data order by dist limit 10) select id, page_title, ROUND( dist::numeric, 2) from t;
+psql:test/sql/wiki.sql:71: INFO:  cost estimate
+psql:test/sql/wiki.sql:71: INFO:  returning small cost to always use the index
+psql:test/sql/wiki.sql:71: INFO:  cost estimate
+psql:test/sql/wiki.sql:71: INFO:  returning small cost to always use the index
+                                                       QUERY PLAN                                                        
+-------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on t  (cost=8.16..8.74 rows=10 width=68)
+   ->  Limit  (cost=8.16..8.59 rows=10 width=44)
+         InitPlan 1 (returns $0)
+           ->  Index Scan using tsv_data_pkey on tsv_data tsv_data_1  (cost=0.14..8.16 rows=1 width=32)
+                 Index Cond: (id = 81386)
+         ->  Index Scan using tsv_data_context_page_description_ai_idx1 on tsv_data  (cost=0.00..4.26 rows=100 width=44)
+               Order By: (context_page_description_ai <-> $0)
+(7 rows)
 
-select id, page_title, context_page_description_ai <-> (select context_page_description_ai from tsv_data where id = 81518) as dist
- from tsv_data order by dist limit 3;
-psql:test/sql/wiki.sql:71: INFO:  cost estimate
-psql:test/sql/wiki.sql:71: INFO:  returning small cost to always use the index
-psql:test/sql/wiki.sql:71: INFO:  cost estimate
-psql:test/sql/wiki.sql:71: INFO:  returning small cost to always use the index
-psql:test/sql/wiki.sql:71: INFO:  began scanning with 0 keys and 1 orderbys
-psql:test/sql/wiki.sql:71: INFO:  starting scan with dimensions=512 M=11 efConstruction=150 ef=100
-psql:test/sql/wiki.sql:71: INFO:  usearch index initialized
-  id   |          page_title          |       dist        
--------+------------------------------+-------------------
- 81518 | Battle of Tannach            |                 0
- 81864 | Battle of Trincomalee        | 6.277988148236901
- 81375 | Ralph Dacre, 3rd Baron Dacre | 6.283957082106894
-(3 rows)
+with t as (select id, page_title, context_page_description_ai <-> (select context_page_description_ai from tsv_data where id = 81386) as dist
+ from tsv_data order by dist limit 10) select id, page_title, ROUND( dist::numeric, 2) from t;
+psql:test/sql/wiki.sql:75: INFO:  cost estimate
+psql:test/sql/wiki.sql:75: INFO:  returning small cost to always use the index
+psql:test/sql/wiki.sql:75: INFO:  cost estimate
+psql:test/sql/wiki.sql:75: INFO:  returning small cost to always use the index
+psql:test/sql/wiki.sql:75: INFO:  began scanning with 0 keys and 1 orderbys
+psql:test/sql/wiki.sql:75: INFO:  starting scan with dimensions=512 M=11 efConstruction=150 ef=100
+psql:test/sql/wiki.sql:75: INFO:  usearch index initialized
+  id   |              page_title              | round 
+-------+--------------------------------------+-------
+ 81386 | Madge Elliott                        |  0.00
+ 81735 | Frank Hall Crane                     |  5.53
+ 95321 | Miriam Van Waters                    |  6.49
+ 81583 | Emile P. Moses                       |  6.56
+ 81417 | Victor Iamandi                       |  6.92
+ 81601 | Graciela                             |  6.96
+ 81377 | Robert Christie (Ontario politician) |  7.04
+ 81375 | Ralph Dacre, 3rd Baron Dacre         |  7.12
+ 95386 | Alexandre Étienne Choron             |  7.14
+ 81846 | Frank Carlucci                       |  7.25
+(10 rows)
 

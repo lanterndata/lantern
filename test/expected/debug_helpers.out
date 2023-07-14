@@ -24,7 +24,6 @@ SHOW hnsw.init_k;
 (1 row)
 
 CREATE INDEX ON small_world USING hnsw (vector);
-psql:test/sql/debug_helpers.sql:8: INFO:  usearch_init_options_t: metric_kind: 1, metric: 0x0, quantization: 0, dimensions: 3, connectivity: 16, expansion_add: 128, expansion_search: 64
 psql:test/sql/debug_helpers.sql:8: INFO:  done init usearch index
 psql:test/sql/debug_helpers.sql:8: INFO:  inserted 8 elements
 psql:test/sql/debug_helpers.sql:8: INFO:  done saving 8 vectors
