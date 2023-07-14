@@ -13,7 +13,7 @@ SELECT '[1,2,3]'::vector;
 
 CREATE TABLE items (id bigserial PRIMARY KEY, trait_ai vector(3));
 INSERT INTO items (trait_ai) VALUES ('[1,2,3]'), ('[4,5,6]');
-SELECT * FROM items ORDER BY trait_ai <-> '[3,1,2]' LIMIT 5;
+SELECT * FROM items ORDER BY trait_ai <-> '[3,1,2]' LIMIT 7;
 CREATE INDEX ON items USING hnsw (trait_ai vector_l2_ops);
 
 CREATE TABLE large_vector (v vector(2001));
@@ -27,7 +27,7 @@ CREATE TABLE small_world (
 );
 
 
-INSERT INTO small_world (id, vector) VALUES 
+INSERT INTO small_world (id, vector) VALUES
 ('000', '[0,0,0]'),
 ('001', '[0,0,1]'),
 ('010', '[0,1,0]'),
@@ -42,35 +42,59 @@ SET enable_seqscan = off;
 begin;
 CREATE INDEX ON small_world USING hnsw (vector);
 \d+ small_world
-SELECT id, ROUND( (vector <-> '[0,0,0]')::numeric, 2) as dist
-FROM small_world 
-ORDER BY vector <-> '[0,0,0]' LIMIT 5;
-SELECT id, ROUND( (vector <-> '[0,1,0]')::numeric, 2) as dist
-FROM small_world 
-ORDER BY vector <-> '[0,1,0]' LIMIT 5;
+SELECT * FROM (
+	SELECT id, ROUND( (vector <-> '[0,0,0]')::numeric, 2) as dist
+	FROM small_world
+	ORDER BY vector <-> '[0,0,0]' LIMIT 7
+) v ORDER BY v.dist, v.id;
+SELECT * FROM (
+	SELECT id, ROUND( (vector <-> '[0,1,0]')::numeric, 2) as dist
+	FROM small_world
+	ORDER BY vector <-> '[0,1,0]' LIMIT 7
+) v ORDER BY v.dist, v.id;
 rollback;
 
 
 begin;
 CREATE INDEX ON small_world USING hnsw (vector) WITH (M=2, ef=11, ef_construction=12);
 \d+ small_world
-SELECT id, ROUND( (vector <-> '[0,0,0]')::numeric, 2) as dist
-FROM small_world 
-ORDER BY vector <-> '[0,0,0]' LIMIT 5;
-SELECT id, ROUND( (vector <-> '[0,1,0]')::numeric, 2) as dist
-FROM small_world 
-ORDER BY vector <-> '[0,1,0]' LIMIT 5;
+-- Equidistant points from the given vector appear in different order in the output of the inner query
+-- depending on postgres version and platform. The outder query forces a deterministic order.
+-- Unfortunately, outer query resorts distances as well so if the index sorted them in a wrong order,
+-- that would be hidden by the outer query.
+
+-- For that reason we first run a query that only outputs distances so we can see vectors are in fact in the right (approximate)
+-- order. Then, we run the second query which outputs id, dist pairs and we sort ids for equal distances in the outer query to get
+-- deterministic output.
+SELECT ROUND( (vector <-> '[0,0,0]')::numeric, 2) as dist
+FROM small_world
+ORDER BY vector <-> '[0,0,0]' LIMIT 7;
+SELECT * FROM (
+    SELECT id, ROUND( (vector <-> '[0,0,0]')::numeric, 2) as dist
+    FROM small_world
+    ORDER BY vector <-> '[0,0,0]' LIMIT 7
+) v ORDER BY v.dist, v.id;
+SELECT * FROM (
+    SELECT id, ROUND( (vector <-> '[0,1,0]')::numeric, 2) as dist
+    FROM small_world
+    ORDER BY vector <-> '[0,1,0]' LIMIT 7
+) v ORDER BY v.dist, v.id;
 rollback;
 
 begin;
 CREATE INDEX ON small_world USING hnsw (vector) WITH (M=11, ef=2, ef_construction=2);
 \d+ small_world
-SELECT id, ROUND( (vector <-> '[0,0,0]')::numeric, 2) as dist
-FROM small_world 
-ORDER BY vector <-> '[0,0,0]' LIMIT 5;
-SELECT id, ROUND( (vector <-> '[0,1,0]')::numeric, 2) as dist
-FROM small_world 
-ORDER BY vector <-> '[0,1,0]' LIMIT 5;
+SELECT * FROM (
+    SELECT id, ROUND( (vector <-> '[0,0,0]')::numeric, 2) as dist
+    FROM small_world
+    ORDER BY vector <-> '[0,0,0]' LIMIT 7
+) v ORDER BY v.dist, v.id;
+
+SELECT * FROM (
+    SELECT id, ROUND( (vector <-> '[0,1,0]')::numeric, 2) as dist
+    FROM small_world
+    ORDER BY vector <-> '[0,1,0]' LIMIT 7
+) v ORDER BY v.dist, v.id;
 rollback;
 
 \echo "Done with hnsw.sql test!"

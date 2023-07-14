@@ -59,13 +59,17 @@ ALTER TABLE ONLY tsv_data
 
 \copy tsv_data FROM '/tmp/tsv_wiki_sample.csv' DELIMITER E'\t';
 
-select id, page_title,  context_page_description_ai <-> (select context_page_description_ai from tsv_data where id = 81386) as dist
+-- introduce a WITH statement to round returned distances AFTER a lookup
+with t as (select id, page_title,  context_page_description_ai <-> (select context_page_description_ai from tsv_data where id = 81386) as dist
  from tsv_data order by dist
- limit 10;
+ limit 10) select id, page_title, ROUND( dist::numeric, 2) from t;
 CREATE INDEX ON tsv_data USING hnsw (context_page_description_ai vector_l2_ops);
 CREATE INDEX ON tsv_data USING hnsw (context_page_description_ai) with (ef = 100, ef_construction=150 , M=11, alg="hnswlib");
 set enable_seqscan=false;
-select id, page_title, context_page_description_ai <-> (select context_page_description_ai from tsv_data where id = 81386) as dist
- from tsv_data order by dist limit 10;
-select id, page_title, context_page_description_ai <-> (select context_page_description_ai from tsv_data where id = 81518) as dist
- from tsv_data order by dist limit 3;
+
+explain with t as (select id, page_title, context_page_description_ai <-> (select context_page_description_ai from tsv_data where id = 81386) as dist
+ from tsv_data order by dist limit 10) select id, page_title, ROUND( dist::numeric, 2) from t;
+
+-- introduce a WITH statement to round returned distances AFTER a lookup so the index can be used
+with t as (select id, page_title, context_page_description_ai <-> (select context_page_description_ai from tsv_data where id = 81386) as dist
+ from tsv_data order by dist limit 10) select id, page_title, ROUND( dist::numeric, 2) from t;

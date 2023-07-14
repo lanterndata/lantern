@@ -190,8 +190,6 @@ static void BuildIndex(
     opts.metric = NULL;
     opts.quantization = usearch_scalar_f32_k;
 
-    LogUsearchOptions(&opts);
-
     buildstate->hnsw = NULL;
     buildstate->usearch_index = usearch_init(&opts, &error);
     elog(INFO, "done init usearch index");

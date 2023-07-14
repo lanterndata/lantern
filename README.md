@@ -59,7 +59,7 @@ ORDER BY vector <-> '[0,0,0]' LIMIT 5;
 
 ### A note on index construction parameters
 The `M`, `ef`, and `efConstruction` parameters control the tradeoffs of the HNSW algorithm.
-In general, lower `M` and `efConstruction` speeds up index creation at the cost of recall.
+In general, lower `M` and `efConstruction` speed up index creation at the cost of recall.
 Lower `M` and `ef` improve search speed and result in fewer shared buffer hits at the cost of recall.
 Tuning these parameters will require experimentation for your specific use case. An upcoming LanternDB release will include an optional auto-tuning index.
 
