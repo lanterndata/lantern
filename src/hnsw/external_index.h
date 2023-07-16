@@ -45,6 +45,14 @@ typedef struct HnswIndexPage
 } HnswIndexPage;
 
 #define HNSW_BLOCKMAP_BLOCKS_PER_PAGE 2000
+// limit max indexed vectors to 40M to simplify blockmap pages into
+// contiguous range
+// This is wasteful (160MB) but for moderately sized tables (5M vecs = ~2.5 GB)
+// it is not that bad
+// Once other basic operations are supported, will change this to be a small number
+// of exponentially increasing contiguous ranges so both the limit and the waste
+// will go away without adding search overhead
+#define HNSW_MAX_INDEXED_VECTORS 40000000
 
 typedef struct
 {
@@ -86,4 +94,4 @@ void StoreExternalIndex(Relation        index,
 
 void *ldb_wal_index_node_retriever(int id);
 
-#endif // LDB_HNSW_EXTERNAL_INDEX_H
+#endif  // LDB_HNSW_EXTERNAL_INDEX_H

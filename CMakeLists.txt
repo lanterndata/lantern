@@ -19,7 +19,7 @@ option(BUILD_WITH_USEARCH "Build with usearch as hnsw provider" ON)
 option(BUILD_LIBHNSW "Build libhnsw as hnsw provider" OFF)
 
 # options passed into lanterndb sourcecode
-option(LANTERNDB_COPYNODES "Copy postgres index tuples for external retriever instead of rlocking" ON)
+option(LANTERNDB_COPYNODES "Copy postgres index tuples for external retriever during scan instead of pinning" ON)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 

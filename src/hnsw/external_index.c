@@ -167,7 +167,8 @@ void StoreExternalIndex(Relation        index,
     INDEX_RELATION_FOR_RETRIEVER = index;
     fill_blockno_mapping();
 
-    for(int node_id = 0; node_id < num_added_vectors; node_id += HNSW_BLOCKMAP_BLOCKS_PER_PAGE) {
+    /* Create blockmap for <=2 memory access retreival of any node*/
+    for(int node_id = 0; node_id < HNSW_MAX_INDEXED_VECTORS; node_id += HNSW_BLOCKMAP_BLOCKS_PER_PAGE) {
         Buffer                     buf;
         Page                       page;
         GenericXLogState          *state;
@@ -206,9 +207,14 @@ void StoreExternalIndex(Relation        index,
 
         memset(blockmap, 0, BLCKSZ);
         blockmap->first_id = node_id;
-        memcpy(blockmap->blocknos,
-               wal_retriever_block_numbers + node_id,
-               sizeof(BlockNumber) * HNSW_BLOCKMAP_BLOCKS_PER_PAGE);
+
+        // for already inserted nodes, we populate corresponding to blockmap pages
+        // Otherwise, we only populate expected first node_id and leave the rest for INSERTS
+        if(node_id < num_added_vectors) {
+            memcpy(blockmap->blocknos,
+                   wal_retriever_block_numbers + node_id,
+                   sizeof(BlockNumber) * HNSW_BLOCKMAP_BLOCKS_PER_PAGE);
+        }
         if(PageAddItem(page, (Item)blockmap, sizeof(HnswBlockmapPage), InvalidOffsetNumber, false, false)
            == InvalidOffsetNumber) {
             // we always add a single Blockmap page per Index page which has a fixed size that
@@ -288,11 +294,12 @@ Relation INDEX_RELATION_FOR_RETRIEVER;
 static char *wal_retriever_area = NULL;
 static int   wal_retriever_area_size = 0;
 static int   wal_retriever_area_offset = 0;
-#endif
+#else
 
-#define TAKENBUFFERS_MAX 100
-static Buffer       takenbuffers[ TAKENBUFFERS_MAX ];
-static int          takenbuffers_next = 0;
+#define TAKENBUFFERS_MAX 1000
+static Buffer *takenbuffers;
+static int     takenbuffers_next = 0;
+#endif
 HnswIndexHeaderPage HEADER_FOR_EXTERNAL_RETRIEVER;
 
 void ldb_wal_retriever_area_init(int size)
@@ -302,6 +309,11 @@ void ldb_wal_retriever_area_init(int size)
     if(wal_retriever_area == NULL) elog(ERROR, "could not allocate wal_retriever_area");
     wal_retriever_area_size = size;
     wal_retriever_area_offset = 0;
+#else
+    takenbuffers = palloc0(sizeof(Buffer) * TAKENBUFFERS_MAX);
+    if(takenbuffers_next > 0) {
+        elog(ERROR, "takenbuffers_next > 0 %d", takenbuffers_next);
+    }
 #endif
 
     if(HEADER_FOR_EXTERNAL_RETRIEVER.num_vectors <= 0) {
@@ -313,9 +325,6 @@ void ldb_wal_retriever_area_init(int size)
     // needless to say - yet another hack that shall be removed asap!
     wal_retriever_block_numbers = palloc(sizeof(BlockNumber) * HEADER_FOR_EXTERNAL_RETRIEVER.num_vectors + 2000);
     if(wal_retriever_block_numbers == NULL) elog(ERROR, "could not allocate wal_retriever_block_numbers");
-    if(takenbuffers_next > 0) {
-        elog(ERROR, "takenbuffers_next > 0 %d", takenbuffers_next);
-    }
     for(int i = 0; i < HEADER_FOR_EXTERNAL_RETRIEVER.num_vectors; i++) {
         wal_retriever_block_numbers[ i ] = InvalidBlockNumber;
     }
@@ -330,7 +339,7 @@ void ldb_wal_retriever_area_reset()
         if(takenbuffers[ i ] == InvalidBuffer) {
             continue;
         }
-        UnlockReleaseBuffer(takenbuffers[ i ]);
+        ReleaseBuffer(takenbuffers[ i ]);
         takenbuffers[ i ] = InvalidBuffer;
     }
     takenbuffers_next = 0;
@@ -346,15 +355,17 @@ void ldb_wal_retriever_area_free()
     wal_retriever_area = NULL;
     wal_retriever_area_size = 0;
     wal_retriever_area_offset = 0;
-#endif
+#else
     for(int i = 0; i < TAKENBUFFERS_MAX; i++) {
         if(takenbuffers[ i ] == InvalidBuffer) {
             continue;
         }
-        UnlockReleaseBuffer(takenbuffers[ i ]);
+        ReleaseBuffer(takenbuffers[ i ]);
         takenbuffers[ i ] = InvalidBuffer;
     }
+    pfree(takenbuffers);
     takenbuffers_next = 0;
+#endif
 }
 
 static inline void *wal_index_node_retriever_sequential(int id)
@@ -379,8 +390,7 @@ static inline void *wal_index_node_retriever_sequential(int id)
             nodepage = (HnswIndexPage *)PageGetItem(page, PageGetItemId(page, offset));
             if(nodepage->id == id) {
 #if LANTERNDB_COPYNODES
-                if(wal_retriever_area == NULL
-                   || wal_retriever_area_offset + nodepage->size > wal_retriever_area_size) {
+                if(wal_retriever_area == NULL || wal_retriever_area_offset + nodepage->size > wal_retriever_area_size) {
                     elog(ERROR,
                          "ERROR: wal_retriever_area "
                          "is NULL or full");
@@ -453,7 +463,7 @@ static void *wal_index_node_retriever_binary(int id)
         for(offset = FirstOffsetNumber; offset <= max_offset; offset = OffsetNumberNext(offset)) {
             nodepage = (HnswIndexPage *)PageGetItem(page, PageGetItemId(page, offset));
             if(nodepage->id == id) {
-#if LANTEERNDB_COPYNODES
+#if LANTERNDB_COPYNODES
                 if(wal_retriever_area == NULL || wal_retriever_area_offset + nodepage->size > wal_retriever_area_size) {
                     elog(ERROR,
                          "ERROR: wal_retriever_area "
@@ -503,6 +513,7 @@ static inline void *wal_index_node_retriever_exact(int id)
     } else {
         int id_offset = (id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE) * HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
         int write_size = sizeof(blockmap_page->blocknos);
+        // if this is th elast page and blocknos is not filled up, only read the part that is filled up
         if(id_offset + HNSW_BLOCKMAP_BLOCKS_PER_PAGE > HEADER_FOR_EXTERNAL_RETRIEVER.num_vectors) {
             write_size = (HEADER_FOR_EXTERNAL_RETRIEVER.num_vectors - id_offset) * sizeof(blockmap_page->blocknos[ 0 ]);
         }
@@ -545,7 +556,7 @@ static inline void *wal_index_node_retriever_exact(int id)
             return wal_retriever_area + wal_retriever_area_offset - nodepage->size;
 #else
             if(takenbuffers[ takenbuffers_next ] != InvalidBuffer) {
-                UnlockReleaseBuffer(takenbuffers[ takenbuffers_next ]);
+                ReleaseBuffer(takenbuffers[ takenbuffers_next ]);
                 takenbuffers[ takenbuffers_next ] = InvalidBuffer;
             }
             takenbuffers[ takenbuffers_next ] = buf;
@@ -553,11 +564,12 @@ static inline void *wal_index_node_retriever_exact(int id)
 
             if(takenbuffers_next == TAKENBUFFERS_MAX) {
                 if(takenbuffers[ 0 ] != InvalidBuffer) {
-                    UnlockReleaseBuffer(takenbuffers[ 0 ]);
+                    ReleaseBuffer(takenbuffers[ 0 ]);
                     takenbuffers[ 0 ] = InvalidBuffer;
                 }
                 takenbuffers_next = 0;
             }
+            LockBuffer(buf, BUFFER_LOCK_UNLOCK);
             return nodepage->node;
 #endif
         }
