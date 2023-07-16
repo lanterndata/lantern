@@ -6,11 +6,20 @@ IFS=$'\n\t'
 TESTDB=testdb
 PSQL=psql
 TMP_OUTDIR=/tmp/lanterndb/tmp_output
+FILTER="${FILTER:-}"
+# read the first command line argument
+
+echo "Filter: $FILTER"
 
 mkdir -p $TMP_OUTDIR
 
 for testfile in test/sql/*
 do
+    # if FILTER is set and testfile does not contain FILTER, skip
+    if [ ! -z "$FILTER" ] && [[ ! $testfile =~ $FILTER ]]
+    then
+        continue
+    fi
     echo "------------------------------------------------------------------------------------------------------"
     echo "-------------------------------- TESTING $testfile -------------------------------------------"
     echo "------------------------------------------------------------------------------------------------------"
