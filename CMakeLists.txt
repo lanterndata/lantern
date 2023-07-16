@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.3)
 
-set(LANTERNDB_VERSION 0.0.1)
+set(LANTERNDB_VERSION 0.0.2)
 
 project(
   LanternDB
@@ -106,6 +106,8 @@ endif()
 target_compile_definitions(lanterndb PRIVATE _GNU_SOURCE)
 
 set(_script_file "lanterndb--${LANTERNDB_VERSION}.sql")
+set (_update_files
+  sql/updates/0.0.1--0.0.2.sql)
 
 add_custom_command(
   OUTPUT ${CMAKE_BINARY_DIR}/${_script_file}
@@ -124,6 +126,11 @@ set(_control_file "lanterndb.control")
 install(TARGETS lanterndb LIBRARY DESTINATION ${PostgreSQL_PACKAGE_LIBRARY_DIR})
 install(FILES ${_control_file} ${CMAKE_BINARY_DIR}/${_script_file}
         DESTINATION ${PostgreSQL_EXTENSION_DIR})
+
+foreach(_update_file ${_update_files})
+  get_filename_component(_update_file_name ${_update_file} NAME)
+  install(FILES ${_update_file} DESTINATION ${PostgreSQL_EXTENSION_DIR} RENAME "lanterndb--${_update_file_name}")
+endforeach()
 
 # todo:: add llvm bytecode generation for postgres optimizations (see how the
 # canonical extension building infra extension does it)
