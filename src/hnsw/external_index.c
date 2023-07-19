@@ -55,6 +55,9 @@ void StoreExternalIndex(Relation        index,
     uint32 last_block = -1;
     uint32 block = 1;
     uint32 blockno_index_start = -1;
+    if(num_added_vectors >= HNSW_MAX_INDEXED_VECTORS) {
+        elog(ERROR, "too many vectors to store in hnsw index. Current limit: %d", HNSW_MAX_INDEXED_VECTORS);
+    }
 
     HnswIndexPage *bufferpage = palloc(BLCKSZ);
 
@@ -276,6 +279,16 @@ void CreateHeaderPage(Relation   index,
     headerp->version = LDB_WAL_VERSION_NUMBER;
     headerp->vector_dim = vector_dim;
     headerp->num_vectors = num_vectors;
+    headerp->first_data_block = InvalidBlockNumber;
+    headerp->last_data_block = InvalidBlockNumber;
+    if(blockno_index_start >= headerblockno + 2) {
+        // headerblockno+1 is a data page
+        headerp->first_data_block = headerblockno + 1;
+        headerp->last_data_block = blockno_index_start - 1;
+    } else {
+        elog(WARNING, "creating index on empty table");
+    }
+    headerp->last_data_block = blockno_index_start - 1;
     headerp->blockno_index_start = blockno_index_start;
     headerp->num_blocks = num_blocks;
     memcpy(headerp->usearch_header, usearchHeader64, 64);
@@ -488,6 +501,9 @@ static void *wal_index_node_retriever_binary(int id)
 static inline void *wal_index_node_retriever_exact(int id)
 {
     HnswBlockmapPage *blockmap_page;
+    // fix blockmap size to X pages -> X * 8k overhead -> can have max table size of 2000 * X
+    // fix blockmap size to 20000 pages -> 160 MB overhead -> can have max table size of 40M rows
+    // 40M vectors of 128 dims -> 40 * 128 * 4 = 163840 Mbytes -> 163 GB... will not fly
     BlockNumber    blockmapno = HEADER_FOR_EXTERNAL_RETRIEVER.blockno_index_start + id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
     BlockNumber    blockno;
     Buffer         buf;
@@ -506,12 +522,15 @@ static inline void *wal_index_node_retriever_exact(int id)
         levels[10], levels[11], levels[12], levels[13], levels[14], levels[15], levels[16], levels[17], levels[18],
         levels[19]);
     }
+    // clang-format on
 #endif
 
     if(wal_retriever_block_numbers[ id ] != InvalidBlockNumber) {
         blockno = wal_retriever_block_numbers[ id ];
     } else {
         int id_offset = (id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE) * HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
+        // todo:: verify that this sizeof is evaled compile time and blockmap_page is not derefed
+        //  in any way, probably worth changing it. looks strange to -> on an uninitialized pointer
         int write_size = sizeof(blockmap_page->blocknos);
         // if this is th elast page and blocknos is not filled up, only read the part that is filled up
         if(id_offset + HNSW_BLOCKMAP_BLOCKS_PER_PAGE > HEADER_FOR_EXTERNAL_RETRIEVER.num_vectors) {

@@ -21,6 +21,11 @@ typedef struct HnswIndexHeaderPage
     uint32 version;
     uint32 vector_dim;
     uint32 num_vectors;
+    // todo:: switch these to BlockNumber for documentation
+    // first data block is needed because in case of creatingan index on empty table it no longer
+    // is headeblockno + 1
+    uint32 first_data_block;
+    uint32 last_data_block;
     uint32 blockno_index_start;
     uint32 num_blocks;
     char   usearch_header[ 64 ];
@@ -52,7 +57,7 @@ typedef struct HnswIndexPage
 // Once other basic operations are supported, will change this to be a small number
 // of exponentially increasing contiguous ranges so both the limit and the waste
 // will go away without adding search overhead
-#define HNSW_MAX_INDEXED_VECTORS 40000000
+#define HNSW_MAX_INDEXED_VECTORS 40000
 
 typedef struct
 {
