@@ -13,7 +13,7 @@
 
 PG_MODULE_MAGIC;
 
-const char *GLOBAL_HNSW_IDX_NAME = "/tmp/hnsw_postgres.bin";
+const char *GLOBAL_HNSW_IDX_NAME = "/tmp/hnsw_postgres_debug.bin";
 
 /*
  * Prepare for an index scan
@@ -80,6 +80,8 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     assert(error == NULL);
 
     usearch_mem = headerp->usearch_header;
+    // this reserves memory for internal structures,
+    // including for locks according to size indicated in usearch_mem
     usearch_view_mem_lazy(scanstate->usearch_index, usearch_mem, &error);
     assert(error == NULL);
     UnlockReleaseBuffer(buf);

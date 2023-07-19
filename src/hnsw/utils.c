@@ -4,6 +4,7 @@
 
 #include "hnsw.h"
 #include "usearch.h"
+#include "options.h"
 
 void LogUsearchOptions(usearch_init_options_t *opts)
 {

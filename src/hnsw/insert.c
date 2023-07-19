@@ -2,6 +2,7 @@
 
 #include "insert.h"
 
+#include <access/generic_xlog.h>
 #include <assert.h>
 #include <float.h>
 #include <storage/bufmgr.h>
@@ -12,6 +13,7 @@
 #include "hnsw.h"
 #include "usearch.h"
 #include "utils.h"
+#include "vector.h"
 
 /*
  * Insert a tuple into the index
@@ -42,6 +44,9 @@ bool ldb_aminsert(Relation         index,
     Page                   hdr_page;
     HnswIndexHeaderPage   *hdr;
     int                    current_size;
+    GenericXLogState      *state;
+    Buffer                 extra_dirtied[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ];
+    int                    extra_dirtied_size = 0;
 
     if(checkUnique != UNIQUE_CHECK_NO) {
         elog(ERROR, "unique constraints on hnsw vector indexes not supported");
@@ -69,21 +74,24 @@ bool ldb_aminsert(Relation         index,
 
     assert(usearch_size(uidx, &error) == 0);
     assert(!error);
-    // usearch_search(idx, data, usearch_scalar_f32_k, k, labels, distances, &error);
-    // assert(!error);
+
+    state = GenericXLogStart(index);
 
     //  read index header page to know how many pages are already isnerted
     hdr_buf = ReadBufferExtended(index, MAIN_FORKNUM, HEADER_BLOCK, RBM_NORMAL, NULL);
     LockBuffer(hdr_buf, BUFFER_LOCK_EXCLUSIVE);
-    hdr_page = BufferGetPage(hdr_buf);
+    hdr_page = GenericXLogRegisterBuffer(state, hdr_buf, LDB_GENERIC_XLOG_DELTA_IMAGE);
     hdr = (HnswIndexHeaderPage *)PageGetContents(hdr_page);
 
     current_size = hdr->num_vectors;
-    last_block = hdr->last_data_block;
 
     if(current_size >= HNSW_MAX_INDEXED_VECTORS) {
         elog(ERROR, "Index full. Cannot add more vectors. Current limit: %d", HNSW_MAX_INDEXED_VECTORS);
     }
+
+    // this reserves memory for internal structures,
+    // including for locks according to size indicated in usearch_mem
+    usearch_view_mem_lazy(uidx, hdr->usearch_header, &error);
 
     usearch_reserve(uidx, current_size + 1, &error);
     //  ^^ do not worry about allocaitng locks above. but that has to be eliminated down the line
@@ -94,18 +102,29 @@ bool ldb_aminsert(Relation         index,
 
     // reserve the added page on disk using level info from above
     // hdr is passed in so num_vectors, first_block_no, last_block_no can be updated
-    // reserve_one_tuple(hdr, level);
+    ReserveIndexTuple(index, state, hdr, &meta, level, &extra_dirtied, &extra_dirtied_size);
+    elog(WARNING, "finished reserving index tuple");
 
-    usearch_add_external(uidx, heap_tid, vector, usearch_scalar_f32_k, 0, &error);
+    usearch_add_external(uidx, *(unsigned long *)heap_tid, DatumGetVector(vector)->x, usearch_scalar_f32_k, 0, &error);
     if(error != NULL) {
         elog(ERROR, "usearch insert error: %s", error);
     }
 
     usearch_free(uidx, &error);
 
-    // we onl release the header buffer AFTER inserting is finished to make sure nobody else changes the block
-    // structure. todo:: critical section here can definitely be shortened
     MarkBufferDirty(hdr_buf);
+    // we only release the header buffer AFTER inserting is finished to make sure nobody else changes the block
+    // structure. todo:: critical section here can definitely be shortened
+    GenericXLogFinish(state);
+    for(int i = 0; i < extra_dirtied_size; i++) {
+        assert(BufferIsValid(extra_dirtied[ i ]));
+        // header is not considered extra. we know we should not have dirtied it
+        // sanity check callees that manimulate extra_dirtied did not violate this
+        assert(extra_dirtied[ i ] != hdr_buf);
+        MarkBufferDirty(extra_dirtied[ i ]);
+        UnlockReleaseBuffer(extra_dirtied[ i ]);
+    }
+
     UnlockReleaseBuffer(hdr_buf);
 
     // todo:: thre is room for optimization for when indexUnchanged is true
