@@ -1,4 +1,4 @@
-#include "postgres.h"
+#include <postgres.h>
 
 #include "utils.h"
 
@@ -25,4 +25,14 @@ so below the human readable string names can be printed
          opts->connectivity,
          opts->expansion_add,
          opts->expansion_search);
+}
+
+void PopulateUsearchOpts(Relation index, usearch_init_options_t *opts)
+{
+    opts->connectivity = HnswGetM(index);
+    opts->expansion_add = HnswGetEfConstruction(index);
+    opts->expansion_search = HnswGetEf(index);
+    opts->metric_kind = usearch_metric_l2sq_k;
+    opts->metric = NULL;
+    opts->quantization = usearch_scalar_f32_k;
 }

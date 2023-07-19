@@ -76,7 +76,7 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     HEADER_FOR_EXTERNAL_RETRIEVER = *headerp;
     ldb_wal_retriever_area_init(BLCKSZ * 100);
 
-    usearch_set_node_retriever(scanstate->usearch_index, ldb_wal_index_node_retriever, &error);
+    usearch_set_node_retriever(scanstate->usearch_index, ldb_wal_index_node_retriever, ldb_wal_index_node_retriever, &error);
     assert(error == NULL);
 
     usearch_mem = headerp->usearch_header;
@@ -225,6 +225,11 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         // currently they only store relblockno
         // the second is needed so we can hold a pin in here on the index page
         // the good news is that this is not an issue until we support deletions
+        // Now we add support for deletions via a bitmap in blockmap page
+        // So, the actual index pages are append-only which means effectively we
+        // always have a static pin on all index pages
+        // The issue outlined above needs to be addressed but it is not critical
+        // until we physically compact index pages
 
         // if (BufferIsValid(scanstate->buf))
         // 	ReleaseBuffer(scanstate->buf);

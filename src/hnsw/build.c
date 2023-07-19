@@ -182,13 +182,9 @@ static void BuildIndex(
     // buildstate->hnsw =
     // 	hnsw_new(buildstate->dimensions, max_elems, M, ef_construction);
 
-    opts.connectivity = HnswGetM(index);
     opts.dimensions = buildstate->dimensions;
-    opts.expansion_add = HnswGetEfConstruction(index);
-    opts.expansion_search = HnswGetEf(index);
-    opts.metric_kind = usearch_metric_l2sq_k;
-    opts.metric = NULL;
-    opts.quantization = usearch_scalar_f32_k;
+
+    PopulateUsearchOpts(index, &opts);
 
     buildstate->hnsw = NULL;
     buildstate->usearch_index = usearch_init(&opts, &error);
