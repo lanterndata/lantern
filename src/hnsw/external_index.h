@@ -3,14 +3,19 @@
 
 #include "postgres.h"
 
+#include <access/generic_xlog.h>
 #include <common/relpath.h>  // ForkNumber
 #include <storage/bufmgr.h>  // Buffer
 #include <utils/relcache.h>  // Relation
 
 #include "usearch.h"
+#include "insert.h"
 
 #define LDB_WAL_MAGIC_NUMBER   0xa47e20db
 #define LDB_WAL_VERSION_NUMBER 0x00000001
+
+// used for code clarity when modifying WAL entries
+#define LDB_GENERIC_XLOG_DELTA_IMAGE 0
 
 // this should be as large as possible to cache more stuff
 // while still fitting on the first page
@@ -45,6 +50,7 @@ typedef struct HnswIndexPage
 {
     uint32 id;
     uint32 level;
+    // stores size of the flexible array member
     uint32 size;
     char   node[ FLEXIBLE_ARRAY_MEMBER ];
 } HnswIndexPage;
@@ -97,6 +103,14 @@ void StoreExternalIndex(Relation        index,
                         int             dimension,
                         size_t          num_added_vectors);
 
-void *ldb_wal_index_node_retriever(int id);
+void ReserveIndexTuple(Relation             index_rel,
+                       GenericXLogState    *state,
+                       HnswIndexHeaderPage *hdr,
+                       usearch_metadata_t  *metadata,
+                       int32_t              level,
+                       Buffer (*extra_dirtied)[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ],
+                       int *extra_dirtied_size);
+
+    void *ldb_wal_index_node_retriever(int id);
 
 #endif  // LDB_HNSW_EXTERNAL_INDEX_H

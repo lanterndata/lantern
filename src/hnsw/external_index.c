@@ -11,9 +11,20 @@
 #include "storage/bufmgr.h"  // Buffer
 #include "usearch.h"
 #include "utils/relcache.h"
+#include "insert.h"
 
 static inline void  fill_blockno_mapping();
 static BlockNumber *wal_retriever_block_numbers = NULL;
+
+static int UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, int level)
+{
+    const int NODE_HEAD_BYTES = sizeof(usearch_label_t) + 4 /*sizeof dim */ + 4 /*sizeof level*/;
+    int       node_bytes = 0;
+    node_bytes += NODE_HEAD_BYTES + metadata->neighbors_base_bytes;
+    node_bytes += metadata->neighbors_bytes * level;
+    node_bytes += vector_bytes;
+    return node_bytes;
+}
 
 static char *extract_node(char               *data,
                           int                 progress,
@@ -22,20 +33,15 @@ static char *extract_node(char               *data,
                           /*->>output*/ int  *node_size,
                           int                *level)
 {
+    char *tape = data + progress;
+
+    int read_dim_bytes = -1;
+    memcpy(&read_dim_bytes, tape + sizeof(usearch_label_t), 4);  //+sizeof(label)
+    memcpy(level, tape + sizeof(usearch_label_t) + 4, 4);        //+sizeof(label)+sizeof(dim)
     const int NODE_HEAD_BYTES = sizeof(usearch_label_t) + 4 /*sizeof dim */ + 4 /*sizeof level*/;
     const int VECTOR_BYTES = dim * sizeof(float);
-    int       node_bytes = 0;
-    char     *tape = data + progress;
-    int       read_dim_bytes = -1;
-    memcpy(&read_dim_bytes, tape + sizeof(usearch_label_t),
-           4);  //+sizeof(label)
-    memcpy(level, tape + sizeof(usearch_label_t) + 4,
-           4);  //+sizeof(label)+sizeof(dim)
     assert(VECTOR_BYTES == read_dim_bytes);
-    node_bytes += NODE_HEAD_BYTES + metadata->neighbors_base_bytes;
-    node_bytes += metadata->neighbors_bytes * *level;
-    node_bytes += VECTOR_BYTES;
-    *node_size = node_bytes;
+    *node_size = UsearchNodeBytes(metadata, VECTOR_BYTES, *level);
     return tape;
 }
 
@@ -340,6 +346,123 @@ void ldb_wal_retriever_area_init(int size)
     if(wal_retriever_block_numbers == NULL) elog(ERROR, "could not allocate wal_retriever_block_numbers");
     for(int i = 0; i < HEADER_FOR_EXTERNAL_RETRIEVER.num_vectors; i++) {
         wal_retriever_block_numbers[ i ] = InvalidBlockNumber;
+    }
+}
+
+// adds a an item to hnsw index relation page. assumes the page has enough space for the item
+// the function also takes care of setting the special block
+void HnswIndexPageAddVector(Page page, HnswIndexPage *new_vector_data, int new_vector_size)
+{
+    HnswIndexPageSpecialBlock *special_block;
+    if(PageAddItem(
+           page, (Item)new_vector_data, sizeof(HnswIndexPage) + new_vector_size, InvalidOffsetNumber, false, false)
+       == InvalidOffsetNumber) {
+        elog(ERROR, "unexpectedly could not add item to the last existing page");
+    }
+    special_block = (HnswIndexPageSpecialBlock *)PageGetSpecialPointer(page);
+
+    if(PageGetMaxOffsetNumber(page) == 1) {
+        // we added the first element to the index page!
+        // update firstId
+        special_block->firstId = new_vector_data->id;
+        special_block->lastId = new_vector_data->id;
+    } else {
+        assert(special_block->lastId == new_vector_data->id - 1);
+        special_block->lastId += 1;
+    }
+
+    // special_block->nextclockno reimains unchanged
+    // we always append to the index
+    assert(special_block->nextblockno == InvalidBlockNumber);
+}
+
+// the function assumes that its modifications to hdr will
+// saved durably on the index relation by the caller
+void ReserveIndexTuple(Relation             index_rel,
+                       GenericXLogState    *state,
+                       HnswIndexHeaderPage *hdr,
+                       usearch_metadata_t  *metadata,
+                       int32_t              level,
+                       Buffer              (*extra_dirtied)[LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS],
+                       int                 *extra_dirtied_size)
+{
+    // if any data blocks exist, the last one's buffer will be read into this
+    Buffer last_dblock = InvalidBuffer;
+    // if a new data buffer is created for the inserted vector, it will be stored here
+    Buffer new_dblock = InvalidBuffer;
+
+    Page page;
+    // HnswIndexPage    *vector_data;
+    HnswIndexPageSpecialBlock *special_block;
+    int                        new_vector_size = UsearchNodeBytes(metadata, hdr->vector_dim * sizeof(float), level);
+    HnswIndexPage             *new_vector_data;
+    BlockNumber                new_vector_blockno;
+
+    // allocate buffer to construct the new node
+    // note that we allocate more than sizeof(HnswIndexPage) since the struct has a flexible array member
+    // which depends on parameters passed into UsearchNodeBytes above
+    new_vector_data = palloc0(new_vector_size);
+    if(new_vector_data == NULL) {
+        elog(ERROR, "could not allocate new_vector_data for hnsw index insert");
+    }
+
+    new_vector_data->level = level;
+    new_vector_data->id = hdr->num_vectors;
+    new_vector_data->size = new_vector_size;
+    // the rest of new_vector_data will be initializes by usearch
+
+    if(hdr->last_data_block == InvalidBlockNumber) {
+        assert(hdr->first_data_block == InvalidBlockNumber);
+        elog(ERROR, "inserting into an empty table not supported");
+        // index is created on the empty table.
+        // allocate the first page here
+    } else {
+        last_dblock = ReadBufferExtended(index_rel, MAIN_FORKNUM, hdr->last_data_block, RBM_NORMAL, NULL);
+        LockBuffer(last_dblock, BUFFER_LOCK_EXCLUSIVE);
+
+        page = GenericXLogRegisterBuffer(state, last_dblock, LDB_GENERIC_XLOG_DELTA_IMAGE);
+        if(PageGetFreeSpace(page) > sizeof(HnswIndexPage) + new_vector_size) {
+            // there is enough space in the last page to fit the new vector
+            // so we just append it to the page
+            HnswIndexPageAddVector(page, new_vector_data, new_vector_size);
+            new_vector_blockno = BufferGetBlockNumber(last_dblock);
+            assert(new_vector_blockno == hdr->last_data_block);
+
+            MarkBufferDirty(last_dblock);
+        } else {
+            // 1. create and read a new block
+            // 2. store the new block blockno in the last block special
+            // 3. mark dirty the old block (PIN must be held until after the xlog transaction is committed)
+            // 4. add the new vector to the newly created page
+
+            // 1.
+            new_dblock = ReadBufferExtended(index_rel, MAIN_FORKNUM, P_NEW, RBM_NORMAL, NULL);
+            LockBuffer(new_dblock, BUFFER_LOCK_EXCLUSIVE);
+            new_vector_blockno = BufferGetBlockNumber(last_dblock);
+
+            // 2.
+            special_block = (HnswIndexPageSpecialBlock *)PageGetSpecialPointer(page);
+            special_block->nextblockno = new_vector_blockno;
+
+            // 3.
+            MarkBufferDirty(last_dblock);
+            page = NULL;
+
+            // 4.
+            page = GenericXLogRegisterBuffer(state, new_dblock, LDB_GENERIC_XLOG_DELTA_IMAGE);
+            PageInit(page, BufferGetPageSize(new_dblock), sizeof(HnswIndexPageSpecialBlock));
+
+            HnswIndexPageAddVector(page, new_vector_data, new_vector_size);
+        }
+    }
+    hdr->num_vectors++;
+    if(last_dblock != InvalidBuffer) {
+        (*extra_dirtied)[*extra_dirtied_size++] = last_dblock;
+        // UnlockReleaseBuffer(last_dblock);
+    }
+    if(new_dblock != InvalidBuffer) {
+        (*extra_dirtied)[*extra_dirtied_size++] = new_dblock;
+        // UnlockReleaseBuffer(new_dblock);
     }
 }
 

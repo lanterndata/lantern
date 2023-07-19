@@ -5,6 +5,8 @@
 #include <storage/bufmgr.h>
 #include <utils/memutils.h>
 
+#define LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS 5
+
 bool ldb_aminsert(Relation         index,
                 Datum           *values,
                 bool            *isnull,
