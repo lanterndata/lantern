@@ -430,9 +430,9 @@ void PrepareIndexTuple(Relation             index_rel,
                 page = (*extra_dirtied_page)[ i ];
                 last_dblock_is_dirty = true;
                 ReleaseBuffer(last_dblock);
-                //todo:: get rid of all uses of last_dblock after this point
-                // using it is safe since we hold a pin via whoever added an exclusevly locked
-                // page to extra_dirtied but the code becomes even more confusing
+                // todo:: get rid of all uses of last_dblock after this point
+                //  using it is safe since we hold a pin via whoever added an exclusevly locked
+                //  page to extra_dirtied but the code becomes even more confusing
                 break;
             }
         }

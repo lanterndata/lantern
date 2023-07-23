@@ -79,7 +79,7 @@ bool ldb_aminsert(Relation         index,
 
     state = GenericXLogStart(index);
 
-    //  read index header page to know how many pages are already isnerted
+    //  read index header page to know how many pages are already inserted
     hdr_buf = ReadBufferExtended(index, MAIN_FORKNUM, HEADER_BLOCK, RBM_NORMAL, NULL);
     LockBuffer(hdr_buf, BUFFER_LOCK_EXCLUSIVE);
     // header page MUST be under WAL since PrepareIndexTuple will update it
@@ -174,5 +174,11 @@ bool ldb_aminsert(Relation         index,
     // q:: what happens when there is an error before ths and the switch back never happens?
     MemoryContextSwitchTo(oldCtx);
     MemoryContextDelete(insertCtx);
+
+    // from docs at https://www.postgresql.org/docs/current/index-functions.html:
+    // The function's Boolean result value is significant only when checkUnique is UNIQUE_CHECK_PARTIAL.
+    // In this case a true result means the new entry is known unique, whereas false means it might be
+    // non-unique (and a deferred uniqueness check must be scheduled).
+    // For other cases a constant false result is recommended.
     return false;
 }
