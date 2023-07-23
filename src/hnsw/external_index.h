@@ -8,8 +8,8 @@
 #include <storage/bufmgr.h>  // Buffer
 #include <utils/relcache.h>  // Relation
 
-#include "usearch.h"
 #include "insert.h"
+#include "usearch.h"
 
 #define LDB_WAL_MAGIC_NUMBER   0xa47e20db
 #define LDB_WAL_VERSION_NUMBER 0x00000001
@@ -27,11 +27,12 @@ typedef struct HnswIndexHeaderPage
     uint32 vector_dim;
     uint32 num_vectors;
     // todo:: switch these to BlockNumber for documentation
-    // first data block is needed because in case of creatingan index on empty table it no longer
+    // first data block is needed because in case of creating an index on empty table it no longer
     // is headeblockno + 1
     uint32 first_data_block;
     uint32 last_data_block;
     uint32 blockno_index_start;
+    //todo:: get rid of this
     uint32 num_blocks;
     char   usearch_header[ 64 ];
     uint32 coarse_ids[ NODE_STORAGE_NUM_COARSE ];
@@ -46,14 +47,14 @@ typedef struct HnswIndexPageSpecialBlock
 
 } HnswIndexPageSpecialBlock;
 
-typedef struct HnswIndexPage
+typedef struct HnswIndexTuple
 {
     uint32 id;
     uint32 level;
     // stores size of the flexible array member
     uint32 size;
     char   node[ FLEXIBLE_ARRAY_MEMBER ];
-} HnswIndexPage;
+} HnswIndexTuple;
 
 #define HNSW_BLOCKMAP_BLOCKS_PER_PAGE 2000
 // limit max indexed vectors to 40M to simplify blockmap pages into
@@ -77,6 +78,9 @@ typedef struct
 // todo:: get rid of these. maybe pass it to usearch_set_retriever and have it pass it back?
 extern Relation            INDEX_RELATION_FOR_RETRIEVER;
 extern HnswIndexHeaderPage HEADER_FOR_EXTERNAL_RETRIEVER;
+extern Buffer             *EXTRA_DIRTIED;
+extern Page               *EXTRA_DIRTIED_PAGE;
+extern int                 EXTRA_DIRTIED_SIZE;
 // this area is used to return pointers back to usearch
 
 void ldb_wal_retriever_area_init(int size);
@@ -86,6 +90,7 @@ void ldb_wal_retriever_area_init(int size);
 void ldb_wal_retriever_area_reset();
 void ldb_wal_retriever_area_free();
 
+int  UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, int level);
 void CreateHeaderPage(Relation   index,
                       char      *usearchHeader64,
                       ForkNumber forkNum,
@@ -103,14 +108,18 @@ void StoreExternalIndex(Relation        index,
                         int             dimension,
                         size_t          num_added_vectors);
 
-void ReserveIndexTuple(Relation             index_rel,
+// add the fully constructed index tuple to the index via wal
+// hdr is passed in so num_vectors, first_block_no, last_block_no can be updated
+void PrepareIndexTuple(Relation             index_rel,
                        GenericXLogState    *state,
                        HnswIndexHeaderPage *hdr,
                        usearch_metadata_t  *metadata,
-                       int32_t              level,
+                       HnswIndexTuple      *tup,
                        Buffer (*extra_dirtied)[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ],
+                       Page (*extra_dirtied_page)[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ],
                        int *extra_dirtied_size);
 
-    void *ldb_wal_index_node_retriever(int id);
+void *ldb_wal_index_node_retriever(int id);
+void *ldb_wal_index_node_retriever_mut(int id);
 
 #endif  // LDB_HNSW_EXTERNAL_INDEX_H

@@ -5,7 +5,11 @@
 #include <storage/bufmgr.h>
 #include <utils/memutils.h>
 
-#define LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS 5
+// #define LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS 5
+// this now includes buffers dirtied by the usearch
+// hnsw updates (= buffers of new neighbors of the inserted vector)
+#define LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS 100
+
 
 bool ldb_aminsert(Relation         index,
                 Datum           *values,
