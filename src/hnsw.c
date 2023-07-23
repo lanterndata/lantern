@@ -150,7 +150,17 @@ Datum       hnsw_handler(PG_FUNCTION_ARGS)
     amroutine->amcanbackward = false; /* can change direction mid-scan */
     amroutine->amcanunique = false;
     amroutine->amcanmulticol = false;
-    amroutine->amoptionalkey = true;  //???
+    /**
+     * todo:: review!!
+     * Seems to indicate that amoptionalkey must be false
+     * https://www.postgresql.org/docs/current/index-api.html
+     * 
+     * However, this argument fails when an index scan has no restriction clause 
+     * for a given index column. In practice this means that indexes that have 
+     * amoptionalkey true must index nulls, since the planner might 
+     * decide to use such an index with no scan keys at all
+    */
+    amroutine->amoptionalkey = true;
     amroutine->amsearcharray = false;
     amroutine->amsearchnulls = false;
     amroutine->amstorage = false;

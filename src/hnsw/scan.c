@@ -74,6 +74,8 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
 
     INDEX_RELATION_FOR_RETRIEVER = scan->indexRelation;
     HEADER_FOR_EXTERNAL_RETRIEVER = *headerp;
+    // scans are read only, no modifications
+    EXTRA_DIRTIED_SIZE = 0;
     ldb_wal_retriever_area_init(BLCKSZ * 100);
 
     usearch_set_node_retriever(scanstate->usearch_index, ldb_wal_index_node_retriever, ldb_wal_index_node_retriever, &error);

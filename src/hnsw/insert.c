@@ -46,7 +46,9 @@ bool ldb_aminsert(Relation         index,
     int                    current_size;
     GenericXLogState      *state;
     Buffer                 extra_dirtied[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ];
-    int                    extra_dirtied_size = 0;
+    Page                   extra_dirtied_page[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ];
+    int                    new_tuple_size;
+    HnswIndexTuple        *new_tuple;
 
     if(checkUnique != UNIQUE_CHECK_NO) {
         elog(ERROR, "unique constraints on hnsw vector indexes not supported");
@@ -70,7 +72,7 @@ bool ldb_aminsert(Relation         index,
     meta = usearch_metadata(uidx, &error);
     // USE an INSERT retriever for the above. the difference will be that the retriever will obtain exclusive locks
     // on all pages (in case it is modified by US or another thread)
-    usearch_set_node_retriever(uidx, &ldb_wal_index_node_retriever, &ldb_wal_index_node_retriever, &error);
+    usearch_set_node_retriever(uidx, &ldb_wal_index_node_retriever, &ldb_wal_index_node_retriever_mut, &error);
 
     assert(usearch_size(uidx, &error) == 0);
     assert(!error);
@@ -80,8 +82,19 @@ bool ldb_aminsert(Relation         index,
     //  read index header page to know how many pages are already isnerted
     hdr_buf = ReadBufferExtended(index, MAIN_FORKNUM, HEADER_BLOCK, RBM_NORMAL, NULL);
     LockBuffer(hdr_buf, BUFFER_LOCK_EXCLUSIVE);
+    // header page MUST be under WAL since PrepareIndexTuple will update it
     hdr_page = GenericXLogRegisterBuffer(state, hdr_buf, LDB_GENERIC_XLOG_DELTA_IMAGE);
     hdr = (HnswIndexHeaderPage *)PageGetContents(hdr_page);
+
+    assert(hdr->magicNumber == LDB_WAL_MAGIC_NUMBER);
+    elog(INFO, "at start num vectors is %d", hdr->num_vectors);
+
+    INDEX_RELATION_FOR_RETRIEVER = index;
+    HEADER_FOR_EXTERNAL_RETRIEVER = *hdr;
+    EXTRA_DIRTIED = &extra_dirtied[ 0 ];
+    EXTRA_DIRTIED_PAGE = &extra_dirtied_page[ 0 ];
+    EXTRA_DIRTIED_SIZE = 0;
+    ldb_wal_retriever_area_init(BLCKSZ * 100);
 
     current_size = hdr->num_vectors;
 
@@ -99,24 +112,49 @@ bool ldb_aminsert(Relation         index,
     if(error != NULL) {
         elog(ERROR, "usearch newnode error: %s", error);
     }
+    // create the new node
+    new_tuple_size = UsearchNodeBytes(&meta, hdr->vector_dim * sizeof(float), level);
+    // allocate buffer to construct the new node
+    // note that we allocate more than sizeof(HnswIndexTuple) since the struct has a flexible array member
+    // which depends on parameters passed into UsearchNodeBytes above
+    new_tuple = (HnswIndexTuple *)palloc0(sizeof(HnswIndexTuple) + new_tuple_size);
+    if(new_tuple == NULL) {
+        elog(ERROR, "could not allocate new_tuple for hnsw index insert");
+    }
 
-    // reserve the added page on disk using level info from above
-    // hdr is passed in so num_vectors, first_block_no, last_block_no can be updated
-    ReserveIndexTuple(index, state, hdr, &meta, level, &extra_dirtied, &extra_dirtied_size);
-    elog(WARNING, "finished reserving index tuple");
+    new_tuple->level = level;
+    new_tuple->id = hdr->num_vectors;
+    new_tuple->size = new_tuple_size;
+    // the rest of new_tuple will be initialized by usearch
 
-    usearch_add_external(uidx, *(unsigned long *)heap_tid, DatumGetVector(vector)->x, usearch_scalar_f32_k, 0, &error);
+    // todo:: ensure that generic xlog has enough space
+    // MAX_GENERIC_XLOG_PAGES
+    // XLogEnsureRecordSpace(4, 20);
+
+    usearch_add_external(uidx,
+                         *(unsigned long *)heap_tid,
+                         DatumGetVector(values[ 0 ])->x,
+                         new_tuple->node,
+                         usearch_scalar_f32_k,
+                         level,
+                         &error);
     if(error != NULL) {
         elog(ERROR, "usearch insert error: %s", error);
     }
 
+    PrepareIndexTuple(index, state, hdr, &meta, new_tuple, &extra_dirtied, &extra_dirtied_page, &EXTRA_DIRTIED_SIZE);
+    elog(WARNING, "finished reserving index tuple");
+
+    usearch_update_header(uidx, hdr->usearch_header, &error);
+
     usearch_free(uidx, &error);
+    ldb_wal_retriever_area_free();
 
     MarkBufferDirty(hdr_buf);
     // we only release the header buffer AFTER inserting is finished to make sure nobody else changes the block
     // structure. todo:: critical section here can definitely be shortened
-    GenericXLogFinish(state);
-    for(int i = 0; i < extra_dirtied_size; i++) {
+    assert(GenericXLogFinish(state) != InvalidXLogRecPtr);
+    for(int i = 0; i < EXTRA_DIRTIED_SIZE; i++) {
         assert(BufferIsValid(extra_dirtied[ i ]));
         // header is not considered extra. we know we should not have dirtied it
         // sanity check callees that manimulate extra_dirtied did not violate this
@@ -136,9 +174,5 @@ bool ldb_aminsert(Relation         index,
     // q:: what happens when there is an error before ths and the switch back never happens?
     MemoryContextSwitchTo(oldCtx);
     MemoryContextDelete(insertCtx);
-
-    elog(INFO, "hnsw insert");
-    elog(ERROR, "not implemented");
-
     return false;
 }

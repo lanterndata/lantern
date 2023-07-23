@@ -3,20 +3,21 @@
 
 #include "external_index.h"
 
+#include <access/generic_xlog.h>  // GenericXLog
 #include <assert.h>
+#include <utils/hsearch.h>
 
-#include "access/generic_xlog.h"  // GenericXLog
 #include "common/relpath.h"
+#include "insert.h"
 #include "pg_config.h"       // BLCKSZ
 #include "storage/bufmgr.h"  // Buffer
 #include "usearch.h"
 #include "utils/relcache.h"
-#include "insert.h"
 
 static inline void  fill_blockno_mapping();
 static BlockNumber *wal_retriever_block_numbers = NULL;
 
-static int UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, int level)
+int UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, int level)
 {
     const int NODE_HEAD_BYTES = sizeof(usearch_label_t) + 4 /*sizeof dim */ + 4 /*sizeof level*/;
     int       node_bytes = 0;
@@ -65,7 +66,7 @@ void StoreExternalIndex(Relation        index,
         elog(ERROR, "too many vectors to store in hnsw index. Current limit: %d", HNSW_MAX_INDEXED_VECTORS);
     }
 
-    HnswIndexPage *bufferpage = palloc(BLCKSZ);
+    HnswIndexTuple *bufferpage = palloc(BLCKSZ);
 
     usearch_metadata_t metadata = usearch_metadata(external_index, NULL);
 
@@ -76,7 +77,7 @@ void StoreExternalIndex(Relation        index,
 
     /* Add all the vectors to the WAL */
     for(int node_id = 0; node_id < num_added_vectors;) {
-        // 1. create HnswIndexPage
+        // 1. create HnswIndexTuple
 
         // 2. fill header and special
 
@@ -114,7 +115,7 @@ void StoreExternalIndex(Relation        index,
 
         // note: even if the condition is true, nodepage may be too large
         // as the condition does not take into account the flexible array component
-        while(PageGetFreeSpace(page) > sizeof(HnswIndexPage) + dimension * sizeof(float)) {
+        while(PageGetFreeSpace(page) > sizeof(HnswIndexTuple) + dimension * sizeof(float)) {
             if(node_id >= num_added_vectors) break;
             memset(bufferpage, 0, BLCKSZ);
             /************* extract node from usearch index************/
@@ -140,10 +141,11 @@ void StoreExternalIndex(Relation        index,
             // node should not be larger than the 8k bufferpage
             // invariant holds because of dimension <2000 check in index creation
             // once quantization is enabled, we can allow larger overall dims
-            assert(bufferpage + offsetof(HnswIndexPage, node) + node_size < bufferpage + BLCKSZ);
+            assert(bufferpage + offsetof(HnswIndexTuple, node) + node_size < bufferpage + BLCKSZ);
             memcpy(bufferpage->node, node, node_size);
 
-            if(PageAddItem(page, (Item)bufferpage, sizeof(HnswIndexPage) + node_size, InvalidOffsetNumber, false, false)
+            if(PageAddItem(
+                   page, (Item)bufferpage, sizeof(HnswIndexTuple) + node_size, InvalidOffsetNumber, false, false)
                == InvalidOffsetNumber) {
                 // break to get a fresh page
                 // todo:: properly test this case
@@ -308,7 +310,12 @@ void CreateHeaderPage(Relation   index,
     UnlockReleaseBuffer(buf);
 }
 
-Relation INDEX_RELATION_FOR_RETRIEVER;
+Relation            INDEX_RELATION_FOR_RETRIEVER;
+HnswIndexHeaderPage HEADER_FOR_EXTERNAL_RETRIEVER;
+Buffer             *EXTRA_DIRTIED;
+Page               *EXTRA_DIRTIED_PAGE;
+int                 EXTRA_DIRTIED_SIZE = 0;
+
 #if LANTERNDB_COPYNODES
 static char *wal_retriever_area = NULL;
 static int   wal_retriever_area_size = 0;
@@ -319,7 +326,6 @@ static int   wal_retriever_area_offset = 0;
 static Buffer *takenbuffers;
 static int     takenbuffers_next = 0;
 #endif
-HnswIndexHeaderPage HEADER_FOR_EXTERNAL_RETRIEVER;
 
 void ldb_wal_retriever_area_init(int size)
 {
@@ -342,20 +348,27 @@ void ldb_wal_retriever_area_init(int size)
     // I copy into wal_retriever_block_numbers from blocknos which is array of 2000.
     // in case the array ends early, this makes sure we do not overwrite mempry
     // needless to say - yet another hack that shall be removed asap!
-    wal_retriever_block_numbers = palloc(sizeof(BlockNumber) * HEADER_FOR_EXTERNAL_RETRIEVER.num_vectors + 2000);
+    wal_retriever_block_numbers = palloc(sizeof(BlockNumber) * (HEADER_FOR_EXTERNAL_RETRIEVER.num_vectors + 2000));
     if(wal_retriever_block_numbers == NULL) elog(ERROR, "could not allocate wal_retriever_block_numbers");
-    for(int i = 0; i < HEADER_FOR_EXTERNAL_RETRIEVER.num_vectors; i++) {
+    for(int i = 0; i < HEADER_FOR_EXTERNAL_RETRIEVER.num_vectors + 2000; i++) {
         wal_retriever_block_numbers[ i ] = InvalidBlockNumber;
+    }
+
+    if(EXTRA_DIRTIED_SIZE > 0) {
+        elog(INFO, "EXTRA_DIRTIED_SIZE > 0 %d", EXTRA_DIRTIED_SIZE);
+        for(int i = 0; i < EXTRA_DIRTIED_SIZE; i++) {
+            elog(INFO, "buf %d in extra_dirtied : %d", i, EXTRA_DIRTIED[ i ]);
+        }
     }
 }
 
 // adds a an item to hnsw index relation page. assumes the page has enough space for the item
 // the function also takes care of setting the special block
-void HnswIndexPageAddVector(Page page, HnswIndexPage *new_vector_data, int new_vector_size)
+static void HnswIndexPageAddVector(Page page, HnswIndexTuple *new_vector_data, int new_vector_size)
 {
     HnswIndexPageSpecialBlock *special_block;
     if(PageAddItem(
-           page, (Item)new_vector_data, sizeof(HnswIndexPage) + new_vector_size, InvalidOffsetNumber, false, false)
+           page, (Item)new_vector_data, sizeof(HnswIndexTuple) + new_vector_size, InvalidOffsetNumber, false, false)
        == InvalidOffsetNumber) {
         elog(ERROR, "unexpectedly could not add item to the last existing page");
     }
@@ -366,50 +379,44 @@ void HnswIndexPageAddVector(Page page, HnswIndexPage *new_vector_data, int new_v
         // update firstId
         special_block->firstId = new_vector_data->id;
         special_block->lastId = new_vector_data->id;
+        special_block->nextblockno = InvalidBlockNumber;
     } else {
         assert(special_block->lastId == new_vector_data->id - 1);
         special_block->lastId += 1;
+        // we always add to the last page so nextblockno
+        // of the page we add to is always InvalidBlockNumber
+        assert(special_block->nextblockno == InvalidBlockNumber);
     }
-
-    // special_block->nextclockno reimains unchanged
-    // we always append to the index
-    assert(special_block->nextblockno == InvalidBlockNumber);
 }
 
 // the function assumes that its modifications to hdr will
 // saved durably on the index relation by the caller
-void ReserveIndexTuple(Relation             index_rel,
+// the function does all the necessary preperation of an index page inside postgres
+// hnsw index for the external indexer to start using the tuple (or node-entry) via
+// appropriate mutable external retriever
+void PrepareIndexTuple(Relation             index_rel,
                        GenericXLogState    *state,
                        HnswIndexHeaderPage *hdr,
                        usearch_metadata_t  *metadata,
-                       int32_t              level,
-                       Buffer              (*extra_dirtied)[LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS],
-                       int                 *extra_dirtied_size)
+                       HnswIndexTuple      *tup,
+                       Buffer (*extra_dirtied)[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ],
+                       Page (*extra_dirtied_page)[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ],
+                       int *extra_dirtied_size)
 {
     // if any data blocks exist, the last one's buffer will be read into this
     Buffer last_dblock = InvalidBuffer;
     // if a new data buffer is created for the inserted vector, it will be stored here
     Buffer new_dblock = InvalidBuffer;
+    // blockmap block that points to the blockno of newly inserted node
+    Buffer blockmap_block = InvalidBuffer;
 
-    Page page;
-    // HnswIndexPage    *vector_data;
+    Page                       page;
     HnswIndexPageSpecialBlock *special_block;
-    int                        new_vector_size = UsearchNodeBytes(metadata, hdr->vector_dim * sizeof(float), level);
-    HnswIndexPage             *new_vector_data;
     BlockNumber                new_vector_blockno;
+    bool                       last_dblock_is_dirty = false;
 
-    // allocate buffer to construct the new node
-    // note that we allocate more than sizeof(HnswIndexPage) since the struct has a flexible array member
-    // which depends on parameters passed into UsearchNodeBytes above
-    new_vector_data = palloc0(new_vector_size);
-    if(new_vector_data == NULL) {
-        elog(ERROR, "could not allocate new_vector_data for hnsw index insert");
-    }
-
-    new_vector_data->level = level;
-    new_vector_data->id = hdr->num_vectors;
-    new_vector_data->size = new_vector_size;
-    // the rest of new_vector_data will be initializes by usearch
+    /*** Add a new tuple corresponding to the added vector to the list of tuples in the index
+     *  (create new page if necessary) ***/
 
     if(hdr->last_data_block == InvalidBlockNumber) {
         assert(hdr->first_data_block == InvalidBlockNumber);
@@ -418,13 +425,27 @@ void ReserveIndexTuple(Relation             index_rel,
         // allocate the first page here
     } else {
         last_dblock = ReadBufferExtended(index_rel, MAIN_FORKNUM, hdr->last_data_block, RBM_NORMAL, NULL);
-        LockBuffer(last_dblock, BUFFER_LOCK_EXCLUSIVE);
+        for(int i = 0; i < *extra_dirtied_size; i++) {
+            if(last_dblock == (*extra_dirtied)[ i ]) {
+                page = (*extra_dirtied_page)[ i ];
+                last_dblock_is_dirty = true;
+                ReleaseBuffer(last_dblock);
+                //todo:: get rid of all uses of last_dblock after this point
+                // using it is safe since we hold a pin via whoever added an exclusevly locked
+                // page to extra_dirtied but the code becomes even more confusing
+                break;
+            }
+        }
 
-        page = GenericXLogRegisterBuffer(state, last_dblock, LDB_GENERIC_XLOG_DELTA_IMAGE);
-        if(PageGetFreeSpace(page) > sizeof(HnswIndexPage) + new_vector_size) {
+        if(!last_dblock_is_dirty) {
+            LockBuffer(last_dblock, BUFFER_LOCK_EXCLUSIVE);
+            page = GenericXLogRegisterBuffer(state, last_dblock, LDB_GENERIC_XLOG_DELTA_IMAGE);
+        }
+
+        if(PageGetFreeSpace(page) > sizeof(HnswIndexTuple) + tup->size) {
             // there is enough space in the last page to fit the new vector
             // so we just append it to the page
-            HnswIndexPageAddVector(page, new_vector_data, new_vector_size);
+            HnswIndexPageAddVector(page, tup, tup->size);
             new_vector_blockno = BufferGetBlockNumber(last_dblock);
             assert(new_vector_blockno == hdr->last_data_block);
 
@@ -432,18 +453,25 @@ void ReserveIndexTuple(Relation             index_rel,
         } else {
             // 1. create and read a new block
             // 2. store the new block blockno in the last block special
+            // 2.5 update index header to point to the new last page
             // 3. mark dirty the old block (PIN must be held until after the xlog transaction is committed)
             // 4. add the new vector to the newly created page
 
             // 1.
+            // todo:: I think if for some reason insertion fails after this point, the new block will stick
+            // around. So, perhaps we should do what we did with blockmap and have a separate wal record for new
+            // page creation.
             new_dblock = ReadBufferExtended(index_rel, MAIN_FORKNUM, P_NEW, RBM_NORMAL, NULL);
             LockBuffer(new_dblock, BUFFER_LOCK_EXCLUSIVE);
-            new_vector_blockno = BufferGetBlockNumber(last_dblock);
+            new_vector_blockno = BufferGetBlockNumber(new_dblock);
+            // todo:: add a failure point in here for tests and make sure new_dblock is not leaked
 
             // 2.
             special_block = (HnswIndexPageSpecialBlock *)PageGetSpecialPointer(page);
             special_block->nextblockno = new_vector_blockno;
 
+            // 2.5
+            hdr->last_data_block = new_vector_blockno;
             // 3.
             MarkBufferDirty(last_dblock);
             page = NULL;
@@ -452,17 +480,55 @@ void ReserveIndexTuple(Relation             index_rel,
             page = GenericXLogRegisterBuffer(state, new_dblock, LDB_GENERIC_XLOG_DELTA_IMAGE);
             PageInit(page, BufferGetPageSize(new_dblock), sizeof(HnswIndexPageSpecialBlock));
 
-            HnswIndexPageAddVector(page, new_vector_data, new_vector_size);
+            HnswIndexPageAddVector(page, tup, tup->size);
+            MarkBufferDirty(new_dblock);
         }
     }
+
+    /*** Update pagemap with the information of the added page ***/
+    {
+        int               id_offset = (tup->id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE) * HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
+        BlockNumber       blockmapno = hdr->blockno_index_start + id_offset / HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
+        Page              page;
+        HnswBlockmapPage *blockmap;
+        int               max_offset;
+
+        // todo:: figure out how/from where /usr/include/strings.h is included at this point
+        // (noticed that index is a function defined there)
+        elog(INFO, "index ptr is %p", index);
+
+        blockmap_block = ReadBufferExtended(index_rel, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
+        LockBuffer(blockmap_block, BUFFER_LOCK_EXCLUSIVE);
+        page = GenericXLogRegisterBuffer(state, blockmap_block, LDB_GENERIC_XLOG_DELTA_IMAGE);
+
+        /* sanity-check blockmap block offset number */
+        max_offset = PageGetMaxOffsetNumber(page);
+        if(max_offset != FirstOffsetNumber) {
+            elog(ERROR, "ERROR: Blockmap max_offset is %d but was supposed to be %d", max_offset, FirstOffsetNumber);
+        }
+
+        // todo:: elsewhere this blockmap var is called blockmap_page
+        // be consistent with naming here and elsewhere
+        blockmap = (HnswBlockmapPage *)PageGetItem(page, PageGetItemId(page, FirstOffsetNumber));
+        // set the pointer to the newly added node block in the blockmap
+        blockmap->blocknos[ tup->id % HNSW_BLOCKMAP_BLOCKS_PER_PAGE ] = new_vector_blockno;
+    }
+    /*** Update header ***/
     hdr->num_vectors++;
-    if(last_dblock != InvalidBuffer) {
-        (*extra_dirtied)[*extra_dirtied_size++] = last_dblock;
-        // UnlockReleaseBuffer(last_dblock);
+
+    /*** Prepare for cleanup ***/
+    // register buffers to be unlocked by the caller, after committing the WAL writes
+    if(last_dblock != InvalidBuffer && last_dblock_is_dirty == false) {
+        // we only add last_dblock to extra_dirtied if we were the first to touch it
+        // otherwise, we skip, since last_dblock is already in extra_dirtied
+        // (we found out from extra_dirtied that we were not first to touch it, after all!)
+        (*extra_dirtied)[ (*extra_dirtied_size)++ ] = last_dblock;
     }
     if(new_dblock != InvalidBuffer) {
-        (*extra_dirtied)[*extra_dirtied_size++] = new_dblock;
-        // UnlockReleaseBuffer(new_dblock);
+        (*extra_dirtied)[ (*extra_dirtied_size)++ ] = new_dblock;
+    }
+    if(blockmap_block != InvalidBuffer) {
+        (*extra_dirtied)[ (*extra_dirtied_size)++ ] = blockmap_block;
     }
 }
 
@@ -510,7 +576,7 @@ static inline void *wal_index_node_retriever_sequential(int id)
     Buffer                     buf;
     Page                       page;
     HnswIndexPageSpecialBlock *special_block;
-    HnswIndexPage             *nodepage;
+    HnswIndexTuple            *nodepage;
     OffsetNumber               offset, max_offset;
     // static cnt = 0;
 
@@ -523,7 +589,7 @@ static inline void *wal_index_node_retriever_sequential(int id)
         max_offset = PageGetMaxOffsetNumber(page);
 
         for(offset = FirstOffsetNumber; offset <= max_offset; offset = OffsetNumberNext(offset)) {
-            nodepage = (HnswIndexPage *)PageGetItem(page, PageGetItemId(page, offset));
+            nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
             if(nodepage->id == id) {
 #if LANTERNDB_COPYNODES
                 if(wal_retriever_area == NULL || wal_retriever_area_offset + nodepage->size > wal_retriever_area_size) {
@@ -555,7 +621,7 @@ static void *wal_index_node_retriever_binary(int id)
     Buffer                     buf;
     Page                       page;
     HnswIndexPageSpecialBlock *special_block;
-    HnswIndexPage             *nodepage;
+    HnswIndexTuple            *nodepage;
     OffsetNumber               offset, max_offset;
     if(id > HEADER_FOR_EXTERNAL_RETRIEVER.num_vectors) {
         elog(ERROR, "id %d is out of range(0, %d)", id, HEADER_FOR_EXTERNAL_RETRIEVER.num_vectors);
@@ -597,7 +663,7 @@ static void *wal_index_node_retriever_binary(int id)
         max_offset = PageGetMaxOffsetNumber(page);
 
         for(offset = FirstOffsetNumber; offset <= max_offset; offset = OffsetNumberNext(offset)) {
-            nodepage = (HnswIndexPage *)PageGetItem(page, PageGetItemId(page, offset));
+            nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
             if(nodepage->id == id) {
 #if LANTERNDB_COPYNODES
                 if(wal_retriever_area == NULL || wal_retriever_area_offset + nodepage->size > wal_retriever_area_size) {
@@ -627,12 +693,12 @@ static inline void *wal_index_node_retriever_exact(int id)
     // fix blockmap size to X pages -> X * 8k overhead -> can have max table size of 2000 * X
     // fix blockmap size to 20000 pages -> 160 MB overhead -> can have max table size of 40M rows
     // 40M vectors of 128 dims -> 40 * 128 * 4 = 163840 Mbytes -> 163 GB... will not fly
-    BlockNumber    blockmapno = HEADER_FOR_EXTERNAL_RETRIEVER.blockno_index_start + id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
-    BlockNumber    blockno;
-    Buffer         buf;
-    Page           page;
-    HnswIndexPage *nodepage;
-    OffsetNumber   offset, max_offset;
+    BlockNumber     blockmapno = HEADER_FOR_EXTERNAL_RETRIEVER.blockno_index_start + id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
+    BlockNumber     blockno;
+    Buffer          buf;
+    Page            page;
+    HnswIndexTuple *nodepage;
+    OffsetNumber    offset, max_offset;
 #if LANTERNDB_USEARCH_LEVEL_DISTRIBUTION
     static levels[ 20 ] = {0};
     static cnt = 0;
@@ -675,13 +741,14 @@ static inline void *wal_index_node_retriever_exact(int id)
         UnlockReleaseBuffer(buf);
     }
 
+    // now I know the block from the blockmap. now find the tuple in the block
     buf = ReadBufferExtended(INDEX_RELATION_FOR_RETRIEVER, MAIN_FORKNUM, blockno, RBM_NORMAL, NULL);
     LockBuffer(buf, BUFFER_LOCK_SHARE);
     page = BufferGetPage(buf);
     max_offset = PageGetMaxOffsetNumber(page);
 
     for(offset = FirstOffsetNumber; offset <= max_offset; offset = OffsetNumberNext(offset)) {
-        nodepage = (HnswIndexPage *)PageGetItem(page, PageGetItemId(page, offset));
+        nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
         if(nodepage->id == id) {
 #if LANTERNDB_USEARCH_LEVEL_DISTRIBUTION
             levels[ nodepage->level ]++;
@@ -705,10 +772,10 @@ static inline void *wal_index_node_retriever_exact(int id)
             takenbuffers_next++;
 
             if(takenbuffers_next == TAKENBUFFERS_MAX) {
-                if(takenbuffers[ 0 ] != InvalidBuffer) {
-                    ReleaseBuffer(takenbuffers[ 0 ]);
-                    takenbuffers[ 0 ] = InvalidBuffer;
-                }
+                // if(takenbuffers[ 0 ] != InvalidBuffer) {
+                //     ReleaseBuffer(takenbuffers[ 0 ]);
+                //     takenbuffers[ 0 ] = InvalidBuffer;
+                // }
                 takenbuffers_next = 0;
             }
             LockBuffer(buf, BUFFER_LOCK_UNLOCK);
@@ -717,6 +784,85 @@ static inline void *wal_index_node_retriever_exact(int id)
         }
     }
     UnlockReleaseBuffer(buf);
+    elog(ERROR, "reached end of retriever without finding node %d", id);
+}
+
+void *ldb_wal_index_node_retriever_mut(int id)
+{
+    HnswBlockmapPage *blockmap_page;
+    BlockNumber     blockmapno = HEADER_FOR_EXTERNAL_RETRIEVER.blockno_index_start + id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
+    BlockNumber     blockno;
+    Buffer          buf;
+    Page            page;
+    HnswIndexTuple *nodepage;
+    OffsetNumber    offset, max_offset;
+    bool            idx_page_prelocked = false;
+
+    if(wal_retriever_block_numbers[ id ] != InvalidBlockNumber) {
+        blockno = wal_retriever_block_numbers[ id ];
+    } else {
+        int id_offset = (id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE) * HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
+        // todo:: verify that this sizeof is evaled compile time and blockmap_page is not derefed
+        //  in any way, probably worth changing it. looks strange to -> on an uninitialized pointer
+        int write_size = sizeof(blockmap_page->blocknos);
+        // if this is th elast page and blocknos is not filled up, only read the part that is filled up
+        // todo:: when we are adding vectors, this does not take into account that the blockmap now has soft-length
+        // of num_vectors + 1
+        // not a big dieal since we use blockno directly but make sure this is fixed after code cleanup
+        if(id_offset + HNSW_BLOCKMAP_BLOCKS_PER_PAGE > HEADER_FOR_EXTERNAL_RETRIEVER.num_vectors) {
+            write_size = (HEADER_FOR_EXTERNAL_RETRIEVER.num_vectors - id_offset) * sizeof(blockmap_page->blocknos[ 0 ]);
+        }
+        buf = ReadBufferExtended(INDEX_RELATION_FOR_RETRIEVER, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
+        LockBuffer(buf, BUFFER_LOCK_SHARE);
+        page = BufferGetPage(buf);
+        max_offset = PageGetMaxOffsetNumber(page);
+
+        if(max_offset != FirstOffsetNumber) {
+            elog(ERROR, "ERROR: Blockmap max_offset is %d but was supposed to be %d", max_offset, FirstOffsetNumber);
+        }
+        blockmap_page = (HnswBlockmapPage *)PageGetItem(page, PageGetItemId(page, FirstOffsetNumber));
+        blockno = blockmap_page->blocknos[ id % HNSW_BLOCKMAP_BLOCKS_PER_PAGE ];
+        memcpy(wal_retriever_block_numbers + (id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE) * HNSW_BLOCKMAP_BLOCKS_PER_PAGE,
+               blockmap_page->blocknos,
+               write_size);
+        UnlockReleaseBuffer(buf);
+    }
+
+    // now I know the block from the blockmap. now find the tuple in the block
+    buf = ReadBufferExtended(INDEX_RELATION_FOR_RETRIEVER, MAIN_FORKNUM, blockno, RBM_NORMAL, NULL);
+    for(int i = 0; i < EXTRA_DIRTIED_SIZE; i++) {
+        if(EXTRA_DIRTIED[ i ] == buf) {
+            idx_page_prelocked = true;
+            page = EXTRA_DIRTIED_PAGE[ i ];
+
+            ReleaseBuffer(buf);
+            buf = InvalidBuffer;
+        }
+    }
+
+    if(!idx_page_prelocked) {
+        LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
+        assert(EXTRA_DIRTIED_SIZE + 1 < LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS);
+        EXTRA_DIRTIED[ EXTRA_DIRTIED_SIZE++ ] = buf;
+        page = BufferGetPage(buf);
+        EXTRA_DIRTIED_PAGE[ EXTRA_DIRTIED_SIZE - 1 ] = page;
+        //todo:: q::
+        // does it matter whether we mark a buffer dirty before or after writing to it?
+        MarkBufferDirty(buf);
+    }
+
+    max_offset = PageGetMaxOffsetNumber(page);
+
+    for(offset = FirstOffsetNumber; offset <= max_offset; offset = OffsetNumberNext(offset)) {
+        nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
+        if(nodepage->id == id) {
+            return nodepage->node;
+        }
+    }
+    // **** UNREACHABLE ****
+    if(!idx_page_prelocked) {
+        UnlockReleaseBuffer(buf);
+    }
     elog(ERROR, "reached end of retriever without finding node %d", id);
 }
 
@@ -733,7 +879,7 @@ static inline void fill_blockno_mapping()
     Buffer                     buf;
     Page                       page;
     HnswIndexPageSpecialBlock *special_block;
-    HnswIndexPage             *nodepage;
+    HnswIndexTuple            *nodepage;
     OffsetNumber               offset, max_offset;
 
     while(BlockNumberIsValid(blockno)) {
@@ -744,7 +890,7 @@ static inline void fill_blockno_mapping()
         // todo:: do I set special_block->nextblockno of the last block correctly?
 
         for(offset = FirstOffsetNumber; offset <= max_offset; offset = OffsetNumberNext(offset)) {
-            nodepage = (HnswIndexPage *)PageGetItem(page, PageGetItemId(page, offset));
+            nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
             if(wal_retriever_block_numbers[ nodepage->id ] != 0) {
                 elog(ERROR,
                      "ldb_wal_retriever_area_init: duplicate id %d at offset %d. prev. blockno: %d, new blockno: %d",
