@@ -699,6 +699,8 @@ static inline void *wal_index_node_retriever_exact(int id)
     Page            page;
     HnswIndexTuple *nodepage;
     OffsetNumber    offset, max_offset;
+    bool            idx_page_prelocked = false;
+    bool            idx_pagemap_prelocked = false;
 #if LANTERNDB_USEARCH_LEVEL_DISTRIBUTION
     static levels[ 20 ] = {0};
     static cnt = 0;
@@ -726,8 +728,20 @@ static inline void *wal_index_node_retriever_exact(int id)
             write_size = (HEADER_FOR_EXTERNAL_RETRIEVER.num_vectors - id_offset) * sizeof(blockmap_page->blocknos[ 0 ]);
         }
         buf = ReadBufferExtended(INDEX_RELATION_FOR_RETRIEVER, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
-        LockBuffer(buf, BUFFER_LOCK_SHARE);
-        page = BufferGetPage(buf);
+        for(int i = 0; i < EXTRA_DIRTIED_SIZE; i++) {
+            if(EXTRA_DIRTIED[ i ] == buf) {
+                idx_pagemap_prelocked = true;
+                page = EXTRA_DIRTIED_PAGE[ i ];
+
+                ReleaseBuffer(buf);
+                buf = InvalidBuffer;
+            }
+        }
+
+        if(!idx_pagemap_prelocked) {
+            LockBuffer(buf, BUFFER_LOCK_SHARE);
+            page = BufferGetPage(buf);
+        }
         max_offset = PageGetMaxOffsetNumber(page);
 
         if(max_offset != FirstOffsetNumber) {
@@ -738,13 +752,28 @@ static inline void *wal_index_node_retriever_exact(int id)
         memcpy(wal_retriever_block_numbers + (id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE) * HNSW_BLOCKMAP_BLOCKS_PER_PAGE,
                blockmap_page->blocknos,
                write_size);
-        UnlockReleaseBuffer(buf);
+        if(!idx_pagemap_prelocked) {
+            UnlockReleaseBuffer(buf);
+        }
     }
 
     // now I know the block from the blockmap. now find the tuple in the block
     buf = ReadBufferExtended(INDEX_RELATION_FOR_RETRIEVER, MAIN_FORKNUM, blockno, RBM_NORMAL, NULL);
-    LockBuffer(buf, BUFFER_LOCK_SHARE);
-    page = BufferGetPage(buf);
+    for(int i = 0; i < EXTRA_DIRTIED_SIZE; i++) {
+        if(EXTRA_DIRTIED[ i ] == buf) {
+            idx_page_prelocked = true;
+            page = EXTRA_DIRTIED_PAGE[ i ];
+
+            ReleaseBuffer(buf);
+            buf = InvalidBuffer;
+        }
+    }
+
+    if(!idx_page_prelocked) {
+        LockBuffer(buf, BUFFER_LOCK_SHARE);
+        page = BufferGetPage(buf);
+    }
+
     max_offset = PageGetMaxOffsetNumber(page);
 
     for(offset = FirstOffsetNumber; offset <= max_offset; offset = OffsetNumberNext(offset)) {
@@ -761,24 +790,28 @@ static inline void *wal_index_node_retriever_exact(int id)
             }
             memcpy(wal_retriever_area + wal_retriever_area_offset, nodepage->node, nodepage->size);
             wal_retriever_area_offset += nodepage->size;
-            UnlockReleaseBuffer(buf);
+            if(!idx_page_prelocked) {
+                UnlockReleaseBuffer(buf);
+            }
             return wal_retriever_area + wal_retriever_area_offset - nodepage->size;
 #else
-            if(takenbuffers[ takenbuffers_next ] != InvalidBuffer) {
-                ReleaseBuffer(takenbuffers[ takenbuffers_next ]);
-                takenbuffers[ takenbuffers_next ] = InvalidBuffer;
-            }
-            takenbuffers[ takenbuffers_next ] = buf;
-            takenbuffers_next++;
+            if(!idx_page_prelocked) {
+                if(takenbuffers[ takenbuffers_next ] != InvalidBuffer) {
+                    ReleaseBuffer(takenbuffers[ takenbuffers_next ]);
+                    takenbuffers[ takenbuffers_next ] = InvalidBuffer;
+                }
+                takenbuffers[ takenbuffers_next ] = buf;
+                takenbuffers_next++;
 
-            if(takenbuffers_next == TAKENBUFFERS_MAX) {
-                // if(takenbuffers[ 0 ] != InvalidBuffer) {
-                //     ReleaseBuffer(takenbuffers[ 0 ]);
-                //     takenbuffers[ 0 ] = InvalidBuffer;
-                // }
-                takenbuffers_next = 0;
+                if(takenbuffers_next == TAKENBUFFERS_MAX) {
+                    // if(takenbuffers[ 0 ] != InvalidBuffer) {
+                    //     ReleaseBuffer(takenbuffers[ 0 ]);
+                    //     takenbuffers[ 0 ] = InvalidBuffer;
+                    // }
+                    takenbuffers_next = 0;
+                }
+                LockBuffer(buf, BUFFER_LOCK_UNLOCK);
             }
-            LockBuffer(buf, BUFFER_LOCK_UNLOCK);
             return nodepage->node;
 #endif
         }
