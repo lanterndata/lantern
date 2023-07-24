@@ -364,12 +364,14 @@ void ldb_wal_retriever_area_init(int size)
 
 // adds a an item to hnsw index relation page. assumes the page has enough space for the item
 // the function also takes care of setting the special block
-static void HnswIndexPageAddVector(Page page, HnswIndexTuple *new_vector_data, int new_vector_size)
+static OffsetNumber HnswIndexPageAddVector(Page page, HnswIndexTuple *new_vector_data, int new_vector_size)
 {
     HnswIndexPageSpecialBlock *special_block;
-    if(PageAddItem(
-           page, (Item)new_vector_data, sizeof(HnswIndexTuple) + new_vector_size, InvalidOffsetNumber, false, false)
-       == InvalidOffsetNumber) {
+    OffsetNumber               inserted_at;
+
+    inserted_at = PageAddItem(
+        page, (Item)new_vector_data, sizeof(HnswIndexTuple) + new_vector_size, InvalidOffsetNumber, false, false);
+    if(inserted_at == InvalidOffsetNumber) {
         elog(ERROR, "unexpectedly could not add item to the last existing page");
     }
     special_block = (HnswIndexPageSpecialBlock *)PageGetSpecialPointer(page);
@@ -387,6 +389,7 @@ static void HnswIndexPageAddVector(Page page, HnswIndexTuple *new_vector_data, i
         // of the page we add to is always InvalidBlockNumber
         assert(special_block->nextblockno == InvalidBlockNumber);
     }
+    return inserted_at;
 }
 
 // the function assumes that its modifications to hdr will
@@ -394,14 +397,15 @@ static void HnswIndexPageAddVector(Page page, HnswIndexTuple *new_vector_data, i
 // the function does all the necessary preperation of an index page inside postgres
 // hnsw index for the external indexer to start using the tuple (or node-entry) via
 // appropriate mutable external retriever
-void PrepareIndexTuple(Relation             index_rel,
-                       GenericXLogState    *state,
-                       HnswIndexHeaderPage *hdr,
-                       usearch_metadata_t  *metadata,
-                       HnswIndexTuple      *tup,
-                       Buffer (*extra_dirtied)[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ],
-                       Page (*extra_dirtied_page)[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ],
-                       int *extra_dirtied_size)
+HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
+                                  GenericXLogState    *state,
+                                  HnswIndexHeaderPage *hdr,
+                                  usearch_metadata_t  *metadata,
+                                  uint32               new_tuple_id,
+                                  int                  new_tuple_level,
+                                  Buffer (*extra_dirtied)[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ],
+                                  Page (*extra_dirtied_page)[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ],
+                                  int *extra_dirtied_size)
 {
     // if any data blocks exist, the last one's buffer will be read into this
     Buffer last_dblock = InvalidBuffer;
@@ -411,9 +415,21 @@ void PrepareIndexTuple(Relation             index_rel,
     Buffer blockmap_block = InvalidBuffer;
 
     Page                       page;
+    OffsetNumber               new_tup_at;
     HnswIndexPageSpecialBlock *special_block;
     BlockNumber                new_vector_blockno;
     bool                       last_dblock_is_dirty = false;
+    int             new_tuple_size = UsearchNodeBytes(metadata, hdr->vector_dim * sizeof(float), new_tuple_level);
+    HnswIndexTuple *alloced_tuple = NULL;
+    HnswIndexTuple *new_tup_ref = NULL;
+    // create the new node
+    // allocate buffer to construct the new node
+    // note that we allocate more than sizeof(HnswIndexTuple) since the struct has a flexible array member
+    // which depends on parameters passed into UsearchNodeBytes above
+    alloced_tuple = (HnswIndexTuple *)palloc0(sizeof(HnswIndexTuple) + new_tuple_size);
+    alloced_tuple->id = new_tuple_id;
+    alloced_tuple->level = new_tuple_level;
+    alloced_tuple->size = new_tuple_size;
 
     /*** Add a new tuple corresponding to the added vector to the list of tuples in the index
      *  (create new page if necessary) ***/
@@ -440,12 +456,18 @@ void PrepareIndexTuple(Relation             index_rel,
         if(!last_dblock_is_dirty) {
             LockBuffer(last_dblock, BUFFER_LOCK_EXCLUSIVE);
             page = GenericXLogRegisterBuffer(state, last_dblock, LDB_GENERIC_XLOG_DELTA_IMAGE);
+
+            // we only add last_dblock to extra_dirtied if we were the first to touch it
+            // otherwise, we skip, since last_dblock is already in extra_dirtied
+            // (we found out from extra_dirtied that we were not first to touch it, after all!)
+            (*extra_dirtied)[ (*extra_dirtied_size)++ ] = last_dblock;
+            (*extra_dirtied_page)[ (*extra_dirtied_size) - 1 ] = page;
         }
 
-        if(PageGetFreeSpace(page) > sizeof(HnswIndexTuple) + tup->size) {
+        if(PageGetFreeSpace(page) > sizeof(HnswIndexTuple) + alloced_tuple->size) {
             // there is enough space in the last page to fit the new vector
             // so we just append it to the page
-            HnswIndexPageAddVector(page, tup, tup->size);
+            new_tup_at = HnswIndexPageAddVector(page, alloced_tuple, alloced_tuple->size);
             new_vector_blockno = BufferGetBlockNumber(last_dblock);
             assert(new_vector_blockno == hdr->last_data_block);
 
@@ -480,16 +502,24 @@ void PrepareIndexTuple(Relation             index_rel,
             page = GenericXLogRegisterBuffer(state, new_dblock, LDB_GENERIC_XLOG_DELTA_IMAGE);
             PageInit(page, BufferGetPageSize(new_dblock), sizeof(HnswIndexPageSpecialBlock));
 
-            HnswIndexPageAddVector(page, tup, tup->size);
+            (*extra_dirtied)[ (*extra_dirtied_size)++ ] = new_dblock;
+            (*extra_dirtied_page)[ (*extra_dirtied_size) - 1 ] = page;
+            new_tup_at = HnswIndexPageAddVector(page, alloced_tuple, alloced_tuple->size);
             MarkBufferDirty(new_dblock);
         }
     }
 
+    /*** extract the inserted tuple ref to return so usearch can do further work on it ***/
+    new_tup_ref = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, new_tup_at));
+    assert(new_tup_ref->id == new_tuple_id);
+    assert(new_tup_ref->level == new_tuple_level);
+    assert(new_tup_ref->size == new_tuple_size);
+    page = NULL;  // to avoid its accidental use
     /*** Update pagemap with the information of the added page ***/
     {
-        int               id_offset = (tup->id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE) * HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
+        int               id_offset = (new_tuple_id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE) * HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
         BlockNumber       blockmapno = hdr->blockno_index_start + id_offset / HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
-        Page              page;
+        Page              blockmap_page;
         HnswBlockmapPage *blockmap;
         int               max_offset;
 
@@ -499,37 +529,27 @@ void PrepareIndexTuple(Relation             index_rel,
 
         blockmap_block = ReadBufferExtended(index_rel, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
         LockBuffer(blockmap_block, BUFFER_LOCK_EXCLUSIVE);
-        page = GenericXLogRegisterBuffer(state, blockmap_block, LDB_GENERIC_XLOG_DELTA_IMAGE);
+        blockmap_page = GenericXLogRegisterBuffer(state, blockmap_block, LDB_GENERIC_XLOG_DELTA_IMAGE);
 
+        (*extra_dirtied)[ (*extra_dirtied_size)++ ] = blockmap_block;
+        (*extra_dirtied_page)[ (*extra_dirtied_size) - 1 ] = blockmap_page;
         /* sanity-check blockmap block offset number */
-        max_offset = PageGetMaxOffsetNumber(page);
+        max_offset = PageGetMaxOffsetNumber(blockmap_page);
         if(max_offset != FirstOffsetNumber) {
             elog(ERROR, "ERROR: Blockmap max_offset is %d but was supposed to be %d", max_offset, FirstOffsetNumber);
         }
 
         // todo:: elsewhere this blockmap var is called blockmap_page
         // be consistent with naming here and elsewhere
-        blockmap = (HnswBlockmapPage *)PageGetItem(page, PageGetItemId(page, FirstOffsetNumber));
+        blockmap = (HnswBlockmapPage *)PageGetItem(blockmap_page, PageGetItemId(blockmap_page, FirstOffsetNumber));
         // set the pointer to the newly added node block in the blockmap
-        blockmap->blocknos[ tup->id % HNSW_BLOCKMAP_BLOCKS_PER_PAGE ] = new_vector_blockno;
+        blockmap->blocknos[ new_tuple_id % HNSW_BLOCKMAP_BLOCKS_PER_PAGE ] = new_vector_blockno;
     }
     /*** Update header ***/
     hdr->num_vectors++;
 
-    /*** Prepare for cleanup ***/
-    // register buffers to be unlocked by the caller, after committing the WAL writes
-    if(last_dblock != InvalidBuffer && last_dblock_is_dirty == false) {
-        // we only add last_dblock to extra_dirtied if we were the first to touch it
-        // otherwise, we skip, since last_dblock is already in extra_dirtied
-        // (we found out from extra_dirtied that we were not first to touch it, after all!)
-        (*extra_dirtied)[ (*extra_dirtied_size)++ ] = last_dblock;
-    }
-    if(new_dblock != InvalidBuffer) {
-        (*extra_dirtied)[ (*extra_dirtied_size)++ ] = new_dblock;
-    }
-    if(blockmap_block != InvalidBuffer) {
-        (*extra_dirtied)[ (*extra_dirtied_size)++ ] = blockmap_block;
-    }
+    pfree(alloced_tuple);
+    return new_tup_ref;
 }
 
 void ldb_wal_retriever_area_reset()

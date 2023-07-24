@@ -110,14 +110,15 @@ void StoreExternalIndex(Relation        index,
 
 // add the fully constructed index tuple to the index via wal
 // hdr is passed in so num_vectors, first_block_no, last_block_no can be updated
-void PrepareIndexTuple(Relation             index_rel,
-                       GenericXLogState    *state,
-                       HnswIndexHeaderPage *hdr,
-                       usearch_metadata_t  *metadata,
-                       HnswIndexTuple      *tup,
-                       Buffer (*extra_dirtied)[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ],
-                       Page (*extra_dirtied_page)[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ],
-                       int *extra_dirtied_size);
+HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
+                                  GenericXLogState    *state,
+                                  HnswIndexHeaderPage *hdr,
+                                  usearch_metadata_t  *metadata,
+                                  uint32               new_tuple_id,
+                                  int                  new_tuple_level,
+                                  Buffer (*extra_dirtied)[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ],
+                                  Page (*extra_dirtied_page)[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ],
+                                  int *extra_dirtied_size);
 
 void *ldb_wal_index_node_retriever(int id);
 void *ldb_wal_index_node_retriever_mut(int id);
