@@ -48,6 +48,7 @@ bool ldb_aminsert(Relation         index,
     Buffer                 extra_dirtied[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ];
     Page                   extra_dirtied_page[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ];
     int                    new_tuple_size;
+    uint32                 new_tuple_id;
     HnswIndexTuple        *new_tuple;
 
     if(checkUnique != UNIQUE_CHECK_NO) {
@@ -104,32 +105,21 @@ bool ldb_aminsert(Relation         index,
 
     // this reserves memory for internal structures,
     // including for locks according to size indicated in usearch_mem
+    //  ^^ do not worry about allocaitng locks above. but that has to be eliminated down the line
     usearch_view_mem_lazy(uidx, hdr->usearch_header, &error);
 
     usearch_reserve(uidx, current_size + 1, &error);
-    //  ^^ do not worry about allocaitng locks above. but that has to be eliminated down the line
     int level = usearch_newnode_level(uidx, &error);
     if(error != NULL) {
         elog(ERROR, "usearch newnode error: %s", error);
     }
-    // create the new node
-    new_tuple_size = UsearchNodeBytes(&meta, hdr->vector_dim * sizeof(float), level);
-    // allocate buffer to construct the new node
-    // note that we allocate more than sizeof(HnswIndexTuple) since the struct has a flexible array member
-    // which depends on parameters passed into UsearchNodeBytes above
-    new_tuple = (HnswIndexTuple *)palloc0(sizeof(HnswIndexTuple) + new_tuple_size);
-    if(new_tuple == NULL) {
-        elog(ERROR, "could not allocate new_tuple for hnsw index insert");
-    }
-
-    new_tuple->level = level;
-    new_tuple->id = hdr->num_vectors;
-    new_tuple->size = new_tuple_size;
-    // the rest of new_tuple will be initialized by usearch
 
     // todo:: ensure that generic xlog has enough space
     // MAX_GENERIC_XLOG_PAGES
     // XLogEnsureRecordSpace(4, 20);
+    new_tuple_id = hdr->num_vectors;
+    new_tuple = PrepareIndexTuple(
+        index, state, hdr, &meta, new_tuple_id, level, &extra_dirtied, &extra_dirtied_page, &EXTRA_DIRTIED_SIZE);
 
     usearch_add_external(uidx,
                          *(unsigned long *)heap_tid,
@@ -142,7 +132,6 @@ bool ldb_aminsert(Relation         index,
         elog(ERROR, "usearch insert error: %s", error);
     }
 
-    PrepareIndexTuple(index, state, hdr, &meta, new_tuple, &extra_dirtied, &extra_dirtied_page, &EXTRA_DIRTIED_SIZE);
     elog(WARNING, "finished reserving index tuple");
 
     usearch_update_header(uidx, hdr->usearch_header, &error);
