@@ -5,13 +5,25 @@ IFS=$'\n\t'
 
 TESTDB=testdb
 PSQL=psql
-TMP_OUTDIR=/tmp/lanterndb/tmp_output
+TMP_ROOT=/tmp/lanterndb
+TMP_OUTDIR=$TMP_ROOT/tmp_output
 FILTER="${FILTER:-}"
 # read the first command line argument
 
 echo "Filter: $FILTER"
 
 mkdir -p $TMP_OUTDIR
+
+# if $TMP_ROOT/vector_datasets does not exist
+# create the folder
+if [ ! -d "$TMP_ROOT/vector_datasets" ]
+then
+    mkdir -p $TMP_ROOT/vector_datasets
+    pushd $TMP_ROOT/vector_datasets
+        wget https://storage.googleapis.com/lanterndb/sift_base1k.csv
+        wget https://storage.googleapis.com/lanterndb/tsv_wiki_sample.csv
+    popd
+fi
 
 for testfile in test/sql/*
 do

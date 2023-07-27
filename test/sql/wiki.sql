@@ -57,7 +57,7 @@ ALTER TABLE ONLY tsv_data ALTER COLUMN id SET DEFAULT nextval('tsv_data_id_seq':
 ALTER TABLE ONLY tsv_data
     ADD CONSTRAINT tsv_data_pkey PRIMARY KEY (id);
 
-\copy tsv_data FROM '/tmp/tsv_wiki_sample.csv' DELIMITER E'\t';
+\copy tsv_data FROM '/tmp/lanterndb/vector_datasets/tsv_wiki_sample.csv' DELIMITER E'\t';
 
 -- introduce a WITH statement to round returned distances AFTER a lookup
 with t as (select id, page_title,  context_page_description_ai <-> (select context_page_description_ai from tsv_data where id = 81386) as dist
