@@ -58,7 +58,15 @@ bool ldb_aminsert(Relation         index,
     // q:: what are realistic cases where the vector fields would be null, other than the case
     // todo:: where the column is created and not all embeddings have been computed yet?
     // perhaps we should add a null bitmap to the index and support WHERE queries for exact null lookups?
-    if(isnull[ 0 ]) return false;
+    if(isnull[ 0 ]) {
+        return false;
+    }
+    {
+        // todo:
+        //  initialize usearch at indexInfo->ii_AmCache in indexInfo->ii_Context memory context
+        //  see this blog post on how to register a callback on memory context destruction to destroy usearch object
+        //  https://jnidzwetzki.github.io/2022/05/28/postgres-memory-context.html
+    }
 
     insertCtx = AllocSetContextCreate(CurrentMemoryContext, "LanternInsertContext", ALLOCSET_DEFAULT_SIZES);
     oldCtx = MemoryContextSwitchTo(insertCtx);
@@ -88,7 +96,7 @@ bool ldb_aminsert(Relation         index,
     hdr = (HnswIndexHeaderPage *)PageGetContents(hdr_page);
 
     assert(hdr->magicNumber == LDB_WAL_MAGIC_NUMBER);
-    elog(INFO, "at start num vectors is %d", hdr->num_vectors);
+    elog(DEBUG5, "Insert: at start num vectors is %d", hdr->num_vectors);
 
     INDEX_RELATION_FOR_RETRIEVER = index;
     HEADER_FOR_EXTERNAL_RETRIEVER = *hdr;
@@ -131,8 +139,6 @@ bool ldb_aminsert(Relation         index,
     if(error != NULL) {
         elog(ERROR, "usearch insert error: %s", error);
     }
-
-    elog(WARNING, "finished reserving index tuple");
 
     usearch_update_header(uidx, hdr->usearch_header, &error);
 

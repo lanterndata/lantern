@@ -379,10 +379,12 @@ static OffsetNumber HnswIndexPageAddVector(Page page, HnswIndexTuple *new_vector
     if(PageGetMaxOffsetNumber(page) == 1) {
         // we added the first element to the index page!
         // update firstId
+        elog(DEBUG5, "InsertBranching: we added first element to index page");
         special_block->firstId = new_vector_data->id;
         special_block->lastId = new_vector_data->id;
         special_block->nextblockno = InvalidBlockNumber;
     } else {
+        elog(DEBUG5, "InsertBranching: we added (NOT FIRST) element to index page");
         assert(special_block->lastId == new_vector_data->id - 1);
         special_block->lastId += 1;
         // we always add to the last page so nextblockno
@@ -467,12 +469,14 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
         if(PageGetFreeSpace(page) > sizeof(HnswIndexTuple) + alloced_tuple->size) {
             // there is enough space in the last page to fit the new vector
             // so we just append it to the page
+            elog(DEBUG5, "InsertBranching: we adding element to existing page");
             new_tup_at = HnswIndexPageAddVector(page, alloced_tuple, alloced_tuple->size);
             new_vector_blockno = BufferGetBlockNumber(last_dblock);
             assert(new_vector_blockno == hdr->last_data_block);
 
             MarkBufferDirty(last_dblock);
         } else {
+            elog(DEBUG5, "InsertBranching: creating new data bage to add an element to");
             // 1. create and read a new block
             // 2. store the new block blockno in the last block special
             // 2.5 update index header to point to the new last page
@@ -494,6 +498,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
 
             // 2.5
             hdr->last_data_block = new_vector_blockno;
+
             // 3.
             MarkBufferDirty(last_dblock);
             page = NULL;
@@ -504,7 +509,9 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
 
             (*extra_dirtied)[ (*extra_dirtied_size)++ ] = new_dblock;
             (*extra_dirtied_page)[ (*extra_dirtied_size) - 1 ] = page;
+
             new_tup_at = HnswIndexPageAddVector(page, alloced_tuple, alloced_tuple->size);
+
             MarkBufferDirty(new_dblock);
         }
     }
@@ -899,8 +906,8 @@ void *ldb_wal_index_node_retriever_mut(int id)
         EXTRA_DIRTIED[ EXTRA_DIRTIED_SIZE++ ] = buf;
         page = BufferGetPage(buf);
         EXTRA_DIRTIED_PAGE[ EXTRA_DIRTIED_SIZE - 1 ] = page;
-        //todo:: q::
-        // does it matter whether we mark a buffer dirty before or after writing to it?
+        // todo:: q::
+        //  does it matter whether we mark a buffer dirty before or after writing to it?
         MarkBufferDirty(buf);
     }
 
