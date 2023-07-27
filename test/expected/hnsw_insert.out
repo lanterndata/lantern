@@ -1,0 +1,171 @@
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION
+CREATE EXTENSION IF NOT EXISTS lanterndb;
+CREATE EXTENSION
+CREATE TABLE small_world (
+    id varchar(3),
+    vector vector(3)
+);
+CREATE TABLE
+INSERT INTO small_world (id, vector) VALUES 
+('000', '[0,0,0]'),
+('001', '[0,0,1]'),
+('010', '[0,1,0]'),
+('011', '[0,1,1]'),
+('100', '[1,0,0]'),
+('101', '[1,0,1]'),
+('110', '[1,1,0]'),
+('111', '[1,1,1]');
+INSERT 0 8
+CREATE TABLE IF NOT EXISTS sift_base1k (
+    id SERIAL PRIMARY KEY,
+    v vector(128));
+CREATE TABLE
+COPY sift_base1k (v) FROM '/tmp/lanterndb/vector_datasets/sift_base1k.csv' with csv;
+COPY 1000
+CREATE INDEX ON small_world USING hnsw (vector);
+psql:test/sql/hnsw_insert.sql:7: INFO:  done init usearch index
+psql:test/sql/hnsw_insert.sql:7: INFO:  inserted 8 elements
+psql:test/sql/hnsw_insert.sql:7: INFO:  done saving 8 vectors
+CREATE INDEX
+CREATE INDEX ON sift_base1k USING hnsw (v);
+psql:test/sql/hnsw_insert.sql:8: INFO:  done init usearch index
+psql:test/sql/hnsw_insert.sql:8: INFO:  inserted 1000 elements
+psql:test/sql/hnsw_insert.sql:8: INFO:  done saving 1000 vectors
+CREATE INDEX
+SET enable_seqscan = off;
+SET
+insert into small_world (id, vector) values ('xxx', '[0,0,0]');
+INSERT 0 1
+insert into small_world (id, vector) values ('x11', '[0,0,110]');
+INSERT 0 1
+INSERT INTO small_world (id, vector) VALUES 
+('000', '[0,0,0]'),
+('001', '[0,0,1]'),
+('010', '[0,1,0]'),
+('011', '[0,1,1]'),
+('100', '[1,0,0]'),
+('101', '[1,0,1]'),
+('110', '[1,1,0]'),
+('111', '[1,1,1]');
+INSERT 0 8
+SELECT * FROM (
+    SELECT id, ROUND( (vector <-> '[0,1,0]')::numeric, 2) as dist
+    FROM small_world
+    ORDER BY vector <-> '[0,1,0]' LIMIT 7
+) v ORDER BY v.dist, v.id;
+psql:test/sql/hnsw_insert.sql:28: INFO:  cost estimate
+psql:test/sql/hnsw_insert.sql:28: INFO:  returning small cost to always use the index
+psql:test/sql/hnsw_insert.sql:28: INFO:  began scanning with 0 keys and 1 orderbys
+psql:test/sql/hnsw_insert.sql:28: INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
+psql:test/sql/hnsw_insert.sql:28: INFO:  usearch index initialized
+ id  | dist 
+-----+------
+ 010 | 0.00
+ 000 | 1.00
+ 011 | 1.00
+ 110 | 1.00
+ 001 | 1.41
+ 100 | 1.41
+ 111 | 1.41
+(7 rows)
+
+INSERT INTO small_world (id, vector) VALUES 
+('000', '[0,0,0]'),
+('001', '[0,0,1]'),
+('010', '[0,1,0]'),
+('011', '[0,1,1]'),
+('100', '[1,0,0]'),
+('101', '[1,0,1]'),
+('110', '[1,1,0]'),
+('111', '[1,1,1]');
+INSERT 0 8
+SELECT * FROM (
+    SELECT id, ROUND( (vector <-> '[0,1,0]')::numeric, 2) as dist
+    FROM small_world
+    ORDER BY vector <-> '[0,1,0]' LIMIT 7
+) v ORDER BY v.dist, v.id;
+psql:test/sql/hnsw_insert.sql:44: INFO:  cost estimate
+psql:test/sql/hnsw_insert.sql:44: INFO:  returning small cost to always use the index
+psql:test/sql/hnsw_insert.sql:44: INFO:  began scanning with 0 keys and 1 orderbys
+psql:test/sql/hnsw_insert.sql:44: INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
+psql:test/sql/hnsw_insert.sql:44: INFO:  usearch index initialized
+ id  | dist 
+-----+------
+ 010 | 0.00
+ 000 | 1.00
+ 011 | 1.00
+ 110 | 1.00
+ 001 | 1.41
+ 100 | 1.41
+ 111 | 1.41
+(7 rows)
+
+SELECT v as v42 FROM sift_base1k WHERE id = 42 
+BEGIN;
+BEGIN
+DROP INDEX IF EXISTS sift_base1k_hnsw_idx;
+psql:test/sql/hnsw_insert.sql:50: NOTICE:  index "sift_base1k_hnsw_idx" does not exist, skipping
+DROP INDEX
+EXPLAIN SELECT id, ROUND((v <-> '[1,0,0,0,0,0,21,35,1,0,0,0,0,77,51,42,66,2,0,0,0,86,140,71,52,1,0,0,0,0,23,70,2,0,0,0,0,64,73,50,11,0,0,0,0,140,97,18,140,64,0,0,0,99,51,65,78,11,0,0,0,0,41,76,0,0,0,0,0,124,82,2,48,1,0,0,0,118,31,5,140,21,0,0,0,4,12,78,12,0,0,0,0,0,58,117,1,0,0,0,2,25,7,2,46,2,0,0,1,12,4,8,140,9,0,0,0,1,8,16,3,0,0,0,0,0,21,34]')::numeric, 2) FROM sift_base1k ORDER BY v <-> '[1,0,0,0,0,0,21,35,1,0,0,0,0,77,51,42,66,2,0,0,0,86,140,71,52,1,0,0,0,0,23,70,2,0,0,0,0,64,73,50,11,0,0,0,0,140,97,18,140,64,0,0,0,99,51,65,78,11,0,0,0,0,41,76,0,0,0,0,0,124,82,2,48,1,0,0,0,118,31,5,140,21,0,0,0,4,12,78,12,0,0,0,0,0,58,117,1,0,0,0,2,25,7,2,46,2,0,0,1,12,4,8,140,9,0,0,0,1,8,16,3,0,0,0,0,0,21,34]' LIMIT 10;
+psql:test/sql/hnsw_insert.sql:51: INFO:  cost estimate
+psql:test/sql/hnsw_insert.sql:51: INFO:  returning small cost to always use the index
+                                                                                                                                                                          QUERY PLAN                                                                                                                                                                          
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.00..0.14 rows=10 width=44)
+   ->  Index Scan using sift_base1k_v_idx on sift_base1k  (cost=0.00..14.01 rows=1000 width=44)
+         Order By: (v <-> '[1,0,0,0,0,0,21,35,1,0,0,0,0,77,51,42,66,2,0,0,0,86,140,71,52,1,0,0,0,0,23,70,2,0,0,0,0,64,73,50,11,0,0,0,0,140,97,18,140,64,0,0,0,99,51,65,78,11,0,0,0,0,41,76,0,0,0,0,0,124,82,2,48,1,0,0,0,118,31,5,140,21,0,0,0,4,12,78,12,0,0,0,0,0,58,117,1,0,0,0,2,25,7,2,46,2,0,0,1,12,4,8,140,9,0,0,0,1,8,16,3,0,0,0,0,0,21,34]'::vector)
+(3 rows)
+
+SELECT id, ROUND((v <-> '[1,0,0,0,0,0,21,35,1,0,0,0,0,77,51,42,66,2,0,0,0,86,140,71,52,1,0,0,0,0,23,70,2,0,0,0,0,64,73,50,11,0,0,0,0,140,97,18,140,64,0,0,0,99,51,65,78,11,0,0,0,0,41,76,0,0,0,0,0,124,82,2,48,1,0,0,0,118,31,5,140,21,0,0,0,4,12,78,12,0,0,0,0,0,58,117,1,0,0,0,2,25,7,2,46,2,0,0,1,12,4,8,140,9,0,0,0,1,8,16,3,0,0,0,0,0,21,34]')::numeric, 2) FROM sift_base1k ORDER BY v <-> '[1,0,0,0,0,0,21,35,1,0,0,0,0,77,51,42,66,2,0,0,0,86,140,71,52,1,0,0,0,0,23,70,2,0,0,0,0,64,73,50,11,0,0,0,0,140,97,18,140,64,0,0,0,99,51,65,78,11,0,0,0,0,41,76,0,0,0,0,0,124,82,2,48,1,0,0,0,118,31,5,140,21,0,0,0,4,12,78,12,0,0,0,0,0,58,117,1,0,0,0,2,25,7,2,46,2,0,0,1,12,4,8,140,9,0,0,0,1,8,16,3,0,0,0,0,0,21,34]' LIMIT 10;
+psql:test/sql/hnsw_insert.sql:52: INFO:  cost estimate
+psql:test/sql/hnsw_insert.sql:52: INFO:  returning small cost to always use the index
+psql:test/sql/hnsw_insert.sql:52: INFO:  began scanning with 0 keys and 1 orderbys
+psql:test/sql/hnsw_insert.sql:52: INFO:  starting scan with dimensions=128 M=16 efConstruction=128 ef=64
+psql:test/sql/hnsw_insert.sql:52: INFO:  usearch index initialized
+ id  | round  
+-----+--------
+  42 |   0.00
+  36 | 102.62
+  48 | 225.92
+  39 | 237.20
+ 886 | 267.65
+ 402 | 277.51
+ 518 | 291.59
+ 340 | 295.40
+ 331 | 296.30
+ 682 | 308.20
+(10 rows)
+
+ROLLBACK;
+ROLLBACK
+EXPLAIN SELECT id, ROUND((v <-> '[1,0,0,0,0,0,21,35,1,0,0,0,0,77,51,42,66,2,0,0,0,86,140,71,52,1,0,0,0,0,23,70,2,0,0,0,0,64,73,50,11,0,0,0,0,140,97,18,140,64,0,0,0,99,51,65,78,11,0,0,0,0,41,76,0,0,0,0,0,124,82,2,48,1,0,0,0,118,31,5,140,21,0,0,0,4,12,78,12,0,0,0,0,0,58,117,1,0,0,0,2,25,7,2,46,2,0,0,1,12,4,8,140,9,0,0,0,1,8,16,3,0,0,0,0,0,21,34]')::numeric, 2) FROM sift_base1k ORDER BY v <-> '[1,0,0,0,0,0,21,35,1,0,0,0,0,77,51,42,66,2,0,0,0,86,140,71,52,1,0,0,0,0,23,70,2,0,0,0,0,64,73,50,11,0,0,0,0,140,97,18,140,64,0,0,0,99,51,65,78,11,0,0,0,0,41,76,0,0,0,0,0,124,82,2,48,1,0,0,0,118,31,5,140,21,0,0,0,4,12,78,12,0,0,0,0,0,58,117,1,0,0,0,2,25,7,2,46,2,0,0,1,12,4,8,140,9,0,0,0,1,8,16,3,0,0,0,0,0,21,34]' LIMIT 10;
+psql:test/sql/hnsw_insert.sql:57: INFO:  cost estimate
+psql:test/sql/hnsw_insert.sql:57: INFO:  returning small cost to always use the index
+                                                                                                                                                                          QUERY PLAN                                                                                                                                                                          
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.00..0.14 rows=10 width=44)
+   ->  Index Scan using sift_base1k_v_idx on sift_base1k  (cost=0.00..14.01 rows=1000 width=44)
+         Order By: (v <-> '[1,0,0,0,0,0,21,35,1,0,0,0,0,77,51,42,66,2,0,0,0,86,140,71,52,1,0,0,0,0,23,70,2,0,0,0,0,64,73,50,11,0,0,0,0,140,97,18,140,64,0,0,0,99,51,65,78,11,0,0,0,0,41,76,0,0,0,0,0,124,82,2,48,1,0,0,0,118,31,5,140,21,0,0,0,4,12,78,12,0,0,0,0,0,58,117,1,0,0,0,2,25,7,2,46,2,0,0,1,12,4,8,140,9,0,0,0,1,8,16,3,0,0,0,0,0,21,34]'::vector)
+(3 rows)
+
+SELECT id, ROUND((v <-> '[1,0,0,0,0,0,21,35,1,0,0,0,0,77,51,42,66,2,0,0,0,86,140,71,52,1,0,0,0,0,23,70,2,0,0,0,0,64,73,50,11,0,0,0,0,140,97,18,140,64,0,0,0,99,51,65,78,11,0,0,0,0,41,76,0,0,0,0,0,124,82,2,48,1,0,0,0,118,31,5,140,21,0,0,0,4,12,78,12,0,0,0,0,0,58,117,1,0,0,0,2,25,7,2,46,2,0,0,1,12,4,8,140,9,0,0,0,1,8,16,3,0,0,0,0,0,21,34]')::numeric, 2) FROM sift_base1k ORDER BY v <-> '[1,0,0,0,0,0,21,35,1,0,0,0,0,77,51,42,66,2,0,0,0,86,140,71,52,1,0,0,0,0,23,70,2,0,0,0,0,64,73,50,11,0,0,0,0,140,97,18,140,64,0,0,0,99,51,65,78,11,0,0,0,0,41,76,0,0,0,0,0,124,82,2,48,1,0,0,0,118,31,5,140,21,0,0,0,4,12,78,12,0,0,0,0,0,58,117,1,0,0,0,2,25,7,2,46,2,0,0,1,12,4,8,140,9,0,0,0,1,8,16,3,0,0,0,0,0,21,34]' LIMIT 10;
+psql:test/sql/hnsw_insert.sql:58: INFO:  cost estimate
+psql:test/sql/hnsw_insert.sql:58: INFO:  returning small cost to always use the index
+psql:test/sql/hnsw_insert.sql:58: INFO:  began scanning with 0 keys and 1 orderbys
+psql:test/sql/hnsw_insert.sql:58: INFO:  starting scan with dimensions=128 M=16 efConstruction=128 ef=64
+psql:test/sql/hnsw_insert.sql:58: INFO:  usearch index initialized
+ id  | round  
+-----+--------
+  42 |   0.00
+  36 | 102.62
+  48 | 225.92
+  39 | 237.20
+ 886 | 267.65
+ 402 | 277.51
+ 518 | 291.59
+ 340 | 295.40
+ 331 | 296.30
+ 682 | 308.20
+(10 rows)
+
