@@ -95,7 +95,15 @@ bool ldb_aminsert(Relation         index,
 
         // todo:: pass in all the additional init info for external retreiver like index size (that's all?)
         uidx = usearch_init(&opts, &error);
+        if(uidx == NULL) {
+            elog(ERROR, "unable to initialize usearch");
+        }
         assert(!error);
+        INDEX_RELATION_FOR_RETRIEVER = index;
+        HEADER_FOR_EXTERNAL_RETRIEVER = *hdr;
+        EXTRA_DIRTIED = &extra_dirtied[ 0 ];
+        EXTRA_DIRTIED_PAGE = &extra_dirtied_page[ 0 ];
+        EXTRA_DIRTIED_SIZE = 0;
         ldb_wal_retriever_area_init(BLCKSZ * 100);
         usearch_set_node_retriever(uidx, &ldb_wal_index_node_retriever, &ldb_wal_index_node_retriever_mut, &error);
 
@@ -144,12 +152,6 @@ bool ldb_aminsert(Relation         index,
 
     assert(hdr->magicNumber == LDB_WAL_MAGIC_NUMBER);
     elog(DEBUG5, "Insert: at start num vectors is %d", hdr->num_vectors);
-
-    INDEX_RELATION_FOR_RETRIEVER = index;
-    HEADER_FOR_EXTERNAL_RETRIEVER = *hdr;
-    EXTRA_DIRTIED = &extra_dirtied[ 0 ];
-    EXTRA_DIRTIED_PAGE = &extra_dirtied_page[ 0 ];
-    EXTRA_DIRTIED_SIZE = 0;
 
     current_size = hdr->num_vectors;
 
