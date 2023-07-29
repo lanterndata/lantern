@@ -1,0 +1,37 @@
+name: build
+on:
+  push:
+  pull_request:
+jobs:
+  ubuntu:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - postgres: 15
+            os: ubuntu-22.04
+          - postgres: 14
+            os: ubuntu-22.04
+          - postgres: 13
+            os: ubuntu-22.04
+          - postgres: 12
+            os: ubuntu-22.04
+          - postgres: 11
+            os: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: "recursive"
+      - name: Build
+        run: sudo su -c "PG_VERSION=$PG_VERSION USE_SOURCE=1 ./ci/scripts/build-linux.sh"
+        env:
+          PG_VERSION: ${{ matrix.postgres }}
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+      # Enable tmate debugging of manually-triggered workflows if the input option was provided
+      # - name: Setup tmate session
+      #   uses: mxschmitt/action-tmate@v3
+      - name: Run tests
+        run: sudo su postgres -c "PG_VERSION=$PG_VERSION ./ci/scripts/run-tests.sh"
+        env:
+          PG_VERSION: ${{ matrix.postgres }}
