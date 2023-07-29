@@ -22,6 +22,11 @@ then
   export PG_VERSION=15
 fi
 
+if [ -z "$GITHUB_OUTPUT" ]
+then
+  export GITHUB_OUTPUT=/dev/null
+fi
+
 # Set Locale
 echo "LC_ALL=en_US.UTF-8" > /etc/environment && \
 echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && \
@@ -53,6 +58,14 @@ cd /tmp/lanterndb && mkdir build && cd build && \
 # Run cmake
 sh -c "cmake $(get_cmake_flags) .." && \
 make install && \
-# Remove apt cache
-apt-get clean && \
+# Bundle debian packages && \
+cpack &&
+ 
+# Print package name to github output
+export EXT_VERSION=$(cmake --system-information | awk -F= '$1~/CMAKE_PROJECT_VERSION:STATIC/{print$2}') && \
+export PACKAGE_NAME=lanterndb-${EXT_VERSION}-postgres-${PG_VERSION}-${ARCH}.deb && \
+echo "package_name=$PACKAGE_NAME" >> "$GITHUB_OUTPUT" && \
+echo "package_path=$(pwd)/$(ls *.deb | tr -d '\n')" >> "$GITHUB_OUTPUT"
+
+# Chown to postgres for running tests
 chown -R postgres:postgres /tmp/lanterndb

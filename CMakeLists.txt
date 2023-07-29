@@ -173,3 +173,11 @@ add_custom_target(
   COMMAND ${CMAKE_SOURCE_DIR}/scripts/bench.sh
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
  )
+
+# Debian packaging
+string(REGEX MATCH "^PostgreSQL (\[0-9]+).*"
+  PostgreSQL_VERSION_NUMBER ${PostgreSQL_VERSION_STRING})
+set(CPACK_GENERATOR "DEB")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "postgresql-${CMAKE_MATCH_1}, postgresql-${CMAKE_MATCH_1}-pgvector")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Lantern Data")
+include(CPack)

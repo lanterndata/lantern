@@ -30,7 +30,8 @@ jobs:
         with:
           submodules: "recursive"
       - name: Build
-        run: sudo su -c "PG_VERSION=$PG_VERSION USE_SOURCE=1 ./ci/scripts/build-linux.sh"
+        id: build
+        run: sudo su -c "PG_VERSION=$PG_VERSION USE_SOURCE=1 GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/build-linux.sh"
         env:
           PG_VERSION: ${{ matrix.postgres }}
           BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
@@ -41,3 +42,8 @@ jobs:
         run: sudo su postgres -c "PG_VERSION=$PG_VERSION ./ci/scripts/run-tests.sh"
         env:
           PG_VERSION: ${{ matrix.postgres }}
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ steps.build.outputs.package_name }}
+          path: ${{ steps.build.outputs.package_path }}
