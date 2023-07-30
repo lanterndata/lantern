@@ -75,3 +75,11 @@ INSERT INTO new_small_world (id, vector) VALUES
 SELECT '[0,0,0]'::vector as v42  \gset
 EXPLAIN SELECT id, ROUND((vector <-> :'v42')::numeric, 2) FROM new_small_world ORDER BY vector <-> :'v42' LIMIT 10;
 SELECT id, ROUND((vector <-> :'v42')::numeric, 2) FROM new_small_world ORDER BY vector <-> :'v42' LIMIT 10;
+
+select count(*) from sift_base1k;
+\di+
+INSERT INTO sift_base1k(v)
+SELECT v FROM sift_base1k WHERE id <= 444 AND v IS NOT NULL;
+select count(*) from sift_base1k;
+\di+
+

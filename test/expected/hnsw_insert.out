@@ -62,12 +62,12 @@ psql:test/sql/hnsw_insert.sql:28: INFO:  usearch index initialized
  id  | dist 
 -----+------
  010 | 0.00
+ 010 | 0.00
+ 000 | 1.00
  000 | 1.00
  011 | 1.00
  110 | 1.00
- 001 | 1.41
- 100 | 1.41
- 111 | 1.41
+ xxx | 1.00
 (7 rows)
 
 INSERT INTO small_world (id, vector) VALUES 
@@ -93,12 +93,12 @@ psql:test/sql/hnsw_insert.sql:44: INFO:  usearch index initialized
  id  | dist 
 -----+------
  010 | 0.00
+ 010 | 0.00
+ 010 | 0.00
  000 | 1.00
  011 | 1.00
  110 | 1.00
- 001 | 1.41
- 100 | 1.41
- 111 | 1.41
+ 110 | 1.00
 (7 rows)
 
 SELECT v as v42 FROM sift_base1k WHERE id = 42 
@@ -208,12 +208,47 @@ psql:test/sql/hnsw_insert.sql:77: INFO:  usearch index initialized
  000 |  0.00
  000 |  0.00
  000 |  0.00
+ 000 |  0.00
  xxx |  0.00
  100 |  1.00
  010 |  1.00
  001 |  1.00
  100 |  1.00
  010 |  1.00
- 001 |  1.00
 (10 rows)
+
+select count(*) from sift_base1k;
+psql:test/sql/hnsw_insert.sql:79: INFO:  cost estimate
+ count 
+-------
+  1000
+(1 row)
+
+                                                       List of relations
+ Schema |            Name            | Type  |   Owner   |      Table      | Persistence | Access method |  Size  | Description 
+--------+----------------------------+-------+-----------+-----------------+-------------+---------------+--------+-------------
+ public | new_small_world_vector_idx | index | ngalstyan | new_small_world | permanent   | hnsw          | 176 kB | 
+ public | sift_base1k_pkey           | index | ngalstyan | sift_base1k     | permanent   | btree         | 40 kB  | 
+ public | sift_base1k_v_idx          | index | ngalstyan | sift_base1k     | permanent   | hnsw          | 872 kB | 
+ public | small_world_vector_idx     | index | ngalstyan | small_world     | permanent   | hnsw          | 176 kB | 
+(4 rows)
+
+INSERT INTO sift_base1k(v)
+SELECT v FROM sift_base1k WHERE id <= 444 AND v IS NOT NULL;
+INSERT 0 444
+select count(*) from sift_base1k;
+psql:test/sql/hnsw_insert.sql:83: INFO:  cost estimate
+ count 
+-------
+  1444
+(1 row)
+
+                                                        List of relations
+ Schema |            Name            | Type  |   Owner   |      Table      | Persistence | Access method |  Size   | Description 
+--------+----------------------------+-------+-----------+-----------------+-------------+---------------+---------+-------------
+ public | new_small_world_vector_idx | index | ngalstyan | new_small_world | permanent   | hnsw          | 176 kB  | 
+ public | sift_base1k_pkey           | index | ngalstyan | sift_base1k     | permanent   | btree         | 48 kB   | 
+ public | sift_base1k_v_idx          | index | ngalstyan | sift_base1k     | permanent   | hnsw          | 1168 kB | 
+ public | small_world_vector_idx     | index | ngalstyan | small_world     | permanent   | hnsw          | 176 kB  | 
+(4 rows)
 
