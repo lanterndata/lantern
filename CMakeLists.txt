@@ -185,6 +185,7 @@ add_custom_target(
 add_custom_target(
   archive
   ${CMAKE_COMMAND} -E env SOURCE_DIR=${CMAKE_SOURCE_DIR} BUILD_DIR=${CMAKE_BINARY_DIR} ${CMAKE_SOURCE_DIR}/scripts/package.sh
+  DEPENDS ${CMAKE_BINARY_DIR}/${_script_file}
   WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
 add_dependencies(archive lanterndb)
