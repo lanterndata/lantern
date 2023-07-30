@@ -64,6 +64,8 @@ cpack &&
 # Print package name to github output
 export EXT_VERSION=$(cmake --system-information | awk -F= '$1~/CMAKE_PROJECT_VERSION:STATIC/{print$2}') && \
 export PACKAGE_NAME=lanterndb-${EXT_VERSION}-postgres-${PG_VERSION}-${ARCH}.deb && \
+
+echo "package_version=$EXT_VERSION" >> "$GITHUB_OUTPUT" && \
 echo "package_name=$PACKAGE_NAME" >> "$GITHUB_OUTPUT" && \
 echo "package_path=$(pwd)/$(ls *.deb | tr -d '\n')" >> "$GITHUB_OUTPUT"
 

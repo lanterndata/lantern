@@ -9,7 +9,7 @@ on:
       - main
       - dev
 jobs:
-  ubuntu:
+  ubuntu-build:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -38,10 +38,6 @@ jobs:
       - name: Create Archive Package
         id: archive
         run: sudo su -c "GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/package-archive.sh"
-        if: ${{ matrix.postgres == '15' }} # The output is not dependent to pg version, so we can run this only once
-      # Enable tmate debugging of manually-triggered workflows if the input option was provided
-      # - name: Setup tmate session
-      #   uses: mxschmitt/action-tmate@v3
       - name: Run tests
         run: sudo su postgres -c "PG_VERSION=$PG_VERSION ./ci/scripts/run-tests.sh"
         env:
@@ -55,5 +51,5 @@ jobs:
         uses: actions/upload-artifact@v3
         if: ${{ steps.archive.outputs.archive_package_name != '' }}
         with:
-          name: ${{ steps.archive.outputs.archive_package_name }}
+          name: lanterndb-${{ steps.build.outputs.package_version }}
           path: ${{ steps.archive.outputs.archive_package_path }}

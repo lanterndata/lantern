@@ -3,7 +3,7 @@
 cd $BUILD_DIR
 ARCH=$(dpkg-architecture -q DEB_BUILD_ARCH)
 EXT_VERSION=$(cmake --system-information | awk -F= '$1~/CMAKE_PROJECT_VERSION:STATIC/{print$2}')
-PACKAGE_NAME=lanterndb-${EXT_VERSION}-${ARCH}
+PACKAGE_NAME=lanterndb-${EXT_VERSION}-postgres-${PG_VERSION}-${ARCH}
 
 mkdir -p ${BUILD_DIR}/${PACKAGE_NAME}/src
 cp ${SOURCE_DIR}/scripts/packaging/* ${BUILD_DIR}/${PACKAGE_NAME}/
