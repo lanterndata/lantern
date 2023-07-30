@@ -46,7 +46,7 @@ apt install postgresql-$PG_VERSION-pgvector -y
 # Fix pg_config (sometimes it points to wrong version)
 rm -f /usr/bin/pg_config && ln -s /usr/lib/postgresql/$PG_VERSION/bin/pg_config /usr/bin/pg_config
 
-if [ -z ${USE_SOURCE+x} ]; then
+if [ -z "$USE_SOURCE" ]; then
   # Clone from git
   cd /tmp && git clone --recursive https://github.com/lanterndata/lanterndb.git -b $BRANCH
 else 
@@ -57,15 +57,18 @@ fi
 cd /tmp/lanterndb && mkdir build && cd build && \
 # Run cmake
 sh -c "cmake $(get_cmake_flags) .." && \
-make install && \
-# Bundle debian packages && \
-cpack &&
- 
-# Print package name to github output
-export EXT_VERSION=$(cmake --system-information | awk -F= '$1~/CMAKE_PROJECT_VERSION:STATIC/{print$2}') && \
-export PACKAGE_NAME=lanterndb-${EXT_VERSION}-postgres-${PG_VERSION}-${ARCH}.deb && \
-echo "package_name=$PACKAGE_NAME" >> "$GITHUB_OUTPUT" && \
-echo "package_path=$(pwd)/$(ls *.deb | tr -d '\n')" >> "$GITHUB_OUTPUT"
+make install
+
+
+if [ -n "$BUILD_PACKAGES" ]; then
+  # Bundle debian packages
+  cpack &&
+  # Print package name to github output
+  export EXT_VERSION=$(cmake --system-information | awk -F= '$1~/CMAKE_PROJECT_VERSION:STATIC/{print$2}') && \
+  export PACKAGE_NAME=lanterndb-${EXT_VERSION}-postgres-${PG_VERSION}-${ARCH}.deb && \
+  echo "package_name=$PACKAGE_NAME" >> "$GITHUB_OUTPUT" && \
+  echo "package_path=$(pwd)/$(ls *.deb | tr -d '\n')" >> "$GITHUB_OUTPUT"
+fi
 
 # Chown to postgres for running tests
 chown -R postgres:postgres /tmp/lanterndb

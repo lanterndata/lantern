@@ -31,7 +31,7 @@ jobs:
           submodules: "recursive"
       - name: Build
         id: build
-        run: sudo su -c "PG_VERSION=$PG_VERSION USE_SOURCE=1 GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/build-linux.sh"
+        run: sudo su -c "PG_VERSION=$PG_VERSION USE_SOURCE=1 BUILD_PACKAGES=1 GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/build-linux.sh"
         env:
           PG_VERSION: ${{ matrix.postgres }}
           BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
@@ -39,14 +39,7 @@ jobs:
         id: archive
         run: sudo su -c "GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/package-archive.sh"
         if: ${{ matrix.postgres == '15' }} # The output is not dependent to pg version, so we can run this only once
-      # Enable tmate debugging of manually-triggered workflows if the input option was provided
-      # - name: Setup tmate session
-      #   uses: mxschmitt/action-tmate@v3
-      - name: Run tests
-        run: sudo su postgres -c "PG_VERSION=$PG_VERSION ./ci/scripts/run-tests.sh"
-        env:
-          PG_VERSION: ${{ matrix.postgres }}
-      - name: Upload artifacts
+      - name: Upload debian package artifacts
         uses: actions/upload-artifact@v3
         with:
           name: ${{ steps.build.outputs.package_name }}

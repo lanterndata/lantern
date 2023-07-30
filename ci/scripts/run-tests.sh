@@ -25,6 +25,6 @@ export PGDATA=/etc/postgresql/$PG_VERSION/main/
 # Set port
 echo "port = 5432" >> $PGDATA/postgresql.conf
 # Run postgres database
-POSTGRES_HOST_AUTH_METHOD=trust /usr/lib/postgresql/$PG_VERSION/bin/postgres &>/dev/null &
+POSTGRES_HOST_AUTH_METHOD=trust /usr/lib/postgresql/$PG_VERSION/bin/postgres 1>/tmp/pg-out.log 2>/tmp/pg-error.log &
 # Wait for start and run tests
 wait_for_pg && cd $WORKDIR/build && make test
