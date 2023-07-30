@@ -35,9 +35,9 @@ psql:test/sql/hnsw_insert.sql:8: INFO:  done saving 1000 vectors
 CREATE INDEX
 SET enable_seqscan = off;
 SET
-insert into small_world (id, vector) values ('xxx', '[0,0,0]');
+INSERT INTO small_world (id, vector) VALUES ('xxx', '[0,0,0]');
 INSERT 0 1
-insert into small_world (id, vector) values ('x11', '[0,0,110]');
+INSERT INTO small_world (id, vector) VALUES ('x11', '[0,0,110]');
 INSERT 0 1
 INSERT INTO small_world (id, vector) VALUES 
 ('000', '[0,0,0]'),
@@ -217,38 +217,34 @@ psql:test/sql/hnsw_insert.sql:77: INFO:  usearch index initialized
  010 |  1.00
 (10 rows)
 
-select count(*) from sift_base1k;
+SELECT count(*) from sift_base1k;
 psql:test/sql/hnsw_insert.sql:79: INFO:  cost estimate
  count 
 -------
   1000
 (1 row)
 
-                                                       List of relations
- Schema |            Name            | Type  |   Owner   |      Table      | Persistence | Access method |  Size  | Description 
---------+----------------------------+-------+-----------+-----------------+-------------+---------------+--------+-------------
- public | new_small_world_vector_idx | index | ngalstyan | new_small_world | permanent   | hnsw          | 176 kB | 
- public | sift_base1k_pkey           | index | ngalstyan | sift_base1k     | permanent   | btree         | 40 kB  | 
- public | sift_base1k_v_idx          | index | ngalstyan | sift_base1k     | permanent   | hnsw          | 872 kB | 
- public | small_world_vector_idx     | index | ngalstyan | small_world     | permanent   | hnsw          | 176 kB | 
-(4 rows)
+SELECT * from ldb_get_indexes('sift_base1k');
+     indexname     |  size  |                                  indexdef                                   
+-------------------+--------+-----------------------------------------------------------------------------
+ sift_base1k_pkey  | 40 kB  | CREATE UNIQUE INDEX sift_base1k_pkey ON public.sift_base1k USING btree (id)
+ sift_base1k_v_idx | 872 kB | CREATE INDEX sift_base1k_v_idx ON public.sift_base1k USING hnsw (v)
+(2 rows)
 
 INSERT INTO sift_base1k(v)
 SELECT v FROM sift_base1k WHERE id <= 444 AND v IS NOT NULL;
 INSERT 0 444
-select count(*) from sift_base1k;
+SELECT count(*) from sift_base1k;
 psql:test/sql/hnsw_insert.sql:83: INFO:  cost estimate
  count 
 -------
   1444
 (1 row)
 
-                                                        List of relations
- Schema |            Name            | Type  |   Owner   |      Table      | Persistence | Access method |  Size   | Description 
---------+----------------------------+-------+-----------+-----------------+-------------+---------------+---------+-------------
- public | new_small_world_vector_idx | index | ngalstyan | new_small_world | permanent   | hnsw          | 176 kB  | 
- public | sift_base1k_pkey           | index | ngalstyan | sift_base1k     | permanent   | btree         | 48 kB   | 
- public | sift_base1k_v_idx          | index | ngalstyan | sift_base1k     | permanent   | hnsw          | 1168 kB | 
- public | small_world_vector_idx     | index | ngalstyan | small_world     | permanent   | hnsw          | 176 kB  | 
-(4 rows)
+SELECT * from ldb_get_indexes('sift_base1k');
+     indexname     |  size   |                                  indexdef                                   
+-------------------+---------+-----------------------------------------------------------------------------
+ sift_base1k_pkey  | 48 kB   | CREATE UNIQUE INDEX sift_base1k_pkey ON public.sift_base1k USING btree (id)
+ sift_base1k_v_idx | 1168 kB | CREATE INDEX sift_base1k_v_idx ON public.sift_base1k USING hnsw (v)
+(2 rows)
 

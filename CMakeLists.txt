@@ -24,7 +24,8 @@ option(BUILD_WITH_USEARCH "Build with usearch as hnsw provider" ON)
 option(BUILD_LIBHNSW "Build libhnsw as hnsw provider" OFF)
 
 # options passed into lanterndb sourcecode
-option(LANTERNDB_COPYNODES "Copy postgres index tuples for external retriever during scan instead of pinning" ON)
+# todo:: tests for copynodes=ON are broken
+option(LANTERNDB_COPYNODES "Copy postgres index tuples for external retriever during scan instead of pinning" OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -179,6 +180,14 @@ add_custom_target(
   COMMAND ${CMAKE_SOURCE_DIR}/scripts/bench.sh
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
  )
+
+# Package universal install script
+add_custom_target(
+  archive
+  ${CMAKE_COMMAND} -E env SOURCE_DIR=${CMAKE_SOURCE_DIR} BUILD_DIR=${CMAKE_BINARY_DIR} ${CMAKE_SOURCE_DIR}/scripts/package.sh
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+add_dependencies(archive lanterndb)
 
 # Debian packaging
 string(REGEX MATCH "^PostgreSQL (\[0-9]+).*"

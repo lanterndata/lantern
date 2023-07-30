@@ -19,8 +19,6 @@ SET row_security = off;
 
 SET default_tablespace = '';
 
-SET default_table_access_method = heap;
-
 CREATE TABLE tsv_data (
     language text,
     page_url text,
@@ -67,8 +65,10 @@ CREATE INDEX index1 ON tsv_data USING hnsw (context_page_description_ai vector_l
 CREATE INDEX ON tsv_data USING hnsw (context_page_description_ai) with (ef = 100, ef_construction=150 , M=11, alg="hnswlib");
 set enable_seqscan=false;
 
-explain with t as (select id, page_title, context_page_description_ai <-> (select context_page_description_ai from tsv_data where id = 81386) as dist
- from tsv_data order by dist limit 10) select id, page_title, ROUND( dist::numeric, 2) from t;
+-- todo:: find a different way to ensure that the index used. "\set enable_seqscan=false;" is not enough
+-- and, the following produces a different output on pg11
+-- explain with t as (select id, page_title, context_page_description_ai <-> (select context_page_description_ai from tsv_data where id = 81386) as dist
+--  from tsv_data order by dist limit 10) select id, page_title, ROUND( dist::numeric, 2) from t;
 
 -- introduce a WITH statement to round returned distances AFTER a lookup so the index can be used
 with t as (select id, page_title, context_page_description_ai <-> (select context_page_description_ai from tsv_data where id = 81386) as dist
