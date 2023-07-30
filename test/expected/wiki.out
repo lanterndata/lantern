@@ -86,7 +86,7 @@ with t as (select id, page_title,  context_page_description_ai <-> (select conte
  81846 | Frank Carlucci                       |  7.25
 (10 rows)
 
-CREATE INDEX ON tsv_data USING hnsw (context_page_description_ai vector_l2_ops);
+CREATE INDEX index1 ON tsv_data USING hnsw (context_page_description_ai vector_l2_ops);
 psql:test/sql/wiki.sql:66: INFO:  done init usearch index
 psql:test/sql/wiki.sql:66: INFO:  inserted 100 elements
 psql:test/sql/wiki.sql:66: INFO:  done saving 100 vectors
@@ -104,14 +104,14 @@ psql:test/sql/wiki.sql:71: INFO:  cost estimate
 psql:test/sql/wiki.sql:71: INFO:  returning small cost to always use the index
 psql:test/sql/wiki.sql:71: INFO:  cost estimate
 psql:test/sql/wiki.sql:71: INFO:  returning small cost to always use the index
-                                                       QUERY PLAN                                                        
--------------------------------------------------------------------------------------------------------------------------
+                                                       QUERY PLAN                                                       
+------------------------------------------------------------------------------------------------------------------------
  Subquery Scan on t  (cost=8.16..8.74 rows=10 width=68)
    ->  Limit  (cost=8.16..8.59 rows=10 width=44)
          InitPlan 1 (returns $0)
            ->  Index Scan using tsv_data_pkey on tsv_data tsv_data_1  (cost=0.14..8.16 rows=1 width=32)
                  Index Cond: (id = 81386)
-         ->  Index Scan using tsv_data_context_page_description_ai_idx1 on tsv_data  (cost=0.00..4.26 rows=100 width=44)
+         ->  Index Scan using tsv_data_context_page_description_ai_idx on tsv_data  (cost=0.00..4.26 rows=100 width=44)
                Order By: (context_page_description_ai <-> $0)
 (7 rows)
 
@@ -137,4 +137,23 @@ psql:test/sql/wiki.sql:75: INFO:  usearch index initialized
  95386 | Alexandre Étienne Choron             |  7.14
  81846 | Frank Carlucci                       |  7.25
 (10 rows)
+
+drop index index1;
+DROP INDEX
+select count(*) from tsv_data;
+psql:test/sql/wiki.sql:79: INFO:  cost estimate
+ count 
+-------
+   100
+(1 row)
+
+INSERT INTO tsv_data(context_page_description_ai)
+SELECT context_page_description_ai FROM tsv_data WHERE context_page_description_ai IS NOT NULL LIMIT 444;
+INSERT 0 100
+select count(*) from tsv_data;
+psql:test/sql/wiki.sql:82: INFO:  cost estimate
+ count 
+-------
+   200
+(1 row)
 
