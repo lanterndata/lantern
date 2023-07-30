@@ -1,5 +1,7 @@
 # LanternDB 🏮
 
+[![build](https://github.com/lanterndata/lanterndb/actions/workflows/build-and-test-linux.yaml/badge.svg?branch=main)](https://github.com/lanterndata/lanterndb/actions/workflows/build-and-test-linux.yaml)
+
 LanternDB is a relational and vector database, packaged as a Postgres extension.
 It provides a new index type for vector columns called `hnsw` which speeds up `ORDER BY` queries on the table.
 
@@ -23,7 +25,11 @@ make install
 To install on M1 macs, replace `cmake ..` from the above with `cmake -DUSEARCH_NO_MARCH_NATIVE=ON ..` to avoid building usearch with unsupported `march=native`
 
 ## Using LanternDB
-Create a table with a vector column and populate it with data.
+Run the following to enable lanterndb:
+```sql
+CREATE EXTENSION lanterndb;
+```
+Then, you can create a table with a vector column and populate it with data.
 
 ```sql
 

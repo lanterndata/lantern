@@ -7,6 +7,11 @@ project(
   VERSION ${LANTERNDB_VERSION}
   LANGUAGES C CXX)
 
+if (POLICY CMP0074)
+  # us <PackageName>_ROOT variables from inside find_package calls
+  cmake_policy(SET CMP0074 NEW)
+endif()
+
 if(POLICY CMP0077)
   # Allow parent project to override options of children obtain via FetchContent
   # or add_subdirectory.
@@ -25,8 +30,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 
-set(CMAKE_BUILD_TYPE "Debug")
-set(CMAKE_BUILD_TYPE "Release")
 message(STATUS "${CMAKE_COLOR_GREEN}Build type: ${CMAKE_BUILD_TYPE}${CMAKE_COLOR_RESET}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
@@ -41,6 +44,9 @@ file(GLOB SOURCES "${SOURCES_DIR}/**/*.c" "${SOURCES_DIR}/*.c")
 set(USEARCH_USE_SIMSIMD OFF)
 set(USEARCH_BUILD_LIBUSEARCH_STATIC ON)
 set(USEARCH_BUILD_LIBUSEARCH_SHARED OFF)
+# do not add asan flags to usearch debug build of the library since
+# we still have not figured out how to load those into postgres
+set(USEARCH_DEBUG_BUILD_ASAN OFF)
 # the var below can be used to skip -march=native in the usearch build
 # which causes issues when built from docker on m1 macs
 # set(USEARCH_NO_MARCH_NATIVE OFF)

@@ -16,6 +16,21 @@
 #include "vector.h"
 
 /*
+ * Context delete callback for insert context
+ */
+static void insert_done_cb(void *arg)
+{
+    usearch_index_t uidx = (usearch_index_t)arg;
+    usearch_error_t error = NULL;
+
+    usearch_free(uidx, &error);
+    if(error != NULL) {
+        elog(ERROR, "error freeing usearch index: %s", error);
+    }
+    ldb_wal_retriever_area_free();
+}
+
+/*
  * Insert a tuple into the index
  */
 bool ldb_aminsert(Relation         index,
@@ -31,25 +46,24 @@ bool ldb_aminsert(Relation         index,
                   ,
                   IndexInfo *indexInfo)
 {
-    MemoryContext          oldCtx;
-    MemoryContext          insertCtx;
-    Datum                  vector;
-    usearch_init_options_t opts;
-    usearch_index_t        uidx;
-    usearch_error_t        error = NULL;
-    usearch_metadata_t     meta;
-    BlockNumber            HEADER_BLOCK = 0;
-    BlockNumber            last_block;
-    Buffer                 hdr_buf;
-    Page                   hdr_page;
-    HnswIndexHeaderPage   *hdr;
-    int                    current_size;
-    GenericXLogState      *state;
-    Buffer                 extra_dirtied[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ];
-    Page                   extra_dirtied_page[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ];
-    int                    new_tuple_size;
-    uint32                 new_tuple_id;
-    HnswIndexTuple        *new_tuple;
+    MemoryContext        oldCtx;
+    MemoryContext        insertCtx;
+    Datum                vector;
+    usearch_index_t      uidx;
+    usearch_error_t      error = NULL;
+    usearch_metadata_t   meta;
+    BlockNumber          HEADER_BLOCK = 0;
+    BlockNumber          last_block;
+    Buffer               hdr_buf;
+    Page                 hdr_page;
+    HnswIndexHeaderPage *hdr;
+    int                  current_size;
+    GenericXLogState    *state;
+    Buffer               extra_dirtied[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ];
+    Page                 extra_dirtied_page[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ];
+    int                  new_tuple_size;
+    uint32               new_tuple_id;
+    HnswIndexTuple      *new_tuple;
 
     if(checkUnique != UNIQUE_CHECK_NO) {
         elog(ERROR, "unique constraints on hnsw vector indexes not supported");
@@ -61,30 +75,71 @@ bool ldb_aminsert(Relation         index,
     if(isnull[ 0 ]) {
         return false;
     }
-    {
-        // todo:
-        //  initialize usearch at indexInfo->ii_AmCache in indexInfo->ii_Context memory context
-        //  see this blog post on how to register a callback on memory context destruction to destroy usearch object
-        //  https://jnidzwetzki.github.io/2022/05/28/postgres-memory-context.html
+
+    // when there are multiple inserts in the query, avoid reinitializing some of the
+    // data structures
+    if(indexInfo->ii_AmCache == NULL) {
+        usearch_init_options_t opts;
+        MemoryContextCallback *callback;
+
+        opts.dimensions = TupleDescAttr(index->rd_att, 0)->atttypmod;
+        PopulateUsearchOpts(index, &opts);
+
+        //  read index header page to know how many pages are already inserted
+        hdr_buf = ReadBuffer(index, HEADER_BLOCK);
+        LockBuffer(hdr_buf, BUFFER_LOCK_SHARE);
+        // header page MUST be under WAL since PrepareIndexTuple will update it
+        hdr_page = BufferGetPage(hdr_buf);
+        hdr = (HnswIndexHeaderPage *)PageGetContents(hdr_page);
+        assert(hdr->magicNumber == LDB_WAL_MAGIC_NUMBER);
+
+        // todo:: pass in all the additional init info for external retreiver like index size (that's all?)
+        uidx = usearch_init(&opts, &error);
+        if(uidx == NULL) {
+            elog(ERROR, "unable to initialize usearch");
+        }
+        assert(!error);
+        INDEX_RELATION_FOR_RETRIEVER = index;
+        HEADER_FOR_EXTERNAL_RETRIEVER = *hdr;
+        EXTRA_DIRTIED = &extra_dirtied[ 0 ];
+        EXTRA_DIRTIED_PAGE = &extra_dirtied_page[ 0 ];
+        EXTRA_DIRTIED_SIZE = 0;
+        ldb_wal_retriever_area_init(BLCKSZ * 100);
+        usearch_set_node_retriever(uidx, &ldb_wal_index_node_retriever, &ldb_wal_index_node_retriever_mut, &error);
+
+        assert(usearch_size(uidx, &error) == 0);
+        assert(!error);
+
+        // this reserves memory for internal structures,
+        // including for locks according to size indicated in usearch_mem
+        //  ^^ do not worry about allocaitng locks above. but that has to be eliminated down the line
+        usearch_view_mem_lazy(uidx, hdr->usearch_header, &error);
+
+        indexInfo->ii_AmCache = uidx;
+
+        callback
+            = (MemoryContextCallback *)MemoryContextAllocZero(indexInfo->ii_Context, sizeof(MemoryContextCallback));
+        callback->func = insert_done_cb;
+        callback->arg = (void *)uidx;
+        MemoryContextRegisterResetCallback(indexInfo->ii_Context, callback);
+
+        UnlockReleaseBuffer(hdr_buf);
+        // reset hdr related vars to make sure the rest of the code does not depend on them
+        // as here we read everything in read-only mode while the rest of the code will likely
+        // need exclusive access to the header page
+        hdr_buf = InvalidBuffer;
+        hdr_page = NULL;
+        hdr = NULL;
     }
+
+    uidx = (usearch_index_t)indexInfo->ii_AmCache;
+    assert(!error);
+    meta = usearch_metadata(uidx, &error);
 
     insertCtx = AllocSetContextCreate(CurrentMemoryContext, "LanternInsertContext", ALLOCSET_DEFAULT_SIZES);
     oldCtx = MemoryContextSwitchTo(insertCtx);
 
     vector = PointerGetDatum(PG_DETOAST_DATUM(values[ 0 ]));
-
-    opts.dimensions = TupleDescAttr(index->rd_att, 0)->atttypmod;
-    PopulateUsearchOpts(index, &opts);
-
-    // todo:: pass in all the additional init info for external retreiver like index size (that's all?)
-    uidx = usearch_init(&opts, &error);
-    meta = usearch_metadata(uidx, &error);
-    // USE an INSERT retriever for the above. the difference will be that the retriever will obtain exclusive locks
-    // on all pages (in case it is modified by US or another thread)
-    usearch_set_node_retriever(uidx, &ldb_wal_index_node_retriever, &ldb_wal_index_node_retriever_mut, &error);
-
-    assert(usearch_size(uidx, &error) == 0);
-    assert(!error);
 
     state = GenericXLogStart(index);
 
@@ -98,23 +153,11 @@ bool ldb_aminsert(Relation         index,
     assert(hdr->magicNumber == LDB_WAL_MAGIC_NUMBER);
     elog(DEBUG5, "Insert: at start num vectors is %d", hdr->num_vectors);
 
-    INDEX_RELATION_FOR_RETRIEVER = index;
-    HEADER_FOR_EXTERNAL_RETRIEVER = *hdr;
-    EXTRA_DIRTIED = &extra_dirtied[ 0 ];
-    EXTRA_DIRTIED_PAGE = &extra_dirtied_page[ 0 ];
-    EXTRA_DIRTIED_SIZE = 0;
-    ldb_wal_retriever_area_init(BLCKSZ * 100);
-
     current_size = hdr->num_vectors;
 
     if(current_size >= HNSW_MAX_INDEXED_VECTORS) {
         elog(ERROR, "Index full. Cannot add more vectors. Current limit: %d", HNSW_MAX_INDEXED_VECTORS);
     }
-
-    // this reserves memory for internal structures,
-    // including for locks according to size indicated in usearch_mem
-    //  ^^ do not worry about allocaitng locks above. but that has to be eliminated down the line
-    usearch_view_mem_lazy(uidx, hdr->usearch_header, &error);
 
     usearch_reserve(uidx, current_size + 1, &error);
     int level = usearch_newnode_level(uidx, &error);
@@ -142,8 +185,7 @@ bool ldb_aminsert(Relation         index,
 
     usearch_update_header(uidx, hdr->usearch_header, &error);
 
-    usearch_free(uidx, &error);
-    ldb_wal_retriever_area_free();
+    ldb_wal_retriever_area_reset();
 
     MarkBufferDirty(hdr_buf);
     // we only release the header buffer AFTER inserting is finished to make sure nobody else changes the block
@@ -157,6 +199,7 @@ bool ldb_aminsert(Relation         index,
         MarkBufferDirty(extra_dirtied[ i ]);
         UnlockReleaseBuffer(extra_dirtied[ i ]);
     }
+    EXTRA_DIRTIED_SIZE = 0;
 
     UnlockReleaseBuffer(hdr_buf);
 
