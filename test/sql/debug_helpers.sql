@@ -6,7 +6,8 @@ CREATE EXTENSION IF NOT EXISTS lanterndb;
 SHOW hnsw.init_k;
 
 CREATE INDEX ON small_world USING hnsw (vector);
-\d+ small_world
+-- verify that the index was created
+SELECT * FROM ldb_get_indexes('small_world');
 
 -- it exists after we create an index
 SHOW hnsw.init_k;
