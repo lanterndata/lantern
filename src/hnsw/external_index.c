@@ -532,7 +532,6 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
 
         // todo:: figure out how/from where /usr/include/strings.h is included at this point
         // (noticed that index is a function defined there)
-        elog(INFO, "index ptr is %p", index);
 
         blockmap_block = ReadBufferExtended(index_rel, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
         LockBuffer(blockmap_block, BUFFER_LOCK_EXCLUSIVE);
@@ -755,6 +754,10 @@ static inline void *wal_index_node_retriever_exact(int id)
             write_size = (HEADER_FOR_EXTERNAL_RETRIEVER.num_vectors - id_offset) * sizeof(blockmap_page->blocknos[ 0 ]);
         }
         buf = ReadBufferExtended(INDEX_RELATION_FOR_RETRIEVER, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
+        // you might expect that this is unnecessary, since we always unlock the pagemap page right after reading the
+        // necessary information into wal_retriever_block_numbers
+        // BUT it is necessary because _mut() retriever might have blocked the current page in order to add a value to
+        // it!
         for(int i = 0; i < EXTRA_DIRTIED_SIZE; i++) {
             if(EXTRA_DIRTIED[ i ] == buf) {
                 idx_pagemap_prelocked = true;
@@ -857,6 +860,7 @@ void *ldb_wal_index_node_retriever_mut(int id)
     HnswIndexTuple *nodepage;
     OffsetNumber    offset, max_offset;
     bool            idx_page_prelocked = false;
+    bool            idx_pagemap_prelocked = false;
 
     if(wal_retriever_block_numbers[ id ] != InvalidBlockNumber) {
         blockno = wal_retriever_block_numbers[ id ];
@@ -873,8 +877,20 @@ void *ldb_wal_index_node_retriever_mut(int id)
             write_size = (HEADER_FOR_EXTERNAL_RETRIEVER.num_vectors - id_offset) * sizeof(blockmap_page->blocknos[ 0 ]);
         }
         buf = ReadBufferExtended(INDEX_RELATION_FOR_RETRIEVER, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
-        LockBuffer(buf, BUFFER_LOCK_SHARE);
-        page = BufferGetPage(buf);
+        for(int i = 0; i < EXTRA_DIRTIED_SIZE; i++) {
+            if(EXTRA_DIRTIED[ i ] == buf) {
+                idx_pagemap_prelocked = true;
+                page = EXTRA_DIRTIED_PAGE[ i ];
+
+                ReleaseBuffer(buf);
+                buf = InvalidBuffer;
+            }
+        }
+
+        if(!idx_pagemap_prelocked) {
+            LockBuffer(buf, BUFFER_LOCK_SHARE);
+            page = BufferGetPage(buf);
+        }
         max_offset = PageGetMaxOffsetNumber(page);
 
         if(max_offset != FirstOffsetNumber) {
@@ -885,7 +901,9 @@ void *ldb_wal_index_node_retriever_mut(int id)
         memcpy(wal_retriever_block_numbers + (id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE) * HNSW_BLOCKMAP_BLOCKS_PER_PAGE,
                blockmap_page->blocknos,
                write_size);
-        UnlockReleaseBuffer(buf);
+        if(!idx_pagemap_prelocked) {
+            UnlockReleaseBuffer(buf);
+        }
     }
 
     // now I know the block from the blockmap. now find the tuple in the block
