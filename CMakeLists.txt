@@ -180,6 +180,14 @@ add_custom_target(
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
  )
 
+# Package universal install script
+add_custom_target(
+  package_archive
+  ${CMAKE_COMMAND} -E env SOURCE_DIR=${CMAKE_SOURCE_DIR} BUILD_DIR=${CMAKE_BINARY_DIR}  ${CMAKE_SOURCE_DIR}/scripts/package.sh
+  DEPENDS ${CMAKE_BINARY_DIR}/lanterndb.so
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+
 # Debian packaging
 string(REGEX MATCH "^PostgreSQL (\[0-9]+).*"
   PostgreSQL_VERSION_NUMBER ${PostgreSQL_VERSION_STRING})
