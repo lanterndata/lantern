@@ -41,7 +41,7 @@ SET enable_seqscan = off;
 
 begin;
 CREATE INDEX ON small_world USING hnsw (vector);
-\d+ small_world
+SELECT * FROM ldb_get_indexes('small_world');
 SELECT * FROM (
 	SELECT id, ROUND( (vector <-> '[0,0,0]')::numeric, 2) as dist
 	FROM small_world
@@ -57,7 +57,7 @@ rollback;
 
 begin;
 CREATE INDEX ON small_world USING hnsw (vector) WITH (M=2, ef=11, ef_construction=12);
-\d+ small_world
+SELECT * FROM ldb_get_indexes('small_world');
 -- Equidistant points from the given vector appear in different order in the output of the inner query
 -- depending on postgres version and platform. The outder query forces a deterministic order.
 -- Unfortunately, outer query resorts distances as well so if the index sorted them in a wrong order,
@@ -83,7 +83,7 @@ rollback;
 
 begin;
 CREATE INDEX ON small_world USING hnsw (vector) WITH (M=11, ef=2, ef_construction=2);
-\d+ small_world
+SELECT * FROM ldb_get_indexes('small_world');
 SELECT * FROM (
     SELECT id, ROUND( (vector <-> '[0,0,0]')::numeric, 2) as dist
     FROM small_world

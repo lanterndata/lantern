@@ -9,8 +9,8 @@ CREATE INDEX ON sift_base1k USING hnsw (v);
 
 SET enable_seqscan = off;
 
-insert into small_world (id, vector) values ('xxx', '[0,0,0]');
-insert into small_world (id, vector) values ('x11', '[0,0,110]');
+INSERT INTO small_world (id, vector) VALUES ('xxx', '[0,0,0]');
+INSERT INTO small_world (id, vector) VALUES ('x11', '[0,0,110]');
 INSERT INTO small_world (id, vector) VALUES 
 ('000', '[0,0,0]'),
 ('001', '[0,0,1]'),
@@ -76,10 +76,10 @@ SELECT '[0,0,0]'::vector as v42  \gset
 EXPLAIN SELECT id, ROUND((vector <-> :'v42')::numeric, 2) FROM new_small_world ORDER BY vector <-> :'v42' LIMIT 10;
 SELECT id, ROUND((vector <-> :'v42')::numeric, 2) FROM new_small_world ORDER BY vector <-> :'v42' LIMIT 10;
 
-select count(*) from sift_base1k;
-\di+
+SELECT count(*) from sift_base1k;
+SELECT * from ldb_get_indexes('sift_base1k');
 INSERT INTO sift_base1k(v)
 SELECT v FROM sift_base1k WHERE id <= 444 AND v IS NOT NULL;
-select count(*) from sift_base1k;
-\di+
+SELECT count(*) from sift_base1k;
+SELECT * from ldb_get_indexes('sift_base1k');
 
