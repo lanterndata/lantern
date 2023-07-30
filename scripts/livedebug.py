@@ -9,6 +9,7 @@ import re
 import sys
 from select import select
 import time
+import argparse
 
 # helper functions
 def get_tmux_session_name() -> str:
@@ -26,22 +27,40 @@ def get_tmux_session_name() -> str:
         return None
 
 def livedebug():
+    parser = argparse.ArgumentParser(prog='livedebug',
+                    description='Attaches gdb to postgres backend process for live debugging')
+    parser.add_argument("-p", "--port",  default="5432", help="Port number")
+    parser.add_argument("-H", "--host", default="localhost", help="Host name")
+    parser.add_argument("--db", default="testdb", help="Database name", )
+    parser.add_argument("-f", "--file", default=None, help="SQL file to execute in psql", )
+    parser.add_argument('--resetdb', action='store_true', help="Drop and recreate the database before proceeeding")
+    args, unknown = parser.parse_known_args()
+    if len(unknown) > 0:
+        print("Unknown arguments: ", unknown)
+        parser.print_help()
+        return
     s: libtmux.Server = libtmux.Server()
 
     default_session: libtmux.session.Session = s.sessions.filter(session_name=get_tmux_session_name()).get()
     python_pane = default_session.attached_pane
     new_pane = python_pane.split_window(False, True, ".", 50)
 
-    # 1. run the command /usr/local/pgsql/bin/psql -p 4444 -h localhost postgres through a bash shell
-    psql_command = "/usr/local/pgsql/bin/psql -P pager=off -p 4444 -h localhost postgres"
+    if args.resetdb:
+        res = subprocess.run(f"psql postgres -c 'DROP DATABASE IF EXISTS {args.db};'", shell=True)
+        res = subprocess.run(f"psql postgres -c 'CREATE DATABASE {args.db};'", shell=True)
+        print("resetdb result", res)
+
+    # 1. run the command through a shell
+    psql_command = f"/usr/local/pgsql/bin/psql -P pager=off -p {args.port} -h {args.host} {args.db}"
+    psql_command = f"psql -P pager=off {args.db}"
     psql_process = subprocess.Popen(psql_command, shell=True, stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr)
 
-    # forward signals to psql
+    # 2. forward terminal signals to psql
     signal.signal(signal.SIGINT, lambda sig, frame: psql_process.send_signal(sig))
     signal.signal(signal.SIGTERM, lambda sig, frame: psql_process.send_signal(sig))
 
     backend_pid = None
-    # figure out psql backend pid via tmux
+    # 3. figure out psql backend pid via tmux
     pg_backend_pid_cmd = "select pg_backend_pid();\n"
     python_pane.send_keys(pg_backend_pid_cmd)
     # give time for psql command to complete!
@@ -68,12 +87,17 @@ def livedebug():
         psql_process.kill()
         return
 
-    # 4. run new_pane.cmd("echo 'pid is ' + pid")
+    # 4. Attach gdb on the detected psql backend pid
     # new_pane.clear()
     new_pane.send_keys("echo attaching gdb to %s" % backend_pid, enter=True)
     new_pane.send_keys("sudo gdb attach -p {}".format(backend_pid), enter=True)
 
-    # wait for psql exit
+    # 5. load sql file in psql pane if a file was provided
+    time.sleep(1.3)
+    if args.file:
+        python_pane.send_keys(f"\ir {args.file}")
+
+    # 6. wait for psql exit
     psql_process.wait()
 
 if __name__ == "__main__":
