@@ -38,6 +38,11 @@ do
     ${PSQL} postgres  -c "drop database if exists ${TESTDB};"
     ${PSQL} postgres  -c "create database ${TESTDB};"
     base=$(basename $testfile .sql)
+
+    # psql options
+    # -e: echo commands
+    # -E: (passed manually, for debugging) echo hidden magic commands (\d, \di+, etc)
+    ${PSQL} testdb --quiet -f test/sql/test_helpers/common.sql > /dev/null
     ${PSQL} testdb -ef test/sql/$base.sql > $TMP_OUTDIR/$base.out 2>&1 || true
     DIFF=$(diff test/expected/$base.out $TMP_OUTDIR/$base.out || true)
     # diff has non-zero exit code if files differ. ||true gets rid of error value
