@@ -63,7 +63,7 @@ ALTER TABLE ONLY tsv_data
 with t as (select id, page_title,  context_page_description_ai <-> (select context_page_description_ai from tsv_data where id = 81386) as dist
  from tsv_data order by dist
  limit 10) select id, page_title, ROUND( dist::numeric, 2) from t;
-CREATE INDEX ON tsv_data USING hnsw (context_page_description_ai vector_l2_ops);
+CREATE INDEX index1 ON tsv_data USING hnsw (context_page_description_ai vector_l2_ops);
 CREATE INDEX ON tsv_data USING hnsw (context_page_description_ai) with (ef = 100, ef_construction=150 , M=11, alg="hnswlib");
 set enable_seqscan=false;
 
@@ -73,3 +73,10 @@ explain with t as (select id, page_title, context_page_description_ai <-> (selec
 -- introduce a WITH statement to round returned distances AFTER a lookup so the index can be used
 with t as (select id, page_title, context_page_description_ai <-> (select context_page_description_ai from tsv_data where id = 81386) as dist
  from tsv_data order by dist limit 10) select id, page_title, ROUND( dist::numeric, 2) from t;
+
+-- test additional inserts on wiki table
+drop index index1;
+select count(*) from tsv_data;
+INSERT INTO tsv_data(context_page_description_ai)
+SELECT context_page_description_ai FROM tsv_data WHERE context_page_description_ai IS NOT NULL LIMIT 444;
+select count(*) from tsv_data;
