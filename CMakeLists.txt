@@ -183,8 +183,8 @@ add_custom_target(
 
 # Package universal install script
 add_custom_target(
-  package_archive
-  ${CMAKE_COMMAND} -E env SOURCE_DIR=${CMAKE_SOURCE_DIR} BUILD_DIR=${CMAKE_BINARY_DIR}  ${CMAKE_SOURCE_DIR}/scripts/package.sh
+  archive
+  ${CMAKE_COMMAND} -E env SOURCE_DIR=${CMAKE_SOURCE_DIR} BUILD_DIR=${CMAKE_BINARY_DIR} ${CMAKE_SOURCE_DIR}/scripts/package.sh
   DEPENDS ${CMAKE_BINARY_DIR}/lanterndb.so
   WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )

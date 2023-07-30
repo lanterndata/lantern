@@ -11,16 +11,12 @@ cp ${SOURCE_DIR}/cmake/PackageExtensionTemplate.cmake ${BUILD_DIR}/${PACKAGE_NAM
 cp ${SOURCE_DIR}/cmake/FindPostgreSQL.cmake ${BUILD_DIR}/${PACKAGE_NAME}/cmake
 cp ${BUILD_DIR}/*.so ${BUILD_DIR}/${PACKAGE_NAME}/src
 cp ${BUILD_DIR}/*.sql ${BUILD_DIR}/${PACKAGE_NAME}/src
+cp ${SOURCE_DIR}/sql/updates/*.sql ${BUILD_DIR}/${PACKAGE_NAME}/src
 cp ${SOURCE_DIR}/lanterndb.control ${BUILD_DIR}/${PACKAGE_NAME}/src
 
 cd ${BUILD_DIR} && tar cf ${PACKAGE_NAME}.tar ${PACKAGE_NAME}
 rm -rf ${BUILD_DIR}/${PACKAGE_NAME}
 
-# Write output for github action artifacts
-if [ -z "$GITHUB_OUTPUT" ]
-then
-  export GITHUB_OUTPUT=/dev/null
-fi
-
-echo "archive_package_name=$PACKAGE_NAME" >> "$GITHUB_OUTPUT" && \
-echo "archive_package_path=${BUILD_DIR}/${PACKAGE_NAME}" >> "$GITHUB_OUTPUT"
+## Write output so we can use this in actions and upload artifacts
+echo "archive_package_name=${PACKAGE_NAME}.tar" >> "/tmp/gh-output.txt"
+echo "archive_package_path=${BUILD_DIR}/${PACKAGE_NAME}.tar" >> "/tmp/gh-output.txt"

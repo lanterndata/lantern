@@ -37,7 +37,7 @@ jobs:
           BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
       - name: Create Archive Package
         id: archive
-        run: sudo su -c "GITHUB_OUTPUT=$GITHUB_OUTPUT cd /tmp/lanterndb/build && make archive"
+        run: sudo su -c "GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/package-archive.sh"
         if: ${{ matrix.postgres == '15' }} # The output is not dependent to pg version, so we can run this only once
       # Enable tmate debugging of manually-triggered workflows if the input option was provided
       # - name: Setup tmate session
