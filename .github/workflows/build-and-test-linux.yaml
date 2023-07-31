@@ -9,7 +9,7 @@ on:
       - main
       - dev
 jobs:
-  ubuntu:
+  ubuntu-build:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -30,14 +30,46 @@ jobs:
         with:
           submodules: "recursive"
       - name: Build
-        run: sudo su -c "PG_VERSION=$PG_VERSION USE_SOURCE=1 ./ci/scripts/build-linux.sh"
+        id: build
+        run: sudo su -c "PG_VERSION=$PG_VERSION USE_SOURCE=1 GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/build-linux.sh"
         env:
           PG_VERSION: ${{ matrix.postgres }}
           BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
-      # Enable tmate debugging of manually-triggered workflows if the input option was provided
-      # - name: Setup tmate session
-      #   uses: mxschmitt/action-tmate@v3
+      - name: Create Archive Package
+        id: archive
+        run: sudo su -c "GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/package-archive.sh"
       - name: Run tests
         run: sudo su postgres -c "PG_VERSION=$PG_VERSION ./ci/scripts/run-tests.sh"
         env:
           PG_VERSION: ${{ matrix.postgres }}
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ steps.build.outputs.package_name }}
+          path: ${{ steps.build.outputs.package_path }}
+      - name: Upload archive package artifacts
+        uses: actions/upload-artifact@v3
+        if: ${{ steps.archive.outputs.archive_package_name != '' }}
+        with:
+          name: lanterndb-package
+          path: ${{ steps.archive.outputs.archive_package_path }}
+  ubuntu-package:
+    runs-on: ubuntu-22.04
+    needs: [ubuntu-build]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/download-artifact@v3
+        with:
+          name: lanterndb-package
+          path: /tmp/lanterndb-package
+      - name: Create universal package
+        id: package
+        run: sudo su -c "GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/universal-package.sh"
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ steps.package.outputs.package_name }}
+          path: ${{ steps.package.outputs.package_path }}
+      - uses: geekyeggo/delete-artifact@v2
+        with:
+          name: lanterndb-package
