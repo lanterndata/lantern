@@ -1,0 +1,71 @@
+name: test
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+      - dev
+  workflow_dispatch:
+    inputs:
+      debug_enabled:
+        type: boolean
+        description: "Run the build with tmate debugging enabled (https://github.com/marketplace/actions/debugging-with-tmate)"
+        required: false
+        default: false
+jobs:
+  ubuntu-build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - postgres: 15
+            os: ubuntu-22.04
+          - postgres: 14
+            os: ubuntu-22.04
+          - postgres: 13
+            os: ubuntu-22.04
+          - postgres: 12
+            os: ubuntu-22.04
+          - postgres: 11
+            os: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: "recursive"
+      - name: Build
+        id: build
+        run: sudo su -c "PG_VERSION=$PG_VERSION USE_SOURCE=1 GITHUB_OUTPUT=$GITHUB_OUTPUT ENABLE_COVERAGE=1 ./ci/scripts/build-linux.sh"
+        env:
+          PG_VERSION: ${{ matrix.postgres }}
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+      # Enable tmate debugging of manually-triggered workflows if the input option was provided
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
+      - name: Run tests
+        id: test
+        run: sudo su postgres -c "PG_VERSION=$PG_VERSION ./ci/scripts/run-tests.sh"
+        env:
+          PG_VERSION: ${{ matrix.postgres }}
+      - name: Upload Postgres logs
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: postgres-server-${{ matrix.postgres }}-logs
+          path: |
+            /tmp/pg-out.log
+            /tmp/pg-error.log
+      - name: Upload to codecov
+        uses: codecov/codecov-action@v3
+        env:
+          codecov_token: ${{ secrets.CODECOV_TOKEN }}
+        if: ${{ env.codecov_token != '' && matrix.postgres == 15 }} # for now run only on once
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          name: codecov-lanterndb
+          fail_ci_if_error: true
+          files: /tmp/coverage.xml

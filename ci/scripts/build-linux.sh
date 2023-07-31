@@ -2,10 +2,16 @@
 
 get_cmake_flags(){
  # TODO:: remove after test
- echo "-DUSEARCH_NO_MARCH_NATIVE=ON"
+ flags="-DUSEARCH_NO_MARCH_NATIVE=ON"
  # if [[ $ARCH == *"arm"* ]]; then
  #   echo "-DUSEARCH_NO_MARCH_NATIVE=ON"
  # fi
+ if [ -n "$ENABLE_COVERAGE" ]
+ then
+   flags="$flags -DCMAKE_C_COMPILER=/usr/bin/gcc -DCODECOVERAGE=ON"
+ fi
+
+ echo $flags
 }
 
 export BRANCH=$BRANCH_NAME
@@ -34,7 +40,7 @@ echo "LANG=en_US.UTF-8" > /etc/locale.conf && \
 apt update -y && apt install locales -y && \
 locale-gen en_US.UTF-8 && \
 # Install required packages for build
-apt install lsb-core build-essential automake cmake wget git dpkg-dev wget -y && \
+apt install lsb-core build-essential automake cmake wget git dpkg-dev gcovr -y && \
 # Add postgresql apt repo
 export ARCH=$(dpkg-architecture -q DEB_BUILD_ARCH) && \
 sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list' && \
@@ -46,7 +52,7 @@ apt install postgresql-$PG_VERSION-pgvector -y
 # Fix pg_config (sometimes it points to wrong version)
 rm -f /usr/bin/pg_config && ln -s /usr/lib/postgresql/$PG_VERSION/bin/pg_config /usr/bin/pg_config
 
-if [ -z ${USE_SOURCE+x} ]; then
+if [ -z ${USE_SOURCE} ]; then
   # Clone from git
   cd /tmp && git clone --recursive https://github.com/lanterndata/lanterndb.git -b $BRANCH
 else 
@@ -57,17 +63,19 @@ fi
 cd /tmp/lanterndb && mkdir build && cd build && \
 # Run cmake
 sh -c "cmake $(get_cmake_flags) .." && \
-make install && \
-# Bundle debian packages && \
-cpack &&
- 
-# Print package name to github output
-export EXT_VERSION=$(cmake --system-information | awk -F= '$1~/CMAKE_PROJECT_VERSION:STATIC/{print$2}') && \
-export PACKAGE_NAME=lanterndb-${EXT_VERSION}-postgres-${PG_VERSION}-${ARCH}.deb && \
+make install
 
-echo "package_version=$EXT_VERSION" >> "$GITHUB_OUTPUT" && \
-echo "package_name=$PACKAGE_NAME" >> "$GITHUB_OUTPUT" && \
-echo "package_path=$(pwd)/$(ls *.deb | tr -d '\n')" >> "$GITHUB_OUTPUT"
+if [ -n "$BUILD_PACKAGES" ]; then
+  # Bundle debian packages
+  cpack &&
+  # Print package name to github output
+  export EXT_VERSION=$(cmake --system-information | awk -F= '$1~/CMAKE_PROJECT_VERSION:STATIC/{print$2}') && \
+  export PACKAGE_NAME=lanterndb-${EXT_VERSION}-postgres-${PG_VERSION}-${ARCH}.deb && \
+
+  echo "package_version=$EXT_VERSION" >> "$GITHUB_OUTPUT" && \
+  echo "package_name=$PACKAGE_NAME" >> "$GITHUB_OUTPUT" && \
+  echo "package_path=$(pwd)/$(ls *.deb | tr -d '\n')" >> "$GITHUB_OUTPUT"
+fi
 
 # Chown to postgres for running tests
 chown -R postgres:postgres /tmp/lanterndb

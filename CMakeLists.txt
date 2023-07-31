@@ -22,6 +22,16 @@ endif()
 option(DEV "Developer mode: provide code formatting, get postgres source, etc." OFF)
 option(BUILD_WITH_USEARCH "Build with usearch as hnsw provider" ON)
 option(BUILD_LIBHNSW "Build libhnsw as hnsw provider" OFF)
+option(CODECOVERAGE "Enable code coverage for the build" OFF)
+
+if(CODECOVERAGE)
+  message(STATUS "Code coverage is enabled.")
+  # Note that --coverage is synonym for the necessary compiler and linker flags
+  # for the given compiler.  For example, with GCC, --coverage translates to
+  # -fprofile-arcs -ftest-coverage when compiling and -lgcov when linking
+  add_compile_options(--coverage -O0)
+  add_link_options(--coverage)
+endif(CODECOVERAGE)
 
 # options passed into lanterndb sourcecode
 # todo:: tests for copynodes=ON are broken
@@ -73,6 +83,7 @@ endforeach()
 if(APPLE)
   set(_link_flags "${_link_flags} -bundle_loader ${PG_BINARY}")
 endif()
+
 
 set_target_properties(
   lanterndb
