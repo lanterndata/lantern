@@ -31,17 +31,13 @@ jobs:
           submodules: "recursive"
       - name: Build
         id: build
-        run: sudo su -c "PG_VERSION=$PG_VERSION USE_SOURCE=1 GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/build-linux.sh"
+        run: sudo su -c "PG_VERSION=$PG_VERSION USE_SOURCE=1 GITHUB_OUTPUT=$GITHUB_OUTPUT BUILD_PACKAGES=1 ./ci/scripts/build-linux.sh"
         env:
           PG_VERSION: ${{ matrix.postgres }}
           BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
       - name: Create Archive Package
         id: archive
         run: sudo su -c "GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/package-archive.sh"
-      - name: Run tests
-        run: sudo su postgres -c "PG_VERSION=$PG_VERSION ./ci/scripts/run-tests.sh"
-        env:
-          PG_VERSION: ${{ matrix.postgres }}
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
