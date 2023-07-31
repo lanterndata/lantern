@@ -180,3 +180,21 @@ add_custom_target(
   COMMAND ${CMAKE_SOURCE_DIR}/scripts/bench.sh
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
  )
+
+# Package universal install script
+string(REGEX MATCH "^PostgreSQL (\[0-9]+).*"
+  PostgreSQL_VERSION_NUMBER ${PostgreSQL_VERSION_STRING})
+
+add_custom_target(
+  archive
+  ${CMAKE_COMMAND} -E env SOURCE_DIR=${CMAKE_SOURCE_DIR} BUILD_DIR=${CMAKE_BINARY_DIR} PG_VERSION=${CMAKE_MATCH_1} ${CMAKE_SOURCE_DIR}/scripts/package.sh
+  DEPENDS ${CMAKE_BINARY_DIR}/${_script_file}
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+add_dependencies(archive lanterndb)
+
+# Debian packaging
+set(CPACK_GENERATOR "DEB")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "postgresql-${CMAKE_MATCH_1}, postgresql-${CMAKE_MATCH_1}-pgvector")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Lantern Data")
+include(CPack)
