@@ -2,6 +2,7 @@
 
 [![build](https://github.com/lanterndata/lanterndb/actions/workflows/build-linux.yaml/badge.svg?branch=main)](https://github.com/lanterndata/lanterndb/actions/workflows/build-linux.yaml)
 [![test](https://github.com/lanterndata/lanterndb/actions/workflows/test-linux.yaml/badge.svg?branch=main)](https://github.com/lanterndata/lanterndb/actions/workflows/test-linux.yaml)
+[![codecov](https://codecov.io/github/lanterndata/lanterndb/branch/main/graph/badge.svg)](https://codecov.io/github/lanterndata/lanterndb)
 
 LanternDB is a relational and vector database, packaged as a Postgres extension.
 It provides a new index type for vector columns called `hnsw` which speeds up `ORDER BY` queries on the table.
