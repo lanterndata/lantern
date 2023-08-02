@@ -35,4 +35,4 @@ typedef struct HnswBuildState
 
 IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInfo);
 void              ldb_ambuildempty(Relation index);
-#endif // LDB_HNSW_BUILD_H
+#endif  // LDB_HNSW_BUILD_H

@@ -6,14 +6,14 @@
 #include <sys/mman.h>  // `mmap`
 #include <sys/stat.h>  // `fstat` for file size
 #include <unistd.h>    // `open`, `close`
+#include <utils/array.h>
 #include <utils/memutils.h>
 
 #include "bench.h"
-#include "hnsw.h"
 #include "external_index.h"
+#include "hnsw.h"
 #include "usearch.h"
 #include "utils.h"
-#include "bench.h"
 #include "vector.h"
 
 #if PG_VERSION_NUM >= 140000
@@ -77,6 +77,7 @@ static void BuildCallback(
 {
     HnswBuildState *buildstate = (HnswBuildState *)state;
     MemoryContext   oldCtx;
+    // ArrayType      *array;
 
 #if PG_VERSION_NUM < 130000
     ItemPointer tid = &hup->t_self;
@@ -84,6 +85,24 @@ static void BuildCallback(
 
     /* Skip nulls */
     if(isnull[ 0 ]) return;
+
+    // /* Get the first value in the 'values' array */
+    // Datum first_value = values[ 0 ];
+    // /* Get the OID of the base type of the first value (array element type) */
+    // Oid base_type_oid = getBaseType(get_fn_expr_argtype(fcinfo->flinfo, 0));
+    // /* Check if the first value is an array by checking the OID */
+    // bool is_array = OidIsValid(base_type_oid) && type_is_array(base_type_oid);
+    //
+    // if(is_array) {
+    //     /* Validate the dimensions of the array */
+    //     array = DatumGetArrayTypePCopy(first_value);
+    //     n_items = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
+    //
+    //     if(n_items != index->rd_options->dims) {
+    //         elog(ERROR, "Wrong number of dimensions: %d instead of %d expected", n_items,
+    //         (int)index->rd_options->dims);
+    //     }
+    // }
 
     /* Use memory context since detoast can allocate */
     oldCtx = MemoryContextSwitchTo(buildstate->tmpCtx);
@@ -104,20 +123,21 @@ static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation i
     buildstate->index = index;
     buildstate->indexInfo = indexInfo;
 
-    buildstate->dimensions = TupleDescAttr(index->rd_att, 0)->atttypmod;
+    // buildstate->dimensions = TupleDescAttr(index->rd_att, 0)->attlen;
 
     /* Require column to have dimensions to be indexed */
-    if(buildstate->dimensions < 0) elog(ERROR, "column does not have dimensions");
+    // if(buildstate->dimensions < 0) elog(ERROR, "column does not have dimensions");
 
     // todo:: check here that type of column is vector
 
     // not supported because of 8K page limit in postgres WAL pages
     // can pass this limit once quantization is supported
-    if(buildstate->dimensions > 2000)
+    if(buildstate->dimensions > HNSW_MAX_DIMS)
         elog(ERROR,
              "vector dimension %d is too large. "
-             "LanternDB currently supports up to 2000dim vectors",
-             buildstate->dimensions);
+             "LanternDB currently supports up to %ddim vectors",
+             buildstate->dimensions,
+             HNSW_MAX_DIMS);
 
     // keeps track of number of tuples added to index
     buildstate->tuples_indexed = 0;

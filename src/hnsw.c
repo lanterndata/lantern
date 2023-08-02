@@ -11,6 +11,7 @@
 
 #include "hnsw/build.h"
 #include "hnsw/delete.h"
+#include "hnsw/distfunc.h"
 #include "hnsw/insert.h"
 #include "hnsw/options.h"
 #include "hnsw/scan.h"
@@ -154,12 +155,12 @@ Datum       hnsw_handler(PG_FUNCTION_ARGS)
      * todo:: review!!
      * Seems to indicate that amoptionalkey must be false
      * https://www.postgresql.org/docs/current/index-api.html
-     * 
-     * However, this argument fails when an index scan has no restriction clause 
-     * for a given index column. In practice this means that indexes that have 
-     * amoptionalkey true must index nulls, since the planner might 
+     *
+     * However, this argument fails when an index scan has no restriction clause
+     * for a given index column. In practice this means that indexes that have
+     * amoptionalkey true must index nulls, since the planner might
      * decide to use such an index with no scan keys at all
-    */
+     */
     amroutine->amoptionalkey = true;
     amroutine->amsearcharray = false;
     amroutine->amsearchnulls = false;
@@ -209,7 +210,28 @@ Datum       hnsw_handler(PG_FUNCTION_ARGS)
 // dummy handler needed to safely upgrade access method handler
 // from embedding_handler to hnsw_handler in 0.0.1 to 0.0.2 transition
 PGDLLEXPORT PG_FUNCTION_INFO_V1(embedding_handler);
-Datum       embedding_handler(PG_FUNCTION_ARGS)
+
+Datum embedding_handler(PG_FUNCTION_ARGS) { return hnsw_handler(fcinfo); }
+
+PGDLLEXPORT PG_FUNCTION_INFO_V1(l2_distance);
+
+static dist_t calc_distance(ArrayType *a, ArrayType *b)
 {
-    return hnsw_handler(fcinfo);
+    int      a_dim = ArrayGetNItems(ARR_NDIM(a), ARR_DIMS(a));
+    int      b_dim = ArrayGetNItems(ARR_NDIM(b), ARR_DIMS(b));
+    coord_t *ax = (coord_t *)ARR_DATA_PTR(a);
+    coord_t *bx = (coord_t *)ARR_DATA_PTR(b);
+
+    if(a_dim != b_dim) {
+        ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION), errmsg("different array dimensions %d and %d", a_dim, b_dim)));
+    }
+
+    return l2_dist_impl(ax, bx, a_dim);
+}
+
+Datum l2_distance(PG_FUNCTION_ARGS)
+{
+    ArrayType *a = PG_GETARG_ARRAYTYPE_P(0);
+    ArrayType *b = PG_GETARG_ARRAYTYPE_P(1);
+    PG_RETURN_FLOAT4(calc_distance(a, b));
 }

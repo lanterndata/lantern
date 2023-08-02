@@ -7,6 +7,10 @@
 // todo:: add hnsw dynamic vector dimension constraints
 // based on vector element size
 
+/* HNSW vector dim constraints */
+#define HNSW_DEFAULT_DIMS 3
+#define HNSW_MAX_DIMS     2000
+
 /* 32 in faiss */
 #define HNSW_DEFAULT_M 16
 #define HNSW_MAX_M     128
