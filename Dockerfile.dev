@@ -1,0 +1,13 @@
+FROM postgres:15
+
+WORKDIR /lanterndb
+COPY . .
+# Set Locale
+RUN apt update && apt-mark hold locales && \
+# Install required packages for build
+apt install -y --no-install-recommends build-essential cmake postgresql-server-dev-15 gdb
+
+# Build lanterndb
+RUN mkdir build && cd build && \
+# Run cmake
+cmake -DUSEARCH_NO_MARCH_NATIVE=ON -DCMAKE_BUILD_TYPE=Debug .. &&  make install

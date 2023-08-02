@@ -123,6 +123,17 @@ void _PG_init(void)
 	);
 #endif
     add_int_reloption(ldb_hnsw_index_withopts,
+                      "dims",
+                      "Number of dimensions of the vector",
+                      HNSW_DEFAULT_DIMS,
+                      1,
+                      HNSW_MAX_DIMS
+#if PG_VERSION_NUM >= 130000
+                      ,
+                      AccessExclusiveLock
+#endif
+    );
+    add_int_reloption(ldb_hnsw_index_withopts,
                       "m",
                       "HNSW M hyperparameter",
                       HNSW_DEFAULT_M,
