@@ -53,8 +53,8 @@ set(SOURCES_DIR "src")
 file(GLOB SOURCES "${SOURCES_DIR}/**/*.c" "${SOURCES_DIR}/*.c")
 
 set(USEARCH_USE_SIMSIMD OFF)
-set(USEARCH_BUILD_LIBUSEARCH_STATIC ON)
-set(USEARCH_BUILD_LIBUSEARCH_SHARED OFF)
+set(USEARCH_LOOKUP_LABEL OFF)
+set(USEARCH_BUILD_STATIC ON)
 # do not add asan flags to usearch debug build of the library since
 # we still have not figured out how to load those into postgres
 set(USEARCH_DEBUG_BUILD_ASAN OFF)
