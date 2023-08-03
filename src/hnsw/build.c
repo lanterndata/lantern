@@ -11,6 +11,7 @@
 
 #include "bench.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_type.h"
 #include "external_index.h"
 #include "hnsw.h"
 #include "usearch.h"
