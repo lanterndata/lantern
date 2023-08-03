@@ -6,10 +6,11 @@
 #include <pgstat.h>
 #include <utils/rel.h>
 
-#include "hnsw.h"
+#include "build.h"
 #include "external_index.h"
-#include "vector.h"
+#include "hnsw.h"
 #include "options.h"
+#include "vector.h"
 
 PG_MODULE_MAGIC;
 
@@ -29,7 +30,7 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     elog(INFO, "began scanning with %d keys and %d orderbys", nkeys, norderbys);
     scan = RelationGetIndexScan(index, nkeys, norderbys);
 
-    dimensions = TupleDescAttr(index->rd_att, 0)->atttypmod;
+    dimensions = GetHnswIndexDimensions(index);
     scanstate = (HnswScanState *)palloc0(sizeof(HnswScanState));
     scanstate->first = true;
 
@@ -78,7 +79,8 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     EXTRA_DIRTIED_SIZE = 0;
     ldb_wal_retriever_area_init(BLCKSZ * 100);
 
-    usearch_set_node_retriever(scanstate->usearch_index, ldb_wal_index_node_retriever, ldb_wal_index_node_retriever, &error);
+    usearch_set_node_retriever(
+        scanstate->usearch_index, ldb_wal_index_node_retriever, ldb_wal_index_node_retriever, &error);
     assert(error == NULL);
 
     usearch_mem = headerp->usearch_header;
@@ -155,7 +157,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
     HnswScanState *scanstate = (HnswScanState *)scan->opaque;
     ItemPointer    tid;
 
-    // posgres does not allow backwards scan on operators 
+    // posgres does not allow backwards scan on operators
     // (todo:: look into this andcite? took from pgvector)
     // unclear how one would do backwards scan with hnsw algorithm
     // the graph is contructed with links to nearest neighbors and no info

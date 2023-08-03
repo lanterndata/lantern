@@ -10,6 +10,7 @@
 /* HNSW vector dim constraints */
 #define HNSW_DEFAULT_DIMS 3
 #define HNSW_MAX_DIMS     2000
+#define HNSW_MIN_DIMS     1
 
 /* 32 in faiss */
 #define HNSW_DEFAULT_M 16
@@ -32,6 +33,7 @@ typedef struct HnswOptions
 {
     int32 vl_len_; /* varlena header (do not touch directly!) */
     // max elements the table will ever have. required for hnswlib
+    int dims;
     int element_limit;
     int m;
     int ef_construction;
@@ -40,6 +42,7 @@ typedef struct HnswOptions
     // char[ALG_OPTION_MAX_STRING_LEN] alg;
 } HnswOptions;
 
+int   HnswGetDims(Relation index);
 int   HnswGetM(Relation index);
 int   HnswGetEfConstruction(Relation index);
 int   HnswGetEf(Relation index);

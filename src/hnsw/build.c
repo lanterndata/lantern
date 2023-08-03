@@ -10,10 +10,12 @@
 #include <utils/memutils.h>
 
 #include "bench.h"
+#include "catalog/namespace.h"
 #include "external_index.h"
 #include "hnsw.h"
 #include "usearch.h"
 #include "utils.h"
+#include "utils/lsyscache.h"
 #include "vector.h"
 
 #if PG_VERSION_NUM >= 140000
@@ -70,6 +72,33 @@ static void AddTupleToIndex(Relation index, ItemPointer tid, Datum *values, Hnsw
 }
 
 /*
+ * Get data type of index
+ */
+HnswDataType GetIndexDataType(Relation index)
+{
+    TupleDesc         indexTupDesc = RelationGetDescr(index);
+    Form_pg_attribute attr = TupleDescAttr(indexTupDesc, 0);
+    Oid               columnType = attr->atttypid;
+
+    Oid realArrayTypeOid = get_array_type(FLOAT4OID);
+
+    Oid   vectorTypeOid;
+    char *typeName = "vector";
+
+    vectorTypeOid = TypenameGetTypid(typeName);
+
+    if(columnType == realArrayTypeOid) {
+        return REAL_ARRAY;
+    }
+
+    if(columnType == vectorTypeOid) {
+        return VECTOR;
+    }
+
+    return UNKNOWN;
+}
+
+/*
  * Callback for table_index_build_scan
  */
 static void BuildCallback(
@@ -77,7 +106,6 @@ static void BuildCallback(
 {
     HnswBuildState *buildstate = (HnswBuildState *)state;
     MemoryContext   oldCtx;
-    // ArrayType      *array;
 
 #if PG_VERSION_NUM < 130000
     ItemPointer tid = &hup->t_self;
@@ -86,23 +114,9 @@ static void BuildCallback(
     /* Skip nulls */
     if(isnull[ 0 ]) return;
 
-    // /* Get the first value in the 'values' array */
-    // Datum first_value = values[ 0 ];
-    // /* Get the OID of the base type of the first value (array element type) */
-    // Oid base_type_oid = getBaseType(get_fn_expr_argtype(fcinfo->flinfo, 0));
-    // /* Check if the first value is an array by checking the OID */
-    // bool is_array = OidIsValid(base_type_oid) && type_is_array(base_type_oid);
-    //
-    // if(is_array) {
-    //     /* Validate the dimensions of the array */
-    //     array = DatumGetArrayTypePCopy(first_value);
-    //     n_items = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
-    //
-    //     if(n_items != index->rd_options->dims) {
-    //         elog(ERROR, "Wrong number of dimensions: %d instead of %d expected", n_items,
-    //         (int)index->rd_options->dims);
-    //     }
-    // }
+    HnswDataType indexType = GetIndexDataType(index);
+
+    CheckHnswIndexDimensions(index, values, buildstate->dimensions);
 
     /* Use memory context since detoast can allocate */
     oldCtx = MemoryContextSwitchTo(buildstate->tmpCtx);
@@ -114,6 +128,41 @@ static void BuildCallback(
     MemoryContextReset(buildstate->tmpCtx);
 }
 
+int GetHnswIndexDimensions(Relation index)
+{
+    HnswDataType columnType = GetIndexDataType(index);
+
+    // check if column is type of real[]
+    if(columnType == REAL_ARRAY) {
+        // if column is array take dimensions from options
+        return HnswGetDims(index);
+    } else if(columnType == VECTOR) {
+        return TupleDescAttr(index->rd_att, 0)->atttypmod;
+    } else {
+        elog(ERROR,
+             "Unsupported type"
+             "LanternDB currently supports only real[] and vector types");
+    }
+
+    return -1;
+}
+
+void CheckHnswIndexDimensions(Relation index, Datum *values, int dimensions)
+{
+    ArrayType   *array;
+    int          n_items;
+    HnswDataType indexType = GetIndexDataType(index);
+
+    if(indexType == REAL_ARRAY) {
+        /* Check dimensions of vector */
+        array = DatumGetArrayTypePCopy(values[ 0 ]);
+        n_items = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
+        if(n_items != dimensions) {
+            elog(ERROR, "Wrong number of dimensions: %d instead of %d expected", n_items, dimensions);
+        }
+    }
+}
+
 /*
  * Initialize the build state
  */
@@ -123,12 +172,12 @@ static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation i
     buildstate->index = index;
     buildstate->indexInfo = indexInfo;
 
-    // buildstate->dimensions = TupleDescAttr(index->rd_att, 0)->attlen;
+    HnswDataType columnType = GetIndexDataType(index);
+
+    buildstate->dimensions = GetHnswIndexDimensions(index);
 
     /* Require column to have dimensions to be indexed */
-    // if(buildstate->dimensions < 0) elog(ERROR, "column does not have dimensions");
-
-    // todo:: check here that type of column is vector
+    if(buildstate->dimensions < HNSW_MIN_DIMS) elog(ERROR, "column does not have dimensions");
 
     // not supported because of 8K page limit in postgres WAL pages
     // can pass this limit once quantization is supported
