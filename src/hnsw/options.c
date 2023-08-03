@@ -12,6 +12,13 @@
 static relopt_kind ldb_hnsw_index_withopts;
 static int         ldb_hnsw_init_k;
 
+int HnswGetDims(Relation index)
+{
+    HnswOptions *opts = (HnswOptions *)index->rd_options;
+    if(opts) return opts->dims;
+    return HNSW_DEFAULT_DIMS;
+}
+
 int HnswGetM(Relation index)
 {
     HnswOptions *opts = (HnswOptions *)index->rd_options;
@@ -77,7 +84,8 @@ static void HnswAlgorithmParamValidator(const char *value)
  */
 bytea *ldb_amoptions(Datum reloptions, bool validate)
 {
-    static const relopt_parse_elt tab[] = {{"element_limit", RELOPT_TYPE_INT, offsetof(HnswOptions, element_limit)},
+    static const relopt_parse_elt tab[] = {{"dims", RELOPT_TYPE_INT, offsetof(HnswOptions, dims)},
+                                           {"element_limit", RELOPT_TYPE_INT, offsetof(HnswOptions, element_limit)},
                                            {"m", RELOPT_TYPE_INT, offsetof(HnswOptions, m)},
                                            {"ef_construction", RELOPT_TYPE_INT, offsetof(HnswOptions, ef_construction)},
                                            {"ef", RELOPT_TYPE_INT, offsetof(HnswOptions, ef)},

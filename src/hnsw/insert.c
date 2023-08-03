@@ -6,11 +6,14 @@
 #include <assert.h>
 #include <float.h>
 #include <storage/bufmgr.h>
+#include <utils/array.h>
 #include <utils/rel.h>
 #include <utils/relcache.h>
 
+#include "build.h"
 #include "external_index.h"
 #include "hnsw.h"
+#include "options.h"
 #include "usearch.h"
 #include "utils.h"
 #include "vector.h"
@@ -64,6 +67,8 @@ bool ldb_aminsert(Relation         index,
     int                  new_tuple_size;
     uint32               new_tuple_id;
     HnswIndexTuple      *new_tuple;
+    ArrayType           *array;
+    int                  n_items;
 
     if(checkUnique != UNIQUE_CHECK_NO) {
         elog(ERROR, "unique constraints on hnsw vector indexes not supported");
@@ -82,7 +87,9 @@ bool ldb_aminsert(Relation         index,
         usearch_init_options_t opts;
         MemoryContextCallback *callback;
 
-        opts.dimensions = TupleDescAttr(index->rd_att, 0)->atttypmod;
+        HnswDataType indexType = GetIndexDataType(index);
+        opts.dimensions = GetHnswIndexDimensions(index);
+        CheckHnswIndexDimensions(index, values, opts.dimensions);
         PopulateUsearchOpts(index, &opts);
 
         //  read index header page to know how many pages are already inserted

@@ -33,6 +33,16 @@ typedef struct HnswBuildState
     MemoryContext tmpCtx;
 } HnswBuildState;
 
+typedef enum
+{
+    REAL_ARRAY,
+    VECTOR,
+    UNKNOWN
+} HnswDataType;
+
 IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInfo);
 void              ldb_ambuildempty(Relation index);
+HnswDataType      GetIndexDataType(Relation index);
+int               GetHnswIndexDimensions(Relation index);
+void              CheckHnswIndexDimensions(Relation index, Datum *values, int deimensions);
 #endif  // LDB_HNSW_BUILD_H
