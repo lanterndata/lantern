@@ -47,12 +47,12 @@ SELECT v as v42 FROM sift_base1k WHERE id = 42 \gset
 -- no index scan
 BEGIN;
 DROP INDEX IF EXISTS sift_base1k_hnsw_idx;
-EXPLAIN SELECT id, ROUND((v <-> :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT id, ROUND((v <-> :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
 SELECT id, ROUND((v <-> :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
 ROLLBACK;
 
 -- index scan
-EXPLAIN SELECT id, ROUND((v <-> :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT id, ROUND((v <-> :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
 SELECT id, ROUND((v <-> :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
 -- todo:: craft an SQL query to compare the results of the two above so I do not have to do it manually
 
@@ -72,7 +72,7 @@ INSERT INTO new_small_world (id, vector) VALUES
 ('111', '{1,1,1}');
 -- index scan
 SELECT '{0,0,0}'::real[] as v42  \gset
-EXPLAIN SELECT id, ROUND((vector <-> :'v42')::numeric, 2) FROM new_small_world ORDER BY vector <-> :'v42' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT id, ROUND((vector <-> :'v42')::numeric, 2) FROM new_small_world ORDER BY vector <-> :'v42' LIMIT 10;
 SELECT id, ROUND((vector <-> :'v42')::numeric, 2) FROM new_small_world ORDER BY vector <-> :'v42' LIMIT 10;
 
 SELECT count(*) from sift_base1k;
