@@ -26,6 +26,14 @@ make install
 # make test
 ```
 
+<details>
+<summary>If you have previously cloned LanternDB and would like to update</summary>
+```bash
+git pull
+git submodule update
+```
+</details>
+
 To install on M1 macs, replace `cmake ..` from the above with `cmake -DUSEARCH_NO_MARCH_NATIVE=ON ..` to avoid building usearch with unsupported `march=native`
 
 ## Using LanternDB
