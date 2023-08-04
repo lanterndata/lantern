@@ -108,7 +108,7 @@ static void BuildCallback(
 
     HnswDataType indexType = GetIndexDataType(index);
 
-    CheckHnswIndexDimensions(index, values, buildstate->dimensions);
+    CheckHnswIndexDimensions(index, values[ 0 ], buildstate->dimensions);
 
     /* Use memory context since detoast can allocate */
     oldCtx = MemoryContextSwitchTo(buildstate->tmpCtx);
@@ -139,7 +139,7 @@ int GetHnswIndexDimensions(Relation index)
     return -1;
 }
 
-void CheckHnswIndexDimensions(Relation index, Datum *values, int dimensions)
+void CheckHnswIndexDimensions(Relation index, Datum *value, int dimensions)
 {
     ArrayType   *array;
     int          n_items;
@@ -147,7 +147,7 @@ void CheckHnswIndexDimensions(Relation index, Datum *values, int dimensions)
 
     if(indexType == REAL_ARRAY) {
         /* Check dimensions of vector */
-        array = DatumGetArrayTypePCopy(values[ 0 ]);
+        array = DatumGetArrayTypePCopy(value);
         n_items = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
         if(n_items != dimensions) {
             elog(ERROR, "Wrong number of dimensions: %d instead of %d expected", n_items, dimensions);

@@ -88,7 +88,7 @@ bool ldb_aminsert(Relation         index,
         MemoryContextCallback *callback;
 
         opts.dimensions = GetHnswIndexDimensions(index);
-        CheckHnswIndexDimensions(index, values, opts.dimensions);
+        CheckHnswIndexDimensions(index, values[ 0 ], opts.dimensions);
         PopulateUsearchOpts(index, &opts);
 
         //  read index header page to know how many pages are already inserted
