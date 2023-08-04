@@ -2,21 +2,21 @@
 
 #include <assert.h>
 #include <catalog/index.h>
+#include <catalog/namespace.h>
+#include <catalog/pg_type.h>
 #include <storage/bufmgr.h>
 #include <sys/mman.h>  // `mmap`
 #include <sys/stat.h>  // `fstat` for file size
 #include <unistd.h>    // `open`, `close`
 #include <utils/array.h>
+#include <utils/lsyscache.h>
 #include <utils/memutils.h>
 
 #include "bench.h"
-#include "catalog/namespace.h"
-#include "catalog/pg_type.h"
 #include "external_index.h"
 #include "hnsw.h"
 #include "usearch.h"
 #include "utils.h"
-#include "utils/lsyscache.h"
 #include "vector.h"
 
 #if PG_VERSION_NUM >= 140000
@@ -81,22 +81,13 @@ HnswDataType GetIndexDataType(Relation index)
     Form_pg_attribute attr = TupleDescAttr(indexTupDesc, 0);
     Oid               columnType = attr->atttypid;
 
-    Oid realArrayTypeOid = get_array_type(FLOAT4OID);
-
-    Oid   vectorTypeOid;
-    char *typeName = "vector";
-
-    vectorTypeOid = TypenameGetTypid(typeName);
-
-    if(columnType == realArrayTypeOid) {
+    if(columnType == get_array_type(FLOAT4OID)) {
         return REAL_ARRAY;
-    }
-
-    if(columnType == vectorTypeOid) {
+    } else if(columnType == TypenameGetTypid("vector")) {
         return VECTOR;
+    } else {
+        return UNKNOWN;
     }
-
-    return UNKNOWN;
 }
 
 /*
@@ -178,7 +169,7 @@ static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation i
     buildstate->dimensions = GetHnswIndexDimensions(index);
 
     /* Require column to have dimensions to be indexed */
-    if(buildstate->dimensions < HNSW_MIN_DIMS) elog(ERROR, "column does not have dimensions");
+    if(buildstate->dimensions < 1) elog(ERROR, "column does not have dimensions");
 
     // not supported because of 8K page limit in postgres WAL pages
     // can pass this limit once quantization is supported
