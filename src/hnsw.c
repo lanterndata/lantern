@@ -213,23 +213,23 @@ PGDLLEXPORT PG_FUNCTION_INFO_V1(embedding_handler);
 
 Datum embedding_handler(PG_FUNCTION_ARGS) { return hnsw_handler(fcinfo); }
 
-PGDLLEXPORT PG_FUNCTION_INFO_V1(l2_distance);
+PGDLLEXPORT PG_FUNCTION_INFO_V1(l2sq_dist);
 
-static dist_t calc_distance(ArrayType *a, ArrayType *b)
+static float4 calc_distance(ArrayType *a, ArrayType *b)
 {
-    int      a_dim = ArrayGetNItems(ARR_NDIM(a), ARR_DIMS(a));
-    int      b_dim = ArrayGetNItems(ARR_NDIM(b), ARR_DIMS(b));
-    coord_t *ax = (coord_t *)ARR_DATA_PTR(a);
-    coord_t *bx = (coord_t *)ARR_DATA_PTR(b);
+    int     a_dim = ArrayGetNItems(ARR_NDIM(a), ARR_DIMS(a));
+    int     b_dim = ArrayGetNItems(ARR_NDIM(b), ARR_DIMS(b));
+    float4 *ax = (float4 *)ARR_DATA_PTR(a);
+    float4 *bx = (float4 *)ARR_DATA_PTR(b);
 
     if(a_dim != b_dim) {
-        ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION), errmsg("different array dimensions %d and %d", a_dim, b_dim)));
+        elog(ERROR, "expected equally sized arrays but got arrays with dimensions %d and %d", a_dim, b_dim);
     }
 
-    return l2_dist_impl(ax, bx, a_dim);
+    return l2sq_dist_impl(ax, bx, a_dim);
 }
 
-Datum l2_distance(PG_FUNCTION_ARGS)
+Datum l2sq_dist(PG_FUNCTION_ARGS)
 {
     ArrayType *a = PG_GETARG_ARRAYTYPE_P(0);
     ArrayType *b = PG_GETARG_ARRAYTYPE_P(1);

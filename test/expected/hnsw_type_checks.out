@@ -1,0 +1,18 @@
+CREATE EXTENSION IF NOT EXISTS lanterndb;
+CREATE EXTENSION
+CREATE TABLE small_world (
+    id varchar(3),
+    vector real[]
+);
+CREATE TABLE
+INSERT INTO small_world (id, vector) VALUES ('001', '{0,0,0,0}');
+INSERT 0 1
+CREATE INDEX ON small_world USING hnsw (vector) WITH (dims=4);
+psql:test/sql/hnsw_type_checks.sql:11: INFO:  done init usearch index
+psql:test/sql/hnsw_type_checks.sql:11: INFO:  inserted 1 elements
+psql:test/sql/hnsw_type_checks.sql:11: INFO:  done saving 1 vectors
+CREATE INDEX
+INSERT INTO small_world (id, vector) VALUES ('002', '{0,0,0}');
+psql:test/sql/hnsw_type_checks.sql:14: ERROR:  Wrong number of dimensions: 3 instead of 4 expected
+INSERT INTO small_world (id, vector) VALUES ('003', '{0,0,0,0}');
+INSERT 0 1

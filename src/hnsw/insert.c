@@ -87,7 +87,6 @@ bool ldb_aminsert(Relation         index,
         usearch_init_options_t opts;
         MemoryContextCallback *callback;
 
-        HnswDataType indexType = GetIndexDataType(index);
         opts.dimensions = GetHnswIndexDimensions(index);
         CheckHnswIndexDimensions(index, values, opts.dimensions);
         PopulateUsearchOpts(index, &opts);

@@ -125,7 +125,8 @@ target_compile_definitions(lanterndb PRIVATE _GNU_SOURCE)
 
 set(_script_file "lanterndb--${LANTERNDB_VERSION}.sql")
 set (_update_files
-  sql/updates/0.0.1--0.0.2.sql)
+  sql/updates/0.0.1--0.0.2.sql
+  sql/updates/0.0.2--latest.sql)
 
 add_custom_command(
   OUTPUT ${CMAKE_BINARY_DIR}/${_script_file}
