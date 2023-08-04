@@ -120,6 +120,7 @@ bool ldb_aminsert(Relation         index,
         // including for locks according to size indicated in usearch_mem
         //  ^^ do not worry about allocaitng locks above. but that has to be eliminated down the line
         usearch_view_mem_lazy(uidx, hdr->usearch_header, &error);
+        assert(!error);
 
         indexInfo->ii_AmCache = uidx;
 
@@ -139,8 +140,8 @@ bool ldb_aminsert(Relation         index,
     }
 
     uidx = (usearch_index_t)indexInfo->ii_AmCache;
-    assert(!error);
     meta = usearch_metadata(uidx, &error);
+    assert(!error);
 
     insertCtx = AllocSetContextCreate(CurrentMemoryContext, "LanternInsertContext", ALLOCSET_DEFAULT_SIZES);
     oldCtx = MemoryContextSwitchTo(insertCtx);
