@@ -37,3 +37,4 @@ done
 cd /tmp && tar cf ${PACKAGE_NAME}.tar $PACKAGE_NAME
 echo "package_name=${PACKAGE_NAME}.tar" >> $GITHUB_OUTPUT
 echo "package_path=/tmp/${PACKAGE_NAME}.tar" >> $GITHUB_OUTPUT
+echo "package_version=${PACKAGE_VERSION}" >> $GITHUB_OUTPUT

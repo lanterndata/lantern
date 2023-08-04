@@ -337,7 +337,7 @@ void ldb_wal_retriever_area_init(int size)
 #else
     takenbuffers = palloc0(sizeof(Buffer) * TAKENBUFFERS_MAX);
     if(takenbuffers_next > 0) {
-        elog(ERROR, "takenbuffers_next > 0 %d", takenbuffers_next);
+            elog(ERROR, "takenbuffers_next > 0 %d", takenbuffers_next);
     }
 #endif
 
@@ -564,11 +564,11 @@ void ldb_wal_retriever_area_reset()
     wal_retriever_area_offset = 0;
 #else
     for(int i = 0; i < TAKENBUFFERS_MAX; i++) {
-        if(takenbuffers[ i ] == InvalidBuffer) {
-            continue;
+            if(takenbuffers[ i ] == InvalidBuffer) {
+                continue;
         }
-        ReleaseBuffer(takenbuffers[ i ]);
-        takenbuffers[ i ] = InvalidBuffer;
+            ReleaseBuffer(takenbuffers[ i ]);
+            takenbuffers[ i ] = InvalidBuffer;
     }
     takenbuffers_next = 0;
 #endif
@@ -585,132 +585,15 @@ void ldb_wal_retriever_area_free()
     wal_retriever_area_offset = 0;
 #else
     for(int i = 0; i < TAKENBUFFERS_MAX; i++) {
-        if(takenbuffers[ i ] == InvalidBuffer) {
-            continue;
+            if(takenbuffers[ i ] == InvalidBuffer) {
+                continue;
         }
-        ReleaseBuffer(takenbuffers[ i ]);
-        takenbuffers[ i ] = InvalidBuffer;
+            ReleaseBuffer(takenbuffers[ i ]);
+            takenbuffers[ i ] = InvalidBuffer;
     }
     pfree(takenbuffers);
     takenbuffers_next = 0;
 #endif
-}
-
-static inline void *wal_index_node_retriever_sequential(int id)
-{
-    BlockNumber                blockno = 1;
-    Buffer                     buf;
-    Page                       page;
-    HnswIndexPageSpecialBlock *special_block;
-    HnswIndexTuple            *nodepage;
-    OffsetNumber               offset, max_offset;
-    // static cnt = 0;
-
-    elog(INFO, "Hnsw_disk: ldb_wal_index_node_retriever called with id %d", id);
-
-    while(BlockNumberIsValid(blockno)) {
-        buf = ReadBufferExtended(INDEX_RELATION_FOR_RETRIEVER, MAIN_FORKNUM, blockno, RBM_NORMAL, NULL);
-        LockBuffer(buf, BUFFER_LOCK_SHARE);
-        page = BufferGetPage(buf);
-        max_offset = PageGetMaxOffsetNumber(page);
-
-        for(offset = FirstOffsetNumber; offset <= max_offset; offset = OffsetNumberNext(offset)) {
-            nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
-            if(nodepage->id == id) {
-#if LANTERNDB_COPYNODES
-                if(wal_retriever_area == NULL || wal_retriever_area_offset + nodepage->size > wal_retriever_area_size) {
-                    elog(ERROR,
-                         "ERROR: wal_retriever_area "
-                         "is NULL or full");
-                }
-                memcpy(wal_retriever_area + wal_retriever_area_offset, nodepage->node, nodepage->size);
-                wal_retriever_area_offset += nodepage->size;
-                UnlockReleaseBuffer(buf);
-                return wal_retriever_area + wal_retriever_area_offset - nodepage->size;
-#else
-                UnlockReleaseBuffer(buf);
-                elog(ERROR, "Nocopy is unimplemented for sequential index node retriever");
-#endif
-            }
-        }
-        special_block = (HnswIndexPageSpecialBlock *)PageGetSpecialPointer(page);
-        blockno = special_block->nextblockno;
-        UnlockReleaseBuffer(buf);
-    }
-    elog(ERROR, "reached end of retriever without finding node %d", id);
-}
-
-static void *wal_index_node_retriever_binary(int id)
-{
-    BlockNumber                lo = 1;
-    BlockNumber                hi = HEADER_FOR_EXTERNAL_RETRIEVER.num_blocks;
-    Buffer                     buf;
-    Page                       page;
-    HnswIndexPageSpecialBlock *special_block;
-    HnswIndexTuple            *nodepage;
-    OffsetNumber               offset, max_offset;
-    if(id > HEADER_FOR_EXTERNAL_RETRIEVER.num_vectors) {
-        elog(ERROR, "id %d is out of range(0, %d)", id, HEADER_FOR_EXTERNAL_RETRIEVER.num_vectors);
-    }
-    // static cnt = 0;
-
-    // elog(INFO,
-    //      "Hnsw_disk: ldb_wal_index_node_retriever called with id %ld %d %d", id,
-    //      cnt++, HEADER_FOR_EXTERNAL_RETRIEVER.num_blocks);
-
-    while(lo <= hi) {
-        // elog(INFO, "binary searching for %ld %d %d", id, lo , hi);
-        BlockNumber mid = (hi + lo) / 2;
-        buf = ReadBufferExtended(INDEX_RELATION_FOR_RETRIEVER, MAIN_FORKNUM, mid, RBM_NORMAL, NULL);
-        LockBuffer(buf, BUFFER_LOCK_SHARE);
-        page = BufferGetPage(buf);
-        special_block = (HnswIndexPageSpecialBlock *)PageGetSpecialPointer(page);
-
-        //clang-format off...ahh does not work
-        if(!(special_block->firstId <= id && id <= special_block->lastId)) {
-            if(special_block->firstId > id) {
-                /* ---lo--------************mid*************------hi--- */
-                /* --------id---[firstId-------------lastId]----------- */
-
-                hi = mid - 1;
-            } else if(special_block->lastId < id) {
-                /* ---lo--------************mid*************------hi--- */
-                /* -------------[firstId-------------lastId]--id------- */
-                lo = mid + 1;
-            } else {
-                elog(ERROR, "ERROR: should be unreachable");
-            }
-            UnlockReleaseBuffer(buf);
-            continue;
-        }
-        /* ---lo--------************mid*************------hi--- */
-        /* -------------[firstId-------id----lastId]----------- */
-
-        max_offset = PageGetMaxOffsetNumber(page);
-
-        for(offset = FirstOffsetNumber; offset <= max_offset; offset = OffsetNumberNext(offset)) {
-            nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
-            if(nodepage->id == id) {
-#if LANTERNDB_COPYNODES
-                if(wal_retriever_area == NULL || wal_retriever_area_offset + nodepage->size > wal_retriever_area_size) {
-                    elog(ERROR,
-                         "ERROR: wal_retriever_area "
-                         "is NULL or full");
-                }
-                memcpy(wal_retriever_area + wal_retriever_area_offset, nodepage->node, nodepage->size);
-                wal_retriever_area_offset += nodepage->size;
-                UnlockReleaseBuffer(buf);
-                return wal_retriever_area + wal_retriever_area_offset - nodepage->size;
-#else
-                UnlockReleaseBuffer(buf);
-                elog(ERROR, "Nocopy is unimplemented for sequential index node retriever");
-#endif
-            }
-        }
-        UnlockReleaseBuffer(buf);
-        elog(ERROR, "AAAA found a candidate block but id %d was not in there", id);
-    }
-    elog(ERROR, "reached end of retriever without finding node %d", id);
 }
 
 static inline void *wal_index_node_retriever_exact(int id)
@@ -826,15 +709,15 @@ static inline void *wal_index_node_retriever_exact(int id)
             return wal_retriever_area + wal_retriever_area_offset - nodepage->size;
 #else
             if(!idx_page_prelocked) {
-                if(takenbuffers[ takenbuffers_next ] != InvalidBuffer) {
-                    ReleaseBuffer(takenbuffers[ takenbuffers_next ]);
-                    takenbuffers[ takenbuffers_next ] = InvalidBuffer;
+                    if(takenbuffers[ takenbuffers_next ] != InvalidBuffer) {
+                        ReleaseBuffer(takenbuffers[ takenbuffers_next ]);
+                        takenbuffers[ takenbuffers_next ] = InvalidBuffer;
                 }
-                takenbuffers[ takenbuffers_next ] = buf;
-                takenbuffers_next++;
+                    takenbuffers[ takenbuffers_next ] = buf;
+                    takenbuffers_next++;
 
-                if(takenbuffers_next == TAKENBUFFERS_MAX) {
-                    // if(takenbuffers[ 0 ] != InvalidBuffer) {
+                    if(takenbuffers_next == TAKENBUFFERS_MAX) {
+                        // if(takenbuffers[ 0 ] != InvalidBuffer) {
                     //     ReleaseBuffer(takenbuffers[ 0 ]);
                     //     takenbuffers[ 0 ] = InvalidBuffer;
                     // }

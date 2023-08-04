@@ -185,6 +185,13 @@ if (CLANG_FORMAT)
     COMMENT "Formatting code with clang-format"
     VERBATIM
   )
+  # Add format check target
+  add_custom_target(
+    format_check
+    COMMAND ${CLANG_FORMAT} --dry-run -Werror ${SOURCES} 
+    COMMENT "Checking code formatting with clang-format"
+    VERBATIM
+  )
 endif()
 
 add_custom_target(

@@ -3,8 +3,8 @@
 #include "utils.h"
 
 #include "hnsw.h"
-#include "usearch.h"
 #include "options.h"
+#include "usearch.h"
 
 void LogUsearchOptions(usearch_init_options_t *opts)
 {

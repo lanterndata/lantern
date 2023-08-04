@@ -40,7 +40,7 @@ echo "LANG=en_US.UTF-8" > /etc/locale.conf && \
 apt update -y && apt install locales -y && \
 locale-gen en_US.UTF-8 && \
 # Install required packages for build
-apt install lsb-core build-essential automake cmake wget git dpkg-dev gcovr -y && \
+apt install lsb-core build-essential automake cmake wget git dpkg-dev gcovr clang-format -y && \
 # Add postgresql apt repo
 export ARCH=$(dpkg-architecture -q DEB_BUILD_ARCH) && \
 sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list' && \
@@ -57,7 +57,7 @@ if [ -z ${USE_SOURCE} ]; then
   cd /tmp && git clone --recursive https://github.com/lanterndata/lanterndb.git -b $BRANCH
 else 
   # Use already checkouted code
-  mkdir -p /tmp/lanterndb && cp -r ./* /tmp/lanterndb/
+  shopt -s dotglob && mkdir -p /tmp/lanterndb && cp -r ./* /tmp/lanterndb/
 fi
 
 cd /tmp/lanterndb && mkdir build && cd build && \

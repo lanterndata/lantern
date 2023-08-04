@@ -8,6 +8,13 @@ on:
     branches:
       - main
       - dev
+  workflow_dispatch:
+    inputs:
+      create_release:
+        type: boolean
+        description: "Create GitHub release for current version"
+        required: false
+        default: false
 jobs:
   ubuntu-build:
     runs-on: ${{ matrix.os }}
@@ -69,3 +76,12 @@ jobs:
       - uses: geekyeggo/delete-artifact@v2
         with:
           name: lanterndb-package
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v1
+        id: create_release
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_release }}
+        with:
+          name: LanternDB v${{ steps.package.outputs.package_version }}
+          tag_name: v${{ steps.package.outputs.package_version }}
+          files: ${{ steps.package.outputs.package_path }}
+          generate_release_notes: true
