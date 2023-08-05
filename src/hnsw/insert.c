@@ -14,9 +14,9 @@
 #include "external_index.h"
 #include "hnsw.h"
 #include "options.h"
+#include "pgvector_vector.h"
 #include "usearch.h"
 #include "utils.h"
-#include "vector.h"
 
 /*
  * Context delete callback for insert context
