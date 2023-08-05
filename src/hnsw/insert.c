@@ -106,7 +106,6 @@ bool ldb_aminsert(Relation         index,
         }
         assert(!error);
         INDEX_RELATION_FOR_RETRIEVER = index;
-        HEADER_FOR_EXTERNAL_RETRIEVER = *hdr;
         EXTRA_DIRTIED = &extra_dirtied[ 0 ];
         EXTRA_DIRTIED_PAGE = &extra_dirtied_page[ 0 ];
         EXTRA_DIRTIED_SIZE = 0;
@@ -156,6 +155,8 @@ bool ldb_aminsert(Relation         index,
     // header page MUST be under WAL since PrepareIndexTuple will update it
     hdr_page = GenericXLogRegisterBuffer(state, hdr_buf, LDB_GENERIC_XLOG_DELTA_IMAGE);
     hdr = (HnswIndexHeaderPage *)PageGetContents(hdr_page);
+
+    HEADER_FOR_EXTERNAL_RETRIEVER = *hdr;
 
     assert(hdr->magicNumber == LDB_WAL_MAGIC_NUMBER);
     elog(DEBUG5, "Insert: at start num vectors is %d", hdr->num_vectors);
