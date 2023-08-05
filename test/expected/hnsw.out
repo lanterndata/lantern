@@ -54,9 +54,9 @@ psql:test/sql/hnsw.sql:43: INFO:  inserted 8 elements
 psql:test/sql/hnsw.sql:43: INFO:  done saving 8 vectors
 CREATE INDEX
 SELECT * FROM ldb_get_indexes('small_world');
-       indexname        |  size  |                                   indexdef                                    
-------------------------+--------+-------------------------------------------------------------------------------
- small_world_vector_idx | 176 kB | CREATE INDEX small_world_vector_idx ON public.small_world USING hnsw (vector)
+       indexname        | size  |                                   indexdef                                    
+------------------------+-------+-------------------------------------------------------------------------------
+ small_world_vector_idx | 24 kB | CREATE INDEX small_world_vector_idx ON public.small_world USING hnsw (vector)
 (1 row)
 
 SELECT * FROM (
@@ -111,9 +111,9 @@ psql:test/sql/hnsw.sql:59: INFO:  inserted 8 elements
 psql:test/sql/hnsw.sql:59: INFO:  done saving 8 vectors
 CREATE INDEX
 SELECT * FROM ldb_get_indexes('small_world');
-       indexname        |  size  |                                                         indexdef                                                          
-------------------------+--------+---------------------------------------------------------------------------------------------------------------------------
- small_world_vector_idx | 176 kB | CREATE INDEX small_world_vector_idx ON public.small_world USING hnsw (vector) WITH (m='2', ef='11', ef_construction='12')
+       indexname        | size  |                                                         indexdef                                                          
+------------------------+-------+---------------------------------------------------------------------------------------------------------------------------
+ small_world_vector_idx | 24 kB | CREATE INDEX small_world_vector_idx ON public.small_world USING hnsw (vector) WITH (m='2', ef='11', ef_construction='12')
 (1 row)
 
 SELECT ROUND( (vector <-> '[0,0,0]')::numeric, 2) as dist
@@ -187,9 +187,9 @@ psql:test/sql/hnsw.sql:85: INFO:  inserted 8 elements
 psql:test/sql/hnsw.sql:85: INFO:  done saving 8 vectors
 CREATE INDEX
 SELECT * FROM ldb_get_indexes('small_world');
-       indexname        |  size  |                                                         indexdef                                                         
-------------------------+--------+--------------------------------------------------------------------------------------------------------------------------
- small_world_vector_idx | 176 kB | CREATE INDEX small_world_vector_idx ON public.small_world USING hnsw (vector) WITH (m='11', ef='2', ef_construction='2')
+       indexname        | size  |                                                         indexdef                                                         
+------------------------+-------+--------------------------------------------------------------------------------------------------------------------------
+ small_world_vector_idx | 24 kB | CREATE INDEX small_world_vector_idx ON public.small_world USING hnsw (vector) WITH (m='11', ef='2', ef_construction='2')
 (1 row)
 
 SELECT * FROM (

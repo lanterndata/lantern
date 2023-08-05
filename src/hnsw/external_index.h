@@ -17,6 +17,9 @@
 // used for code clarity when modifying WAL entries
 #define LDB_GENERIC_XLOG_DELTA_IMAGE 0
 
+// with so many blockmap groups we can store up to 2^32-1 vectors
+#define HNSW_MAX_BLOCKMAP_GROUPS 32
+
 // this should be as large as possible to cache more stuff
 // while still fitting on the first page
 #define NODE_STORAGE_NUM_COARSE 10
@@ -29,7 +32,6 @@ typedef struct HnswIndexHeaderPage
     // todo:: switch these to BlockNumber for documentation
     // first data block is needed because in case of creating an index on empty table it no longer
     // is headeblockno + 1
-    uint32 first_data_block;
     uint32 last_data_block;
     uint32 blockno_index_start;
     //todo:: get rid of this
@@ -37,6 +39,9 @@ typedef struct HnswIndexHeaderPage
     char   usearch_header[ 64 ];
     uint32 coarse_ids[ NODE_STORAGE_NUM_COARSE ];
     uint32 coarse_block[ NODE_STORAGE_NUM_COARSE ];
+
+    uint32 blockmap_page_groups;
+    uint32 blockmap_page_group_index[ HNSW_MAX_BLOCKMAP_GROUPS ];
 } HnswIndexHeaderPage;
 
 typedef struct HnswIndexPageSpecialBlock
@@ -122,5 +127,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
 
 void *ldb_wal_index_node_retriever(int id);
 void *ldb_wal_index_node_retriever_mut(int id);
+
+BlockNumber getBlockMapPageBlockNumber(HnswIndexHeaderPage* hdr, int id);
 
 #endif  // LDB_HNSW_EXTERNAL_INDEX_H
