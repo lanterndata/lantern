@@ -139,7 +139,7 @@ int GetHnswIndexDimensions(Relation index)
     return -1;
 }
 
-void CheckHnswIndexDimensions(Relation index, Datum *value, int dimensions)
+void CheckHnswIndexDimensions(Relation index, Datum arrayDatum, int dimensions)
 {
     ArrayType   *array;
     int          n_items;
@@ -147,7 +147,7 @@ void CheckHnswIndexDimensions(Relation index, Datum *value, int dimensions)
 
     if(indexType == REAL_ARRAY) {
         /* Check dimensions of vector */
-        array = DatumGetArrayTypePCopy(value);
+        array = DatumGetArrayTypePCopy(arrayDatum);
         n_items = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
         if(n_items != dimensions) {
             elog(ERROR, "Wrong number of dimensions: %d instead of %d expected", n_items, dimensions);
