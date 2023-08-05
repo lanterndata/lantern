@@ -29,9 +29,9 @@ psql:test/sql/debug_helpers.sql:8: INFO:  inserted 8 elements
 psql:test/sql/debug_helpers.sql:8: INFO:  done saving 8 vectors
 CREATE INDEX
 SELECT * FROM ldb_get_indexes('small_world');
-       indexname        |  size  |                                   indexdef                                    
-------------------------+--------+-------------------------------------------------------------------------------
- small_world_vector_idx | 176 kB | CREATE INDEX small_world_vector_idx ON public.small_world USING hnsw (vector)
+       indexname        | size  |                                   indexdef                                    
+------------------------+-------+-------------------------------------------------------------------------------
+ small_world_vector_idx | 24 kB | CREATE INDEX small_world_vector_idx ON public.small_world USING hnsw (vector)
 (1 row)
 
 SHOW hnsw.init_k;
