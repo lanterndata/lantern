@@ -4,7 +4,7 @@ CREATE EXTENSION IF NOT EXISTS lanterndb;
 \ir test_helpers/sift_arrays.sql
 
 CREATE INDEX ON small_world USING hnsw (vector);
-CREATE INDEX ON sift_base1k USING hnsw (v);
+CREATE INDEX ON sift_base1k USING hnsw (v) WITH (dims=128);
 
 SET enable_seqscan = off;
 
