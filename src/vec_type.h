@@ -39,7 +39,7 @@ static inline LDBVec *NewLDBVec(int dim, int elem_type)
 }
 
 /* Confined by uint16 in LDBVec structure */
-#define LDB_VEC_MAX_DIM 1 << 16
+#define LDB_VEC_MAX_DIM ((1 << 16) - 1)
 /*
  * Returns a pointer to the actual array data.
  */

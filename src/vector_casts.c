@@ -84,7 +84,7 @@ Datum ldb_generic_vec_typmod_in(PG_FUNCTION_ARGS)
     }
 
     if(*tl < 1) {
-        elog(ERROR, "vector dimensions must be at least 1");
+        elog(ERROR, "vector dimension must be >= 1");
     }
 
     if(*tl > LDB_VEC_MAX_DIM) {
@@ -342,8 +342,9 @@ LDBVec *ldb_generic_cast_array_vec(ArrayType *array, int expected_dim, usearch_s
             for(int i = 0; i < nelemsp; i++) {
                 vec_floats[ i ] = DatumGetFloat4(DirectFunctionCall1(numeric_float4, elemsp[ i ]));
             }
+            break;
         default:
-            elog(ERROR, "unknown array elem type %d", ARR_ELEMTYPE(array));
+            elog(ERROR, "unknown array element type %d", ARR_ELEMTYPE(array));
     }
 
     if(usearch_scalar_f8_k == to) {

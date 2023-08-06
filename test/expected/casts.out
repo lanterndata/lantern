@@ -43,49 +43,62 @@ SELECT '{.1, 0.33, .42, .55, -.42, -0.00001, -.1234567}'::vec8, '{.1, 0.33, .42,
  {1,1,1,1,1,1,1} | {0.1,0.33,0.42,0.55,-0.42,0,-0.12}
 (1 row)
 
+SELECT ARRAY[1,.2,.3]::uvec8;
+    array    
+-------------
+ {1,0.2,0.3}
+(1 row)
+
+SELECT ARRAY(SELECT ROUND(RANDOM()) FROM generate_series(1,65534))::uvec8 
 SELECT '{1,2,3}'::uvec8;
-psql:test/sql/casts.sql:20: ERROR:  uvec8 must be in range [-1, 1]
+psql:test/sql/casts.sql:22: ERROR:  uvec8 must be in range [-1, 1]
 LINE 1: SELECT '{1,2,3}'::uvec8;
                ^
 SELECT '{}'::uvec8;
-psql:test/sql/casts.sql:21: ERROR:  array must not be empty
+psql:test/sql/casts.sql:23: ERROR:  array must not be empty
 LINE 1: SELECT '{}'::uvec8;
                ^
 SELECT 'abra'::uvec8;
-psql:test/sql/casts.sql:22: ERROR:  malformed array literal: "abra"
+psql:test/sql/casts.sql:24: ERROR:  malformed array literal: "abra"
 LINE 1: SELECT 'abra'::uvec8;
                ^
 DETAIL:  Array value must start with "{" or dimension information.
 SELECT '{"haha"}'::uvec8;
-psql:test/sql/casts.sql:23: ERROR:  invalid input syntax for type real: "haha"
+psql:test/sql/casts.sql:25: ERROR:  invalid input syntax for type real: "haha"
 LINE 1: SELECT '{"haha"}'::uvec8;
                ^
 SELECT '{{.1,.2,.3},{.4,.5,.6}}'::uvec8;
-psql:test/sql/casts.sql:24: ERROR:  array must be 1-D
+psql:test/sql/casts.sql:26: ERROR:  array must be 1-D
 LINE 1: SELECT '{{.1,.2,.3},{.4,.5,.6}}'::uvec8;
                ^
 SELECT '{{.1,.2,.3},{.4,.5,.6}}'::uvec8(4);
-psql:test/sql/casts.sql:25: ERROR:  array must be 1-D
+psql:test/sql/casts.sql:27: ERROR:  array must be 1-D
 LINE 1: SELECT '{{.1,.2,.3},{.4,.5,.6}}'::uvec8(4);
                ^
 SELECT '{{.1,.2,.3},{.4,.5,.6}}'::uvec8[4];
-psql:test/sql/casts.sql:27: ERROR:  malformed array literal: ".1"
+psql:test/sql/casts.sql:29: ERROR:  malformed array literal: ".1"
 LINE 1: SELECT '{{.1,.2,.3},{.4,.5,.6}}'::uvec8[4];
                ^
 DETAIL:  Array value must start with "{" or dimension information.
 SELECT '{0.111,NULL}'::uvec8(2);
-psql:test/sql/casts.sql:29: ERROR:  array must not contain nulls
+psql:test/sql/casts.sql:31: ERROR:  array must not contain nulls
 LINE 1: SELECT '{0.111,NULL}'::uvec8(2);
                ^
+SELECT '{.1, .2}'::uvec8(-2);
+psql:test/sql/casts.sql:32: ERROR:  vector dimension must be >= 1
+LINE 1: SELECT '{.1, .2}'::uvec8(-2);
+                           ^
+SELECT ARRAY(SELECT ROUND(RANDOM()) FROM generate_series(1,65536))::uvec8;
+psql:test/sql/casts.sql:33: ERROR:  array too large. max vec dimension is 65535
 SELECT '{0.1,0.2,0.3}'::uvec8(3,3);
-psql:test/sql/casts.sql:30: ERROR:  wrong number of modifiers
+psql:test/sql/casts.sql:35: ERROR:  wrong number of modifiers
 LINE 1: SELECT '{0.1,0.2,0.3}'::uvec8(3,3);
                                 ^
 SELECT '{0.1,0.2,0.3}'::uvec8(2);
-psql:test/sql/casts.sql:31: ERROR:  invalid cast. vector dim: 3, cast dim:2
+psql:test/sql/casts.sql:36: ERROR:  invalid cast. vector dim: 3, cast dim:2
 SELECT '{0.1,0.2,0.3}'::uvec8(3)::uvec8(2);
-psql:test/sql/casts.sql:32: ERROR:  invalid cast. vector dim: 3, cast dim:2
+psql:test/sql/casts.sql:37: ERROR:  invalid cast. vector dim: 3, cast dim:2
 SELECT '{1,1,1}'::int[3]::uvec8(4);
-psql:test/sql/casts.sql:33: ERROR:  invalid cast. vector dim: 3, cast dim:4
+psql:test/sql/casts.sql:38: ERROR:  invalid cast. vector dim: 3, cast dim:4
 SELECT '{1,1,1}'::int[3]::uvec8(3)::uvec8(4);
-psql:test/sql/casts.sql:34: ERROR:  invalid cast. vector dim: 3, cast dim:4
+psql:test/sql/casts.sql:39: ERROR:  invalid cast. vector dim: 3, cast dim:4
