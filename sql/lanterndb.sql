@@ -50,3 +50,43 @@ BEGIN
 END;
 $$
 LANGUAGE plpgsql;
+-- -- CREATE TYPEs vec*
+
+-- Function that are generic over the family of vec types
+
+CREATE FUNCTION ldb_generic_vec_typmod_in(cstring[]) RETURNS integer
+	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+
+-- 8-byte unit-vector (i.e. vector with elements in range [-1, 1])
+CREATE TYPE uvec8;
+
+CREATE FUNCTION ldb_uvec8_in(cstring, oid, integer) RETURNS uvec8
+	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+
+CREATE FUNCTION ldb_uvec8_out(uvec8) RETURNS cstring
+	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+
+CREATE FUNCTION ldb_uvec8_recv(internal, oid, integer) RETURNS uvec8
+	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+
+CREATE FUNCTION ldb_uvec8_send(uvec8) RETURNS bytea
+	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+
+
+CREATE TYPE uvec8 (
+	INPUT     = ldb_uvec8_in,
+	OUTPUT    = ldb_uvec8_out,
+	RECEIVE   = ldb_uvec8_recv,
+	SEND      = ldb_uvec8_send,
+	TYPMOD_IN = ldb_generic_vec_typmod_in,
+	STORAGE   = extended
+);
+
+-- -- Unit ector which has 1 byte elements in range [-1, 1]
+CREATE FUNCTION ldb_cast_uvec8_uvec8(uvec8, integer, boolean) RETURNS uvec8
+	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+
+-- casts
+
+CREATE CAST (uvec8 AS uvec8)
+	WITH FUNCTION ldb_cast_uvec8_uvec8(uvec8, integer, boolean) AS IMPLICIT;
