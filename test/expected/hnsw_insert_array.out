@@ -246,3 +246,7 @@ SELECT * from ldb_get_indexes('sift_base1k');
  sift_base1k_v_idx | 1168 kB | CREATE INDEX sift_base1k_v_idx ON public.sift_base1k USING hnsw (v) WITH (dims='128')
 (2 rows)
 
+INSERT INTO small_world (id, vector) VALUES ('xxx', NULL);
+INSERT 0 1
+INSERT INTO small_world (id, vector) VALUES ('xxx', '{1,1,1,1}');
+psql:test/sql/hnsw_insert_array.sql:88: ERROR:  Wrong number of dimensions: 4 instead of 3 expected

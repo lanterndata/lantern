@@ -83,3 +83,8 @@ SELECT v FROM sift_base1k WHERE id <= 444 AND v IS NOT NULL;
 SELECT count(*) from sift_base1k;
 SELECT * from ldb_get_indexes('sift_base1k');
 
+-- make sure NULL inserts into the index are handled correctly
+INSERT INTO small_world (id, vector) VALUES ('xxx', NULL);
+\set ON_ERROR_STOP off
+INSERT INTO small_world (id, vector) VALUES ('xxx', '[1,1,1,1]');
+\set ON_ERROR_STOP on
