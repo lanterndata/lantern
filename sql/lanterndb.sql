@@ -85,8 +85,37 @@ CREATE TYPE uvec8 (
 -- -- Unit ector which has 1 byte elements in range [-1, 1]
 CREATE FUNCTION ldb_cast_uvec8_uvec8(uvec8, integer, boolean) RETURNS uvec8
 	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+CREATE FUNCTION ldb_cast_array_uvec8(integer[], integer, boolean) RETURNS uvec8
+	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+CREATE FUNCTION ldb_cast_array_uvec8(real[], integer, boolean) RETURNS uvec8
+	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+CREATE FUNCTION ldb_cast_array_uvec8(double precision[], integer, boolean) RETURNS uvec8
+	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+CREATE FUNCTION ldb_cast_array_uvec8(numeric[], integer, boolean) RETURNS uvec8
+	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+
+CREATE FUNCTION ldb_cast_vec_real(uvec8, integer, boolean) RETURNS real[]
+	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 
 -- casts
 
 CREATE CAST (uvec8 AS uvec8)
 	WITH FUNCTION ldb_cast_uvec8_uvec8(uvec8, integer, boolean) AS IMPLICIT;
+
+CREATE CAST (integer[] AS uvec8)
+	WITH FUNCTION ldb_cast_array_uvec8(integer[], integer, boolean) AS ASSIGNMENT;
+
+CREATE CAST (real[] AS uvec8)
+	WITH FUNCTION ldb_cast_array_uvec8(real[], integer, boolean) AS ASSIGNMENT;
+
+CREATE CAST (double precision[] AS uvec8)
+	WITH FUNCTION ldb_cast_array_uvec8(double precision[], integer, boolean) AS ASSIGNMENT;
+
+CREATE CAST (numeric[] AS uvec8)
+	WITH FUNCTION ldb_cast_array_uvec8(numeric[], integer, boolean) AS ASSIGNMENT;
+
+CREATE CAST (uvec8 AS real[])
+	WITH FUNCTION ldb_cast_vec_real(uvec8, integer, boolean) AS ASSIGNMENT;
+
+
+

@@ -6,20 +6,34 @@ typedef struct
 {
     int32  vl_len_; /* varlena header (do not touch directly!) */
     uint16 dim;     /* number of dimensions */
-    uint16 elem_size;
+    uint16 elem_type;
     char   data[ FLEXIBLE_ARRAY_MEMBER ];
 } LDBVec;
 
-static inline LDBVec *NewLDBVec(int dim, int elem_size)
+static inline int VecScalarSize(usearch_scalar_kind_t s)
+{
+    switch(s) {
+        // clang-format off
+        case usearch_scalar_f64_k: return 8;
+        case usearch_scalar_f32_k: return 4;
+        case usearch_scalar_f16_k: return 2;
+        case usearch_scalar_f8_k: return 1;
+        case usearch_scalar_b1_k: return 1;
+            // clang-format on
+    }
+    assert(false);
+}
+
+static inline LDBVec *NewLDBVec(int dim, int elem_type)
 {
     LDBVec *result;
     int     size;
 
-    size = sizeof(LDBVec) + dim * elem_size;
+    size = sizeof(LDBVec) + dim * VecScalarSize(elem_type);
     result = (LDBVec *)palloc0(size);
     SET_VARSIZE(result, size);
     result->dim = dim;
-    result->elem_size = elem_size;
+    result->elem_type = elem_type;
 
     return result;
 }
@@ -29,7 +43,7 @@ static inline LDBVec *NewLDBVec(int dim, int elem_size)
 /*
  * Returns a pointer to the actual array data.
  */
-#define LDBVEC_DATA_SIZE(a) (((a->dim)) * (a->elem_size))
+#define LDBVEC_DATA_SIZE(a) (((a->dim)) * (VecScalarSize(a->elem_type)))
 
 /*
  * Returns a pointer to the actual array data.

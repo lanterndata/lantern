@@ -7,6 +7,7 @@
 #include <fmgr.h>
 #include <lib/stringinfo.h>
 #include <libpq/pqformat.h>
+#include <utils/fmgrprotos.h>
 #include <utils/lsyscache.h>  // for get_typlenbyvalalign
 
 #include "usearch.h"
@@ -105,11 +106,11 @@ Datum ldb_generic_vec_recv(PG_FUNCTION_ARGS)
     int32      typmod = PG_GETARG_INT32(2);
     LDBVec    *result;
     uint16     dim;
-    uint16     elem_size;
+    uint16     elem_type;
     elog(ERROR, "vec recv called");
 
     dim = pq_getmsgint(buf, sizeof(uint16));
-    elem_size = pq_getmsgint(buf, sizeof(uint16));
+    elem_type = pq_getmsgint(buf, sizeof(uint16));
 
     if(dim < 1 || dim > LDB_VEC_MAX_DIM) {
         elog(ERROR, "received binary vec with invalid invalid dimension %d", dim);
@@ -119,8 +120,8 @@ Datum ldb_generic_vec_recv(PG_FUNCTION_ARGS)
         elog(ERROR, "received binary vec with wrong dimension %d, expected %d", dim, typmod);
     }
 
-    result = NewLDBVec(dim, elem_size);
-    pq_copymsgbytes(buf, result->data, elem_size * dim);
+    result = NewLDBVec(dim, elem_type);
+    pq_copymsgbytes(buf, result->data, elem_type * dim);
     // todo:: validate that the copy succeeded and result is not corrupted
     PG_RETURN_POINTER(result);
 }
@@ -136,8 +137,8 @@ Datum ldb_generic_vec_send(PG_FUNCTION_ARGS)
     elog(ERROR, "vec send called");
     pq_begintypsend(&buf);
     pq_sendint(&buf, vec->dim, sizeof(uint16));
-    pq_sendint(&buf, vec->elem_size, sizeof(uint16));
-    pq_sendbytes(&buf, vec->data, vec->elem_size * vec->dim);
+    pq_sendint(&buf, vec->elem_type, sizeof(uint16));
+    pq_sendbytes(&buf, vec->data, vec->elem_type * vec->dim);
     PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
 }
 
@@ -153,18 +154,10 @@ Datum ldb_uvec8_in(PG_FUNCTION_ARGS)
     // to the generic vec reader
     ArrayType *array = ldb_generic_vec_in(fcinfo);
     assert(array != NULL);
-    // if the element type ever changes (e.g. to FLOAT8OID),
-    // the usearch_cast call must be reworked.
-    // on 64bit systems FLOAT8OID fits inline in a Datum BUT on 32 bit systems it
-    // does not so when casting from FLOAT8 array, I can no longer assume
-    // ARR_DATA_PTR(array) is an array of element values (there will be another
-    // indirection via a pointer)
+
     assert(array->elemtype == FLOAT4OID);
     int ndims = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
-    res = ldb_cast_array_vec(array, ndims, usearch_scalar_f8_k);
-    // in vec8, each vector element is one byte, hense the 1
-    // res = NewLDBVec(ndims, 1);
-    // float *array_elems = (float *)ARR_DATA_PTR(array);
+    res = ldb_generic_cast_array_vec(array, ndims, usearch_scalar_f8_k);
 
     if(error) {
         elog(ERROR, "error in float downcasting: %s", error);
@@ -184,25 +177,16 @@ Datum ldb_uvec8_out(PG_FUNCTION_ARGS)
     usearch_error_t error = NULL;
     LDBVec         *vec = DatumGetLDBVec(PG_GETARG_DATUM(0));
     assert(vec->dim != 0);
-    assert(vec->elem_size == 1);
+    assert(vec->elem_type == usearch_scalar_f8_k);
     array_elems_size = sizeof(float) * vec->dim;
     array_elems = palloc0(array_elems_size);
-    array_elems_datum = palloc0(sizeof(Datum) * vec->dim);
+
     usearch_cast(usearch_scalar_f8_k, vec->data, usearch_scalar_f32_k, array_elems, array_elems_size, vec->dim, &error);
     if(error != NULL) {
         elog(ERROR, "error casting: %s", error);
     }
 
-    for(int i = 0; i < vec->dim; i++) {
-        array_elems_datum[ i ] = Float4GetDatum(array_elems[ i ]);
-    }
-
-    res = construct_array(array_elems_datum, vec->dim, FLOAT4OID, sizeof(float4), true, TYPALIGN_INT);
-    assert(res != NULL);
-
-    assert(res->elemtype == FLOAT4OID);
-    int ndims = ArrayGetNItems(ARR_NDIM(res), ARR_DIMS(res));
-    assert(ndims = vec->dim);
+    res = ldb_generic_cast_vec_array(array_elems, vec->dim);
 
     return ldb_generic_vec_out(res);
 }
@@ -235,9 +219,7 @@ Datum ldb_cast_vec_vec(FunctionCallInfo fcinfo, int from, int to, LDBVec *dest, 
     usearch_error_t error = NULL;
     assert((from == to) ^ (dest != NULL));
 
-    if(typmod != -1 && src->dim != typmod) {
-        elog(ERROR, "vector cast wrong dimension %d, expected %d", src->dim, typmod);
-    }
+    CheckVecDimConstraint(src->dim, typmod);
 
     if(from != to) {
         assert(src->dim == dest->dim);
@@ -259,9 +241,47 @@ Datum ldb_cast_uvec8_uvec8(PG_FUNCTION_ARGS) { return ldb_cast_vec_vec(fcinfo, u
 Datum ldb_cast_vec32_vec32(PG_FUNCTION_ARGS) { return ldb_cast_vec_vec(fcinfo, usearch_scalar_f32_k, usearch_scalar_f32_k, NULL, 0); }
 // clang-format on
 
+PGDLLEXPORT PG_FUNCTION_INFO_V1(ldb_cast_array_uvec8);
+
+Datum ldb_cast_array_uvec8(PG_FUNCTION_ARGS)
+{
+    ArrayType *array = PG_GETARG_ARRAYTYPE_P(0);
+    int32      typmod = PG_GETARG_INT32(1);
+    LDBVec    *res = ldb_generic_cast_array_vec(array, -1, usearch_scalar_f8_k);
+    CheckVecDimConstraint(res->dim, typmod);
+    return PointerGetDatum(ldb_generic_cast_array_vec(array, -1, usearch_scalar_f8_k));
+}
+
+PGDLLEXPORT PG_FUNCTION_INFO_V1(ldb_cast_vec_real);
+
+Datum ldb_cast_vec_real(PG_FUNCTION_ARGS)
+{
+    LDBVec *vec = DatumGetLDBVec(PG_GETARG_DATUM(0));
+    int32   typmod = PG_GETARG_INT32(1);
+    float  *array_elems;
+    CheckVecDimConstraint(vec->dim, typmod);
+    if(vec->elem_type == usearch_scalar_f32_k) {
+        array_elems = (float *)vec->data;
+    } else {
+        usearch_error_t error = NULL;
+        LDBVec         *new_vec = NewLDBVec(vec->dim, usearch_scalar_f32_k);
+        usearch_cast(vec->elem_type,
+                     vec->data,
+                     usearch_scalar_f32_k,
+                     new_vec->data,
+                     vec->dim * VecScalarSize(usearch_scalar_f32_k),
+                     vec->dim,
+                     &error);
+        assert(!error);
+        array_elems = (float *)new_vec->data;
+    }
+    ArrayType *res = ldb_generic_cast_vec_array(array_elems, vec->dim);
+    return PointerGetDatum(res);
+}
+
 // if expected_dim is -1, then the dimension is not checked
 // otherwise, an error is thrown if the dimension is not as expected
-LDBVec *ldb_cast_array_vec(ArrayType *array, int expected_dim, usearch_scalar_kind_t to)
+LDBVec *ldb_generic_cast_array_vec(ArrayType *array, int expected_dim, usearch_scalar_kind_t to)
 {
     usearch_error_t error = NULL;
 
@@ -295,7 +315,14 @@ LDBVec *ldb_cast_array_vec(ArrayType *array, int expected_dim, usearch_scalar_ki
         elog(ERROR, "array has wrong dimension %d, expected %d", nelemsp, expected_dim);
     }
 
-    result = NewLDBVec(nelemsp, scalar_size(to));
+    if(VecScalarSize(to) > 4) {
+        // would anyone need this?
+        // I can just allocate float8 for vec_floats and support this
+        // but am not sure it is necessary
+        elog(ERROR, "larger than 4byte element sizes not supported");
+    }
+
+    result = NewLDBVec(nelemsp, to);
     // rsult->data is usually opeque to us and handled by usearch
     // since it contains types like float16, float8, ufloat8, which are not available in C.
     // here, we init it with 32-bit floats which are the same here and in usearch
@@ -314,15 +341,19 @@ LDBVec *ldb_cast_array_vec(ArrayType *array, int expected_dim, usearch_scalar_ki
             }
             break;
         case FLOAT8OID:
-        case NUMERICOID:
-            // todo:: x, FLOAT8, NUMERIC
-            elog(ERROR, "unimplemented cast to vec type");
+            for(int i = 0; i < nelemsp; i++) {
+                vec_floats[ i ] = (float)DatumGetFloat8(elemsp[ i ]);
+            }
             break;
+        case NUMERICOID:
+            for(int i = 0; i < nelemsp; i++) {
+                vec_floats[ i ] = DatumGetFloat4(DirectFunctionCall1(numeric_float4, elemsp[ i ]));
+            }
         default:
             elog(ERROR, "unknown array elem type %d", ARR_ELEMTYPE(array));
     }
 
-    if (usearch_scalar_f8_k == to) {
+    if(usearch_scalar_f8_k == to) {
         // sanity check and throw an error if uvec8 is used with floats outside of [-1, 1]
         for(int i = 0; i < nelemsp; i++) {
             if(vec_floats[ i ] < -1 || vec_floats[ i ] > 1) {
@@ -335,4 +366,21 @@ LDBVec *ldb_cast_array_vec(ArrayType *array, int expected_dim, usearch_scalar_ki
         usearch_scalar_f32_k, vec_floats, to, LDBVEC_DATA_PTR(result), result->dim, LDBVEC_DATA_SIZE(result), &error);
 
     return result;
+}
+
+ArrayType *ldb_generic_cast_vec_array(float *array_elems, int dim)
+{
+    ArrayType *res;
+    Datum     *array_elems_datum = palloc0(sizeof(Datum) * dim);
+
+    for(int i = 0; i < dim; i++) {
+        array_elems_datum[ i ] = Float4GetDatum(array_elems[ i ]);
+    }
+    res = construct_array(array_elems_datum, dim, FLOAT4OID, sizeof(float4), true, TYPALIGN_INT);
+    assert(res != NULL);
+
+    assert(res->elemtype == FLOAT4OID);
+    int ndims = ArrayGetNItems(ARR_NDIM(res), ARR_DIMS(res));
+    assert(ndims = dim);
+    return res;
 }
