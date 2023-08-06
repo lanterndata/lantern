@@ -207,12 +207,6 @@ Datum       hnsw_handler(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(amroutine);
 }
 
-// dummy handler needed to safely upgrade access method handler
-// from embedding_handler to hnsw_handler in 0.0.1 to 0.0.2 transition
-PGDLLEXPORT PG_FUNCTION_INFO_V1(embedding_handler);
-
-Datum embedding_handler(PG_FUNCTION_ARGS) { return hnsw_handler(fcinfo); }
-
 PGDLLEXPORT PG_FUNCTION_INFO_V1(l2sq_dist);
 
 static float4 calc_distance(ArrayType *a, ArrayType *b)
