@@ -15,10 +15,9 @@
 
 /*** Functions generic over all vec types (uvec8, vec8, vec16, vec32) */
 
-ArrayType *ldb_generic_vec_in(PG_FUNCTION_ARGS)
+LDBVec *ldb_generic_vec_in(FunctionCallInfo fcinfo, usearch_scalar_kind_t to)
 {
     char *str = PG_GETARG_CSTRING(0);
-
     // The second argument is the type OID of our newly created type
     // we do not need that. For arrays, it would be the element type
     // and not the array type. It would be good to have this be the
@@ -28,13 +27,12 @@ ArrayType *ldb_generic_vec_in(PG_FUNCTION_ARGS)
     // In the future, we may want to have vec64 (but unlikely, since
     // postgres's own double precision works just fine)
     int32 typioparam = FLOAT4OID;
-
     // represents the number of dimensions in the vec type: '{1,1,1}'::vec(3)
     //                                                                 ....^...
-    int32 typmod = PG_GETARG_INT32(2);
-
+    int32      typmod = PG_GETARG_INT32(2);
     Oid        oid = fmgr_internal_function("array_in");
     ArrayType *array;
+    LDBVec    *res;
 
     array = (ArrayType *)DatumGetPointer(OidInputFunctionCall(oid, str, typioparam, typmod));
     // postgres does not enforce the array bounds(cite?), but we want to enforce them
@@ -53,7 +51,13 @@ ArrayType *ldb_generic_vec_in(PG_FUNCTION_ARGS)
     if(typmod != -1 && ARR_NDIM(array) != typmod) {
         elog(ERROR, "vec type expected %d dimensions but provided array has %d dimensions", typmod, ARR_NDIM(array));
     }
-    return array;
+    assert(array != NULL);
+    assert(array->elemtype == FLOAT4OID);
+
+    int ndims = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
+    res = ldb_generic_cast_array_vec(array, ndims, to);
+
+    return res;
 }
 
 PGDLLEXPORT PG_FUNCTION_INFO_V1(ldb_generic_vec_typmod_in);
@@ -90,8 +94,24 @@ Datum ldb_generic_vec_typmod_in(PG_FUNCTION_ARGS)
     return Int32GetDatum(*tl);
 }
 
-Datum ldb_generic_vec_out(ArrayType *arr)
+Datum ldb_generic_vec_out(FunctionCallInfo fcinfo, usearch_scalar_kind_t from)
 {
+    ArrayType      *arr;
+    float          *array_elems;
+    int             array_elems_size;
+    usearch_error_t error = NULL;
+    LDBVec         *vec = DatumGetLDBVec(PG_GETARG_DATUM(0));
+    assert(vec->dim != 0);
+    array_elems_size = sizeof(float) * vec->dim;
+    array_elems = palloc0(array_elems_size);
+
+    usearch_cast(from, vec->data, usearch_scalar_f32_k, array_elems, array_elems_size, vec->dim, &error);
+    if(error != NULL) {
+        elog(ERROR, "error casting: %s", error);
+    }
+
+    arr = ldb_generic_cast_vec_array(array_elems, vec->dim);
+
     Oid   oid = fmgr_internal_function("array_out");
     char *res = OidOutputFunctionCall(oid, PointerGetDatum(arr));
     return CStringGetDatum(res);
@@ -146,56 +166,29 @@ Datum ldb_generic_vec_send(PG_FUNCTION_ARGS)
 
 PGDLLEXPORT PG_FUNCTION_INFO_V1(ldb_uvec8_in);
 
-Datum ldb_uvec8_in(PG_FUNCTION_ARGS)
-{
-    LDBVec         *res;
-    usearch_error_t error = NULL;
-    // fcinfo below is from the macro PG_FUNCTION_ARGS and passes SQL-arguments
-    // to the generic vec reader
-    ArrayType *array = ldb_generic_vec_in(fcinfo);
-    assert(array != NULL);
+// fcinfo below is from the macro PG_FUNCTION_ARGS and passes SQL-arguments
+// to the generic vec reader
+Datum ldb_uvec8_in(PG_FUNCTION_ARGS) { return PointerGetDatum(ldb_generic_vec_in(fcinfo, usearch_scalar_f8_k)); }
 
-    assert(array->elemtype == FLOAT4OID);
-    int ndims = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
-    res = ldb_generic_cast_array_vec(array, ndims, usearch_scalar_f8_k);
+PGDLLEXPORT PG_FUNCTION_INFO_V1(ldb_vec8_in);
 
-    if(error) {
-        elog(ERROR, "error in float downcasting: %s", error);
-    }
-
-    return PointerGetDatum(res);
-}
+Datum ldb_vec8_in(PG_FUNCTION_ARGS) { return PointerGetDatum(ldb_generic_vec_in(fcinfo, usearch_scalar_b1_k)); }
 
 PGDLLEXPORT PG_FUNCTION_INFO_V1(ldb_uvec8_out);
+PGDLLEXPORT PG_FUNCTION_INFO_V1(ldb_vec8_out);
 
-Datum ldb_uvec8_out(PG_FUNCTION_ARGS)
-{
-    ArrayType      *res;
-    float          *array_elems;
-    Datum          *array_elems_datum;
-    int             array_elems_size;
-    usearch_error_t error = NULL;
-    LDBVec         *vec = DatumGetLDBVec(PG_GETARG_DATUM(0));
-    assert(vec->dim != 0);
-    assert(vec->elem_type == usearch_scalar_f8_k);
-    array_elems_size = sizeof(float) * vec->dim;
-    array_elems = palloc0(array_elems_size);
-
-    usearch_cast(usearch_scalar_f8_k, vec->data, usearch_scalar_f32_k, array_elems, array_elems_size, vec->dim, &error);
-    if(error != NULL) {
-        elog(ERROR, "error casting: %s", error);
-    }
-
-    res = ldb_generic_cast_vec_array(array_elems, vec->dim);
-
-    return ldb_generic_vec_out(res);
-}
+Datum ldb_uvec8_out(PG_FUNCTION_ARGS) { return ldb_generic_vec_out(fcinfo, usearch_scalar_f8_k); }
+Datum ldb_vec8_out(PG_FUNCTION_ARGS) { return ldb_generic_vec_out(fcinfo, usearch_scalar_b1_k); }
 
 PGDLLEXPORT PG_FUNCTION_INFO_V1(ldb_uvec8_recv);
+PGDLLEXPORT PG_FUNCTION_INFO_V1(ldb_vec8_recv);
 Datum       ldb_uvec8_recv(PG_FUNCTION_ARGS) { return ldb_generic_vec_recv(fcinfo); }
+Datum       ldb_vec8_recv(PG_FUNCTION_ARGS) { return ldb_generic_vec_recv(fcinfo); }
 
 PGDLLEXPORT PG_FUNCTION_INFO_V1(ldb_uvec8_send);
+PGDLLEXPORT PG_FUNCTION_INFO_V1(ldb_vec8_send);
 Datum       ldb_uvec8_send(PG_FUNCTION_ARGS) { return ldb_generic_vec_send(fcinfo); }
+Datum       ldb_vec8_send(PG_FUNCTION_ARGS) { return ldb_generic_vec_send(fcinfo); }
 
 // PGDLLEXPORT PG_FUNCTION_INFO_V1(array_to_vector);
 // Datum
@@ -364,6 +357,10 @@ LDBVec *ldb_generic_cast_array_vec(ArrayType *array, int expected_dim, usearch_s
 
     usearch_cast(
         usearch_scalar_f32_k, vec_floats, to, LDBVEC_DATA_PTR(result), result->dim, LDBVEC_DATA_SIZE(result), &error);
+
+    if(error) {
+        elog(ERROR, "error in float downcasting: %s", error);
+    }
 
     return result;
 }

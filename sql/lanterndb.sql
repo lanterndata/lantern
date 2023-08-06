@@ -60,18 +60,10 @@ CREATE FUNCTION ldb_generic_vec_typmod_in(cstring[]) RETURNS integer
 -- 8-byte unit-vector (i.e. vector with elements in range [-1, 1])
 CREATE TYPE uvec8;
 
-CREATE FUNCTION ldb_uvec8_in(cstring, oid, integer) RETURNS uvec8
-	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
-
-CREATE FUNCTION ldb_uvec8_out(uvec8) RETURNS cstring
-	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
-
-CREATE FUNCTION ldb_uvec8_recv(internal, oid, integer) RETURNS uvec8
-	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
-
-CREATE FUNCTION ldb_uvec8_send(uvec8) RETURNS bytea
-	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
-
+CREATE FUNCTION ldb_uvec8_in(cstring, oid, integer) RETURNS uvec8 AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+CREATE FUNCTION ldb_uvec8_out(uvec8) RETURNS cstring AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+CREATE FUNCTION ldb_uvec8_recv(internal, oid, integer) RETURNS uvec8 AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+CREATE FUNCTION ldb_uvec8_send(uvec8) RETURNS bytea AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 
 CREATE TYPE uvec8 (
 	INPUT     = ldb_uvec8_in,
@@ -82,7 +74,24 @@ CREATE TYPE uvec8 (
 	STORAGE   = extended
 );
 
--- -- Unit ector which has 1 byte elements in range [-1, 1]
+CREATE TYPE vec8;
+
+CREATE FUNCTION ldb_vec8_in(cstring, oid, integer) RETURNS vec8 AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+CREATE FUNCTION ldb_vec8_out(vec8) RETURNS cstring AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+CREATE FUNCTION ldb_vec8_recv(internal, oid, integer) RETURNS vec8 AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+CREATE FUNCTION ldb_vec8_send(vec8) RETURNS bytea AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+
+CREATE TYPE vec8 (
+	INPUT     = ldb_vec8_in,
+	OUTPUT    = ldb_vec8_out,
+	RECEIVE   = ldb_vec8_recv,
+	SEND      = ldb_vec8_send,
+	TYPMOD_IN = ldb_generic_vec_typmod_in,
+	STORAGE   = extended
+);
+
+-- cast functions
+
 CREATE FUNCTION ldb_cast_uvec8_uvec8(uvec8, integer, boolean) RETURNS uvec8
 	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 CREATE FUNCTION ldb_cast_array_uvec8(integer[], integer, boolean) RETURNS uvec8

@@ -3,6 +3,7 @@ CREATE EXTENSION IF NOT EXISTS lanterndb;
 \qecho
 \set ON_ERROR_STOP on
 
+-- uvec8
 SELECT '{1,1,1}'::uvec8, '{0,0,0}'::uvec8, '{-1, 0, 1, -1, 000}'::uvec8;
 
 SELECT '{0.111,0.222222,-0.33333333, -0.42424242424242}'::float4[];
@@ -10,6 +11,9 @@ SELECT '{0.111,0.222222,-0.33333333, -0.42424242424242}'::uvec8;
 SELECT '{0.111,0.22,0.33}'::uvec8(3);
 SELECT '{-0.42,0.0000001,0.00002}'::float[3]::uvec8(3);
 SELECT '{-0.42,0.0000001,0.00002}'::float[3]::uvec8(3)::float4[3];
+
+-- vec8
+SELECT '{.1, 0.33, .42, .55, -.42, -0.00001, -.1234567}'::vec8, '{.1, 0.33, .42, .55, -.42, -0.00001, -.1234567}'::uvec8;
 
 
 \set ON_ERROR_STOP off
