@@ -44,5 +44,5 @@ IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInf
 void              ldb_ambuildempty(Relation index);
 HnswDataType      GetIndexDataType(Relation index);
 int               GetHnswIndexDimensions(Relation index);
-void              CheckHnswIndexDimensions(Relation index, Datum *value, int deimensions);
+void              CheckHnswIndexDimensions(Relation index, Datum value, int deimensions);
 #endif  // LDB_HNSW_BUILD_H

@@ -139,7 +139,7 @@ int GetHnswIndexDimensions(Relation index)
     return -1;
 }
 
-void CheckHnswIndexDimensions(Relation index, Datum *value, int dimensions)
+void CheckHnswIndexDimensions(Relation index, Datum value, int dimensions)
 {
     ArrayType   *array;
     int          n_items;

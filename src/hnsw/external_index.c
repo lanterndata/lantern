@@ -15,8 +15,8 @@
 #include "usearch.h"
 #include "utils/relcache.h"
 
-static inline void fill_blockno_mapping();
-static HTAB       *wal_retriever_block_numbers_cache = NULL;
+static inline void fill_blockno_mapping(BlockNumber *wal_retriever_block_numbers);
+static Cache       wal_retriever_block_numbers_cache;
 
 int UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, int level)
 {
@@ -350,8 +350,6 @@ void ldb_wal_retriever_area_init(int size)
     /* fill in a buffer with blockno index information, before spilling it to disk */
     wal_retriever_block_numbers_cache = cache_create();
 
-    if(wal_retriever_block_numbers_cache == NULL) elog(ERROR, "could not allocate wal_retriever_block_numbers_cache");
-
     if(EXTRA_DIRTIED_SIZE > 0) {
         elog(INFO, "EXTRA_DIRTIED_SIZE > 0 %d", EXTRA_DIRTIED_SIZE);
         for(int i = 0; i < EXTRA_DIRTIED_SIZE; i++) {
@@ -574,8 +572,7 @@ void ldb_wal_retriever_area_reset()
 
 void ldb_wal_retriever_area_free()
 {
-    cache_destroy(wal_retriever_block_numbers_cache);
-    wal_retriever_block_numbers_cache = NULL;
+    cache_destroy(&wal_retriever_block_numbers_cache);
 #if LANTERNDB_COPYNODES
     pfree(wal_retriever_area);
     wal_retriever_area = NULL;
@@ -623,14 +620,14 @@ static inline void *wal_index_node_retriever_exact(int id)
     // clang-format on
 #endif
 
-    BlockNumber blockno_from_cache = cache_get_item(wal_retriever_block_numbers_cache, &id);
+    BlockNumber blockno_from_cache = cache_get_item(&wal_retriever_block_numbers_cache, &id);
     if(blockno_from_cache != InvalidBlockNumber) {
         blockno = blockno_from_cache;
     } else {
         int id_offset = (id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE) * HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
         buf = ReadBufferExtended(INDEX_RELATION_FOR_RETRIEVER, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
         // you might expect that this is unnecessary, since we always unlock the pagemap page right after reading the
-        // necessary information into wal_retriever_block_numbers
+        // necessary information into wal_retriever_block_numbers_cache
         // BUT it is necessary because _mut() retriever might have blocked the current page in order to add a value to
         // it!
         for(int i = 0; i < EXTRA_DIRTIED_SIZE; i++) {
@@ -652,9 +649,9 @@ static inline void *wal_index_node_retriever_exact(int id)
             elog(ERROR, "ERROR: Blockmap max_offset is %d but was supposed to be %d", max_offset, FirstOffsetNumber);
         }
         blockmap_page = (HnswBlockmapPage *)PageGetItem(page, PageGetItemId(page, FirstOffsetNumber));
-        int key = id % HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
+        CacheKey key = id % HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
         blockno = blockmap_page->blocknos[ key ];
-        cache_set_item(wal_retriever_block_numbers_cache, &key, blockmap_page->blocknos[ key ]);
+        cache_set_item(&wal_retriever_block_numbers_cache, &key, blockmap_page->blocknos[ key ]);
         if(!idx_pagemap_prelocked) {
             UnlockReleaseBuffer(buf);
         }
@@ -735,7 +732,7 @@ void *ldb_wal_index_node_retriever_mut(int id)
     bool            idx_page_prelocked = false;
     bool            idx_pagemap_prelocked = false;
 
-    BlockNumber blockno_from_cache = cache_get_item(wal_retriever_block_numbers_cache, &id);
+    BlockNumber blockno_from_cache = cache_get_item(&wal_retriever_block_numbers_cache, &id);
     if(blockno_from_cache != InvalidBlockNumber) {
         blockno = blockno_from_cache;
     } else {
@@ -766,7 +763,7 @@ void *ldb_wal_index_node_retriever_mut(int id)
 
         CacheKey key = id % HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
         blockno = blockmap_page->blocknos[ key ];
-        cache_set_item(wal_retriever_block_numbers_cache, &key, blockno);
+        cache_set_item(&wal_retriever_block_numbers_cache, &key, blockno);
         if(!idx_pagemap_prelocked) {
             UnlockReleaseBuffer(buf);
         }
