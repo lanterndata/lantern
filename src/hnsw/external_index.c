@@ -649,9 +649,9 @@ static inline void *wal_index_node_retriever_exact(int id)
             elog(ERROR, "ERROR: Blockmap max_offset is %d but was supposed to be %d", max_offset, FirstOffsetNumber);
         }
         blockmap_page = (HnswBlockmapPage *)PageGetItem(page, PageGetItemId(page, FirstOffsetNumber));
-        CacheKey key = id % HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
+        int key = id % HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
         blockno = blockmap_page->blocknos[ key ];
-        cache_set_item(&wal_retriever_block_numbers_cache, &key, blockmap_page->blocknos[ key ]);
+        cache_set_item(&wal_retriever_block_numbers_cache, &id, blockmap_page->blocknos[ key ]);
         if(!idx_pagemap_prelocked) {
             UnlockReleaseBuffer(buf);
         }
