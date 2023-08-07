@@ -15,11 +15,7 @@
 #include "usearch.h"
 #include "utils/relcache.h"
 
-static Cache  wal_retriever_block_numbers_cache;
-static uint32 g_blockmap_groups = 0;
-static uint32 g_blockmap_group_indexes[ HNSW_MAX_BLOCKMAP_GROUPS ];
-static uint32 g_number_of_blocks = 1;
-static uint32 g_num_vectors = 0;
+static Cache wal_retriever_block_numbers_cache;
 
 int UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, int level)
 {
@@ -51,18 +47,31 @@ static char *extract_node(char               *data,
 }
 
 int CreateBlockMapGroup(
-    HnswIndexHeaderPage *hdr, Relation index, ForkNumber forkNum, int first_node_index, int group_num)
+    HnswIndexHeaderPage *hdr, Relation index, ForkNumber forkNum, int first_node_index, int blockmap_groupno)
 {
     // Create empty blockmap pages for the group
-    const int number_of_blockmaps_in_group = 1 << group_num;
-    // elog(INFO, "davkhech number_of_blockmaps_in_group %d num_added_vectors %d", number_of_blockmaps_in_group,
-    // num_added_vectors);
+    const int number_of_blockmaps_in_group = 1 << blockmap_groupno;
+
+    // populated iff we open the header under our WAL
+    Buffer            hdr_buf = InvalidBuffer;
+    GenericXLogState *hdrstate = NULL;
+    if(hdr == NULL) {
+        // todo:: BAD case-work here.
+        // we should decide where header modification happens for this case, and stick with it
+        // in stead of having a nullable hdr parameter
+        hdrstate = GenericXLogStart(index);
+        hdr_buf = ReadBufferExtended(index, forkNum, 0, RBM_NORMAL, NULL);
+        LockBuffer(hdr_buf, BUFFER_LOCK_EXCLUSIVE);
+        Page page = GenericXLogRegisterBuffer(hdrstate, hdr_buf, GENERIC_XLOG_FULL_IMAGE);
+        hdr = (HnswIndexHeaderPage *)PageGetContents(page);
+    }
+
     for(int blockmap_id = 0; blockmap_id < number_of_blockmaps_in_group; ++blockmap_id) {
-        Buffer buf = ReadBufferExtended(index, forkNum, P_NEW, RBM_NORMAL, NULL);
+        GenericXLogState *state = GenericXLogStart(index);
+        Buffer            buf = ReadBufferExtended(index, forkNum, P_NEW, RBM_NORMAL, NULL);
         LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 
-        GenericXLogState *state = GenericXLogStart(index);
-        Page              page = GenericXLogRegisterBuffer(state, buf, GENERIC_XLOG_FULL_IMAGE);
+        Page page = GenericXLogRegisterBuffer(state, buf, GENERIC_XLOG_FULL_IMAGE);
         PageInit(page, BufferGetPageSize(buf), sizeof(HnswIndexPageSpecialBlock));
 
         HnswIndexPageSpecialBlock *special = (HnswIndexPageSpecialBlock *)PageGetSpecialPointer(page);
@@ -83,18 +92,23 @@ int CreateBlockMapGroup(
         special->lastId = first_node_index + (blockmap_id + 1) * HNSW_BLOCKMAP_BLOCKS_PER_PAGE - 1;
         special->nextblockno = BufferGetBlockNumber(buf) + 1;
         if(blockmap_id == 0) {
-            if(hdr == NULL) {
-                g_blockmap_group_indexes[ group_num ] = BufferGetBlockNumber(buf);
-            } else {
-                hdr->blockmap_page_groups = group_num;
-                hdr->blockmap_page_group_index[ group_num ] = BufferGetBlockNumber(buf);
-            }
+            hdr->blockmap_page_groups = blockmap_groupno;
+            hdr->blockmap_page_group_index[ blockmap_groupno ] = BufferGetBlockNumber(buf);
         }
-        // elog(INFO, "davkhech page block special %d %d group %d index %d", special->lastId, special->nextblockno,
-        // g_blockmap_groups, g_blockmap_group_indexs[g_blockmap_groups]);
         MarkBufferDirty(buf);
         GenericXLogFinish(state);
         UnlockReleaseBuffer(buf);
+        // GenericXLog allows registering up to 4 buffers at a time. So, we cannot set up large BlockMapGroups
+        // in a single WAL entry. If we could, we would start the generic Xlog record before the for loop and commit
+        // all changes as a whole in the end of this function.
+        // Because now all changes do not happen atomically, we probably need to use some other mechanism to make
+        // sure we do not corrupt the index in case of a crash in the middle of a BlockMapGroup creation.
+    }
+
+    if(hdr_buf != InvalidBuffer) {
+        assert(hdrstate != NULL);
+        GenericXLogFinish(hdrstate);
+        UnlockReleaseBuffer(hdr_buf);
     }
 
     return number_of_blockmaps_in_group;
@@ -108,10 +122,11 @@ void StoreExternalIndexBlockMapGroup(Relation        index,
                                      size_t          external_index_size,
                                      int             dimension,
                                      int             first_node_index,
-                                     size_t          num_added_vectors)
+                                     size_t          num_added_vectors,
+                                     int             blockmap_groupno)
 {
     const int number_of_blockmaps_in_group
-        = CreateBlockMapGroup(NULL, index, forkNum, first_node_index, g_blockmap_groups);
+        = CreateBlockMapGroup(NULL, index, forkNum, first_node_index, blockmap_groupno);
 
     // Now add nodes to data pages
     char        *node = 0;
@@ -157,7 +172,6 @@ void StoreExternalIndexBlockMapGroup(Relation        index,
         special->firstId = node_id;
         special->nextblockno = InvalidBlockNumber;
 
-        // elog(INFO, "davkhech start adding nodes %d %d", node_id, BufferGetBlockNumber(buf));
         // note: even if the condition is true, nodepage may be too large
         // as the condition does not take into account the flexible array component
         while(PageGetFreeSpace(page) > sizeof(HnswIndexTuple) + dimension * sizeof(float)) {
@@ -198,7 +212,6 @@ void StoreExternalIndexBlockMapGroup(Relation        index,
                 break;
             }
 
-            // elog(INFO, "davkhech end adding nodes %d to page %d", node_id, BufferGetBlockNumber(buf));
             // we successfully recorded the node. move to the next one
             *(l_wal_retriever_block_numbers + node_id - first_node_index) = BufferGetBlockNumber(buf);
             *progress += node_size;
@@ -212,19 +225,22 @@ void StoreExternalIndexBlockMapGroup(Relation        index,
         }
         special->lastId = node_id - 1;
         special->nextblockno = predicted_next_block;
-        // elog(INFO, "davkhech data special %d %d %d %d", special->lastId, special->nextblockno, g_blockmap_groups,
-        // g_blockmap_group_indexs[g_blockmap_groups]);
+
         MarkBufferDirty(buf);
         GenericXLogFinish(state);
         UnlockReleaseBuffer(buf);
     }
-    CreateHeaderPage(index, data, forkNum, dimension, 0, last_block, last_block, true);
-    // elog(WARNING, "davkhech now updating blockmap");
+    CreateHeaderPage(index, data, forkNum, dimension, -1, last_block, last_block, true);
 
     // Update blockmap pages with correct associations
     for(int blockmap_id = 0; blockmap_id < number_of_blockmaps_in_group; ++blockmap_id) {
-        const BlockNumber blockmapno = blockmap_id + g_blockmap_group_indexes[ g_blockmap_groups ];
-        Buffer            buf = ReadBufferExtended(index, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
+        // When the blockmap page group was created, header block was updated accordingly in CreateBlockMapGroup
+        // call above.
+        // Then, HEADER_FOR_EXTERNAL_RETRIEVER was just updated in the CreateHeaderPage(update) call above.
+        // So, below we can take blockmap group index information from HEADER_FOR_EXTERNAL_RETRIEVER.
+        const BlockNumber blockmapno
+            = blockmap_id + HEADER_FOR_EXTERNAL_RETRIEVER.blockmap_page_group_index[ blockmap_groupno ];
+        Buffer buf = ReadBufferExtended(index, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
         LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 
         GenericXLogState *state = GenericXLogStart(index);
@@ -238,7 +254,6 @@ void StoreExternalIndexBlockMapGroup(Relation        index,
         GenericXLogFinish(state);
         UnlockReleaseBuffer(buf);
     }
-    // elog(INFO, "davkhech finished with group");
 }
 
 void StoreExternalIndex(Relation        index,
@@ -250,6 +265,7 @@ void StoreExternalIndex(Relation        index,
                         size_t          num_added_vectors)
 {
     int progress = 64;  // usearch header size
+    int blockmap_groupno = 0;
     if(num_added_vectors >= HNSW_MAX_INDEXED_VECTORS) {
         elog(ERROR, "too many vectors to store in hnsw index. Current limit: %d", HNSW_MAX_INDEXED_VECTORS);
     }
@@ -264,9 +280,6 @@ void StoreExternalIndex(Relation        index,
     int    num_added_vectors_remaining = (int)num_added_vectors;
     int    batch_size = HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
     while(num_added_vectors_remaining > 0) {
-        // elog(INFO, "davkhech adding group num_added_vectors %d batch_size %d num_added_vectors_remaining %d
-        // group_node_first_index %d", num_added_vectors, batch_size, num_added_vectors_remaining,
-        // group_node_first_index);
         StoreExternalIndexBlockMapGroup(index,
                                         external_index,
                                         forkNum,
@@ -275,22 +288,28 @@ void StoreExternalIndex(Relation        index,
                                         external_index_size,
                                         dimension,
                                         group_node_first_index,
-                                        Min(num_added_vectors_remaining, batch_size));
+                                        Min(num_added_vectors_remaining, batch_size),
+                                        blockmap_groupno);
         num_added_vectors_remaining -= batch_size;
         group_node_first_index += batch_size;
         batch_size = batch_size * 2;
-        g_blockmap_groups++;
-        // elog(INFO, "davkhech index block map group added: num_added_vectors_remaining %d, group_node_first_index %d,
-        // batch_size %d, g_blockmap_groups %d", num_added_vectors_remaining, group_node_first_index, batch_size,
-        // g_blockmap_groups);
+        blockmap_groupno++;
     }
 }
 
+/**
+ * Create a new index header page
+ * @param index
+ * ...
+ * @param num_vectors number of vectors in the index. if update=true, this can be -1, which means
+ * that the number of vectors in the header should not be updated
+ * @param update if true, the header page is updated. if false, a new header page is created
+ */
 void CreateHeaderPage(Relation    index,
                       char       *usearchHeader64,
                       ForkNumber  forkNum,
-                      int         vector_dim,
-                      int         num_vectors,
+                      uint32      vector_dim,
+                      uint32      num_vectors,
                       BlockNumber last_data_block,
                       uint32      num_blocks,
                       bool        update)
@@ -305,36 +324,43 @@ void CreateHeaderPage(Relation    index,
         headerblockno = 0;
     }
     buf = ReadBufferExtended(index, forkNum, headerblockno, RBM_NORMAL, NULL);
+
+    // even when we are creating a new page, it must always be the first page we create
+    // and should therefore have BLockNumber 0
+    assert(BufferGetBlockNumber(buf) == 0);
     LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 
     state = GenericXLogStart(index);
     page = GenericXLogRegisterBuffer(state, buf, GENERIC_XLOG_FULL_IMAGE);
-    PageInit(page, BufferGetPageSize(buf), 0);
 
-    headerp = (HnswIndexHeaderPage *)PageGetContents(page);
-    headerp->magicNumber = LDB_WAL_MAGIC_NUMBER;
-    headerp->version = LDB_WAL_VERSION_NUMBER;
-    headerp->vector_dim = vector_dim;
-
-    headerp->last_data_block = last_data_block;
-    headerp->num_blocks = num_blocks;
     if(!update) {
-        g_num_vectors = num_vectors;
+        PageInit(page, BufferGetPageSize(buf), 0);
+        headerp = (HnswIndexHeaderPage *)PageGetContents(page);
+
+        headerp->magicNumber = LDB_WAL_MAGIC_NUMBER;
+        headerp->version = LDB_WAL_VERSION_NUMBER;
+        headerp->vector_dim = vector_dim;
+        assert(num_vectors != -1);
         headerp->num_vectors = num_vectors;
         headerp->blockmap_page_groups = 0;
         memset(headerp->blockmap_page_group_index, 0, HNSW_MAX_BLOCKMAP_GROUPS);
-        g_blockmap_groups = 0;
-        memset(g_blockmap_group_indexes, 0, HNSW_MAX_BLOCKMAP_GROUPS);
     } else {
-        headerp->num_vectors = g_num_vectors;
-        headerp->blockmap_page_groups = g_blockmap_groups;
-        memcpy(headerp->blockmap_page_group_index, g_blockmap_group_indexes, sizeof(g_blockmap_group_indexes));
+        /* no init. we are updating the existing header page */
+        headerp = (HnswIndexHeaderPage *)PageGetContents(page);
+        if(num_vectors != -1) {
+            headerp->num_vectors = num_vectors;
+        }
     }
+
+    // headerp->blockmap_page_group_index and blockmap_page_groups are
+    // updated separately, in its own wal entry
+    headerp->last_data_block = last_data_block;
+    headerp->num_blocks = num_blocks;
+
     memcpy(headerp->usearch_header, usearchHeader64, 64);
     ((PageHeader)page)->pd_lower = ((char *)headerp + sizeof(HnswIndexHeaderPage)) - (char *)page;
 
     HEADER_FOR_EXTERNAL_RETRIEVER = *headerp;
-    assert(BufferGetBlockNumber(buf) == 0);
 
     MarkBufferDirty(buf);
     GenericXLogFinish(state);
@@ -490,7 +516,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
             (*extra_dirtied_page)[ (*extra_dirtied_size) - 1 ] = page;
         }
 
-        const blockmaps_are_enough
+        const int blockmaps_are_enough
             = new_tuple_id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE + 1 < (1 << (hdr->blockmap_page_groups + 1));
         // elog(INFO, "davkhech %d", blockmaps_are_enough);
         if(PageGetFreeSpace(page) > sizeof(HnswIndexTuple) + alloced_tuple->size && blockmaps_are_enough) {
@@ -505,7 +531,6 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
             MarkBufferDirty(last_dblock);
         } else {
             elog(DEBUG5, "InsertBranching: creating new data bage to add an element to");
-            // elog(INFO, "davkhech need to put in new page %d", new_tuple_id);
             // 1. create and read a new block
             // 2. store the new block blockno in the last block special
             // 2.5 update index header to point to the new last page
