@@ -197,7 +197,11 @@ bool ldb_aminsert(Relation         index,
     MarkBufferDirty(hdr_buf);
     // we only release the header buffer AFTER inserting is finished to make sure nobody else changes the block
     // structure. todo:: critical section here can definitely be shortened
-    assert(GenericXLogFinish(state) != InvalidXLogRecPtr);
+    {
+        XLogRecPtr ptr = GenericXLogFinish(state);
+        assert(ptr != InvalidXLogRecPtr);
+    }
+
     for(int i = 0; i < EXTRA_DIRTIED_SIZE; i++) {
         assert(BufferIsValid(extra_dirtied[ i ]));
         // header is not considered extra. we know we should not have dirtied it
