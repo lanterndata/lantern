@@ -98,6 +98,7 @@ bool ldb_aminsert(Relation         index,
         hdr_page = BufferGetPage(hdr_buf);
         hdr = (HnswIndexHeaderPage *)PageGetContents(hdr_page);
         assert(hdr->magicNumber == LDB_WAL_MAGIC_NUMBER);
+        HEADER_FOR_EXTERNAL_RETRIEVER = *hdr;
 
         // todo:: pass in all the additional init info for external retreiver like index size (that's all?)
         uidx = usearch_init(&opts, &error);
