@@ -17,12 +17,11 @@
 // used for code clarity when modifying WAL entries
 #define LDB_GENERIC_XLOG_DELTA_IMAGE 0
 
-// with so many blockmap groups we can store up to 2^32-1 vectors
+// This is enough store up to 2^32-1 vectors
+// N.B. other factors make this a hard upper limit (e.g. num_vectors is uint32)
+// So one cannot increase this number and expect to handle larger indexes
 #define HNSW_MAX_BLOCKMAP_GROUPS 32
 
-// this should be as large as possible to cache more stuff
-// while still fitting on the first page
-#define NODE_STORAGE_NUM_COARSE 10
 typedef struct HnswIndexHeaderPage
 {
     uint32 magicNumber;
@@ -34,11 +33,9 @@ typedef struct HnswIndexHeaderPage
     // is headeblockno + 1
     uint32 last_data_block;
     uint32 blockno_index_start;
-    //todo:: get rid of this
+    // todo:: get rid of this
     uint32 num_blocks;
     char   usearch_header[ 64 ];
-    uint32 coarse_ids[ NODE_STORAGE_NUM_COARSE ];
-    uint32 coarse_block[ NODE_STORAGE_NUM_COARSE ];
 
     uint32 blockmap_page_groups;
     uint32 blockmap_page_group_index[ HNSW_MAX_BLOCKMAP_GROUPS ];
@@ -96,14 +93,14 @@ void ldb_wal_retriever_area_reset();
 void ldb_wal_retriever_area_free();
 
 int  UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, int level);
-void CreateHeaderPage(Relation   index,
-                      char      *usearchHeader64,
-                      ForkNumber forkNum,
-                      int        vector_dim,
-                      int        num_vectors,
-                      uint32     blockno_index_start,
-                      uint32     num_blocks,
-                      bool       update);
+void CreateHeaderPage(Relation    index,
+                      char       *usearchHeader64,
+                      ForkNumber  forkNum,
+                      uint32      vector_dim,
+                      uint32      num_vectors,
+                      BlockNumber last_data_block,
+                      uint32      num_blocks,
+                      bool        update);
 
 void StoreExternalIndex(Relation        index,
                         usearch_index_t external_index,
@@ -128,6 +125,6 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
 void *ldb_wal_index_node_retriever(int id);
 void *ldb_wal_index_node_retriever_mut(int id);
 
-BlockNumber getBlockMapPageBlockNumber(HnswIndexHeaderPage* hdr, int id);
+BlockNumber getBlockMapPageBlockNumber(HnswIndexHeaderPage *hdr, int id);
 
 #endif  // LDB_HNSW_EXTERNAL_INDEX_H
