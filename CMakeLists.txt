@@ -30,6 +30,10 @@ if(CODECOVERAGE)
   # for the given compiler.  For example, with GCC, --coverage translates to
   # -fprofile-arcs -ftest-coverage when compiling and -lgcov when linking
   add_compile_options(--coverage -O0)
+  # add NDEBUG to make sure asserts compile to a NOOP and do not negatively impact
+  # code coverage. Asserts check invariants but since 'assert' is defined as a macro-condition,
+  # codecov always considers it partially covered.
+  add_compile_definitions(NDEBUG)
   add_link_options(--coverage)
 endif(CODECOVERAGE)
 
