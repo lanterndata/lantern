@@ -226,7 +226,7 @@ SELECT * from ldb_get_indexes('sift_base1k');
      indexname     |  size  |                                       indexdef                                        
 -------------------+--------+---------------------------------------------------------------------------------------
  sift_base1k_pkey  | 40 kB  | CREATE UNIQUE INDEX sift_base1k_pkey ON public.sift_base1k USING btree (id)
- sift_base1k_v_idx | 872 kB | CREATE INDEX sift_base1k_v_idx ON public.sift_base1k USING hnsw (v) WITH (dims='128')
+ sift_base1k_v_idx | 720 kB | CREATE INDEX sift_base1k_v_idx ON public.sift_base1k USING hnsw (v) WITH (dims='128')
 (2 rows)
 
 INSERT INTO sift_base1k(v)
@@ -243,7 +243,7 @@ SELECT * from ldb_get_indexes('sift_base1k');
      indexname     |  size   |                                       indexdef                                        
 -------------------+---------+---------------------------------------------------------------------------------------
  sift_base1k_pkey  | 48 kB   | CREATE UNIQUE INDEX sift_base1k_pkey ON public.sift_base1k USING btree (id)
- sift_base1k_v_idx | 1168 kB | CREATE INDEX sift_base1k_v_idx ON public.sift_base1k USING hnsw (v) WITH (dims='128')
+ sift_base1k_v_idx | 1016 kB | CREATE INDEX sift_base1k_v_idx ON public.sift_base1k USING hnsw (v) WITH (dims='128')
 (2 rows)
 
 INSERT INTO small_world (id, vector) VALUES ('xxx', NULL);
