@@ -125,8 +125,6 @@ if (${LANTERNDB_COPYNODES})
   target_compile_definitions(lanterndb PRIVATE LANTERNDB_COPYNODES)
 endif()
 
-target_compile_definitions(lanterndb PRIVATE _GNU_SOURCE)
-
 set(_script_file "lanterndb--${LANTERNDB_VERSION}.sql")
 set (_update_files
   sql/updates/0.0.1--0.0.2.sql
