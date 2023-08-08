@@ -5,9 +5,6 @@
 #include <catalog/namespace.h>
 #include <catalog/pg_type.h>
 #include <storage/bufmgr.h>
-#include <sys/mman.h>  // `mmap`
-#include <sys/stat.h>  // `fstat` for file size
-#include <unistd.h>    // `open`, `close`
 #include <utils/array.h>
 #include <utils/lsyscache.h>
 #include <utils/memutils.h>
@@ -254,7 +251,7 @@ static void BuildIndex(
     assert(error == NULL);
 
     char *result_buf = NULL;
-    usearch_save(buildstate->usearch_index, NULL, &error, &result_buf);
+    usearch_save(buildstate->usearch_index, NULL, &result_buf, &error);
     assert(error == NULL);
     assert(result_buf != NULL);
     num_added_vectors = usearch_size(buildstate->usearch_index, &error);
