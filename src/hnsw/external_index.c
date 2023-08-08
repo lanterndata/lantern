@@ -108,6 +108,7 @@ int CreateBlockMapGroup(
     // it is possible that usearch asks for a newly added node from this blockmap range
     // we need to make sure the global header has this information
     HEADER_FOR_EXTERNAL_RETRIEVER = *hdr;
+
     if(hdr_buf != InvalidBuffer) {
         assert(hdrstate != NULL);
         GenericXLogFinish(hdrstate);
@@ -179,7 +180,6 @@ void StoreExternalIndexBlockMapGroup(Relation        index,
         // as the condition does not take into account the flexible array component
         while(PageGetFreeSpace(page) > sizeof(HnswIndexTuple) + dimension * sizeof(float)) {
             if(node_id >= first_node_index + num_added_vectors) break;
-            // elog(INFO, "davkhech start adding nodes %d to page %d", node_id, BufferGetBlockNumber(buf));
             memset(bufferpage, 0, BLCKSZ);
             /************* extract node from usearch index************/
 
@@ -269,9 +269,6 @@ void StoreExternalIndex(Relation        index,
 {
     int progress = 64;  // usearch header size
     int blockmap_groupno = 0;
-    if(num_added_vectors >= HNSW_MAX_INDEXED_VECTORS) {
-        elog(ERROR, "too many vectors to store in hnsw index. Current limit: %d", HNSW_MAX_INDEXED_VECTORS);
-    }
 
     // header page is created twice. it is always at block=0 so the second time just overrides it
     // it is added here to make sure a data block does not get to block=0.
@@ -356,7 +353,7 @@ void CreateHeaderPage(Relation    index,
     }
 
     // headerp->blockmap_page_group_index and blockmap_page_groups are
-    // updated separately, in its own wal entry
+    // updated in a separate wal entry
     headerp->last_data_block = last_data_block;
     headerp->num_blocks = num_blocks;
 
@@ -462,7 +459,6 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
                                   Page (*extra_dirtied_page)[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ],
                                   int *extra_dirtied_size)
 {
-    // elog(INFO, "davkhech trying insert %d", new_tuple_id);
     // if any data blocks exist, the last one's buffer will be read into this
     Buffer last_dblock = InvalidBuffer;
     // if a new data buffer is created for the inserted vector, it will be stored here
@@ -521,11 +517,9 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
 
         const int blockmaps_are_enough
             = new_tuple_id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE + 1 < (1 << (hdr->blockmap_page_groups + 1));
-        // elog(INFO, "davkhech %d", blockmaps_are_enough);
         if(PageGetFreeSpace(page) > sizeof(HnswIndexTuple) + alloced_tuple->size && blockmaps_are_enough) {
             // there is enough space in the last page to fit the new vector
             // so we just append it to the page
-            // elog(INFO, "davkhech can put in page %d", new_tuple_id);
             elog(DEBUG5, "InsertBranching: we adding element to existing page");
             new_tup_at = HnswIndexPageAddVector(page, alloced_tuple, alloced_tuple->size);
             new_vector_blockno = BufferGetBlockNumber(last_dblock);
@@ -673,19 +667,15 @@ BlockNumber getBlockMapPageBlockNumber(HnswIndexHeaderPage *hdr, int id)
 
 static inline void *wal_index_node_retriever_exact(int id)
 {
-    // elog(WARNING, "davkhech retreiver called %d", id);
     HnswBlockmapPage *blockmap_page;
-    // fix blockmap size to X pages -> X * 8k overhead -> can have max table size of 2000 * X
-    // fix blockmap size to 20000 pages -> 160 MB overhead -> can have max table size of 40M rows
-    // 40M vectors of 128 dims -> 40 * 128 * 4 = 163840 Mbytes -> 163 GB... will not fly
-    BlockNumber     blockmapno = getBlockMapPageBlockNumber(&HEADER_FOR_EXTERNAL_RETRIEVER, id);
-    BlockNumber     blockno;
-    Buffer          buf;
-    Page            page;
-    HnswIndexTuple *nodepage;
-    OffsetNumber    offset, max_offset;
-    bool            idx_page_prelocked = false;
-    bool            idx_pagemap_prelocked = false;
+    BlockNumber       blockmapno = getBlockMapPageBlockNumber(&HEADER_FOR_EXTERNAL_RETRIEVER, id);
+    BlockNumber       blockno;
+    Buffer            buf;
+    Page              page;
+    HnswIndexTuple   *nodepage;
+    OffsetNumber      offset, max_offset;
+    bool              idx_page_prelocked = false;
+    bool              idx_pagemap_prelocked = false;
 #if LANTERNDB_USEARCH_LEVEL_DISTRIBUTION
     static levels[ 20 ] = {0};
     static cnt = 0;
@@ -705,7 +695,6 @@ static inline void *wal_index_node_retriever_exact(int id)
     if(blockno_from_cache != InvalidBlockNumber) {
         blockno = blockno_from_cache;
     } else {
-        int id_offset = (id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE) * HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
         buf = ReadBufferExtended(INDEX_RELATION_FOR_RETRIEVER, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
         // you might expect that this is unnecessary, since we always unlock the pagemap page right after reading the
         // necessary information into wal_retriever_block_numbers_cache
@@ -715,6 +704,7 @@ static inline void *wal_index_node_retriever_exact(int id)
             if(EXTRA_DIRTIED[ i ] == buf) {
                 idx_pagemap_prelocked = true;
                 page = EXTRA_DIRTIED_PAGE[ i ];
+
                 ReleaseBuffer(buf);
                 buf = InvalidBuffer;
             }
@@ -803,7 +793,6 @@ static inline void *wal_index_node_retriever_exact(int id)
 
 void *ldb_wal_index_node_retriever_mut(int id)
 {
-    // elog(WARNING, "davkhech retreiver mut called %d", id);
     HnswBlockmapPage *blockmap_page;
     BlockNumber       blockmapno = getBlockMapPageBlockNumber(&HEADER_FOR_EXTERNAL_RETRIEVER, id);
     BlockNumber       blockno;

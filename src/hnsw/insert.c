@@ -112,6 +112,7 @@ bool ldb_aminsert(Relation         index,
         EXTRA_DIRTIED_SIZE = 0;
         ldb_wal_retriever_area_init(BLCKSZ * 100);
         usearch_set_node_retriever(uidx, &ldb_wal_index_node_retriever, &ldb_wal_index_node_retriever_mut, &error);
+        assert(!error);
 
         assert(usearch_size(uidx, &error) == 0);
         assert(!error);
@@ -163,10 +164,6 @@ bool ldb_aminsert(Relation         index,
     elog(DEBUG5, "Insert: at start num vectors is %d", hdr->num_vectors);
 
     current_size = hdr->num_vectors;
-
-    if(current_size >= HNSW_MAX_INDEXED_VECTORS) {
-        elog(ERROR, "Index full. Cannot add more vectors. Current limit: %d", HNSW_MAX_INDEXED_VECTORS);
-    }
 
     usearch_reserve(uidx, current_size + 1, &error);
     int level = usearch_newnode_level(uidx, &error);
