@@ -105,6 +105,9 @@ int CreateBlockMapGroup(
         // sure we do not corrupt the index in case of a crash in the middle of a BlockMapGroup creation.
     }
 
+    // it is possible that usearch asks for a newly added node from this blockmap range
+    // we need to make sure the global header has this information
+    HEADER_FOR_EXTERNAL_RETRIEVER = *hdr;
     if(hdr_buf != InvalidBuffer) {
         assert(hdrstate != NULL);
         GenericXLogFinish(hdrstate);
