@@ -14,8 +14,6 @@
 
 PG_MODULE_MAGIC;
 
-const char *GLOBAL_HNSW_IDX_NAME = "/tmp/hnsw_postgres_debug.bin";
-
 /*
  * Prepare for an index scan
  */
@@ -34,7 +32,6 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     scanstate = (HnswScanState *)palloc0(sizeof(HnswScanState));
     scanstate->first = true;
 
-    // scanstate->hnsw = hnsw_load(GLOBAL_HNSW_IDX_NAME, dimensions, 8000000);
     opts.connectivity = HnswGetM(index);
     opts.dimensions = dimensions;
     opts.expansion_add = HnswGetEfConstruction(index);

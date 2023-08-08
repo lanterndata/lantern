@@ -8,9 +8,6 @@
 #include "lib_interface.h"
 #include "usearch.h"
 
-/* Variables */
-extern const char *GLOBAL_HNSW_IDX_NAME;
-
 typedef struct HnswBuildState
 {
     /* Info */
