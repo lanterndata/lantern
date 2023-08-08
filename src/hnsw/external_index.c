@@ -842,7 +842,7 @@ void *ldb_wal_index_node_retriever_mut(int id)
 
         CacheKey key = id % HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
         blockno = blockmap_page->blocknos[ key ];
-        cache_set_item(&wal_retriever_block_numbers_cache, &key, blockno);
+        cache_set_item(&wal_retriever_block_numbers_cache, &id, blockno);
         if(!idx_pagemap_prelocked) {
             UnlockReleaseBuffer(buf);
         }
