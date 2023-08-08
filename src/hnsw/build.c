@@ -228,7 +228,6 @@ static void ScanTable(HnswBuildState *buildstate)
 static void BuildIndex(
     Relation heap, Relation index, IndexInfo *indexInfo, HnswBuildState *buildstate, ForkNumber forkNum)
 {
-    // char *alg;
     usearch_init_options_t opts;
     usearch_error_t        error = NULL;
     size_t                 num_added_vectors = 0;
@@ -236,12 +235,7 @@ static void BuildIndex(
     struct stat            file_stat;
     char                  *data;
 
-    // alg = HnswGetAlgorithm(index);
-
     InitBuildState(buildstate, heap, index, indexInfo);
-
-    // buildstate->hnsw =
-    // 	hnsw_new(buildstate->dimensions, max_elems, M, ef_construction);
 
     opts.dimensions = buildstate->dimensions;
 
@@ -259,46 +253,31 @@ static void BuildIndex(
     elog(INFO, "inserted %ld elements", usearch_size(buildstate->usearch_index, &error));
     assert(error == NULL);
 
-    usearch_save(buildstate->usearch_index, GLOBAL_HNSW_IDX_NAME, &error);
+    char *result_buf = NULL;
+    usearch_save(buildstate->usearch_index, NULL, &error, &result_buf);
     assert(error == NULL);
+    assert(result_buf != NULL);
     num_added_vectors = usearch_size(buildstate->usearch_index, &error);
     assert(error == NULL);
     elog(INFO, "done saving %ld vectors", num_added_vectors);
 
     //****************************** saving to WAL BEGIN ******************************//
-    // int pos = 0;
-#if defined(LINUX)
-    fd = open(GLOBAL_HNSW_IDX_NAME, O_RDONLY | O_NOATIME);
-#else
-    fd = open(GLOBAL_HNSW_IDX_NAME, O_RDONLY);
-#endif
-    if(fstat(fd, &file_stat) < 0) {
-        close(fd);
-        elog(ERROR, "Failed to stat file: %s", GLOBAL_HNSW_IDX_NAME);
-    }
-
-    // Map the entire file
-    data = (char *)mmap(NULL, file_stat.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-    if(data == MAP_FAILED) {
-        close(fd);
-        elog(ERROR, "Failed to mmap file: %s", GLOBAL_HNSW_IDX_NAME);
-    }
-
     UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_LOAD);
-    StoreExternalIndex(
-        index, buildstate->usearch_index, forkNum, data, file_stat.st_size, buildstate->dimensions, num_added_vectors);
+    StoreExternalIndex(index,
+                       buildstate->usearch_index,
+                       forkNum,
+                       result_buf,
+                       file_stat.st_size,
+                       buildstate->dimensions,
+                       num_added_vectors);
 
     //****************************** saving to WAL END ******************************//
 
     usearch_free(buildstate->usearch_index, &error);
-    munmap(data, file_stat.st_size);
-    close(fd);
+    free(result_buf);
     assert(error == NULL);
     buildstate->usearch_index = NULL;
 
-    // hnsw_save(buildstate->hnsw, GLOBAL_HNSW_IDX_NAME);
-    // elog(INFO, "inserted %d elements", hnsw_size(buildstate->hnsw));
-    // hnsw_destroy(buildstate->hnsw);
     FreeBuildState(buildstate);
 }
 
