@@ -1,18 +1,16 @@
-#include "postgres.h"
-
 #include "external_index.h"
+#include "cache.h"
+#include "insert.h"
+#include "usearch.h"
 
+#include <postgres.h>
 #include <access/generic_xlog.h>  // GenericXLog
 #include <assert.h>
 #include <utils/hsearch.h>
-
-#include "cache.h"
-#include "common/relpath.h"
-#include "insert.h"
-#include "pg_config.h"       // BLCKSZ
-#include "storage/bufmgr.h"  // Buffer
-#include "usearch.h"
-#include "utils/relcache.h"
+#include <common/relpath.h>
+#include <pg_config.h>       // BLCKSZ
+#include <storage/bufmgr.h>  // Buffer
+#include <utils/relcache.h>
 
 static Cache wal_retriever_block_numbers_cache;
 
@@ -112,7 +110,7 @@ int CreateBlockMapGroup(
 
         special->lastId = first_node_index + (blockmap_id + 1) * HNSW_BLOCKMAP_BLOCKS_PER_PAGE - 1;
         special->nextblockno = BufferGetBlockNumber(buf) + 1;
-        
+
         MarkBufferDirty(buf);
         GenericXLogFinish(state);
         UnlockReleaseBuffer(buf);
@@ -385,8 +383,6 @@ void CreateHeaderPage(Relation    index,
     UnlockReleaseBuffer(buf);
 }
 
-
-
 void ldb_wal_retriever_area_init(int size)
 {
 #if LANTERNDB_COPYNODES
@@ -495,7 +491,6 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
         LockBuffer(new_dblock, BUFFER_LOCK_EXCLUSIVE);
         new_vector_blockno = BufferGetBlockNumber(new_dblock);
         // todo:: add a failure point in here for tests and make sure new_dblock is not leaked
-
         
         hdr->last_data_block = new_vector_blockno;
 

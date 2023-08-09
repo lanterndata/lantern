@@ -17,3 +17,7 @@ SELECT * FROM small_world WHERE 1=1;
 
 INSERT INTO small_world (id, vector) VALUES ('xxx', '{0,0,0}');
 INSERT 0 1
+INSERT INTO small_world (id, vector) VALUES ('xxx', NULL);
+INSERT 0 1
+INSERT INTO small_world (id, vector) VALUES ('xxx', '{1,1,1,1}');
+psql:test/sql/hnsw_insert_empty_table.sql:17: ERROR:  Wrong number of dimensions: 4 instead of 3 expected
