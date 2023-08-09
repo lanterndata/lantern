@@ -138,7 +138,7 @@ Datum       hnsw_handler(PG_FUNCTION_ARGS)
     amroutine->amkeytype = InvalidOid;
     /* Interface functions */
     amroutine->ambuild = ldb_ambuild;
-    amroutine->ambuildempty = ldb_ambuildempty;
+    amroutine->ambuildempty = ldb_ambuildunlogged;
     amroutine->aminsert = ldb_aminsert;
     amroutine->ambulkdelete = ldb_ambulkdelete;
     amroutine->amvacuumcleanup = ldb_amvacuumcleanup;
@@ -169,8 +169,6 @@ Datum       hnsw_handler(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(amroutine);
 }
 
-PGDLLEXPORT PG_FUNCTION_INFO_V1(l2sq_dist);
-
 static float4 calc_distance(ArrayType *a, ArrayType *b)
 {
     int     a_dim = ArrayGetNItems(ARR_NDIM(a), ARR_DIMS(a));
@@ -184,6 +182,8 @@ static float4 calc_distance(ArrayType *a, ArrayType *b)
 
     return l2sq_dist_impl(ax, bx, a_dim);
 }
+
+PGDLLEXPORT PG_FUNCTION_INFO_V1(l2sq_dist);
 
 Datum l2sq_dist(PG_FUNCTION_ARGS)
 {

@@ -11,7 +11,7 @@ SET enable_seqscan = off;
 INSERT INTO small_world (id, vector) VALUES ('xxx', '{0,0,0}');
 INSERT INTO small_world (id, vector) VALUES ('x11', '{0,0,110}');
 INSERT INTO small_world (id, vector) VALUES 
-('000', '{0,0,0}'),
+('000', NULL),
 ('001', '{0,0,1}'),
 ('010', '{0,1,0}'),
 ('011', '{0,1,1}'),
@@ -70,6 +70,13 @@ INSERT INTO new_small_world (id, vector) VALUES
 ('101', '{1,0,1}'),
 ('110', '{1,1,0}'),
 ('111', '{1,1,1}');
+
+--make sure insert of the wrong length fails
+INSERT INTO new_small_world (id, vector) VALUES
+('000', '{4,4,4,4}');
+--make sure the value was actually not inserted
+select * from new_small_world where id = '000';
+
 -- index scan
 SELECT '{0,0,0}'::real[] as v42  \gset
 EXPLAIN (COSTS FALSE) SELECT id, ROUND((vector <-> :'v42')::numeric, 2) FROM new_small_world ORDER BY vector <-> :'v42' LIMIT 10;
@@ -84,6 +91,9 @@ SELECT * from ldb_get_indexes('sift_base1k');
 
 -- make sure NULL inserts into the index are handled correctly
 INSERT INTO small_world (id, vector) VALUES ('xxx', NULL);
+CREATE UNLOGGED TABLE unlogged_small_world AS TABLE small_world;
 \set ON_ERROR_STOP off
 INSERT INTO small_world (id, vector) VALUES ('xxx', '{1,1,1,1}');
+SELECT '{1,1,1,1}'::real[] <-> '{1,1,1}'::real[];
+CREATE INDEX ON unlogged_small_world USING hnsw (vector);
 \set ON_ERROR_STOP on
