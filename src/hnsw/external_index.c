@@ -1,5 +1,5 @@
-#include "external_index.h"
 #include "cache.h"
+#include "external_index.h"
 #include "insert.h"
 #include "usearch.h"
 
@@ -488,8 +488,8 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
         new_dblock = ReadBufferExtended(index_rel, MAIN_FORKNUM, P_NEW, RBM_NORMAL, NULL);
         LockBuffer(new_dblock, BUFFER_LOCK_EXCLUSIVE);
         new_vector_blockno = BufferGetBlockNumber(new_dblock);
+
         // todo:: add a failure point in here for tests and make sure new_dblock is not leaked
-        
         hdr->last_data_block = new_vector_blockno;
 
         // 4.
