@@ -5,7 +5,7 @@ COPY . .
 # Set Locale
 RUN apt update && apt-mark hold locales && \
 # Install required packages for build
-apt install -y --no-install-recommends build-essential cmake postgresql-server-dev-15 gdb wget postgres-15-pgvector python3-pip sudo && \
+apt install -y --no-install-recommends build-essential cmake postgresql-server-dev-15 gdb wget postgresql-15-pgvector python3-pip sudo && \
     pip install libtmux --break-system-packages
 
 # Build lanterndb
