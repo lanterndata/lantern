@@ -249,7 +249,7 @@ void StoreExternalIndexBlockMapGroup(Relation        index,
         GenericXLogFinish(state);
         UnlockReleaseBuffer(buf);
     }
-    CreateHeaderPage(index, data, forkNum, dimension, -1, last_block, last_block, true);
+    CreateHeaderPage(index, data, forkNum, dimension, -1, last_block, true);
 
     // Update blockmap pages with correct associations
     for(int blockmap_id = 0; blockmap_id < number_of_blockmaps_in_group; ++blockmap_id) {
@@ -289,7 +289,7 @@ void StoreExternalIndex(Relation        index,
     // header page is created twice. it is always at block=0 so the second time just overrides it
     // it is added here to make sure a data block does not get to block=0.
     // after somem sleep I will prob find a better way to do this
-    CreateHeaderPage(index, data, forkNum, dimension, num_added_vectors, -1, -1, false);
+    CreateHeaderPage(index, data, forkNum, dimension, num_added_vectors, -1, false);
 
     uint32 number_of_index_pages = num_added_vectors / HNSW_BLOCKMAP_BLOCKS_PER_PAGE + 1;
     int    group_node_first_index = 0;
@@ -327,7 +327,6 @@ void CreateHeaderPage(Relation    index,
                       uint32      vector_dim,
                       uint32      num_vectors,
                       BlockNumber last_data_block,
-                      uint32      num_blocks,
                       bool        update)
 {
     Buffer               buf;
@@ -371,7 +370,6 @@ void CreateHeaderPage(Relation    index,
     // headerp->blockmap_page_group_index and blockmap_page_groups are
     // updated in a separate wal entry
     headerp->last_data_block = last_data_block;
-    headerp->num_blocks = num_blocks;
 
     memcpy(headerp->usearch_header, usearchHeader64, 64);
     ((PageHeader)page)->pd_lower = ((char *)headerp + sizeof(HnswIndexHeaderPage)) - (char *)page;

@@ -26,10 +26,10 @@ typedef struct HnswIndexHeaderPage
 {
     uint32 magicNumber;
     uint32 version;
+
     uint32 vector_dim;
     uint32 num_vectors;
     uint32 last_data_block;
-    uint32 num_blocks;
     char   usearch_header[ 64 ];
 
     uint32 blockmap_page_groups;
@@ -86,7 +86,6 @@ void CreateHeaderPage(Relation    index,
                       uint32      vector_dim,
                       uint32      num_vectors,
                       BlockNumber last_data_block,
-                      uint32      num_blocks,
                       bool        update);
 
 void StoreExternalIndex(Relation        index,
