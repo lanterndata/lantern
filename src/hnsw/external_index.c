@@ -87,6 +87,11 @@ int CreateBlockMapGroup(
         Buffer            buf = ReadBufferExtended(index, forkNum, P_NEW, RBM_NORMAL, NULL);
         LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 
+        if(blockmap_id == 0) {
+            hdr->blockmap_page_groups = blockmap_groupno;
+            hdr->blockmap_page_group_index[ blockmap_groupno ] = BufferGetBlockNumber(buf);
+        }
+
         Page page = GenericXLogRegisterBuffer(state, buf, GENERIC_XLOG_FULL_IMAGE);
         PageInit(page, BufferGetPageSize(buf), sizeof(HnswIndexPageSpecialBlock));
 
@@ -107,10 +112,7 @@ int CreateBlockMapGroup(
 
         special->lastId = first_node_index + (blockmap_id + 1) * HNSW_BLOCKMAP_BLOCKS_PER_PAGE - 1;
         special->nextblockno = BufferGetBlockNumber(buf) + 1;
-        if(blockmap_id == 0) {
-            hdr->blockmap_page_groups = blockmap_groupno;
-            hdr->blockmap_page_group_index[ blockmap_groupno ] = BufferGetBlockNumber(buf);
-        }
+        
         MarkBufferDirty(buf);
         GenericXLogFinish(state);
         UnlockReleaseBuffer(buf);

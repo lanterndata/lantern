@@ -28,12 +28,7 @@ typedef struct HnswIndexHeaderPage
     uint32 version;
     uint32 vector_dim;
     uint32 num_vectors;
-    // todo:: switch these to BlockNumber for documentation
-    // first data block is needed because in case of creating an index on empty table it no longer
-    // is headeblockno + 1
     uint32 last_data_block;
-    uint32 blockno_index_start;
-    // todo:: get rid of this
     uint32 num_blocks;
     char   usearch_header[ 64 ];
 
