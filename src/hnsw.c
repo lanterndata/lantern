@@ -59,7 +59,6 @@ static void hnswcostestimate(PlannerInfo *root,
     List *qinfos;
 #endif
 
-    elog(INFO, "cost estimate");
     /* Never use index without order */
     if(path->indexorderbys == NULL) {
         *indexStartupCost = DBL_MAX;
@@ -70,26 +69,10 @@ static void hnswcostestimate(PlannerInfo *root,
         return;
     }
     /* ALWAYS use index when asked*/
-
-    elog(INFO, "returning small cost to always use the index");
-    *indexStartupCost = 0;  //.4444;
-    *indexTotalCost = 0;    //.4444;
-    *indexSelectivity = 0;
-    *indexCorrelation = 0;
-    *indexPages = 0;
-    return;
-
     MemSet(&costs, 0, sizeof(costs));
 
-    indexRel = index_open(path->indexinfo->indexoid, NoLock);
-    index_close(indexRel, NoLock);
-
-    /*
-     * This gives us the subset of tuples to visit. This value is passed into
-     * the generic cost estimator to determine the number of pages to visit
-     * during the index scan.
-     */
-    costs.numIndexTuples = path->indexinfo->tuples * ratio;
+    // todo:: estimate number of leaf tuples visited
+    costs.numIndexTuples = 0;
 
 #if PG_VERSION_NUM >= 120000
     genericcostestimate(root, path, loop_count, &costs);
@@ -98,31 +81,10 @@ static void hnswcostestimate(PlannerInfo *root,
     genericcostestimate(root, path, loop_count, qinfos, &costs);
 #endif
 
-    get_tablespace_page_costs(path->indexinfo->reltablespace, NULL, &spc_seq_page_cost);
-
-    /* Adjust cost if needed since TOAST not included in seq scan cost */
-    if(costs.numIndexPages > path->indexinfo->rel->pages && ratio < 0.5) {
-        /* Change all page cost from random to sequential */
-        costs.indexTotalCost -= costs.numIndexPages * (costs.spc_random_page_cost - spc_seq_page_cost);
-
-        /* Remove cost of extra pages */
-        costs.indexTotalCost -= (costs.numIndexPages - path->indexinfo->rel->pages) * spc_seq_page_cost;
-    } else {
-        /* Change some page cost from random to sequential */
-        costs.indexTotalCost -= 0.5 * costs.numIndexPages * (costs.spc_random_page_cost - spc_seq_page_cost);
-    }
-
-    /*
-     * If the list selectivity is lower than what is returned from the generic
-     * cost estimator, use that.
-     */
-    if(ratio < costs.indexSelectivity) costs.indexSelectivity = ratio;
-
-    /* Use total cost since most work happens before first tuple is returned */
-    *indexStartupCost = costs.indexTotalCost;
+    *indexStartupCost = 0;
     *indexTotalCost = costs.indexTotalCost;
     *indexSelectivity = costs.indexSelectivity;
-    *indexCorrelation = costs.indexCorrelation;
+    *indexCorrelation = 0;
     *indexPages = costs.numIndexPages;
 }
 
