@@ -207,9 +207,7 @@ Datum       hnsw_handler(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(amroutine);
 }
 
-PGDLLEXPORT PG_FUNCTION_INFO_V1(l2sq_dist);
-
-static float4 calc_distance(ArrayType *a, ArrayType *b)
+static float4 array_dist(ArrayType *a, ArrayType *b, DistFuncType dist_func)
 {
     int     a_dim = ArrayGetNItems(ARR_NDIM(a), ARR_DIMS(a));
     int     b_dim = ArrayGetNItems(ARR_NDIM(b), ARR_DIMS(b));
@@ -220,12 +218,46 @@ static float4 calc_distance(ArrayType *a, ArrayType *b)
         elog(ERROR, "expected equally sized arrays but got arrays with dimensions %d and %d", a_dim, b_dim);
     }
 
-    return l2sq_dist_impl(ax, bx, a_dim);
+    return dist_func(ax, bx, a_dim);
 }
 
-Datum l2sq_dist(PG_FUNCTION_ARGS)
+PGDLLEXPORT PG_FUNCTION_INFO_V1(ldb_generic_dist);
+Datum       ldb_generic_dist(PG_FUNCTION_ARGS)
 {
     ArrayType *a = PG_GETARG_ARRAYTYPE_P(0);
     ArrayType *b = PG_GETARG_ARRAYTYPE_P(1);
-    PG_RETURN_FLOAT4(calc_distance(a, b));
+    // elog(INFO, "generic dist called with args {%f..} {%f..}", *(float4 *)ARR_DATA_PTR(a), *(float4
+    // *)ARR_DATA_PTR(b));
+    MemoryContext m = CurrentMemoryContext;
+    bool          return_null = false;
+    while(m) {
+        if(strncmp(m->name, "PortalContext", 13) == 0) {
+            return_null = true;
+        }
+        m = m->parent;
+    }
+
+    if(return_null) {
+        // todo:: figure out why the Executor Portal is calling this function after the index scan
+        // has finished and when index scan has indicated reordering of rows is unnecessary
+        PG_RETURN_NULL();
+    }
+
+    elog(ERROR, "Operator <-> has no standalone meaning and is reserved for use in vector index lookups only");
+}
+
+PGDLLEXPORT PG_FUNCTION_INFO_V1(l2sq_dist);
+Datum       l2sq_dist(PG_FUNCTION_ARGS)
+{
+    ArrayType *a = PG_GETARG_ARRAYTYPE_P(0);
+    ArrayType *b = PG_GETARG_ARRAYTYPE_P(1);
+    PG_RETURN_FLOAT4(array_dist(a, b, l2sq_dist_impl));
+}
+
+PGDLLEXPORT PG_FUNCTION_INFO_V1(l1_dist);
+Datum       l1_dist(PG_FUNCTION_ARGS)
+{
+    ArrayType *a = PG_GETARG_ARRAYTYPE_P(0);
+    ArrayType *b = PG_GETARG_ARRAYTYPE_P(1);
+    PG_RETURN_FLOAT4(array_dist(a, b, l1_dist_impl));
 }

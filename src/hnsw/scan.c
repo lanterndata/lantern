@@ -248,6 +248,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         scan->xs_recheckorderby = false;
         return true;
     }
+    elog(ERROR, "index scan errored");
 
     return false;
 }

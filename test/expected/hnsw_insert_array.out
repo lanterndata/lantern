@@ -48,7 +48,7 @@ INSERT INTO small_world (id, vector) VALUES
 ('111', '{1,1,1}');
 INSERT 0 8
 SELECT * FROM (
-    SELECT id, ROUND( (vector <-> array[0,1,0])::numeric, 2) as dist
+    SELECT id, ROUND( l2sq_dist(vector, array[0,1,0])::numeric, 2) as dist
     FROM small_world
     ORDER BY vector <-> array[0,1,0] LIMIT 7
 ) v ORDER BY v.dist, v.id;
@@ -79,7 +79,7 @@ INSERT INTO small_world (id, vector) VALUES
 ('111', '{1,1,1}');
 INSERT 0 8
 SELECT * FROM (
-    SELECT id, ROUND( (vector <-> array[0,1,0])::numeric, 2) as dist
+    SELECT id, ROUND( l2sq_dist(vector, array[0,1,0])::numeric, 2) as dist
     FROM small_world
     ORDER BY vector <-> array[0,1,0] LIMIT 7
 ) v ORDER BY v.dist, v.id;
@@ -115,7 +115,7 @@ psql:test/sql/hnsw_insert_array.sql:50: INFO:  returning small cost to always us
          Order By: (v <-> '{1,0,0,0,0,0,21,35,1,0,0,0,0,77,51,42,66,2,0,0,0,86,140,71,52,1,0,0,0,0,23,70,2,0,0,0,0,64,73,50,11,0,0,0,0,140,97,18,140,64,0,0,0,99,51,65,78,11,0,0,0,0,41,76,0,0,0,0,0,124,82,2,48,1,0,0,0,118,31,5,140,21,0,0,0,4,12,78,12,0,0,0,0,0,58,117,1,0,0,0,2,25,7,2,46,2,0,0,1,12,4,8,140,9,0,0,0,1,8,16,3,0,0,0,0,0,21,34}'::real[])
 (3 rows)
 
-SELECT id, ROUND((v <-> '{1,0,0,0,0,0,21,35,1,0,0,0,0,77,51,42,66,2,0,0,0,86,140,71,52,1,0,0,0,0,23,70,2,0,0,0,0,64,73,50,11,0,0,0,0,140,97,18,140,64,0,0,0,99,51,65,78,11,0,0,0,0,41,76,0,0,0,0,0,124,82,2,48,1,0,0,0,118,31,5,140,21,0,0,0,4,12,78,12,0,0,0,0,0,58,117,1,0,0,0,2,25,7,2,46,2,0,0,1,12,4,8,140,9,0,0,0,1,8,16,3,0,0,0,0,0,21,34}')::numeric, 2) FROM sift_base1k ORDER BY v <-> '{1,0,0,0,0,0,21,35,1,0,0,0,0,77,51,42,66,2,0,0,0,86,140,71,52,1,0,0,0,0,23,70,2,0,0,0,0,64,73,50,11,0,0,0,0,140,97,18,140,64,0,0,0,99,51,65,78,11,0,0,0,0,41,76,0,0,0,0,0,124,82,2,48,1,0,0,0,118,31,5,140,21,0,0,0,4,12,78,12,0,0,0,0,0,58,117,1,0,0,0,2,25,7,2,46,2,0,0,1,12,4,8,140,9,0,0,0,1,8,16,3,0,0,0,0,0,21,34}' LIMIT 10;
+SELECT id, ROUND(l2sq_dist(v, '{1,0,0,0,0,0,21,35,1,0,0,0,0,77,51,42,66,2,0,0,0,86,140,71,52,1,0,0,0,0,23,70,2,0,0,0,0,64,73,50,11,0,0,0,0,140,97,18,140,64,0,0,0,99,51,65,78,11,0,0,0,0,41,76,0,0,0,0,0,124,82,2,48,1,0,0,0,118,31,5,140,21,0,0,0,4,12,78,12,0,0,0,0,0,58,117,1,0,0,0,2,25,7,2,46,2,0,0,1,12,4,8,140,9,0,0,0,1,8,16,3,0,0,0,0,0,21,34}')::numeric, 2) FROM sift_base1k ORDER BY v <-> '{1,0,0,0,0,0,21,35,1,0,0,0,0,77,51,42,66,2,0,0,0,86,140,71,52,1,0,0,0,0,23,70,2,0,0,0,0,64,73,50,11,0,0,0,0,140,97,18,140,64,0,0,0,99,51,65,78,11,0,0,0,0,41,76,0,0,0,0,0,124,82,2,48,1,0,0,0,118,31,5,140,21,0,0,0,4,12,78,12,0,0,0,0,0,58,117,1,0,0,0,2,25,7,2,46,2,0,0,1,12,4,8,140,9,0,0,0,1,8,16,3,0,0,0,0,0,21,34}' LIMIT 10;
 psql:test/sql/hnsw_insert_array.sql:51: INFO:  cost estimate
 psql:test/sql/hnsw_insert_array.sql:51: INFO:  returning small cost to always use the index
 psql:test/sql/hnsw_insert_array.sql:51: INFO:  began scanning with 0 keys and 1 orderbys
@@ -147,7 +147,7 @@ psql:test/sql/hnsw_insert_array.sql:55: INFO:  returning small cost to always us
          Order By: (v <-> '{1,0,0,0,0,0,21,35,1,0,0,0,0,77,51,42,66,2,0,0,0,86,140,71,52,1,0,0,0,0,23,70,2,0,0,0,0,64,73,50,11,0,0,0,0,140,97,18,140,64,0,0,0,99,51,65,78,11,0,0,0,0,41,76,0,0,0,0,0,124,82,2,48,1,0,0,0,118,31,5,140,21,0,0,0,4,12,78,12,0,0,0,0,0,58,117,1,0,0,0,2,25,7,2,46,2,0,0,1,12,4,8,140,9,0,0,0,1,8,16,3,0,0,0,0,0,21,34}'::real[])
 (3 rows)
 
-SELECT id, ROUND((v <-> '{1,0,0,0,0,0,21,35,1,0,0,0,0,77,51,42,66,2,0,0,0,86,140,71,52,1,0,0,0,0,23,70,2,0,0,0,0,64,73,50,11,0,0,0,0,140,97,18,140,64,0,0,0,99,51,65,78,11,0,0,0,0,41,76,0,0,0,0,0,124,82,2,48,1,0,0,0,118,31,5,140,21,0,0,0,4,12,78,12,0,0,0,0,0,58,117,1,0,0,0,2,25,7,2,46,2,0,0,1,12,4,8,140,9,0,0,0,1,8,16,3,0,0,0,0,0,21,34}')::numeric, 2) FROM sift_base1k ORDER BY v <-> '{1,0,0,0,0,0,21,35,1,0,0,0,0,77,51,42,66,2,0,0,0,86,140,71,52,1,0,0,0,0,23,70,2,0,0,0,0,64,73,50,11,0,0,0,0,140,97,18,140,64,0,0,0,99,51,65,78,11,0,0,0,0,41,76,0,0,0,0,0,124,82,2,48,1,0,0,0,118,31,5,140,21,0,0,0,4,12,78,12,0,0,0,0,0,58,117,1,0,0,0,2,25,7,2,46,2,0,0,1,12,4,8,140,9,0,0,0,1,8,16,3,0,0,0,0,0,21,34}' LIMIT 10;
+SELECT id, ROUND(l2sq_dist(v, '{1,0,0,0,0,0,21,35,1,0,0,0,0,77,51,42,66,2,0,0,0,86,140,71,52,1,0,0,0,0,23,70,2,0,0,0,0,64,73,50,11,0,0,0,0,140,97,18,140,64,0,0,0,99,51,65,78,11,0,0,0,0,41,76,0,0,0,0,0,124,82,2,48,1,0,0,0,118,31,5,140,21,0,0,0,4,12,78,12,0,0,0,0,0,58,117,1,0,0,0,2,25,7,2,46,2,0,0,1,12,4,8,140,9,0,0,0,1,8,16,3,0,0,0,0,0,21,34}')::numeric, 2) FROM sift_base1k ORDER BY v <-> '{1,0,0,0,0,0,21,35,1,0,0,0,0,77,51,42,66,2,0,0,0,86,140,71,52,1,0,0,0,0,23,70,2,0,0,0,0,64,73,50,11,0,0,0,0,140,97,18,140,64,0,0,0,99,51,65,78,11,0,0,0,0,41,76,0,0,0,0,0,124,82,2,48,1,0,0,0,118,31,5,140,21,0,0,0,4,12,78,12,0,0,0,0,0,58,117,1,0,0,0,2,25,7,2,46,2,0,0,1,12,4,8,140,9,0,0,0,1,8,16,3,0,0,0,0,0,21,34}' LIMIT 10;
 psql:test/sql/hnsw_insert_array.sql:56: INFO:  cost estimate
 psql:test/sql/hnsw_insert_array.sql:56: INFO:  returning small cost to always use the index
 psql:test/sql/hnsw_insert_array.sql:56: INFO:  began scanning with 0 keys and 1 orderbys
@@ -185,7 +185,7 @@ INSERT INTO new_small_world (id, vector) VALUES
 ('111', '{1,1,1}');
 INSERT 0 8
 SELECT '{0,0,0}'::real[] as v42  
-EXPLAIN (COSTS FALSE) SELECT id, ROUND((vector <-> '{0,0,0}')::numeric, 2) FROM new_small_world ORDER BY vector <-> '{0,0,0}' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT id, ROUND(l2sq_dist(vector, '{0,0,0}')::numeric, 2) FROM new_small_world ORDER BY vector <-> '{0,0,0}' LIMIT 10;
 psql:test/sql/hnsw_insert_array.sql:75: INFO:  cost estimate
 psql:test/sql/hnsw_insert_array.sql:75: INFO:  returning small cost to always use the index
                               QUERY PLAN                              
@@ -195,7 +195,7 @@ psql:test/sql/hnsw_insert_array.sql:75: INFO:  returning small cost to always us
          Order By: (vector <-> '{0,0,0}'::real[])
 (3 rows)
 
-SELECT id, ROUND((vector <-> '{0,0,0}')::numeric, 2) FROM new_small_world ORDER BY vector <-> '{0,0,0}' LIMIT 10;
+SELECT id, ROUND(l2sq_dist(vector,'{0,0,0}')::numeric, 2) FROM new_small_world ORDER BY vector <-> '{0,0,0}' LIMIT 10;
 psql:test/sql/hnsw_insert_array.sql:76: INFO:  cost estimate
 psql:test/sql/hnsw_insert_array.sql:76: INFO:  returning small cost to always use the index
 psql:test/sql/hnsw_insert_array.sql:76: INFO:  began scanning with 0 keys and 1 orderbys

@@ -1,0 +1,95 @@
+CREATE EXTENSION IF NOT EXISTS lanterndb;
+CREATE EXTENSION
+CREATE TABLE small_world (
+    id varchar(3),
+    vector real[]
+);
+CREATE TABLE
+INSERT INTO small_world (id, vector) VALUES 
+('000', '{0,0,0}'),
+('001', '{0,0,1}'),
+('010', '{0,1,0}'),
+('011', '{0,1,1}'),
+('100', '{1,0,0}'),
+('101', '{1,0,1}'),
+('110', '{1,1,0}'),
+('111', '{1,1,1}');
+INSERT 0 8
+CREATE INDEX ON small_world USING hnsw (vector);
+psql:test/sql/generic_distance_metric.sql:6: INFO:  done init usearch index
+psql:test/sql/generic_distance_metric.sql:6: INFO:  inserted 8 elements
+psql:test/sql/generic_distance_metric.sql:6: INFO:  done saving 8 vectors
+CREATE INDEX
+CREATE INDEX ON sift_base1k USING hnsw (v) WITH (dims=128);
+psql:test/sql/generic_distance_metric.sql:7: ERROR:  relation "sift_base1k" does not exist
+SET enable_seqscan = off;
+SET
+SELECT l1_dist(array[0,0,1], array[0,1,0]);
+ l1_dist 
+---------
+       2
+(1 row)
+
+SELECT l2sq_dist(array[0,0,1], array[0,1,0]);
+ l2sq_dist 
+-----------
+         2
+(1 row)
+
+SELECT array[0,0,1] <-> array[0,1,0];
+psql:test/sql/generic_distance_metric.sql:15: ERROR:  Operator <-> has no standalone meaning and is reserved for use in vector index lookups only
+SELECT * FROM (
+    SELECT id, ROUND( l2sq_dist(vector, array[0,1,0])::numeric, 2) as dist
+    FROM small_world
+    ORDER BY vector <-> array[0,1,0] LIMIT 7
+) v ORDER BY v.dist, v.id;
+psql:test/sql/generic_distance_metric.sql:23: INFO:  cost estimate
+psql:test/sql/generic_distance_metric.sql:23: INFO:  returning small cost to always use the index
+psql:test/sql/generic_distance_metric.sql:23: INFO:  began scanning with 0 keys and 1 orderbys
+psql:test/sql/generic_distance_metric.sql:23: INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
+psql:test/sql/generic_distance_metric.sql:23: INFO:  usearch index initialized
+ id  | dist 
+-----+------
+ 010 | 0.00
+ 000 | 1.00
+ 011 | 1.00
+ 001 | 2.00
+ 100 | 2.00
+ 111 | 2.00
+ 101 | 3.00
+(7 rows)
+
+drop index small_world_vector_idx;
+DROP INDEX
+SELECT * FROM (
+    SELECT id, ROUND( l2sq_dist(vector, array[0,1,0])::numeric, 2) as dist
+    FROM small_world
+    ORDER BY vector <-> array[0,1,0] LIMIT 7
+) v ORDER BY v.dist, v.id;
+ id  | dist 
+-----+------
+ 010 | 0.00
+ 000 | 1.00
+ 011 | 1.00
+ 110 | 1.00
+ 001 | 2.00
+ 100 | 2.00
+ 101 | 3.00
+(7 rows)
+
+SELECT * FROM (
+    SELECT id, ROUND((vector <-> array[0,1,0])::numeric, 2) as dist
+    FROM small_world
+    ORDER BY vector <-> array[0,1,0] LIMIT 7
+) v ORDER BY v.dist, v.id;
+ id  | dist 
+-----+------
+ 000 |     
+ 001 |     
+ 010 |     
+ 011 |     
+ 100 |     
+ 101 |     
+ 110 |     
+(7 rows)
+
