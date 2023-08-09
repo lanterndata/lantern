@@ -25,6 +25,8 @@ Below is a short recording demonstrating the use of `livedebug.py`:
 
 [![asciicast](https://asciinema.org/a/jTsbWdOcTvUl4iAJlAw3Cszbt.svg)](https://asciinema.org/a/jTsbWdOcTvUl4iAJlAw3Cszbt)
 
+To lint the code you'll need to have clang-format version 14 installed and you can do `make format`.
+
 ## Adding/modifying LanternDB's SQL interface
 
 When modifying the SQL interface, you add relevant SQL logic under `sql/`. In addition, you add an update script
