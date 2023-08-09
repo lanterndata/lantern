@@ -1,0 +1,16 @@
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION
+CREATE EXTENSION IF NOT EXISTS lanterndb;
+CREATE EXTENSION
+CREATE TABLE small_world (
+    id varchar(3),
+    vector vector(3)
+);
+CREATE TABLE
+CREATE INDEX ON small_world USING hnsw (vector);
+psql:test/sql/hnsw_insert_empty_table.sql:9: INFO:  done init usearch index
+psql:test/sql/hnsw_insert_empty_table.sql:9: INFO:  inserted 0 elements
+psql:test/sql/hnsw_insert_empty_table.sql:9: INFO:  done saving 0 vectors
+CREATE INDEX
+INSERT INTO small_world (id, vector) VALUES ('xxx', '[0,0,0]');
+INSERT 0 1

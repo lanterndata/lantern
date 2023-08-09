@@ -1,4 +1,3 @@
-
 #include "postgres.h"
 
 #include "external_index.h"
@@ -16,6 +15,23 @@
 #include "utils/relcache.h"
 
 static Cache wal_retriever_block_numbers_cache;
+
+Relation            INDEX_RELATION_FOR_RETRIEVER;
+HnswIndexHeaderPage HEADER_FOR_EXTERNAL_RETRIEVER;
+Buffer             *EXTRA_DIRTIED;
+Page               *EXTRA_DIRTIED_PAGE;
+int                 EXTRA_DIRTIED_SIZE = 0;
+
+#if LANTERNDB_COPYNODES
+static char *wal_retriever_area = NULL;
+static int   wal_retriever_area_size = 0;
+static int   wal_retriever_area_offset = 0;
+#else
+
+#define TAKENBUFFERS_MAX 1000
+static Buffer *takenbuffers;
+static int     takenbuffers_next = 0;
+#endif
 
 int UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, int level)
 {
@@ -367,22 +383,7 @@ void CreateHeaderPage(Relation    index,
     UnlockReleaseBuffer(buf);
 }
 
-Relation            INDEX_RELATION_FOR_RETRIEVER;
-HnswIndexHeaderPage HEADER_FOR_EXTERNAL_RETRIEVER;
-Buffer             *EXTRA_DIRTIED;
-Page               *EXTRA_DIRTIED_PAGE;
-int                 EXTRA_DIRTIED_SIZE = 0;
 
-#if LANTERNDB_COPYNODES
-static char *wal_retriever_area = NULL;
-static int   wal_retriever_area_size = 0;
-static int   wal_retriever_area_offset = 0;
-#else
-
-#define TAKENBUFFERS_MAX 1000
-static Buffer *takenbuffers;
-static int     takenbuffers_next = 0;
-#endif
 
 void ldb_wal_retriever_area_init(int size)
 {
@@ -398,8 +399,8 @@ void ldb_wal_retriever_area_init(int size)
     }
 #endif
 
-    if(HEADER_FOR_EXTERNAL_RETRIEVER.num_vectors <= 0) {
-        elog(ERROR, "ldb_wal_retriever_area_init called with num_vectors <= 0");
+    if(HEADER_FOR_EXTERNAL_RETRIEVER.num_vectors < 0) {
+        elog(ERROR, "ldb_wal_retriever_area_init called with num_vectors < 0");
     }
     /* fill in a buffer with blockno index information, before spilling it to disk */
     wal_retriever_block_numbers_cache = cache_create();
@@ -487,9 +488,25 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
      *  (create new page if necessary) ***/
 
     if(hdr->last_data_block == InvalidBlockNumber) {
-        elog(ERROR, "inserting into an empty table not supported");
-        // index is created on the empty table.
-        // allocate the first page here
+        CreateBlockMapGroup(hdr, index_rel, MAIN_FORKNUM, 0, 0);
+        new_dblock = ReadBufferExtended(index_rel, MAIN_FORKNUM, P_NEW, RBM_NORMAL, NULL);
+        LockBuffer(new_dblock, BUFFER_LOCK_EXCLUSIVE);
+        new_vector_blockno = BufferGetBlockNumber(new_dblock);
+        // todo:: add a failure point in here for tests and make sure new_dblock is not leaked
+
+        
+        hdr->last_data_block = new_vector_blockno;
+
+        // 4.
+        page = GenericXLogRegisterBuffer(state, new_dblock, LDB_GENERIC_XLOG_DELTA_IMAGE);
+        PageInit(page, BufferGetPageSize(new_dblock), sizeof(HnswIndexPageSpecialBlock));
+
+        (*extra_dirtied)[ (*extra_dirtied_size)++ ] = new_dblock;
+        (*extra_dirtied_page)[ (*extra_dirtied_size) - 1 ] = page;
+
+        new_tup_at = HnswIndexPageAddVector(page, alloced_tuple, alloced_tuple->size);
+
+        MarkBufferDirty(new_dblock);
     } else {
         last_dblock = ReadBufferExtended(index_rel, MAIN_FORKNUM, hdr->last_data_block, RBM_NORMAL, NULL);
         for(int i = 0; i < *extra_dirtied_size; i++) {
