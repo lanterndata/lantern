@@ -64,8 +64,6 @@ SELECT * FROM (
 	FROM small_world
 	ORDER BY vector <-> '[0,0,0]' LIMIT 7
 ) v ORDER BY v.dist, v.id;
-psql:test/sql/hnsw.sql:49: INFO:  cost estimate
-psql:test/sql/hnsw.sql:49: INFO:  returning small cost to always use the index
 psql:test/sql/hnsw.sql:49: INFO:  began scanning with 0 keys and 1 orderbys
 psql:test/sql/hnsw.sql:49: INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
 psql:test/sql/hnsw.sql:49: INFO:  usearch index initialized
@@ -85,8 +83,6 @@ SELECT * FROM (
 	FROM small_world
 	ORDER BY vector <-> '[0,1,0]' LIMIT 7
 ) v ORDER BY v.dist, v.id;
-psql:test/sql/hnsw.sql:54: INFO:  cost estimate
-psql:test/sql/hnsw.sql:54: INFO:  returning small cost to always use the index
 psql:test/sql/hnsw.sql:54: INFO:  began scanning with 0 keys and 1 orderbys
 psql:test/sql/hnsw.sql:54: INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
 psql:test/sql/hnsw.sql:54: INFO:  usearch index initialized
@@ -119,8 +115,6 @@ SELECT * FROM ldb_get_indexes('small_world');
 SELECT ROUND( (vector <-> '[0,0,0]')::numeric, 2) as dist
 FROM small_world
 ORDER BY vector <-> '[0,0,0]' LIMIT 7;
-psql:test/sql/hnsw.sql:71: INFO:  cost estimate
-psql:test/sql/hnsw.sql:71: INFO:  returning small cost to always use the index
 psql:test/sql/hnsw.sql:71: INFO:  began scanning with 0 keys and 1 orderbys
 psql:test/sql/hnsw.sql:71: INFO:  starting scan with dimensions=3 M=2 efConstruction=12 ef=11
 psql:test/sql/hnsw.sql:71: INFO:  usearch index initialized
@@ -140,8 +134,6 @@ SELECT * FROM (
     FROM small_world
     ORDER BY vector <-> '[0,0,0]' LIMIT 7
 ) v ORDER BY v.dist, v.id;
-psql:test/sql/hnsw.sql:76: INFO:  cost estimate
-psql:test/sql/hnsw.sql:76: INFO:  returning small cost to always use the index
 psql:test/sql/hnsw.sql:76: INFO:  began scanning with 0 keys and 1 orderbys
 psql:test/sql/hnsw.sql:76: INFO:  starting scan with dimensions=3 M=2 efConstruction=12 ef=11
 psql:test/sql/hnsw.sql:76: INFO:  usearch index initialized
@@ -161,8 +153,6 @@ SELECT * FROM (
     FROM small_world
     ORDER BY vector <-> '[0,1,0]' LIMIT 7
 ) v ORDER BY v.dist, v.id;
-psql:test/sql/hnsw.sql:81: INFO:  cost estimate
-psql:test/sql/hnsw.sql:81: INFO:  returning small cost to always use the index
 psql:test/sql/hnsw.sql:81: INFO:  began scanning with 0 keys and 1 orderbys
 psql:test/sql/hnsw.sql:81: INFO:  starting scan with dimensions=3 M=2 efConstruction=12 ef=11
 psql:test/sql/hnsw.sql:81: INFO:  usearch index initialized
@@ -197,8 +187,6 @@ SELECT * FROM (
     FROM small_world
     ORDER BY vector <-> '[0,0,0]' LIMIT 7
 ) v ORDER BY v.dist, v.id;
-psql:test/sql/hnsw.sql:91: INFO:  cost estimate
-psql:test/sql/hnsw.sql:91: INFO:  returning small cost to always use the index
 psql:test/sql/hnsw.sql:91: INFO:  began scanning with 0 keys and 1 orderbys
 psql:test/sql/hnsw.sql:91: INFO:  starting scan with dimensions=3 M=11 efConstruction=2 ef=2
 psql:test/sql/hnsw.sql:91: INFO:  usearch index initialized
@@ -218,8 +206,6 @@ SELECT * FROM (
     FROM small_world
     ORDER BY vector <-> '[0,1,0]' LIMIT 7
 ) v ORDER BY v.dist, v.id;
-psql:test/sql/hnsw.sql:97: INFO:  cost estimate
-psql:test/sql/hnsw.sql:97: INFO:  returning small cost to always use the index
 psql:test/sql/hnsw.sql:97: INFO:  began scanning with 0 keys and 1 orderbys
 psql:test/sql/hnsw.sql:97: INFO:  starting scan with dimensions=3 M=11 efConstruction=2 ef=2
 psql:test/sql/hnsw.sql:97: INFO:  usearch index initialized
