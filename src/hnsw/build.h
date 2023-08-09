@@ -38,7 +38,7 @@ typedef enum
 } HnswDataType;
 
 IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInfo);
-void              ldb_ambuildempty(Relation index);
+void              ldb_ambuildunlogged(Relation index);
 HnswDataType      GetIndexDataType(Relation index);
 int               GetHnswIndexDimensions(Relation index);
 void              CheckHnswIndexDimensions(Relation index, Datum arrayDatum, int deimensions);

@@ -298,11 +298,8 @@ IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInf
 /*
  * Build the index for an unlogged table
  */
-void ldb_ambuildempty(Relation index)
+void ldb_ambuildunlogged(Relation index)
 {
-    IndexInfo     *indexInfo = BuildIndexInfo(index);
-    HnswBuildState buildstate;
-
-    // q:: why is this init_forknum??
-    BuildIndex(NULL, index, indexInfo, &buildstate, INIT_FORKNUM);
+    // todo::
+    elog(ERROR, "hnsw index on unlogged tables is currently not supported");
 }
