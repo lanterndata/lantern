@@ -1,3 +1,4 @@
+#include <postgres.h>
 
 #include "external_index.h"
 
@@ -5,7 +6,6 @@
 #include "insert.h"
 #include "usearch.h"
 
-#include <postgres.h>
 #include <access/generic_xlog.h>  // GenericXLog
 #include <assert.h>
 #include <utils/hsearch.h>
