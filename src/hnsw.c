@@ -208,8 +208,11 @@ Datum       hnsw_handler(PG_FUNCTION_ARGS)
 }
 
 PGDLLEXPORT PG_FUNCTION_INFO_V1(l2sq_dist);
+PGDLLEXPORT PG_FUNCTION_INFO_V1(cosine_dist);
+PGDLLEXPORT PG_FUNCTION_INFO_V1(l1_dist);
+PGDLLEXPORT PG_FUNCTION_INFO_V1(l2_dist);
 
-static float4 calc_distance(ArrayType *a, ArrayType *b)
+static float4 calc_distance(ArrayType *a, ArrayType *b, distance_function f)
 {
     int     a_dim = ArrayGetNItems(ARR_NDIM(a), ARR_DIMS(a));
     int     b_dim = ArrayGetNItems(ARR_NDIM(b), ARR_DIMS(b));
@@ -220,12 +223,45 @@ static float4 calc_distance(ArrayType *a, ArrayType *b)
         elog(ERROR, "expected equally sized arrays but got arrays with dimensions %d and %d", a_dim, b_dim);
     }
 
-    return l2sq_dist_impl(ax, bx, a_dim);
+    switch (f) {
+        case L2SQUARE:
+            return l2sq_dist_impl(ax, bx, a_dim);
+        case COSINE:
+            return cosine_dist_impl(ax, bx, a_dim);
+        case L1:
+            return l1_dist_impl(ax, bx, a_dim);
+        case L2:
+            return l2_dist_impl(ax, bx, a_dim);
+        default:
+            elog(WARNING, "unknown distance function specified %d. Defaulting to l2square", f);
+            return l2sq_dist_impl(ax, bx, a_dim);
+    }
 }
 
 Datum l2sq_dist(PG_FUNCTION_ARGS)
 {
     ArrayType *a = PG_GETARG_ARRAYTYPE_P(0);
     ArrayType *b = PG_GETARG_ARRAYTYPE_P(1);
-    PG_RETURN_FLOAT4(calc_distance(a, b));
+    PG_RETURN_FLOAT4(calc_distance(a, b, L2SQUARE));
+}
+
+Datum cosine_dist(PG_FUNCTION_ARGS)
+{
+    ArrayType *a = PG_GETARG_ARRAYTYPE_P(0);
+    ArrayType *b = PG_GETARG_ARRAYTYPE_P(1);
+    PG_RETURN_FLOAT4(calc_distance(a, b, COSINE));
+}
+
+Datum l1_dist(PG_FUNCTION_ARGS)
+{
+    ArrayType *a = PG_GETARG_ARRAYTYPE_P(0);
+    ArrayType *b = PG_GETARG_ARRAYTYPE_P(1);
+    PG_RETURN_FLOAT4(calc_distance(a, b, L1));
+}
+
+Datum l2_dist(PG_FUNCTION_ARGS)
+{
+    ArrayType *a = PG_GETARG_ARRAYTYPE_P(0);
+    ArrayType *b = PG_GETARG_ARRAYTYPE_P(1);
+    PG_RETURN_FLOAT4(calc_distance(a, b, L2));
 }

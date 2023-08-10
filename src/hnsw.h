@@ -18,4 +18,12 @@
 
 /* Exported functions */
 PGDLLEXPORT void _PG_init(void);
+
+/* Distance function enum */
+typedef enum {
+    L2SQUARE,
+    COSINE,
+    L1,
+    L2,
+} distance_function;
 #endif // LDB_HNSW_H
