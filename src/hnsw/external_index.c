@@ -71,6 +71,11 @@ int CreateBlockMapGroup(
         Buffer            buf = ReadBufferExtended(index, forkNum, P_NEW, RBM_NORMAL, NULL);
         LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 
+        if(blockmap_id == 0) {
+            hdr->blockmap_page_groups = blockmap_groupno;
+            hdr->blockmap_page_group_index[ blockmap_groupno ] = BufferGetBlockNumber(buf);
+        }
+
         Page page = GenericXLogRegisterBuffer(state, buf, GENERIC_XLOG_FULL_IMAGE);
         PageInit(page, BufferGetPageSize(buf), sizeof(HnswIndexPageSpecialBlock));
 
@@ -91,10 +96,7 @@ int CreateBlockMapGroup(
 
         special->lastId = first_node_index + (blockmap_id + 1) * HNSW_BLOCKMAP_BLOCKS_PER_PAGE - 1;
         special->nextblockno = BufferGetBlockNumber(buf) + 1;
-        if(blockmap_id == 0) {
-            hdr->blockmap_page_groups = blockmap_groupno;
-            hdr->blockmap_page_group_index[ blockmap_groupno ] = BufferGetBlockNumber(buf);
-        }
+
         MarkBufferDirty(buf);
         GenericXLogFinish(state);
         UnlockReleaseBuffer(buf);
@@ -398,8 +400,8 @@ void ldb_wal_retriever_area_init(int size)
     }
 #endif
 
-    if(HEADER_FOR_EXTERNAL_RETRIEVER.num_vectors <= 0) {
-        elog(ERROR, "ldb_wal_retriever_area_init called with num_vectors <= 0");
+    if(HEADER_FOR_EXTERNAL_RETRIEVER.num_vectors < 0) {
+        elog(ERROR, "ldb_wal_retriever_area_init called with num_vectors < 0");
     }
     /* fill in a buffer with blockno index information, before spilling it to disk */
     wal_retriever_block_numbers_cache = cache_create();
@@ -487,9 +489,24 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
      *  (create new page if necessary) ***/
 
     if(hdr->last_data_block == InvalidBlockNumber) {
-        elog(ERROR, "inserting into an empty table not supported");
-        // index is created on the empty table.
-        // allocate the first page here
+        CreateBlockMapGroup(hdr, index_rel, MAIN_FORKNUM, 0, 0);
+        new_dblock = ReadBufferExtended(index_rel, MAIN_FORKNUM, P_NEW, RBM_NORMAL, NULL);
+        LockBuffer(new_dblock, BUFFER_LOCK_EXCLUSIVE);
+        new_vector_blockno = BufferGetBlockNumber(new_dblock);
+
+        // todo:: add a failure point in here for tests and make sure new_dblock is not leaked
+        hdr->last_data_block = new_vector_blockno;
+
+        // 4.
+        page = GenericXLogRegisterBuffer(state, new_dblock, LDB_GENERIC_XLOG_DELTA_IMAGE);
+        PageInit(page, BufferGetPageSize(new_dblock), sizeof(HnswIndexPageSpecialBlock));
+
+        (*extra_dirtied)[ (*extra_dirtied_size)++ ] = new_dblock;
+        (*extra_dirtied_page)[ (*extra_dirtied_size) - 1 ] = page;
+
+        new_tup_at = HnswIndexPageAddVector(page, alloced_tuple, alloced_tuple->size);
+
+        MarkBufferDirty(new_dblock);
     } else {
         last_dblock = ReadBufferExtended(index_rel, MAIN_FORKNUM, hdr->last_data_block, RBM_NORMAL, NULL);
         for(int i = 0; i < *extra_dirtied_size; i++) {
