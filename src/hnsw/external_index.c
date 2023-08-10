@@ -1,5 +1,11 @@
-#include <postgres.h>
 
+#include "external_index.h"
+
+#include "cache.h"
+#include "insert.h"
+#include "usearch.h"
+
+#include <postgres.h>
 #include <access/generic_xlog.h>  // GenericXLog
 #include <assert.h>
 #include <utils/hsearch.h>
@@ -7,11 +13,6 @@
 #include <pg_config.h>       // BLCKSZ
 #include <storage/bufmgr.h>  // Buffer
 #include <utils/relcache.h>
-
-#include "cache.h"
-#include "external_index.h"
-#include "insert.h"
-#include "usearch.h"
 
 static Cache wal_retriever_block_numbers_cache;
 
