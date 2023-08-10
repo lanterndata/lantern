@@ -1,8 +1,6 @@
 #ifndef LDB_HNSW_EXTERNAL_INDEX_H
 #define LDB_HNSW_EXTERNAL_INDEX_H
 
-#include "postgres.h"
-
 #include <access/generic_xlog.h>
 #include <common/relpath.h>  // ForkNumber
 #include <storage/bufmgr.h>  // Buffer

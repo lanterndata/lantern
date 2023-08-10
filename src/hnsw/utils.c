@@ -2,6 +2,8 @@
 
 #include "utils.h"
 
+#include <utils/relcache.h>
+
 #include "hnsw.h"
 #include "options.h"
 #include "usearch.h"

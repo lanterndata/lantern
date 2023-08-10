@@ -2,14 +2,18 @@
 
 #include "scan.h"
 
+#include <access/reloptions.h>
 #include <access/relscan.h>
+#include <assert.h>
 #include <pgstat.h>
 #include <utils/rel.h>
 
 #include "build.h"
 #include "external_index.h"
 #include "hnsw.h"
+#include "lib_interface.h"
 #include "options.h"
+#include "usearch.h"
 #include "vector.h"
 
 PG_MODULE_MAGIC;

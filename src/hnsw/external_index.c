@@ -1,10 +1,16 @@
-#include "postgres.h"
+#include <postgres.h>
 
 #include "external_index.h"
 
+#include <access/genam.h>         // IndexUniqueCheck
 #include <access/generic_xlog.h>  // GenericXLog
+#include <access/generic_xlog.h>
 #include <assert.h>
+#include <common/relpath.h>   // ForkNumber
+#include <nodes/execnodes.h>  // IndexInfo
+#include <storage/bufmgr.h>   // Buffer
 #include <utils/hsearch.h>
+#include <utils/relcache.h>  // Relation
 
 #include "cache.h"
 #include "common/relpath.h"

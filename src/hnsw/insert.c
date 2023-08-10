@@ -2,11 +2,14 @@
 
 #include "insert.h"
 
+#include <access/genam.h>  // IndexUniqueCheck
 #include <access/generic_xlog.h>
 #include <assert.h>
 #include <float.h>
+#include <nodes/execnodes.h>  // IndexInfo
 #include <storage/bufmgr.h>
 #include <utils/array.h>
+#include <utils/memutils.h>
 #include <utils/rel.h>
 #include <utils/relcache.h>
 

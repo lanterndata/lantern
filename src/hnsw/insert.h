@@ -1,9 +1,5 @@
 #ifndef LDB_HNSW_INSERT_H
 #define INSERT_H
-#include <access/genam.h>     // IndexUniqueCheck
-#include <nodes/execnodes.h>  // IndexInfo
-#include <storage/bufmgr.h>
-#include <utils/memutils.h>
 
 // #define LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS 5
 // this now includes buffers dirtied by the usearch

@@ -1,5 +1,6 @@
 #include "postgres.h"
 
+#include <access/genam.h>  // IndexUniqueCheck
 #include <assert.h>
 #include <catalog/index.h>
 #include <catalog/namespace.h>

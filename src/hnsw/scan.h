@@ -1,12 +1,5 @@
 #ifndef LDB_HNSW_SCAN_H
 #define LDB_HNSW_SCAN_H
-#include <postgres.h>
-
-#include <access/reloptions.h>
-#include <assert.h>
-
-#include "usearch.h"
-#include "lib_interface.h"
 
 typedef struct HnswScanState
 {

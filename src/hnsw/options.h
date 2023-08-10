@@ -1,8 +1,5 @@
 #ifndef LDB_HNSW_OPTIONS_H
 #define LDB_HNSW_OPTIONS_H
-#include <postgres.h>
-
-#include <utils/relcache.h>  // Relation
 
 // todo:: add hnsw dynamic vector dimension constraints
 // based on vector element size

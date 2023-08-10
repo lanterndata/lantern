@@ -1,8 +1,6 @@
 #ifndef LDB_HNSW_H
 #define LDB_HNSW_H
 
-#include "postgres.h"
-
 #if PG_VERSION_NUM < 110000
 #error "Requires PostgreSQL 11+"
 #endif

@@ -4,7 +4,8 @@
 
 #include <access/reloptions.h>
 #include <utils/guc.h>
-#include <utils/rel.h>  // RelationData
+#include <utils/rel.h>       // RelationData
+#include <utils/relcache.h>  // Relation
 
 // reloption for lanterndb hnsw index creation paramters in
 // CREATE INDEX ... WITH (...)
