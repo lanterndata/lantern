@@ -49,12 +49,28 @@ message(STATUS "${CMAKE_COLOR_GREEN}Build type: ${CMAKE_BUILD_TYPE}${CMAKE_COLOR
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
 find_package(PostgreSQL REQUIRED)
+find_package(AVX2)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 set(SOURCES_DIR "src")
 # todo:: list out all the files instead of glob
 file(GLOB SOURCES "${SOURCES_DIR}/**/*.c" "${SOURCES_DIR}/*.c")
+if(AVX2_FOUND)
+    # Convert SOURCES_DIR to an absolute path
+    get_filename_component(ABS_SOURCES_DIR "${SOURCES_DIR}" ABSOLUTE)
+
+    set(DISTFUNC_FILE_ABS_PATH "${ABS_SOURCES_DIR}/hnsw/distfunc.c")
+
+    get_source_file_property(current_flags ${DISTFUNC_FILE_ABS_PATH} COMPILE_FLAGS)
+    if(current_flags STREQUAL "NOTFOUND")
+        set(current_flags "") # Reset to empty string if not set before
+    endif()
+
+    # Modify the compile flags of the absolute path
+    set_source_files_properties(${DISTFUNC_FILE_ABS_PATH} PROPERTIES COMPILE_FLAGS "${current_flags} ${AVX2_C_FLAGS}")
+endif()
+
 
 set(USEARCH_USE_SIMSIMD OFF)
 set(USEARCH_LOOKUP_LABEL OFF)
