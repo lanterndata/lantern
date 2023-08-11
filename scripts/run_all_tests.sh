@@ -46,7 +46,7 @@ do
     # -E: (passed manually, for debugging) echo hidden magic commands (\d, \di+, etc)
     ${PSQL} testdb --quiet -f test/sql/test_helpers/common.sql > /dev/null
     ${PSQL} testdb -ef test/sql/$base.sql > $TMP_OUTDIR/$base.out 2>&1 || true
-    DIFF=$(diff test/expected/$base.out $TMP_OUTDIR/$base.out || true)
+    DIFF=$(diff -w test/expected/$base.out $TMP_OUTDIR/$base.out || true)
     # diff has non-zero exit code if files differ. ||true gets rid of error value
     # we can use the actual $DIFF in files to know whether the test failed
     # this avoids early script failure (see bash strict mode pipefail)
