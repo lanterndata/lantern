@@ -10,7 +10,7 @@
 #include "external_index.h"
 #include "hnsw.h"
 #include "options.h"
-#include "vector.h"
+#include "pgvector_vector.h"
 
 PG_MODULE_MAGIC;
 

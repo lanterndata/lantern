@@ -12,9 +12,9 @@
 #include "bench.h"
 #include "external_index.h"
 #include "hnsw.h"
+#include "pgvector_vector.h"
 #include "usearch.h"
 #include "utils.h"
-#include "vector.h"
 
 #if PG_VERSION_NUM >= 140000
 #include "utils/backend_progress.h"
