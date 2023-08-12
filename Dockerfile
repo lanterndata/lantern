@@ -1,5 +1,5 @@
 ARG PG_VERSION=15
-FROM postgres:$PG_VERSION
+FROM postgres:$PG_VERSION-bookworm
 ARG PG_VERSION
 
 COPY . /tmp/lanterndb
