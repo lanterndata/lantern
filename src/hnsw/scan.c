@@ -6,13 +6,12 @@
 #include <pgstat.h>
 #include <utils/rel.h>
 
+#include "bench.h"
 #include "build.h"
 #include "external_index.h"
 #include "hnsw.h"
 #include "options.h"
 #include "vector.h"
-
-PG_MODULE_MAGIC;
 
 /*
  * Prepare for an index scan
