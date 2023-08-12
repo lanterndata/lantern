@@ -11,10 +11,10 @@
 
 #include "hnsw/build.h"
 #include "hnsw/delete.h"
-#include "hnsw/distfunc.h"
 #include "hnsw/insert.h"
 #include "hnsw/options.h"
 #include "hnsw/scan.h"
+#include "usearch.h"
 
 #if PG_VERSION_NUM >= 120000
 #include "commands/progress.h"
@@ -169,18 +169,19 @@ Datum       hnsw_handler(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(amroutine);
 }
 
-static float4 calc_distance(ArrayType *a, ArrayType *b)
+static float4 array_dist(ArrayType *a, ArrayType *b, usearch_metric_kind_t metric_kind)
 {
-    int     a_dim = ArrayGetNItems(ARR_NDIM(a), ARR_DIMS(a));
-    int     b_dim = ArrayGetNItems(ARR_NDIM(b), ARR_DIMS(b));
-    float4 *ax = (float4 *)ARR_DATA_PTR(a);
-    float4 *bx = (float4 *)ARR_DATA_PTR(b);
+    int a_dim = ArrayGetNItems(ARR_NDIM(a), ARR_DIMS(a));
+    int b_dim = ArrayGetNItems(ARR_NDIM(b), ARR_DIMS(b));
 
     if(a_dim != b_dim) {
         elog(ERROR, "expected equally sized arrays but got arrays with dimensions %d and %d", a_dim, b_dim);
     }
 
-    return l2sq_dist_impl(ax, bx, a_dim);
+    float4 *ax = (float4 *)ARR_DATA_PTR(a);
+    float4 *bx = (float4 *)ARR_DATA_PTR(b);
+
+    return usearch_dist(ax, bx, metric_kind, a_dim, usearch_scalar_f32_k);
 }
 
 PGDLLEXPORT PG_FUNCTION_INFO_V1(l2sq_dist);
@@ -189,5 +190,21 @@ Datum l2sq_dist(PG_FUNCTION_ARGS)
 {
     ArrayType *a = PG_GETARG_ARRAYTYPE_P(0);
     ArrayType *b = PG_GETARG_ARRAYTYPE_P(1);
-    PG_RETURN_FLOAT4(calc_distance(a, b));
+    PG_RETURN_FLOAT4(array_dist(a, b, usearch_metric_l2sq_k));
+}
+
+PGDLLEXPORT PG_FUNCTION_INFO_V1(cos_dist);
+Datum       cos_dist(PG_FUNCTION_ARGS)
+{
+    ArrayType *a = PG_GETARG_ARRAYTYPE_P(0);
+    ArrayType *b = PG_GETARG_ARRAYTYPE_P(1);
+    PG_RETURN_FLOAT4(array_dist(a, b, usearch_metric_cos_k));
+}
+
+PGDLLEXPORT PG_FUNCTION_INFO_V1(ham_dist);
+Datum       ham_dist(PG_FUNCTION_ARGS)
+{
+    ArrayType *a = PG_GETARG_ARRAYTYPE_P(0);
+    ArrayType *b = PG_GETARG_ARRAYTYPE_P(1);
+    PG_RETURN_FLOAT4(array_dist(a, b, usearch_metric_hamming_k));
 }
