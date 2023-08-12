@@ -4,6 +4,8 @@
 
 #include <utils/relcache.h>  // Relation
 
+#include "external_index.h"
+
 // todo:: add hnsw dynamic vector dimension constraints
 // based on vector element size
 
@@ -41,12 +43,12 @@ typedef struct HnswOptions
     // char[ALG_OPTION_MAX_STRING_LEN] alg;
 } HnswOptions;
 
-int   HnswGetDims(Relation index);
-int   HnswGetM(Relation index);
-int   HnswGetEfConstruction(Relation index);
-int   HnswGetEf(Relation index);
-char *HnswGetAlgorithm(Relation index);
-int   HnswGetElementLimit(Relation index);
+int                   HnswGetDims(Relation index);
+int                   HnswGetM(Relation index);
+int                   HnswGetEfConstruction(Relation index);
+int                   HnswGetEf(Relation index);
+usearch_metric_kind_t HnswGetDistFunc(Relation index);
+int                   HnswGetElementLimit(Relation index);
 
 bytea *ldb_amoptions(Datum reloptions, bool validate);
 

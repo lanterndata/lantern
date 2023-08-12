@@ -18,4 +18,5 @@
 
 /* Exported functions */
 PGDLLEXPORT void _PG_init(void);
-#endif // LDB_HNSW_H
+
+#endif  // LDB_HNSW_H

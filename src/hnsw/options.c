@@ -2,9 +2,21 @@
 
 #include "options.h"
 
+#include <access/genam.h>
 #include <access/reloptions.h>
+#include <catalog/pg_class.h>
+#include <utils/builtins.h>
 #include <utils/guc.h>
 #include <utils/rel.h>  // RelationData
+
+#include "access/tupdesc.h"
+#include "catalog/index.h"
+#include "catalog/pg_index.h"
+#include "catalog/pg_opclass.h"
+#include "catalog/pg_type.h"
+#include "external_index.h"
+#include "utils/lsyscache.h"
+#include "utils/syscache.h"
 
 // reloption for lanterndb hnsw index creation paramters in
 // CREATE INDEX ... WITH (...)
@@ -40,14 +52,13 @@ int HnswGetEf(Relation index)
     return HNSW_DEFAULT_EF;
 }
 
-char *HnswGetAlgorithm(Relation index)
+usearch_metric_kind_t HnswGetDistFunc(Relation index)
 {
-    HnswOptions *opts = (HnswOptions *)index->rd_options;
-    // elog(INFO, "algorithm is %d %d %d %d", opts->alg[0],opts->alg[1], opts->alg[2], opts->alg[3]);
-    elog(INFO, "algorithm is 0x%x", opts->alg);
-    // if (opts && opts->alg != NULL && opts->alg[0] != NULL)
-    // 	return opts->alg;
-    return HNSW_DEFAULT_PROVIDER;
+    // FmgrInfo *procinfo = index_getprocinfo(index, 1, 1);
+    // FmgrInfo *procinfo = index_getprocinfo(index, 1, 1);
+
+    // return metric function name based on op class
+    return usearch_metric_l2sq_k;
 }
 
 static void HnswAlgorithmParamValidator(const char *value)
