@@ -47,8 +47,8 @@ int                   HnswGetDims(Relation index);
 int                   HnswGetM(Relation index);
 int                   HnswGetEfConstruction(Relation index);
 int                   HnswGetEf(Relation index);
-usearch_metric_kind_t HnswGetDistFunc(Relation index);
 int                   HnswGetElementLimit(Relation index);
+usearch_metric_kind_t HnswGetMetricKind(Relation index);
 
 bytea *ldb_amoptions(Datum reloptions, bool validate);
 

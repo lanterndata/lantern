@@ -2,20 +2,11 @@
 
 #include "options.h"
 
-#include <access/genam.h>
 #include <access/reloptions.h>
-#include <catalog/pg_class.h>
-#include <utils/builtins.h>
 #include <utils/guc.h>
 #include <utils/rel.h>  // RelationData
 
-#include "access/tupdesc.h"
-#include "catalog/index.h"
-#include "catalog/pg_index.h"
 #include "catalog/pg_opclass.h"
-#include "catalog/pg_type.h"
-#include "external_index.h"
-#include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
 // reloption for lanterndb hnsw index creation paramters in
@@ -52,13 +43,27 @@ int HnswGetEf(Relation index)
     return HNSW_DEFAULT_EF;
 }
 
-usearch_metric_kind_t HnswGetDistFunc(Relation index)
+usearch_metric_kind_t HnswGetMetricKind(Relation index)
 {
-    // FmgrInfo *procinfo = index_getprocinfo(index, 1, 1);
-    // FmgrInfo *procinfo = index_getprocinfo(index, 1, 1);
+    Oid       opclassOid = ObjectIdGetDatum(index->rd_opfamily[ 0 ] + 1);
+    HeapTuple tup = SearchSysCache1(CLAOID, opclassOid);
+    if(!HeapTupleIsValid(tup)) {
+        elog(ERROR, "cache lookup failed for opclass %u", opclassOid);
+    }
+    Form_pg_opclass rec = (Form_pg_opclass)GETSTRUCT(tup);
+    char           *opclassName = NameStr(rec->opcname);
+    ReleaseSysCache(tup);
 
-    // return metric function name based on op class
-    return usearch_metric_l2sq_k;
+    if(strcmp(opclassName, "ann_l2_ops") == 0 || strcmp(opclassName, "vector_l2_ops") == 0) {
+        return usearch_metric_l2sq_k;
+    } else if(strcmp(opclassName, "ann_cos_ops") == 0) {
+        return usearch_metric_cos_k;
+    } else if(strcmp(opclassName, "ann_ham_ops") == 0) {
+        return usearch_metric_hamming_k;
+    } else {
+        // This should never happen as pg should handle this case
+        elog(ERROR, "Unsupported operator class %s", opclassName);
+    }
 }
 
 static void HnswAlgorithmParamValidator(const char *value)

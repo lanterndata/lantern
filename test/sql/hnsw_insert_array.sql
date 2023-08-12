@@ -19,7 +19,7 @@ INSERT INTO small_world (id, vector) VALUES
 ('111', '{1,1,1}');
 
 SELECT * FROM (
-    SELECT id, ROUND( (vector <-> array[0,1,0])::numeric, 2) as dist
+    SELECT id, ROUND(l2sq_dist(vector, array[0,1,0])::numeric, 2) as dist
     FROM small_world
     ORDER BY vector <-> array[0,1,0] LIMIT 7
 ) v ORDER BY v.dist, v.id;
@@ -35,7 +35,7 @@ INSERT INTO small_world (id, vector) VALUES
 ('111', '{1,1,1}');
 
 SELECT * FROM (
-    SELECT id, ROUND( (vector <-> array[0,1,0])::numeric, 2) as dist
+    SELECT id, ROUND(l2sq_dist(vector, array[0,1,0])::numeric, 2) as dist
     FROM small_world
     ORDER BY vector <-> array[0,1,0] LIMIT 7
 ) v ORDER BY v.dist, v.id;
@@ -46,12 +46,12 @@ SELECT v as v42 FROM sift_base1k WHERE id = 42 \gset
 BEGIN;
 DROP INDEX IF EXISTS sift_base1k_hnsw_idx;
 EXPLAIN (COSTS FALSE) SELECT id, ROUND((v <-> :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
-SELECT id, ROUND((v <-> :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
+SELECT id, ROUND(l2sq_dist(v, :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
 ROLLBACK;
 
 -- index scan
 EXPLAIN (COSTS FALSE) SELECT id, ROUND((v <-> :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
-SELECT id, ROUND((v <-> :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
+SELECT id, ROUND(l2sq_dist(v, :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
 -- todo:: craft an SQL query to compare the results of the two above so I do not have to do it manually
 
 
@@ -80,7 +80,7 @@ select * from new_small_world where id = '000';
 -- index scan
 SELECT '{0,0,0}'::real[] as v42  \gset
 EXPLAIN (COSTS FALSE) SELECT id, ROUND((vector <-> :'v42')::numeric, 2) FROM new_small_world ORDER BY vector <-> :'v42' LIMIT 10;
-SELECT id, ROUND((vector <-> :'v42')::numeric, 2) FROM new_small_world ORDER BY vector <-> :'v42' LIMIT 10;
+SELECT id, ROUND(l2sq_dist(vector, :'v42')::numeric, 2) FROM new_small_world ORDER BY vector <-> :'v42' LIMIT 10;
 
 SELECT count(*) from sift_base1k;
 SELECT * from ldb_get_indexes('sift_base1k');
@@ -94,5 +94,5 @@ INSERT INTO small_world (id, vector) VALUES ('xxx', NULL);
 CREATE UNLOGGED TABLE unlogged_small_world AS TABLE small_world;
 \set ON_ERROR_STOP off
 INSERT INTO small_world (id, vector) VALUES ('xxx', '{1,1,1,1}');
-SELECT '{1,1,1,1}'::real[] <-> '{1,1,1}'::real[];
+SELECT l2sq_dist('{1,1,1,1}'::real[],'{1,1,1}'::real[]);
 CREATE INDEX ON unlogged_small_world USING hnsw (vector);

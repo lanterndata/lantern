@@ -9,6 +9,8 @@ COMMENT ON ACCESS METHOD hnsw IS 'LanternDB vector index access method. Can be c
 
 
 -- functions
+CREATE FUNCTION ldb_generic_dist(real[], real[]) RETURNS real
+	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 
 CREATE FUNCTION l2sq_dist(real[], real[]) RETURNS real
 	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
@@ -20,9 +22,8 @@ CREATE FUNCTION ham_dist(real[], real[]) RETURNS real
 	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 
 -- operators
-
 CREATE OPERATOR <-> (
-	LEFTARG = real[], RIGHTARG = real[], PROCEDURE = l2sq_dist,
+	LEFTARG = real[], RIGHTARG = real[], PROCEDURE = ldb_generic_dist,
 	COMMUTATOR = '<->'
 );
 
