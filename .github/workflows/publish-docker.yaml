@@ -7,11 +7,6 @@ on:
         description: "Extension version"
         required: true
         default: "0.1"
-      PG_VERSION:
-        type: string
-        description: "Version of the postgres image"
-        required: true
-        default: "15"
       IMAGE_NAME:
         type: string
         description: "Container image name to tag"
@@ -20,6 +15,15 @@ on:
 jobs:
   ubuntu:
     runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - postgres: 15
+          - postgres: 14
+          - postgres: 13
+          - postgres: 12
+          - postgres: 11
     steps:
       - uses: actions/checkout@v3
         with:
@@ -40,5 +44,6 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           build-args: |
-            PG_VERSION=${{ inputs.PG_VERSION }}
-          tags: ${{ inputs.IMAGE_NAME}}:latest,${{ inputs.IMAGE_NAME }}:${{ inputs.VERSION }}
+            PG_VERSION=${{ matrix.postgres }}
+          # tag latest only for pg15 version
+          tags: ${{ (matrix.postgres == 15 && format('{0}:latest', inputs.IMAGE_NAME) || '') }},${{ inputs.IMAGE_NAME }}:${{ inputs.VERSION }}-pg${{ matrix.postgres }}
