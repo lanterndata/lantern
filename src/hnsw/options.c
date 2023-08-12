@@ -2,12 +2,12 @@
 
 #include "options.h"
 
+#include <access/htup_details.h>
 #include <access/reloptions.h>
+#include <catalog/pg_opclass.h>
 #include <utils/guc.h>
 #include <utils/rel.h>  // RelationData
-
-#include "catalog/pg_opclass.h"
-#include "utils/syscache.h"
+#include <utils/syscache.h>
 
 // reloption for lanterndb hnsw index creation paramters in
 // CREATE INDEX ... WITH (...)
@@ -50,7 +50,7 @@ usearch_metric_kind_t HnswGetMetricKind(Relation index)
     if(!HeapTupleIsValid(tup)) {
         elog(ERROR, "cache lookup failed for opclass %u", opclassOid);
     }
-    Form_pg_opclass rec = (Form_pg_opclass)GETSTRUCT(tup);
+    Form_pg_opclass rec = (Form_pg_opclass)(GETSTRUCT(tup));
     char           *opclassName = NameStr(rec->opcname);
     ReleaseSysCache(tup);
 
