@@ -1,6 +1,3 @@
-CREATE EXTENSION IF NOT EXISTS lanterndb;
-
-DROP TABLE IF EXISTS small_world;
 CREATE TABLE small_world (
     id varchar(3),
     vector real[]

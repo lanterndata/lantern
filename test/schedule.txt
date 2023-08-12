@@ -1,8 +1,1 @@
-test: debug_helpers
-test: embedding_options
-test: hnsw
-test: hnsw_insert
-test: hnsw_insert_array
-test: hnsw_insert_empty_table
-test: hnsw_type_checks
-test: wiki
+test: debug_helpers embedding_options hnsw hnsw_insert hnsw_insert_array hnsw_insert_empty_table hnsw_type_checks wiki

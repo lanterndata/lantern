@@ -1,8 +1,4 @@
 SET enable_seqscan = off;
-CREATE EXTENSION IF NOT EXISTS vector;
-NOTICE:  extension "vector" already exists, skipping
-CREATE EXTENSION IF NOT EXISTS lanterndb;
-NOTICE:  extension "lanterndb" already exists, skipping
 \qecho
 
 \set ON_ERROR_STOP on

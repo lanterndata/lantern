@@ -1,10 +1,6 @@
-CREATE EXTENSION IF NOT EXISTS vector;
-CREATE EXTENSION IF NOT EXISTS lanterndb;
 -- initially, before we create an index, the variable does not exist
 \ir sql/test_helpers/small_world.sql
 -- creates a simple vector table
-DROP TABLE IF EXISTS small_world;
-psql:sql/test_helpers/small_world.sql:2: NOTICE:  table "small_world" does not exist, skipping
 CREATE TABLE
   small_world (id varchar(3), vector vector (3));
 INSERT INTO
@@ -18,22 +14,21 @@ VALUES
   ('101', '[1,0,1]'),
   ('110', '[1,1,0]'),
   ('111', '[1,1,1]');
+\set ON_ERROR_STOP off
 SHOW hnsw.init_k;
- hnsw.init_k 
--------------
- 10
-(1 row)
-
+ERROR:  unrecognized configuration parameter "hnsw.init_k"
+\set ON_ERROR_STOP on
 CREATE INDEX ON small_world USING hnsw (vector);
 INFO:  done init usearch index
 INFO:  inserted 8 elements
 INFO:  done saving 8 vectors
 -- verify that the index was created
 SELECT * FROM ldb_get_indexes('small_world');
-ERROR:  function ldb_get_indexes(unknown) does not exist
-LINE 1: SELECT * FROM ldb_get_indexes('small_world');
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+       indexname        | size  |                                   indexdef                                    
+------------------------+-------+-------------------------------------------------------------------------------
+ small_world_vector_idx | 24 kB | CREATE INDEX small_world_vector_idx ON public.small_world USING hnsw (vector)
+(1 row)
+
 -- it exists after we create an index
 SHOW hnsw.init_k;
  hnsw.init_k 

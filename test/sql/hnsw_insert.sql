@@ -1,7 +1,3 @@
-CREATE EXTENSION IF NOT EXISTS vector;
-CREATE EXTENSION IF NOT EXISTS lanterndb;
-
-\ir sql/test_helpers/common.sql
 \ir sql/test_helpers/small_world.sql
 \ir sql/test_helpers/sift.sql
 
@@ -60,7 +56,6 @@ SELECT id, ROUND((v <-> :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v
 
 
 -- another insert test
-DROP TABLE IF EXISTS new_small_world;
 CREATE TABLE new_small_world as SELECT * from small_world;
 CREATE INDEX ON new_small_world USING hnsw (vector);
 

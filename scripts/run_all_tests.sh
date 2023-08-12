@@ -1,6 +1,4 @@
 #!/bin/bash
-# bash strict mode
-set -euo pipefail
 IFS=$'\n\t'
 
 TESTDB=testdb
@@ -8,6 +6,8 @@ PSQL=psql
 TMP_ROOT=/tmp/lanterndb
 TMP_OUTDIR=$TMP_ROOT/tmp_output
 FILTER="${FILTER:-}"
+# this will be used by pg_regress while making diff file
+export PG_REGRESS_DIFF_OPTS=-u
 # read the first command line argument
 
 echo "Filter: $FILTER"
@@ -27,11 +27,38 @@ then
     popd
 fi
 
-if [ -z "$FILTER" ] 
+
+if [ -z $FILTER ]
 then
- $(pg_config --pkglibdir)/pgxs/src/test/regress/pg_regress --schedule=schedule.txt --outputdir=$TMP_OUTDIR --dbname=$TESTDB
+    SCHEDULE=schedule.txt
 else
- $(pg_config --pkglibdir)/pgxs/src/test/regress/pg_regress --outputdir=$TMP_OUTDIR $FILTER --dbname=$TESTDB
+    TEST_FILES=$(cat schedule.txt | sed -e 's/test://' | tr " " "\n" | sed -e '/^$/d')
+    
+    rm -rf $TMP_OUTDIR/schedule.txt
+    while IFS= read -r f; do
+        echo "Checking $f"
+        if [[ $f == *"$FILTER"* ]]; then
+            echo "test: $f" >> $TMP_OUTDIR/schedule.txt
+        fi
+    done <<< "$TEST_FILES"
+
+    
+    if [ ! -f "$TMP_OUTDIR/schedule.txt" ]
+    then
+        echo "No tests matches filter \"$FILTER\""
+        exit 0
+    fi
+    
+    SCHEDULE=$TMP_OUTDIR/schedule.txt
 fi
 
- cat $TMP_OUTDIR/regression.diffs 2>/dev/null
+function print_diff {
+    if [ -f "$TMP_OUTDIR/regression.diffs" ]
+    then
+        cat $TMP_OUTDIR/regression.diffs
+    fi
+}
+
+trap print_diff ERR
+
+$(pg_config --pkglibdir)/pgxs/src/test/regress/pg_regress --schedule=$SCHEDULE --outputdir=$TMP_OUTDIR --launcher=./test_runner.sh

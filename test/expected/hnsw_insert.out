@@ -1,30 +1,5 @@
-CREATE EXTENSION IF NOT EXISTS vector;
-NOTICE:  extension "vector" already exists, skipping
-CREATE EXTENSION IF NOT EXISTS lanterndb;
-NOTICE:  extension "lanterndb" already exists, skipping
-\ir sql/test_helpers/common.sql
---test helper functions that should exist in all test runs live here
--- there is no need to explicitly include this file in other tests as the test runner will
--- run this before running the actual test
-CREATE EXTENSION pageinspect;
-psql:sql/test_helpers/common.sql:5: ERROR:  extension "pageinspect" already exists
---todo:: add a columns to this function which returning number of used DB pages and total index size
-\set ON_ERROR_STOP on
-CREATE OR REPLACE FUNCTION ldb_get_indexes(tblname text)
-RETURNS TABLE(indexname name, size text, indexdef text) AS
-$BODY$
-BEGIN
-  RETURN QUERY
-  SELECT pg_indexes.indexname,
-  pg_size_pretty(pg_relation_size(pg_indexes.indexname::REGCLASS)) as size,
-  pg_indexes.indexdef
-  FROM pg_indexes
-  WHERE tablename = tblname;
-END;
-$BODY$ LANGUAGE plpgsql;
 \ir sql/test_helpers/small_world.sql
 -- creates a simple vector table
-DROP TABLE IF EXISTS small_world;
 CREATE TABLE
   small_world (id varchar(3), vector vector (3));
 INSERT INTO
@@ -171,8 +146,6 @@ INFO:  usearch index initialized
 
 -- todo:: craft an SQL query to compare the results of the two above so I do not have to do it manually
 -- another insert test
-DROP TABLE IF EXISTS new_small_world;
-NOTICE:  table "new_small_world" does not exist, skipping
 CREATE TABLE new_small_world as SELECT * from small_world;
 CREATE INDEX ON new_small_world USING hnsw (vector);
 INFO:  done init usearch index
