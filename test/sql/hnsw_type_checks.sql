@@ -1,6 +1,7 @@
 CREATE EXTENSION IF NOT EXISTS lanterndb;
 
 \set ON_ERROR_STOP off
+DROP TABLE IF EXISTS small_world;
 CREATE TABLE small_world (
     id varchar(3),
     vector real[]

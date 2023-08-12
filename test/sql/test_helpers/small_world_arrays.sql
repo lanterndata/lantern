@@ -1,4 +1,5 @@
 -- creates a simple vector table
+DROP TABLE IF EXISTS small_world;
 CREATE TABLE small_world (
     id varchar(3),
     vector real[]

@@ -170,7 +170,7 @@ add_custom_target(
 add_custom_target(
   test
   COMMAND ${CMAKE_SOURCE_DIR}/scripts/run_all_tests.sh
-  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/test
  )
 
  # DEVELOPMENT

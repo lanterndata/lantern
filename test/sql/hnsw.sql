@@ -1,6 +1,7 @@
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS lanterndb;
 
+\ir sql/test_helpers/common.sql
 \qecho
 \set ON_ERROR_STOP on
 
@@ -21,6 +22,7 @@ CREATE TABLE large_vector (v vector(2001));
 CREATE INDEX ON large_vector USING hnsw (v);
 \set ON_ERROR_STOP on
 
+DROP TABLE IF EXISTS small_world;
 CREATE TABLE small_world (
     id varchar(3),
     vector vector(3)

@@ -1,22 +1,23 @@
 CREATE EXTENSION IF NOT EXISTS vector;
-CREATE EXTENSION
 CREATE EXTENSION IF NOT EXISTS lanterndb;
-CREATE EXTENSION
-CREATE TABLE small_world (
-    id varchar(3),
-    vector vector(3)
-);
+-- initially, before we create an index, the variable does not exist
+\ir sql/test_helpers/small_world.sql
+-- creates a simple vector table
+DROP TABLE IF EXISTS small_world;
+psql:sql/test_helpers/small_world.sql:2: NOTICE:  table "small_world" does not exist, skipping
 CREATE TABLE
-INSERT INTO small_world (id, vector) VALUES 
-('000', '[0,0,0]'),
-('001', '[0,0,1]'),
-('010', '[0,1,0]'),
-('011', '[0,1,1]'),
-('100', '[1,0,0]'),
-('101', '[1,0,1]'),
-('110', '[1,1,0]'),
-('111', '[1,1,1]');
-INSERT 0 8
+  small_world (id varchar(3), vector vector (3));
+INSERT INTO
+  small_world (id, vector)
+VALUES
+  ('000', '[0,0,0]'),
+  ('001', '[0,0,1]'),
+  ('010', '[0,1,0]'),
+  ('011', '[0,1,1]'),
+  ('100', '[1,0,0]'),
+  ('101', '[1,0,1]'),
+  ('110', '[1,1,0]'),
+  ('111', '[1,1,1]');
 SHOW hnsw.init_k;
  hnsw.init_k 
 -------------
@@ -24,16 +25,16 @@ SHOW hnsw.init_k;
 (1 row)
 
 CREATE INDEX ON small_world USING hnsw (vector);
-psql:test/sql/debug_helpers.sql:8: INFO:  done init usearch index
-psql:test/sql/debug_helpers.sql:8: INFO:  inserted 8 elements
-psql:test/sql/debug_helpers.sql:8: INFO:  done saving 8 vectors
-CREATE INDEX
+INFO:  done init usearch index
+INFO:  inserted 8 elements
+INFO:  done saving 8 vectors
+-- verify that the index was created
 SELECT * FROM ldb_get_indexes('small_world');
-       indexname        | size  |                                   indexdef                                    
-------------------------+-------+-------------------------------------------------------------------------------
- small_world_vector_idx | 24 kB | CREATE INDEX small_world_vector_idx ON public.small_world USING hnsw (vector)
-(1 row)
-
+ERROR:  function ldb_get_indexes(unknown) does not exist
+LINE 1: SELECT * FROM ldb_get_indexes('small_world');
+                      ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+-- it exists after we create an index
 SHOW hnsw.init_k;
  hnsw.init_k 
 -------------
@@ -41,7 +42,6 @@ SHOW hnsw.init_k;
 (1 row)
 
 SET hnsw.init_k = 45;
-SET
 SHOW hnsw.init_k;
  hnsw.init_k 
 -------------
@@ -49,7 +49,6 @@ SHOW hnsw.init_k;
 (1 row)
 
 RESET ALL;
-RESET
 SHOW hnsw.init_k;
  hnsw.init_k 
 -------------
