@@ -1,26 +1,3 @@
-CREATE EXTENSION IF NOT EXISTS vector;
-NOTICE:  extension "vector" already exists, skipping
-CREATE EXTENSION IF NOT EXISTS lanterndb;
-NOTICE:  extension "lanterndb" already exists, skipping
-\ir sql/test_helpers/common.sql
---test helper functions that should exist in all test runs live here
--- there is no need to explicitly include this file in other tests as the test runner will
--- run this before running the actual test
-CREATE EXTENSION pageinspect;
---todo:: add a columns to this function which returning number of used DB pages and total index size
-\set ON_ERROR_STOP on
-CREATE OR REPLACE FUNCTION ldb_get_indexes(tblname text)
-RETURNS TABLE(indexname name, size text, indexdef text) AS
-$BODY$
-BEGIN
-  RETURN QUERY
-  SELECT pg_indexes.indexname,
-  pg_size_pretty(pg_relation_size(pg_indexes.indexname::REGCLASS)) as size,
-  pg_indexes.indexdef
-  FROM pg_indexes
-  WHERE tablename = tblname;
-END;
-$BODY$ LANGUAGE plpgsql;
 \qecho
 
 \set ON_ERROR_STOP on
@@ -53,7 +30,6 @@ CREATE TABLE large_vector (v vector(2001));
 CREATE INDEX ON large_vector USING hnsw (v);
 ERROR:  vector dimension 2001 is too large. LanternDB currently supports up to 2000dim vectors
 \set ON_ERROR_STOP on
-DROP TABLE IF EXISTS small_world;
 CREATE TABLE small_world (
     id varchar(3),
     vector vector(3)

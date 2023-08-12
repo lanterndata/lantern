@@ -6,11 +6,13 @@ import libtmux
 import signal
 import subprocess
 import re
+import os
 import sys
 from select import select
 import time
 import argparse
 
+sql_common_script_path = os.path.join(os.path.dirname(__file__), "../test/sql/test_helpers/common.sql")
 # helper functions
 def get_tmux_session_name() -> str:
     try:
@@ -30,6 +32,7 @@ def livedebug():
     parser = argparse.ArgumentParser(prog='livedebug',
                     description='Attaches gdb to postgres backend process for live debugging')
     parser.add_argument("-p", "--port",  default="5432", help="Port number")
+    parser.add_argument("-U", "--user",  default="postgres", help="Database user")
     parser.add_argument("-H", "--host", default="localhost", help="Host name")
     parser.add_argument("--db", default="testdb", help="Database name", )
     parser.add_argument("-f", "--file", default=None, help="SQL file to execute in psql", )
@@ -46,13 +49,15 @@ def livedebug():
     new_pane = python_pane.split_window(False, True, ".", 50)
 
     if args.resetdb:
-        res = subprocess.run(f"psql postgres -c 'DROP DATABASE IF EXISTS {args.db};'", shell=True)
-        res = subprocess.run(f"psql postgres -c 'CREATE DATABASE {args.db};'", shell=True)
+        res = subprocess.run(f"psql postgres -U {args.user} -c 'DROP DATABASE IF EXISTS {args.db};'", shell=True)
+        res = subprocess.run(f"psql postgres -U {args.user} -c 'CREATE DATABASE {args.db};'", shell=True)
+        res = subprocess.run(f"psql postgres -U {args.user} -c 'CREATE EXTENSION vector;' -d {args.db}", shell=True)
+        res = subprocess.run(f"psql postgres -U {args.user} -c 'CREATE EXTENSION lanterndb;' -d {args.db}", shell=True)
+        res = subprocess.run(f"psql postgres -U {args.user} -f {sql_common_script_path} -d {args.db}", shell=True)
         print("resetdb result", res)
 
     # 1. run the command through a shell
-    psql_command = f"/usr/local/pgsql/bin/psql -P pager=off -p {args.port} -h {args.host} {args.db}"
-    psql_command = f"psql -P pager=off {args.db}"
+    psql_command = f"psql -U {args.user} -P pager=off -p {args.port} -h {args.host} {args.db}"
     psql_process = subprocess.Popen(psql_command, shell=True, stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr)
 
     # 2. forward terminal signals to psql
@@ -95,6 +100,12 @@ def livedebug():
     # 5. load sql file in psql pane if a file was provided
     time.sleep(1.3)
     if args.file:
+        # as our sql imports are done vie \ir sq/file.sql
+        # we should be in /tests directory so the imports
+        # will resolve the file paths correctly
+        file_dir = '/'.join(args.file.split('/')[:-2])
+        python_pane.send_keys(f"\cd {file_dir}")
+        time.sleep(0.1)
         python_pane.send_keys(f"\ir {args.file}")
 
     # 6. wait for psql exit
