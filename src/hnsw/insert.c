@@ -110,7 +110,7 @@ bool ldb_aminsert(Relation         index,
         EXTRA_DIRTIED = &extra_dirtied[ 0 ];
         EXTRA_DIRTIED_PAGE = &extra_dirtied_page[ 0 ];
         EXTRA_DIRTIED_SIZE = 0;
-        ldb_wal_retriever_area_init(BLCKSZ * 100);
+        ldb_wal_retriever_area_init(BLCKSZ * 1000);
         usearch_set_node_retriever(uidx, &ldb_wal_index_node_retriever, &ldb_wal_index_node_retriever_mut, &error);
         assert(!error);
 

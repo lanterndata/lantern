@@ -17,6 +17,8 @@
 #include "hnsw/vector.h"
 #include "usearch.h"
 
+PG_MODULE_MAGIC;
+
 #if PG_VERSION_NUM >= 120000
 #include "commands/progress.h"
 #endif
