@@ -1,11 +1,11 @@
 SET enable_seqscan = off;
-SET
 CREATE EXTENSION IF NOT EXISTS vector;
-CREATE EXTENSION
+NOTICE:  extension "vector" already exists, skipping
 CREATE EXTENSION IF NOT EXISTS lanterndb;
-CREATE EXTENSION
+NOTICE:  extension "lanterndb" already exists, skipping
+\qecho
 
+\set ON_ERROR_STOP on
 CREATE TABLE t (val vector(3));
-CREATE TABLE
+-- todo::
 DROP TABLE t;
-DROP TABLE

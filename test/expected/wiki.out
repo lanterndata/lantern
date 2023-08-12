@@ -1,18 +1,16 @@
 CREATE EXTENSION IF NOT EXISTS vector;
-CREATE EXTENSION
+NOTICE:  extension "vector" already exists, skipping
 CREATE EXTENSION IF NOT EXISTS lanterndb;
-CREATE EXTENSION
+NOTICE:  extension "lanterndb" already exists, skipping
+\qecho
 
+\set ON_ERROR_STOP on
 SET statement_timeout = 0;
-SET
 SET lock_timeout = 0;
-SET
 SET idle_in_transaction_session_timeout = 0;
-SET
 SET client_encoding = 'UTF8';
-SET
 SET standard_conforming_strings = on;
-SET
+-- sets default schema
 SELECT pg_catalog.set_config('search_path', 'public', false);
  set_config 
 ------------
@@ -20,15 +18,10 @@ SELECT pg_catalog.set_config('search_path', 'public', false);
 (1 row)
 
 SET check_function_bodies = false;
-SET
 SET xmloption = content;
-SET
 SET client_min_messages = warning;
-SET
 SET row_security = off;
-SET
 SET default_tablespace = '';
-SET
 CREATE TABLE tsv_data (
     language text,
     page_url text,
@@ -51,7 +44,6 @@ CREATE TABLE tsv_data (
     context_page_description_ai vector(512),
     image_ai vector(512)
 );
-CREATE TABLE
 CREATE SEQUENCE tsv_data_id_seq
     AS integer
     START WITH 1
@@ -59,14 +51,11 @@ CREATE SEQUENCE tsv_data_id_seq
     NO MINVALUE
     NO MAXVALUE
     CACHE 1;
-CREATE SEQUENCE
 ALTER TABLE ONLY tsv_data ALTER COLUMN id SET DEFAULT nextval('tsv_data_id_seq'::regclass);
-ALTER TABLE
 ALTER TABLE ONLY tsv_data
     ADD CONSTRAINT tsv_data_pkey PRIMARY KEY (id);
-ALTER TABLE
-COPY  tsv_data FROM STDIN DELIMITER E'\t';
-COPY 100
+\copy tsv_data FROM '/tmp/lanterndb/vector_datasets/tsv_wiki_sample.csv' DELIMITER E'\t';
+-- introduce a WITH statement to round returned distances AFTER a lookup
 with t as (select id, page_title,  context_page_description_ai <-> (select context_page_description_ai from tsv_data where id = 81386) as dist
  from tsv_data order by dist
  limit 10) select id, page_title, ROUND( dist::numeric, 2) from t;
@@ -85,22 +74,24 @@ with t as (select id, page_title,  context_page_description_ai <-> (select conte
 (10 rows)
 
 CREATE INDEX index1 ON tsv_data USING hnsw (context_page_description_ai vector_l2_ops);
-psql:test/sql/wiki.sql:64: INFO:  done init usearch index
-psql:test/sql/wiki.sql:64: INFO:  inserted 100 elements
-psql:test/sql/wiki.sql:64: INFO:  done saving 100 vectors
-CREATE INDEX
+INFO:  done init usearch index
+INFO:  inserted 100 elements
+INFO:  done saving 100 vectors
 CREATE INDEX ON tsv_data USING hnsw (context_page_description_ai) with (ef = 100, ef_construction=150 , M=11, alg="hnswlib");
-psql:test/sql/wiki.sql:65: INFO:  done init usearch index
-psql:test/sql/wiki.sql:65: INFO:  inserted 100 elements
-psql:test/sql/wiki.sql:65: INFO:  done saving 100 vectors
-CREATE INDEX
+INFO:  done init usearch index
+INFO:  inserted 100 elements
+INFO:  done saving 100 vectors
 set enable_seqscan=false;
-SET
+-- todo:: find a different way to ensure that the index used. "\set enable_seqscan=false;" is not enough
+-- and, the following produces a different output on pg11
+-- explain with t as (select id, page_title, context_page_description_ai <-> (select context_page_description_ai from tsv_data where id = 81386) as dist
+--  from tsv_data order by dist limit 10) select id, page_title, ROUND( dist::numeric, 2) from t;
+-- introduce a WITH statement to round returned distances AFTER a lookup so the index can be used
 with t as (select id, page_title, context_page_description_ai <-> (select context_page_description_ai from tsv_data where id = 81386) as dist
  from tsv_data order by dist limit 10) select id, page_title, ROUND( dist::numeric, 2) from t;
-psql:test/sql/wiki.sql:75: INFO:  began scanning with 0 keys and 1 orderbys
-psql:test/sql/wiki.sql:75: INFO:  starting scan with dimensions=512 M=11 efConstruction=150 ef=100
-psql:test/sql/wiki.sql:75: INFO:  usearch index initialized
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=512 M=11 efConstruction=150 ef=100
+INFO:  usearch index initialized
   id   |              page_title              | round 
 -------+--------------------------------------+-------
  81386 | Madge Elliott                        |  0.00
@@ -115,8 +106,8 @@ psql:test/sql/wiki.sql:75: INFO:  usearch index initialized
  81846 | Frank Carlucci                       |  7.25
 (10 rows)
 
+-- test additional inserts on wiki table
 drop index index1;
-DROP INDEX
 select count(*) from tsv_data;
  count 
 -------
@@ -125,7 +116,6 @@ select count(*) from tsv_data;
 
 INSERT INTO tsv_data(context_page_description_ai)
 SELECT context_page_description_ai FROM tsv_data WHERE context_page_description_ai IS NOT NULL LIMIT 444;
-INSERT 0 100
 select count(*) from tsv_data;
  count 
 -------

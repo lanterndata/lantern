@@ -1,23 +1,23 @@
 CREATE EXTENSION IF NOT EXISTS lanterndb;
-CREATE EXTENSION
+NOTICE:  extension "lanterndb" already exists, skipping
+DROP TABLE IF EXISTS small_world;
 CREATE TABLE small_world (
     id varchar(3),
     vector real[]
 );
-CREATE TABLE
 CREATE INDEX ON small_world USING hnsw (vector);
-psql:test/sql/hnsw_insert_empty_table.sql:8: INFO:  done init usearch index
-psql:test/sql/hnsw_insert_empty_table.sql:8: INFO:  inserted 0 elements
-psql:test/sql/hnsw_insert_empty_table.sql:8: INFO:  done saving 0 vectors
-CREATE INDEX
+INFO:  done init usearch index
+INFO:  inserted 0 elements
+INFO:  done saving 0 vectors
 SELECT * FROM small_world WHERE 1=1;
  id | vector 
 ----+--------
 (0 rows)
 
 INSERT INTO small_world (id, vector) VALUES ('xxx', '{0,0,0}');
-INSERT 0 1
+-- make sure NULL inserts into the index are handled correctly
 INSERT INTO small_world (id, vector) VALUES ('xxx', NULL);
-INSERT 0 1
+\set ON_ERROR_STOP off
 INSERT INTO small_world (id, vector) VALUES ('xxx', '{1,1,1,1}');
-psql:test/sql/hnsw_insert_empty_table.sql:17: ERROR:  Wrong number of dimensions: 4 instead of 3 expected
+ERROR:  Wrong number of dimensions: 4 instead of 3 expected
+\set ON_ERROR_STOP on

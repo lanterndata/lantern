@@ -27,44 +27,11 @@ then
     popd
 fi
 
-for testfile in test/sql/*
-do
-    # if FILTER is set and testfile does not contain FILTER, skip
-    if [ ! -z "$FILTER" ] && [[ ! $testfile =~ $FILTER ]]
-    then
-        continue
-    fi
-    echo "------------------------------------------------------------------------------------------------------"
-    echo "-------------------------------- TESTING $testfile -------------------------------------------"
-    echo "------------------------------------------------------------------------------------------------------"
-    ${PSQL} postgres  -c "drop database if exists ${TESTDB};"
-    ${PSQL} postgres  -c "create database ${TESTDB};"
-    base=$(basename $testfile .sql)
+if [ -z "$FILTER" ] 
+then
+ $(pg_config --pkglibdir)/pgxs/src/test/regress/pg_regress --schedule=schedule.txt --outputdir=$TMP_OUTDIR --dbname=$TESTDB
+else
+ $(pg_config --pkglibdir)/pgxs/src/test/regress/pg_regress --outputdir=$TMP_OUTDIR $FILTER --dbname=$TESTDB
+fi
 
-    # psql options
-    # -e: echo commands
-    # -E: (passed manually, for debugging) echo hidden magic commands (\d, \di+, etc)
-    ${PSQL} testdb --quiet -f test/sql/test_helpers/common.sql > /dev/null
-    ${PSQL} testdb -ef test/sql/$base.sql > $TMP_OUTDIR/$base.out 2>&1 || true
-    DIFF=$(diff -w test/expected/$base.out $TMP_OUTDIR/$base.out || true)
-    # diff has non-zero exit code if files differ. ||true gets rid of error value
-    # we can use the actual $DIFF in files to know whether the test failed
-    # this avoids early script failure (see bash strict mode pipefail)
-    if [ "$DIFF" != "" ]
-    then
-        diff -y -W 250 test/expected/$base.out $TMP_OUTDIR/$base.out
-        echo "Test failed!"
-        exit 1
-    fi
-done
-
-# DIFF=$(diff test/expected/debug_helpers.out $TMP_OUTDIR/debug_helpers.out || true)
-# if [ "$DIFF" != "" ]
-# then
-#     diff -y -W 250 test/expected/debug_helpers.out $TMP_OUTDIR/debug_helpers.out
-#     echo "Test failed!"
-#     exit 1
-# fi
-
-echo "Success!"
-
+ cat $TMP_OUTDIR/regression.diffs 2>/dev/null
