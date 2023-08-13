@@ -4,10 +4,16 @@
 
 #include <access/htup_details.h>
 #include <access/reloptions.h>
-#include <catalog/pg_opclass.h>
+#include <catalog/pg_amproc.h>
+#include <fmgr.h>
+#include <utils/catcache.h>
 #include <utils/guc.h>
 #include <utils/rel.h>  // RelationData
 #include <utils/syscache.h>
+
+// We import this header file
+// to access the op class support function pointers
+#include "../hnsw.h"
 
 // reloption for lanterndb hnsw index creation paramters in
 // CREATE INDEX ... WITH (...)
@@ -45,24 +51,34 @@ int HnswGetEf(Relation index)
 
 usearch_metric_kind_t HnswGetMetricKind(Relation index)
 {
-    Oid       opclassOid = ObjectIdGetDatum(index->rd_opfamily[ 0 ] + 1);
-    HeapTuple tup = SearchSysCache1(CLAOID, opclassOid);
-    if(!HeapTupleIsValid(tup)) {
-        elog(ERROR, "cache lookup failed for opclass %u", opclassOid);
-    }
-    Form_pg_opclass rec = (Form_pg_opclass)(GETSTRUCT(tup));
-    char           *opclassName = NameStr(rec->opcname);
-    ReleaseSysCache(tup);
+    struct catclist *proclist = SearchSysCacheList1(AMPROCNUM, ObjectIdGetDatum(index->rd_opfamily[ 0 ]));
 
-    if(strcmp(opclassName, "ann_l2_ops") == 0 || strcmp(opclassName, "vector_l2_ops") == 0) {
+    if(&proclist->n_members == 0) {
+        elog(ERROR, "no support functions found");
+    }
+
+    HeapTuple      proctup = &proclist->members[ 0 ]->tuple;
+    Form_pg_amproc procform = (Form_pg_amproc)GETSTRUCT(proctup);
+    FmgrInfo      *fninfo = index_getprocinfo(index, 1, procform->amprocnum);
+    void          *fnaddr = fninfo->fn_addr;
+    ReleaseCatCacheList(proclist);
+
+    if(!fnaddr) {
+        elog(ERROR, "procinfo not found");
+    }
+
+    if(fnaddr == l2sq_dist) {
         return usearch_metric_l2sq_k;
-    } else if(strcmp(opclassName, "ann_cos_ops") == 0) {
-        return usearch_metric_cos_k;
-    } else if(strcmp(opclassName, "ann_ham_ops") == 0) {
+    } else if(fnaddr == ham_dist) {
         return usearch_metric_hamming_k;
+    } else if(fnaddr == cos_dist) {
+        return usearch_metric_cos_k;
     } else {
-        // This should never happen as pg should handle this case
-        elog(ERROR, "Unsupported operator class %s", opclassName);
+        // currently returning l2sq_dist by default
+        // as pgvector dist functions are not exported
+        // so we can not check if the support function
+        // is from pgvector
+        return usearch_metric_l2sq_k;
     }
 }
 
