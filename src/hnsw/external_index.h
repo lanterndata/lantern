@@ -75,14 +75,6 @@ extern HnswIndexHeaderPage HEADER_FOR_EXTERNAL_RETRIEVER;
 extern Buffer             *EXTRA_DIRTIED;
 extern Page               *EXTRA_DIRTIED_PAGE;
 extern int                 EXTRA_DIRTIED_SIZE;
-// this area is used to return pointers back to usearch
-
-void ldb_wal_retriever_area_init(int size);
-
-// can be used after each usearch_search to tell the retriever that the pointers given out
-// will no longer be used
-void ldb_wal_retriever_area_reset();
-void ldb_wal_retriever_area_free();
 
 int  UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, int level);
 void CreateHeaderPage(Relation    index,
@@ -113,9 +105,6 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
                                   Buffer (*extra_dirtied)[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ],
                                   Page (*extra_dirtied_page)[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ],
                                   int *extra_dirtied_size);
-
-void *ldb_wal_index_node_retriever(int id);
-void *ldb_wal_index_node_retriever_mut(int id);
 
 BlockNumber getBlockMapPageBlockNumber(HnswIndexHeaderPage *hdr, int id);
 
