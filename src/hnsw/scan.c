@@ -24,6 +24,7 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     int                    dimensions;
     usearch_error_t        error = NULL;
     usearch_init_options_t opts;
+    RetrieverCtx *retriever_ctx = ldb_wal_retriever_area_init(index);
 
     elog(INFO, "began scanning with %d keys and %d orderbys", nkeys, norderbys);
     scan = RelationGetIndexScan(index, nkeys, norderbys);
@@ -40,7 +41,7 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     opts.metric = NULL;
     opts.quantization = usearch_scalar_f32_k;
 
-    scanstate->retriever_ctx = opts.retriever_ctx = ldb_wal_retriever_area_init();
+    scanstate->retriever_ctx = opts.retriever_ctx = retriever_ctx;
     opts.retriever = ldb_wal_index_node_retriever;
     opts.retriever_mut = ldb_wal_index_node_retriever_mut;
 
@@ -69,16 +70,14 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
              "block not valid");
     }
 
+    assert(scan->indexRelation == index);
     buf = ReadBuffer(scan->indexRelation, header_blockno);
     LockBuffer(buf, BUFFER_LOCK_SHARE);
     page = BufferGetPage(buf);
     headerp = (HnswIndexHeaderPage *)PageGetContents(page);
     assert(headerp->magicNumber == LDB_WAL_MAGIC_NUMBER);
 
-    INDEX_RELATION_FOR_RETRIEVER = scan->indexRelation;
     HEADER_FOR_EXTERNAL_RETRIEVER = *headerp;
-    // scans are read only, no modifications
-    EXTRA_DIRTIED_SIZE = 0;
 
     usearch_mem = headerp->usearch_header;
     // this reserves memory for internal structures,
