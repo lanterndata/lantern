@@ -1,20 +1,23 @@
 
-#include "postgres.h"
+#include <postgres.h>
 
 #include "external_index.h"
 
 #include <access/generic_xlog.h>  // GenericXLog
 #include <assert.h>
+#include <common/relpath.h>
+#include <pg_config.h>       // BLCKSZ
+#include <storage/bufmgr.h>  // Buffer
 #include <utils/hsearch.h>
+#include <utils/relcache.h>
 
 #include "cache.h"
-#include "common/relpath.h"
+#include "extra_dirtied.h"
 #include "insert.h"
-#include "pg_config.h"  // BLCKSZ
 #include "retriever.h"
-#include "storage/bufmgr.h"  // Buffer
 #include "usearch.h"
-#include "utils/relcache.h"
+
+static BlockNumber getBlockMapPageBlockNumber(uint32 *blockmap_page_group_index, int id);
 
 int UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, int level)
 {
@@ -217,10 +220,11 @@ void StoreExternalIndexBlockMapGroup(Relation        index,
             }
 
             // we successfully recorded the node. move to the next one
-            *(l_wal_retriever_block_numbers + node_id - first_node_index) = BufferGetBlockNumber(buf);
+            l_wal_retriever_block_numbers[ node_id - first_node_index ] = BufferGetBlockNumber(buf);
             *progress += node_size;
             node_id++;
         }
+
         if(node_id < num_added_vectors + first_node_index) {
             predicted_next_block = BufferGetBlockNumber(buf) + 1;
         } else {
@@ -234,7 +238,7 @@ void StoreExternalIndexBlockMapGroup(Relation        index,
         GenericXLogFinish(state);
         UnlockReleaseBuffer(buf);
     }
-    CreateHeaderPage(index, data, forkNum, dimension, -1, last_block, last_block, true);
+    CreateHeaderPage(index, data, forkNum, dimension, -1, last_block, true);
 
     // Update blockmap pages with correct associations
     for(int blockmap_id = 0; blockmap_id < number_of_blockmaps_in_group; ++blockmap_id) {
@@ -274,7 +278,7 @@ void StoreExternalIndex(Relation        index,
     // header page is created twice. it is always at block=0 so the second time just overrides it
     // it is added here to make sure a data block does not get to block=0.
     // after somem sleep I will prob find a better way to do this
-    CreateHeaderPage(index, data, forkNum, dimension, num_added_vectors, -1, -1, false);
+    CreateHeaderPage(index, data, forkNum, dimension, num_added_vectors, -1, false);
 
     uint32 number_of_index_pages = num_added_vectors / HNSW_BLOCKMAP_BLOCKS_PER_PAGE + 1;
     int    group_node_first_index = 0;
@@ -312,7 +316,6 @@ void CreateHeaderPage(Relation    index,
                       uint32      vector_dim,
                       uint32      num_vectors,
                       BlockNumber last_data_block,
-                      uint32      num_blocks,
                       bool        update)
 {
     Buffer               buf;
@@ -356,7 +359,6 @@ void CreateHeaderPage(Relation    index,
     // headerp->blockmap_page_group_index and blockmap_page_groups are
     // updated in a separate wal entry
     headerp->last_data_block = last_data_block;
-    headerp->num_blocks = num_blocks;
 
     memcpy(headerp->usearch_header, usearchHeader64, 64);
     ((PageHeader)page)->pd_lower = ((char *)headerp + sizeof(HnswIndexHeaderPage)) - (char *)page;
@@ -411,9 +413,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
                                   usearch_metadata_t  *metadata,
                                   uint32               new_tuple_id,
                                   int                  new_tuple_level,
-                                  Buffer (*extra_dirtied)[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ],
-                                  Page (*extra_dirtied_page)[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ],
-                                  int *extra_dirtied_size)
+                                  HnswInsertState     *insertstate)
 {
     // if any data blocks exist, the last one's buffer will be read into this
     Buffer last_dblock = InvalidBuffer;
@@ -454,37 +454,22 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
         // 4.
         page = GenericXLogRegisterBuffer(state, new_dblock, LDB_GENERIC_XLOG_DELTA_IMAGE);
         PageInit(page, BufferGetPageSize(new_dblock), sizeof(HnswIndexPageSpecialBlock));
-
-        (*extra_dirtied)[ (*extra_dirtied_size)++ ] = new_dblock;
-        (*extra_dirtied_page)[ (*extra_dirtied_size) - 1 ] = page;
+        extra_dirtied_add(insertstate->retriever_ctx->extra_dirted, new_vector_blockno, new_dblock, page);
 
         new_tup_at = HnswIndexPageAddVector(page, alloced_tuple, alloced_tuple->size);
 
         MarkBufferDirty(new_dblock);
     } else {
-        last_dblock = ReadBufferExtended(index_rel, MAIN_FORKNUM, hdr->last_data_block, RBM_NORMAL, NULL);
-        for(int i = 0; i < *extra_dirtied_size; i++) {
-            if(last_dblock == (*extra_dirtied)[ i ]) {
-                page = (*extra_dirtied_page)[ i ];
-                last_dblock_is_dirty = true;
-                ReleaseBuffer(last_dblock);
-                // todo:: get rid of all uses of last_dblock after this point
-                //  using it is safe since we hold a pin via whoever added an exclusevly locked
-                //  page to extra_dirtied but the code becomes even more confusing
-                break;
-            }
-        }
+        page = extra_dirtied_get(insertstate->retriever_ctx->extra_dirted, hdr->last_data_block, &last_dblock);
 
-        if(!last_dblock_is_dirty) {
+        if(page == NULL) {
+            last_dblock = ReadBufferExtended(index_rel, MAIN_FORKNUM, hdr->last_data_block, RBM_NORMAL, NULL);
             LockBuffer(last_dblock, BUFFER_LOCK_EXCLUSIVE);
             page = GenericXLogRegisterBuffer(state, last_dblock, LDB_GENERIC_XLOG_DELTA_IMAGE);
-
-            // we only add last_dblock to extra_dirtied if we were the first to touch it
-            // otherwise, we skip, since last_dblock is already in extra_dirtied
-            // (we found out from extra_dirtied that we were not first to touch it, after all!)
-            (*extra_dirtied)[ (*extra_dirtied_size)++ ] = last_dblock;
-            (*extra_dirtied_page)[ (*extra_dirtied_size) - 1 ] = page;
+            extra_dirtied_add(insertstate->retriever_ctx->extra_dirted, hdr->last_data_block, last_dblock, page);
         }
+
+        assert(last_dblock != InvalidBuffer);
 
         const int blockmaps_are_enough
             = new_tuple_id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE + 1 < (1 << (hdr->blockmap_page_groups + 1));
@@ -536,9 +521,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
             // 4.
             page = GenericXLogRegisterBuffer(state, new_dblock, LDB_GENERIC_XLOG_DELTA_IMAGE);
             PageInit(page, BufferGetPageSize(new_dblock), sizeof(HnswIndexPageSpecialBlock));
-
-            (*extra_dirtied)[ (*extra_dirtied_size)++ ] = new_dblock;
-            (*extra_dirtied_page)[ (*extra_dirtied_size) - 1 ] = page;
+            extra_dirtied_add(insertstate->retriever_ctx->extra_dirted, new_vector_blockno, new_dblock, page);
 
             new_tup_at = HnswIndexPageAddVector(page, alloced_tuple, alloced_tuple->size);
 
@@ -555,7 +538,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
     /*** Update pagemap with the information of the added page ***/
     {
         int               id_offset = (new_tuple_id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE) * HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
-        BlockNumber       blockmapno = getBlockMapPageBlockNumber(hdr, new_tuple_id);
+        BlockNumber       blockmapno = getBlockMapPageBlockNumber(hdr->blockmap_page_group_index, new_tuple_id);
         Page              blockmap_page;
         HnswBlockmapPage *blockmap;
         int               max_offset;
@@ -566,9 +549,8 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
         blockmap_block = ReadBufferExtended(index_rel, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
         LockBuffer(blockmap_block, BUFFER_LOCK_EXCLUSIVE);
         blockmap_page = GenericXLogRegisterBuffer(state, blockmap_block, LDB_GENERIC_XLOG_DELTA_IMAGE);
+        extra_dirtied_add(insertstate->retriever_ctx->extra_dirted, blockmapno, blockmap_block, blockmap_page);
 
-        (*extra_dirtied)[ (*extra_dirtied_size)++ ] = blockmap_block;
-        (*extra_dirtied_page)[ (*extra_dirtied_size) - 1 ] = blockmap_page;
         /* sanity-check blockmap block offset number */
         max_offset = PageGetMaxOffsetNumber(blockmap_page);
         if(max_offset != FirstOffsetNumber) {
@@ -588,7 +570,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
     return new_tup_ref;
 }
 
-BlockNumber getBlockMapPageBlockNumber(HnswIndexHeaderPage *hdr, int id)
+static BlockNumber getBlockMapPageBlockNumber(uint32 *blockmap_page_group_index, int id)
 {
     assert(id >= 0);
     // Trust me, I'm an engineer!
@@ -596,7 +578,7 @@ BlockNumber getBlockMapPageBlockNumber(HnswIndexHeaderPage *hdr, int id)
     int k;
     for(k = 0; id >= (1 << k); ++k) {
     }
-    return hdr->blockmap_page_group_index[ k - 1 ] + (id - (1 << (k - 1)));
+    return blockmap_page_group_index[ k - 1 ] + (id - (1 << (k - 1)));
 }
 
 void *ldb_wal_index_node_retriever(void *ctxp, int id)
@@ -604,14 +586,15 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
     RetrieverCtx     *ctx = (RetrieverCtx *)ctxp;
     Cache            *cache = &ctx->block_numbers_cache;
     HnswBlockmapPage *blockmap_page;
-    BlockNumber       blockmapno = getBlockMapPageBlockNumber(&HEADER_FOR_EXTERNAL_RETRIEVER, id);
-    BlockNumber       blockno;
-    Buffer            buf;
-    Page              page;
-    HnswIndexTuple   *nodepage;
-    OffsetNumber      offset, max_offset;
-    bool              idx_page_prelocked = false;
-    bool              idx_pagemap_prelocked = false;
+    BlockNumber blockmapno = getBlockMapPageBlockNumber(HEADER_FOR_EXTERNAL_RETRIEVER.blockmap_page_group_index, id);
+    BlockNumber blockno;
+    Buffer      buf;
+    Page        page;
+    HnswIndexTuple *nodepage;
+    OffsetNumber    offset, max_offset;
+    bool            idx_page_prelocked = false;
+    bool            idx_pagemap_prelocked = false;
+
 #if LANTERNDB_USEARCH_LEVEL_DISTRIBUTION
     static levels[ 20 ] = {0};
     static cnt = 0;
@@ -631,25 +614,17 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
     if(blockno_from_cache != InvalidBlockNumber) {
         blockno = blockno_from_cache;
     } else {
-        buf = ReadBufferExtended(INDEX_RELATION_FOR_RETRIEVER, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
-        // you might expect that this is unnecessary, since we always unlock the pagemap page right after reading the
-        // necessary information into wal_retriever_block_numbers_cache
-        // BUT it is necessary because _mut() retriever might have blocked the current page in order to add a value to
-        // it!
-        for(int i = 0; i < EXTRA_DIRTIED_SIZE; i++) {
-            if(EXTRA_DIRTIED[ i ] == buf) {
-                idx_pagemap_prelocked = true;
-                page = EXTRA_DIRTIED_PAGE[ i ];
-
-                ReleaseBuffer(buf);
-                buf = InvalidBuffer;
-            }
-        }
-
-        if(!idx_pagemap_prelocked) {
+        // it is necessary to first check the extra dirtied pages for the blockmap page, in case we are in the middle of
+        // an insert and the insert operation has the block we need under a lock
+        page = extra_dirtied_get(ctx->extra_dirted, blockmapno, NULL);
+        if(page == NULL) {
+            buf = ReadBufferExtended(ctx->index_rel, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
             LockBuffer(buf, BUFFER_LOCK_SHARE);
             page = BufferGetPage(buf);
+        } else {
+            idx_pagemap_prelocked = true;
         }
+
         max_offset = PageGetMaxOffsetNumber(page);
 
         if(max_offset != FirstOffsetNumber) {
@@ -665,20 +640,13 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
     }
 
     // now I know the block from the blockmap. now find the tuple in the block
-    buf = ReadBufferExtended(INDEX_RELATION_FOR_RETRIEVER, MAIN_FORKNUM, blockno, RBM_NORMAL, NULL);
-    for(int i = 0; i < EXTRA_DIRTIED_SIZE; i++) {
-        if(EXTRA_DIRTIED[ i ] == buf) {
-            idx_page_prelocked = true;
-            page = EXTRA_DIRTIED_PAGE[ i ];
-
-            ReleaseBuffer(buf);
-            buf = InvalidBuffer;
-        }
-    }
-
-    if(!idx_page_prelocked) {
+    page = extra_dirtied_get(ctx->extra_dirted, blockno, NULL);
+    if(page == NULL) {
+        buf = ReadBufferExtended(ctx->index_rel, MAIN_FORKNUM, blockno, RBM_NORMAL, NULL);
         LockBuffer(buf, BUFFER_LOCK_SHARE);
         page = BufferGetPage(buf);
+    } else {
+        idx_page_prelocked = true;
     }
 
     max_offset = PageGetMaxOffsetNumber(page);
@@ -711,10 +679,8 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
                 ctx->takenbuffers_next++;
 
                 if(ctx->takenbuffers_next == TAKENBUFFERS_MAX) {
-                    // if(takenbuffers[ 0 ] != InvalidBuffer) {
-                    //     ReleaseBuffer(takenbuffers[ 0 ]);
-                    //     takenbuffers[ 0 ] = InvalidBuffer;
-                    // }
+                    // todo:: use a postgres linked list here (pairing heap) to avoid the limit
+                    // and bulk allocation
                     ctx->takenbuffers_next = 0;
                 }
                 LockBuffer(buf, BUFFER_LOCK_UNLOCK);
@@ -723,8 +689,10 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
 #endif
         }
     }
-    UnlockReleaseBuffer(buf);
-    elog(ERROR, "reached end of retriever without finding node %d", id);
+    if(!idx_page_prelocked) {
+        UnlockReleaseBuffer(buf);
+    }
+    pg_unreachable();
 }
 
 void *ldb_wal_index_node_retriever_mut(void *ctxp, int id)
@@ -732,14 +700,14 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, int id)
     RetrieverCtx     *ctx = (RetrieverCtx *)ctxp;
     Cache            *cache = &ctx->block_numbers_cache;
     HnswBlockmapPage *blockmap_page;
-    BlockNumber       blockmapno = getBlockMapPageBlockNumber(&HEADER_FOR_EXTERNAL_RETRIEVER, id);
-    BlockNumber       blockno;
-    Buffer            buf;
-    Page              page;
-    HnswIndexTuple   *nodepage;
-    OffsetNumber      offset, max_offset;
-    bool              idx_page_prelocked = false;
-    bool              idx_pagemap_prelocked = false;
+    BlockNumber blockmapno = getBlockMapPageBlockNumber(HEADER_FOR_EXTERNAL_RETRIEVER.blockmap_page_group_index, id);
+    BlockNumber blockno;
+    Buffer      buf;
+    Page        page;
+    HnswIndexTuple *nodepage;
+    OffsetNumber    offset, max_offset;
+    bool            idx_page_prelocked = false;
+    bool            idx_pagemap_prelocked = false;
 
     BlockNumber blockno_from_cache = cache_get_item(cache, &id);
     if(blockno_from_cache != InvalidBlockNumber) {
@@ -748,21 +716,16 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, int id)
         // if this is th elast page and blocknos is not filled up, only read the part that is filled up
         // todo:: when we are adding vectors, this does not take into account that the blockmap now has soft-length
         // of num_vectors + 1
-        buf = ReadBufferExtended(INDEX_RELATION_FOR_RETRIEVER, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
-        for(int i = 0; i < EXTRA_DIRTIED_SIZE; i++) {
-            if(EXTRA_DIRTIED[ i ] == buf) {
-                idx_pagemap_prelocked = true;
-                page = EXTRA_DIRTIED_PAGE[ i ];
-
-                ReleaseBuffer(buf);
-                buf = InvalidBuffer;
-            }
-        }
-
-        if(!idx_pagemap_prelocked) {
+        page = extra_dirtied_get(ctx->extra_dirted, blockmapno, NULL);
+        if(page == NULL) {
+            buf = ReadBufferExtended(ctx->index_rel, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
             LockBuffer(buf, BUFFER_LOCK_SHARE);
             page = BufferGetPage(buf);
+            extra_dirtied_add(ctx->extra_dirted, blockmapno, buf, page);
+        } else {
+            idx_pagemap_prelocked = true;
         }
+
         max_offset = PageGetMaxOffsetNumber(page);
 
         if(max_offset != FirstOffsetNumber) {
@@ -779,26 +742,15 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, int id)
     }
 
     // now I know the block from the blockmap. now find the tuple in the block
-    buf = ReadBufferExtended(INDEX_RELATION_FOR_RETRIEVER, MAIN_FORKNUM, blockno, RBM_NORMAL, NULL);
-    for(int i = 0; i < EXTRA_DIRTIED_SIZE; i++) {
-        if(EXTRA_DIRTIED[ i ] == buf) {
-            idx_page_prelocked = true;
-            page = EXTRA_DIRTIED_PAGE[ i ];
-
-            ReleaseBuffer(buf);
-            buf = InvalidBuffer;
-        }
-    }
-
-    if(!idx_page_prelocked) {
-        LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
-        assert(EXTRA_DIRTIED_SIZE + 1 < LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS);
-        EXTRA_DIRTIED[ EXTRA_DIRTIED_SIZE++ ] = buf;
+    page = extra_dirtied_get(ctx->extra_dirted, blockno, NULL);
+    if(page == NULL) {
+        buf = ReadBufferExtended(ctx->index_rel, MAIN_FORKNUM, blockno, RBM_NORMAL, NULL);
+        LockBuffer(buf, BUFFER_LOCK_SHARE);
+        // todo:: has to be under WAL!!
         page = BufferGetPage(buf);
-        EXTRA_DIRTIED_PAGE[ EXTRA_DIRTIED_SIZE - 1 ] = page;
-        // todo:: q::
-        //  does it matter whether we mark a buffer dirty before or after writing to it?
-        MarkBufferDirty(buf);
+        extra_dirtied_add(ctx->extra_dirted, blockno, buf, page);
+    } else {
+        idx_page_prelocked = true;
     }
 
     max_offset = PageGetMaxOffsetNumber(page);
@@ -809,9 +761,9 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, int id)
             return nodepage->node;
         }
     }
-    // **** UNREACHABLE ****
+
     if(!idx_page_prelocked) {
         UnlockReleaseBuffer(buf);
     }
-    elog(ERROR, "reached end of retriever without finding node %d", id);
+    pg_unreachable();
 }
