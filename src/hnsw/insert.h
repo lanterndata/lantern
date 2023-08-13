@@ -1,5 +1,5 @@
 #ifndef LDB_HNSW_INSERT_H
-#define INSERT_H
+#define LDB_HNSW_INSERT_H
 #include <access/genam.h>     // IndexUniqueCheck
 #include <nodes/execnodes.h>  // IndexInfo
 #include <storage/bufmgr.h>

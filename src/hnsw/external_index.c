@@ -10,12 +10,11 @@
 #include "cache.h"
 #include "common/relpath.h"
 #include "insert.h"
-#include "pg_config.h"       // BLCKSZ
+#include "pg_config.h"  // BLCKSZ
+#include "retriever.h"
 #include "storage/bufmgr.h"  // Buffer
 #include "usearch.h"
 #include "utils/relcache.h"
-
-static Cache wal_retriever_block_numbers_cache;
 
 int UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, int level)
 {
@@ -369,51 +368,6 @@ void CreateHeaderPage(Relation    index,
     UnlockReleaseBuffer(buf);
 }
 
-Relation            INDEX_RELATION_FOR_RETRIEVER;
-HnswIndexHeaderPage HEADER_FOR_EXTERNAL_RETRIEVER;
-Buffer             *EXTRA_DIRTIED;
-Page               *EXTRA_DIRTIED_PAGE;
-int                 EXTRA_DIRTIED_SIZE = 0;
-
-#if LANTERNDB_COPYNODES
-static char *wal_retriever_area = NULL;
-static int   wal_retriever_area_size = 0;
-static int   wal_retriever_area_offset = 0;
-#else
-
-#define TAKENBUFFERS_MAX 1000
-static Buffer *takenbuffers;
-static int     takenbuffers_next = 0;
-#endif
-
-void ldb_wal_retriever_area_init(int size)
-{
-#if LANTERNDB_COPYNODES
-    wal_retriever_area = palloc(size);
-    if(wal_retriever_area == NULL) elog(ERROR, "could not allocate wal_retriever_area");
-    wal_retriever_area_size = size;
-    wal_retriever_area_offset = 0;
-#else
-    takenbuffers = palloc0(sizeof(Buffer) * TAKENBUFFERS_MAX);
-    if(takenbuffers_next > 0) {
-            elog(ERROR, "takenbuffers_next > 0 %d", takenbuffers_next);
-    }
-#endif
-
-    if(HEADER_FOR_EXTERNAL_RETRIEVER.num_vectors < 0) {
-        elog(ERROR, "ldb_wal_retriever_area_init called with num_vectors < 0");
-    }
-    /* fill in a buffer with blockno index information, before spilling it to disk */
-    wal_retriever_block_numbers_cache = cache_create();
-
-    if(EXTRA_DIRTIED_SIZE > 0) {
-        elog(INFO, "EXTRA_DIRTIED_SIZE > 0 %d", EXTRA_DIRTIED_SIZE);
-        for(int i = 0; i < EXTRA_DIRTIED_SIZE; i++) {
-            elog(INFO, "buf %d in extra_dirtied : %d", i, EXTRA_DIRTIED[ i ]);
-        }
-    }
-}
-
 // adds a an item to hnsw index relation page. assumes the page has enough space for the item
 // the function also takes care of setting the special block
 static OffsetNumber HnswIndexPageAddVector(Page page, HnswIndexTuple *new_vector_data, int new_vector_size)
@@ -634,43 +588,6 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
     return new_tup_ref;
 }
 
-void ldb_wal_retriever_area_reset()
-{
-#if LANTERNDB_COPYNODES
-    wal_retriever_area_offset = 0;
-#else
-    for(int i = 0; i < TAKENBUFFERS_MAX; i++) {
-            if(takenbuffers[ i ] == InvalidBuffer) {
-                continue;
-        }
-            ReleaseBuffer(takenbuffers[ i ]);
-            takenbuffers[ i ] = InvalidBuffer;
-    }
-    takenbuffers_next = 0;
-#endif
-}
-
-void ldb_wal_retriever_area_free()
-{
-    cache_destroy(&wal_retriever_block_numbers_cache);
-#if LANTERNDB_COPYNODES
-    pfree(wal_retriever_area);
-    wal_retriever_area = NULL;
-    wal_retriever_area_size = 0;
-    wal_retriever_area_offset = 0;
-#else
-    for(int i = 0; i < TAKENBUFFERS_MAX; i++) {
-            if(takenbuffers[ i ] == InvalidBuffer) {
-                continue;
-        }
-            ReleaseBuffer(takenbuffers[ i ]);
-            takenbuffers[ i ] = InvalidBuffer;
-    }
-    pfree(takenbuffers);
-    takenbuffers_next = 0;
-#endif
-}
-
 BlockNumber getBlockMapPageBlockNumber(HnswIndexHeaderPage *hdr, int id)
 {
     assert(id >= 0);
@@ -682,8 +599,10 @@ BlockNumber getBlockMapPageBlockNumber(HnswIndexHeaderPage *hdr, int id)
     return hdr->blockmap_page_group_index[ k - 1 ] + (id - (1 << (k - 1)));
 }
 
-static inline void *wal_index_node_retriever_exact(int id)
+void *ldb_wal_index_node_retriever(void *ctxp, int id)
 {
+    RetrieverCtx     *ctx = (RetrieverCtx *)ctxp;
+    Cache            *cache = &ctx->block_numbers_cache;
     HnswBlockmapPage *blockmap_page;
     BlockNumber       blockmapno = getBlockMapPageBlockNumber(&HEADER_FOR_EXTERNAL_RETRIEVER, id);
     BlockNumber       blockno;
@@ -708,7 +627,7 @@ static inline void *wal_index_node_retriever_exact(int id)
     // clang-format on
 #endif
 
-    BlockNumber blockno_from_cache = cache_get_item(&wal_retriever_block_numbers_cache, &id);
+    BlockNumber blockno_from_cache = cache_get_item(cache, &id);
     if(blockno_from_cache != InvalidBlockNumber) {
         blockno = blockno_from_cache;
     } else {
@@ -739,7 +658,7 @@ static inline void *wal_index_node_retriever_exact(int id)
         blockmap_page = (HnswBlockmapPage *)PageGetItem(page, PageGetItemId(page, FirstOffsetNumber));
         int key = id % HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
         blockno = blockmap_page->blocknos[ key ];
-        cache_set_item(&wal_retriever_block_numbers_cache, &id, blockmap_page->blocknos[ key ]);
+        cache_set_item(cache, &id, blockmap_page->blocknos[ key ]);
         if(!idx_pagemap_prelocked) {
             UnlockReleaseBuffer(buf);
         }
@@ -784,19 +703,19 @@ static inline void *wal_index_node_retriever_exact(int id)
             return wal_retriever_area + wal_retriever_area_offset - nodepage->size;
 #else
             if(!idx_page_prelocked) {
-                    if(takenbuffers[ takenbuffers_next ] != InvalidBuffer) {
-                        ReleaseBuffer(takenbuffers[ takenbuffers_next ]);
-                        takenbuffers[ takenbuffers_next ] = InvalidBuffer;
+                if(ctx->takenbuffers[ ctx->takenbuffers_next ] != InvalidBuffer) {
+                    ReleaseBuffer(ctx->takenbuffers[ ctx->takenbuffers_next ]);
+                    ctx->takenbuffers[ ctx->takenbuffers_next ] = InvalidBuffer;
                 }
-                    takenbuffers[ takenbuffers_next ] = buf;
-                    takenbuffers_next++;
+                ctx->takenbuffers[ ctx->takenbuffers_next ] = buf;
+                ctx->takenbuffers_next++;
 
-                    if(takenbuffers_next == TAKENBUFFERS_MAX) {
-                        // if(takenbuffers[ 0 ] != InvalidBuffer) {
+                if(ctx->takenbuffers_next == TAKENBUFFERS_MAX) {
+                    // if(takenbuffers[ 0 ] != InvalidBuffer) {
                     //     ReleaseBuffer(takenbuffers[ 0 ]);
                     //     takenbuffers[ 0 ] = InvalidBuffer;
                     // }
-                    takenbuffers_next = 0;
+                    ctx->takenbuffers_next = 0;
                 }
                 LockBuffer(buf, BUFFER_LOCK_UNLOCK);
             }
@@ -808,8 +727,10 @@ static inline void *wal_index_node_retriever_exact(int id)
     elog(ERROR, "reached end of retriever without finding node %d", id);
 }
 
-void *ldb_wal_index_node_retriever_mut(int id)
+void *ldb_wal_index_node_retriever_mut(void *ctxp, int id)
 {
+    RetrieverCtx     *ctx = (RetrieverCtx *)ctxp;
+    Cache            *cache = &ctx->block_numbers_cache;
     HnswBlockmapPage *blockmap_page;
     BlockNumber       blockmapno = getBlockMapPageBlockNumber(&HEADER_FOR_EXTERNAL_RETRIEVER, id);
     BlockNumber       blockno;
@@ -820,7 +741,7 @@ void *ldb_wal_index_node_retriever_mut(int id)
     bool              idx_page_prelocked = false;
     bool              idx_pagemap_prelocked = false;
 
-    BlockNumber blockno_from_cache = cache_get_item(&wal_retriever_block_numbers_cache, &id);
+    BlockNumber blockno_from_cache = cache_get_item(cache, &id);
     if(blockno_from_cache != InvalidBlockNumber) {
         blockno = blockno_from_cache;
     } else {
@@ -851,7 +772,7 @@ void *ldb_wal_index_node_retriever_mut(int id)
 
         CacheKey key = id % HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
         blockno = blockmap_page->blocknos[ key ];
-        cache_set_item(&wal_retriever_block_numbers_cache, &id, blockno);
+        cache_set_item(cache, &id, blockno);
         if(!idx_pagemap_prelocked) {
             UnlockReleaseBuffer(buf);
         }
@@ -893,11 +814,4 @@ void *ldb_wal_index_node_retriever_mut(int id)
         UnlockReleaseBuffer(buf);
     }
     elog(ERROR, "reached end of retriever without finding node %d", id);
-}
-
-void *ldb_wal_index_node_retriever(int id)
-{
-    return wal_index_node_retriever_exact(id);
-    // return wal_index_node_retriever_sequential(id);
-    // return wal_index_node_retriever_binary(id);
 }

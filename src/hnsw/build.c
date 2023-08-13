@@ -234,6 +234,7 @@ static void BuildIndex(
     struct stat            file_stat;
     char                  *data;
 
+    MemSet(&opts, 0, sizeof(opts));
     InitBuildState(buildstate, heap, index, indexInfo);
 
     opts.dimensions = buildstate->dimensions;

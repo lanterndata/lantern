@@ -5,8 +5,9 @@
 #include <access/reloptions.h>
 #include <assert.h>
 
-#include "usearch.h"
 #include "lib_interface.h"
+#include "retriever.h"
+#include "usearch.h"
 
 typedef struct HnswScanState
 {
@@ -23,10 +24,12 @@ typedef struct HnswScanState
     int             count;
     hnsw_t          hnsw;
     usearch_index_t usearch_index;
+
+    RetrieverCtx *retriever_ctx;
 } HnswScanState;
 
 IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys);
 void          ldb_amrescan(IndexScanDesc scan, ScanKey keys, int nkeys, ScanKey orderbys, int norderbys);
 bool          ldb_amgettuple(IndexScanDesc scan, ScanDirection dir);
 void          ldb_amendscan(IndexScanDesc scan);
-#endif // LDB_HNSW_SCAN_H
+#endif  // LDB_HNSW_SCAN_H
