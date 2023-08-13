@@ -14,6 +14,7 @@
 #include "external_index.h"
 #include "hnsw.h"
 #include "options.h"
+#include "retriever.h"
 #include "usearch.h"
 #include "utils.h"
 #include "vector.h"
@@ -21,16 +22,17 @@
 /*
  * Context delete callback for insert context
  */
-static void insert_done_cb(void *arg)
+static void insert_done_cb(void *argp)
 {
-    usearch_index_t uidx = (usearch_index_t)arg;
-    usearch_error_t error = NULL;
+    HnswInsertState *arg = (HnswInsertState *)argp;
+    usearch_error_t  error = NULL;
 
-    usearch_free(uidx, &error);
+    usearch_free(arg->uidx, &error);
     if(error != NULL) {
         elog(ERROR, "error freeing usearch index: %s", error);
     }
-    ldb_wal_retriever_area_free();
+    ldb_wal_retriever_area_free(arg->retriever_ctx);
+    pfree(arg);
 }
 
 /*
@@ -69,6 +71,7 @@ bool ldb_aminsert(Relation         index,
     HnswIndexTuple      *new_tuple;
     ArrayType           *array;
     int                  n_items;
+    HnswInsertState     *insertstate = palloc0(sizeof(HnswInsertState));
 
     if(checkUnique != UNIQUE_CHECK_NO) {
         elog(ERROR, "unique constraints on hnsw vector indexes not supported");
@@ -100,6 +103,10 @@ bool ldb_aminsert(Relation         index,
         assert(hdr->magicNumber == LDB_WAL_MAGIC_NUMBER);
         HEADER_FOR_EXTERNAL_RETRIEVER = *hdr;
 
+        opts.retriever_ctx = ldb_wal_retriever_area_init();
+        opts.retriever = ldb_wal_index_node_retriever;
+        opts.retriever_mut = ldb_wal_index_node_retriever_mut;
+
         // todo:: pass in all the additional init info for external retreiver like index size (that's all?)
         uidx = usearch_init(&opts, &error);
         if(uidx == NULL) {
@@ -110,9 +117,6 @@ bool ldb_aminsert(Relation         index,
         EXTRA_DIRTIED = &extra_dirtied[ 0 ];
         EXTRA_DIRTIED_PAGE = &extra_dirtied_page[ 0 ];
         EXTRA_DIRTIED_SIZE = 0;
-        ldb_wal_retriever_area_init(BLCKSZ * 1000);
-        usearch_set_node_retriever(uidx, &ldb_wal_index_node_retriever, &ldb_wal_index_node_retriever_mut, &error);
-        assert(!error);
 
         assert(usearch_size(uidx, &error) == 0);
         assert(!error);
@@ -123,12 +127,14 @@ bool ldb_aminsert(Relation         index,
         usearch_view_mem_lazy(uidx, hdr->usearch_header, &error);
         assert(!error);
 
-        indexInfo->ii_AmCache = uidx;
+        insertstate->uidx = uidx;
+        insertstate->retriever_ctx = opts.retriever_ctx;
+        indexInfo->ii_AmCache = (void *)insertstate;
 
         callback
             = (MemoryContextCallback *)MemoryContextAllocZero(indexInfo->ii_Context, sizeof(MemoryContextCallback));
         callback->func = insert_done_cb;
-        callback->arg = (void *)uidx;
+        callback->arg = (void *)insertstate;
         MemoryContextRegisterResetCallback(indexInfo->ii_Context, callback);
 
         UnlockReleaseBuffer(hdr_buf);
@@ -140,7 +146,8 @@ bool ldb_aminsert(Relation         index,
         hdr = NULL;
     }
 
-    uidx = (usearch_index_t)indexInfo->ii_AmCache;
+    insertstate = (HnswInsertState *)indexInfo->ii_AmCache;
+    uidx = (usearch_index_t)insertstate->uidx;
     meta = usearch_metadata(uidx, &error);
     assert(!error);
 
@@ -191,7 +198,7 @@ bool ldb_aminsert(Relation         index,
 
     usearch_update_header(uidx, hdr->usearch_header, &error);
 
-    ldb_wal_retriever_area_reset();
+    ldb_wal_retriever_area_reset(insertstate->retriever_ctx);
 
     MarkBufferDirty(hdr_buf);
     // we only release the header buffer AFTER inserting is finished to make sure nobody else changes the block
