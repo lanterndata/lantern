@@ -64,14 +64,14 @@ bool ldb_aminsert(Relation         index,
     HnswIndexHeaderPage *hdr;
     int                  current_size;
     GenericXLogState    *state;
-    Buffer               extra_dirtied[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ];
-    Page                 extra_dirtied_page[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ];
-    int                  new_tuple_size;
-    uint32               new_tuple_id;
-    HnswIndexTuple      *new_tuple;
-    ArrayType           *array;
-    int                  n_items;
-    HnswInsertState     *insertstate = palloc0(sizeof(HnswInsertState));
+    // Buffer               extra_dirtied[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ];
+    // Page                 extra_dirtied_page[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ];
+    int              new_tuple_size;
+    uint32           new_tuple_id;
+    HnswIndexTuple  *new_tuple;
+    ArrayType       *array;
+    int              n_items;
+    HnswInsertState *insertstate = palloc0(sizeof(HnswInsertState));
 
     if(checkUnique != UNIQUE_CHECK_NO) {
         elog(ERROR, "unique constraints on hnsw vector indexes not supported");
@@ -101,9 +101,10 @@ bool ldb_aminsert(Relation         index,
         hdr_page = BufferGetPage(hdr_buf);
         hdr = (HnswIndexHeaderPage *)PageGetContents(hdr_page);
         assert(hdr->magicNumber == LDB_WAL_MAGIC_NUMBER);
+        assert(hdr->num_vectors >= 0);
         HEADER_FOR_EXTERNAL_RETRIEVER = *hdr;
 
-        opts.retriever_ctx = ldb_wal_retriever_area_init();
+        opts.retriever_ctx = ldb_wal_retriever_area_init(index);
         opts.retriever = ldb_wal_index_node_retriever;
         opts.retriever_mut = ldb_wal_index_node_retriever_mut;
 
@@ -113,10 +114,10 @@ bool ldb_aminsert(Relation         index,
             elog(ERROR, "unable to initialize usearch");
         }
         assert(!error);
-        INDEX_RELATION_FOR_RETRIEVER = index;
-        EXTRA_DIRTIED = &extra_dirtied[ 0 ];
-        EXTRA_DIRTIED_PAGE = &extra_dirtied_page[ 0 ];
-        EXTRA_DIRTIED_SIZE = 0;
+        // INDEX_RELATION_FOR_RETRIEVER = index;
+        // EXTRA_DIRTIED = &extra_dirtied[ 0 ];
+        // EXTRA_DIRTIED_PAGE = &extra_dirtied_page[ 0 ];
+        // EXTRA_DIRTIED_SIZE = 0;
 
         assert(usearch_size(uidx, &error) == 0);
         assert(!error);
@@ -182,8 +183,7 @@ bool ldb_aminsert(Relation         index,
     // MAX_GENERIC_XLOG_PAGES
     // XLogEnsureRecordSpace(4, 20);
     new_tuple_id = hdr->num_vectors;
-    new_tuple = PrepareIndexTuple(
-        index, state, hdr, &meta, new_tuple_id, level, &extra_dirtied, &extra_dirtied_page, &EXTRA_DIRTIED_SIZE);
+    new_tuple = PrepareIndexTuple(index, state, hdr, &meta, new_tuple_id, level, insertstate);
 
     usearch_add_external(uidx,
                          *(unsigned long *)heap_tid,
@@ -208,16 +208,7 @@ bool ldb_aminsert(Relation         index,
         assert(ptr != InvalidXLogRecPtr);
     }
 
-    for(int i = 0; i < EXTRA_DIRTIED_SIZE; i++) {
-        assert(BufferIsValid(extra_dirtied[ i ]));
-        // header is not considered extra. we know we should not have dirtied it
-        // sanity check callees that manimulate extra_dirtied did not violate this
-        assert(extra_dirtied[ i ] != hdr_buf);
-        MarkBufferDirty(extra_dirtied[ i ]);
-        UnlockReleaseBuffer(extra_dirtied[ i ]);
-    }
-    EXTRA_DIRTIED_SIZE = 0;
-
+    extra_dirtied_release_all(insertstate->retriever_ctx->extra_dirted);
     UnlockReleaseBuffer(hdr_buf);
 
     // todo:: thre is room for optimization for when indexUnchanged is true
@@ -228,7 +219,10 @@ bool ldb_aminsert(Relation         index,
 
     // q:: what happens when there is an error before ths and the switch back never happens?
     MemoryContextSwitchTo(oldCtx);
+
     MemoryContextDelete(insertCtx);
+
+    // resource deallocation happens in indexInfo->ii_Context context delete callback
 
     // from docs at https://www.postgresql.org/docs/current/index-functions.html:
     // The function's Boolean result value is significant only when checkUnique is UNIQUE_CHECK_PARTIAL.
