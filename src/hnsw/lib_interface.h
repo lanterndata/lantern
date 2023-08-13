@@ -21,4 +21,4 @@ void hnsw_destroy(hnsw_t hnsw);
 #ifdef __cplusplus
 }
 #endif
-#endif // LDB_HNSW_LIB_INTERFACE_H
+#endif  // LDB_HNSW_LIB_INTERFACE_H

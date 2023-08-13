@@ -23,6 +23,7 @@ option(DEV "Developer mode: provide code formatting, get postgres source, etc." 
 option(BUILD_WITH_USEARCH "Build with usearch as hnsw provider" ON)
 option(BUILD_LIBHNSW "Build libhnsw as hnsw provider" OFF)
 option(CODECOVERAGE "Enable code coverage for the build" OFF)
+option(BENCH "Enable benchmarking" OFF)
 
 if(CODECOVERAGE)
   message(STATUS "Code coverage is enabled.")
@@ -36,6 +37,11 @@ if(CODECOVERAGE)
   add_compile_definitions(NDEBUG)
   add_link_options(--coverage)
 endif(CODECOVERAGE)
+
+if (BENCH)
+  message(STATUS "Benchmarking is enabled.")
+  add_compile_definitions(LANTERN_BENCH)
+endif()
 
 # options passed into lanterndb sourcecode
 # todo:: tests for copynodes=ON are broken
@@ -185,17 +191,19 @@ if(DEV AND NOT CLANG_FORMAT)
 endif()
 
 if (CLANG_FORMAT)
+file(GLOB CLANG_FORMATTABLE_FILES "${SOURCES}" "${SOURCES_DIR}/**/*.h" "${SOURCES_DIR}/*.h")
+
   # Add format target
   add_custom_target(
     format
-    COMMAND ${CLANG_FORMAT} -i ${SOURCES}
+    COMMAND ${CLANG_FORMAT} -i ${CLANG_FORMATTABLE_FILES}
     COMMENT "Formatting code with clang-format"
     VERBATIM
   )
   # Add format check target
   add_custom_target(
     format_check
-    COMMAND ${CLANG_FORMAT} --dry-run -Werror ${SOURCES} 
+    COMMAND ${CLANG_FORMAT} --dry-run -Werror ${CLANG_FORMATTABLE_FILES} 
     COMMENT "Checking code formatting with clang-format"
     VERBATIM
   )

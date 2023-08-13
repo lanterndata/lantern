@@ -56,4 +56,4 @@ void append_object_tree(void *obj, int obj_size, int obj_id, object_member_map *
 // map is used for validation. we have internally stored that info as well
 void *get_object_tree(int obj_id, int obj_size, object_member_map *map, int map_size);
 
-#endif // LDB_HNSW_DISK_INTERFACE_H
+#endif  // LDB_HNSW_DISK_INTERFACE_H

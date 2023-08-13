@@ -5,9 +5,9 @@
 #include <storage/bufmgr.h>
 
 IndexBulkDeleteResult *ldb_ambulkdelete(IndexVacuumInfo        *info,
-                                      IndexBulkDeleteResult  *stats,
-                                      IndexBulkDeleteCallback callback,
-                                      void                   *callback_state);
+                                        IndexBulkDeleteResult  *stats,
+                                        IndexBulkDeleteCallback callback,
+                                        void                   *callback_state);
 IndexBulkDeleteResult *ldb_amvacuumcleanup(IndexVacuumInfo *info, IndexBulkDeleteResult *stats);
 
 #endif  // LDB_HNSW_DELETE_H
