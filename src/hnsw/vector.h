@@ -41,4 +41,4 @@ static inline Vector *InitVector(int dim)
     return result;
 }
 
-#endif // PGVECTOR_VECTOR_H
+#endif  // PGVECTOR_VECTOR_H
