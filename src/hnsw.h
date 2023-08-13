@@ -3,6 +3,8 @@
 
 #include "postgres.h"
 
+#include "fmgr.h"
+
 #if PG_VERSION_NUM < 110000
 #error "Requires PostgreSQL 11+"
 #endif
@@ -18,5 +20,9 @@
 
 /* Exported functions */
 PGDLLEXPORT void _PG_init(void);
+
+PGDLLEXPORT Datum l2sq_dist(PG_FUNCTION_ARGS);
+PGDLLEXPORT Datum ham_dist(PG_FUNCTION_ARGS);
+PGDLLEXPORT Datum cos_dist(PG_FUNCTION_ARGS);
 
 #endif  // LDB_HNSW_H

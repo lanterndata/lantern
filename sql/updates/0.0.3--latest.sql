@@ -1,20 +1,10 @@
 -- functions
-CREATE FUNCTION ldb_generic_dist(real[], real[]) RETURNS real
-	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
-
 CREATE FUNCTION cos_dist(real[], real[]) RETURNS real
 	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 
 CREATE FUNCTION ham_dist(real[], real[]) RETURNS real
 	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 
--- operators
-
-DROP OPERATOR IF EXISTS <->;
-CREATE OPERATOR <-> (
-	LEFTARG = real[], RIGHTARG = real[], PROCEDURE = ldb_generic_dist,
-	COMMUTATOR = '<->'
-);
 
 -- operator classes
 CREATE OPERATOR CLASS ann_cos_ops

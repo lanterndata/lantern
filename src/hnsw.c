@@ -208,26 +208,3 @@ Datum       ham_dist(PG_FUNCTION_ARGS)
     ArrayType *b = PG_GETARG_ARRAYTYPE_P(1);
     PG_RETURN_FLOAT4(array_dist(a, b, usearch_metric_hamming_k));
 }
-
-PGDLLEXPORT PG_FUNCTION_INFO_V1(ldb_generic_dist);
-Datum       ldb_generic_dist(PG_FUNCTION_ARGS)
-{
-    ArrayType    *a = PG_GETARG_ARRAYTYPE_P(0);
-    ArrayType    *b = PG_GETARG_ARRAYTYPE_P(1);
-    MemoryContext m = CurrentMemoryContext;
-    bool          return_null = false;
-    while(m) {
-        if(strncmp(m->name, "PortalContext", 13) == 0) {
-            return_null = true;
-        }
-        m = m->parent;
-    }
-
-    if(return_null) {
-        // todo:: figure out why the Executor Portal is calling this function after the index scan
-        // has finished and when index scan has indicated reordering of rows is unnecessary
-        PG_RETURN_NULL();
-    }
-
-    elog(ERROR, "Operator <-> has no standalone meaning and is reserved for use in vector index lookups only");
-}
