@@ -145,7 +145,6 @@ set(CONTROL_TEMPLATE "${CMAKE_SOURCE_DIR}/cmake/lanterndb.control.template")
 set(CONTROL_OUTPUT "${CMAKE_SOURCE_DIR}/build/lanterndb.control")
 
 configure_file(${CONTROL_TEMPLATE} ${CONTROL_OUTPUT})
-install(FILES ${CONTROL_OUTPUT} DESTINATION ${PostgreSQL_EXTENSION_DIR})
 
 set(_control_file "./build/lanterndb.control")
 
