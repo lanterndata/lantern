@@ -4,11 +4,17 @@
 TESTFILE_NAME=${PGAPPNAME##pg_regress/}
 # Set different name for each test database
 # As pg_regress does not support cleaning db after each test
-TEST_CASE_DB="ldb_${TESTFILE_NAME}"
+TEST_CASE_DB="ldb_test_${TESTFILE_NAME}"
+
+# Set database user
+if [ -z $DB_USER ]
+then
+     DB_USER="postgres"
+fi
 
 # Drop db after each test on exit signal
 function drop_db {
-  cat <<EOF | psql "$@" -U postgres -d postgres -v ECHO=none >/dev/null 2>&1
+  cat <<EOF | psql "$@" -U ${DB_USER} -d postgres -v ECHO=none >/dev/null 2>&1
     SET client_min_messages=ERROR;
     DROP DATABASE "${TEST_CASE_DB}";
 EOF
@@ -16,16 +22,19 @@ EOF
 
 trap drop_db EXIT
 
+
+# Change directory to sql so sql imports will work correctly
+cd sql/
 # install lanterndb extension
-psql "$@" -U postgres -d postgres -v ECHO=none -q -c "DROP DATABASE IF EXISTS ${TEST_CASE_DB};" 2>/dev/null
-psql "$@" -U postgres -d postgres -v ECHO=none -q -c "DROP DATABASE IF EXISTS ${TEST_CASE_DB};" 2>/dev/null
-psql "$@" -U postgres -d postgres -v ECHO=none -q -c "CREATE DATABASE ${TEST_CASE_DB};" 2>/dev/null
-psql "$@" -U postgres -d ${TEST_CASE_DB} -v ECHO=none -q -c "SET client_min_messages=error; CREATE EXTENSION vector; CREATE EXTENSION lanterndb;" 2>/dev/null
-psql "$@" -U postgres -d ${TEST_CASE_DB} -v ECHO=none -q -f sql/test_helpers/common.sql 2>/dev/null
+psql "$@" -U ${DB_USER} -d postgres -v ECHO=none -q -c "DROP DATABASE IF EXISTS ${TEST_CASE_DB};" 2>/dev/null
+psql "$@" -U ${DB_USER} -d postgres -v ECHO=none -q -c "DROP DATABASE IF EXISTS ${TEST_CASE_DB};" 2>/dev/null
+psql "$@" -U ${DB_USER} -d postgres -v ECHO=none -q -c "CREATE DATABASE ${TEST_CASE_DB};" 2>/dev/null
+psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -c "SET client_min_messages=error; CREATE EXTENSION vector; CREATE EXTENSION lanterndb;" 2>/dev/null
+psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -f test_helpers/common.sql 2>/dev/null
 
 # Exclude debug/inconsistent output from psql
 # So tests will always have the same output
-psql -U postgres \
+psql -U ${DB_USER} \
      -v ON_ERROR_STOP=1 \
      -v VERBOSITY=terse \
      -v ECHO=all \

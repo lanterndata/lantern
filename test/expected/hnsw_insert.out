@@ -1,4 +1,4 @@
-\ir sql/test_helpers/small_world.sql
+\ir test_helpers/small_world.sql
 -- creates a simple vector table
 CREATE TABLE
   small_world (id varchar(3), vector vector (3));
@@ -13,7 +13,7 @@ VALUES
   ('101', '[1,0,1]'),
   ('110', '[1,1,0]'),
   ('111', '[1,1,1]');
-\ir sql/test_helpers/sift.sql
+\ir test_helpers/sift.sql
 CREATE TABLE IF NOT EXISTS sift_base1k (
     id SERIAL PRIMARY KEY,
     v vector(128));

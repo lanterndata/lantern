@@ -1,5 +1,5 @@
-\ir sql/test_helpers/small_world.sql
-\ir sql/test_helpers/sift.sql
+\ir test_helpers/small_world.sql
+\ir test_helpers/sift.sql
 
 CREATE INDEX ON small_world USING hnsw (vector);
 CREATE INDEX ON sift_base1k USING hnsw (v);
