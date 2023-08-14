@@ -67,7 +67,7 @@ INSERT INTO small_world (id, vector) VALUES
 ('110', '{1,1,0}'),
 ('111', '{1,1,1}');
 SELECT * FROM (
-    SELECT id, ROUND((vector <-> array[0,1,0])::numeric, 2) as dist
+    SELECT id, ROUND( (vector <-> array[0,1,0])::numeric, 2) as dist
     FROM small_world
     ORDER BY vector <-> array[0,1,0] LIMIT 7
 ) v ORDER BY v.dist, v.id;
@@ -98,7 +98,7 @@ EXPLAIN (COSTS FALSE) SELECT id, ROUND((v <-> :'v42')::numeric, 2) FROM sift_bas
          Order By: (v <-> '{1,0,0,0,0,0,21,35,1,0,0,0,0,77,51,42,66,2,0,0,0,86,140,71,52,1,0,0,0,0,23,70,2,0,0,0,0,64,73,50,11,0,0,0,0,140,97,18,140,64,0,0,0,99,51,65,78,11,0,0,0,0,41,76,0,0,0,0,0,124,82,2,48,1,0,0,0,118,31,5,140,21,0,0,0,4,12,78,12,0,0,0,0,0,58,117,1,0,0,0,2,25,7,2,46,2,0,0,1,12,4,8,140,9,0,0,0,1,8,16,3,0,0,0,0,0,21,34}'::real[])
 (3 rows)
 
-SELECT id, ROUND(l2sq_dist(v, :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
+SELECT id, ROUND((v <-> :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=128 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized
@@ -126,7 +126,7 @@ EXPLAIN (COSTS FALSE) SELECT id, ROUND((v <-> :'v42')::numeric, 2) FROM sift_bas
          Order By: (v <-> '{1,0,0,0,0,0,21,35,1,0,0,0,0,77,51,42,66,2,0,0,0,86,140,71,52,1,0,0,0,0,23,70,2,0,0,0,0,64,73,50,11,0,0,0,0,140,97,18,140,64,0,0,0,99,51,65,78,11,0,0,0,0,41,76,0,0,0,0,0,124,82,2,48,1,0,0,0,118,31,5,140,21,0,0,0,4,12,78,12,0,0,0,0,0,58,117,1,0,0,0,2,25,7,2,46,2,0,0,1,12,4,8,140,9,0,0,0,1,8,16,3,0,0,0,0,0,21,34}'::real[])
 (3 rows)
 
-SELECT id, ROUND(l2sq_dist(v, :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
+SELECT id, ROUND((v <-> :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=128 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized
@@ -186,7 +186,7 @@ EXPLAIN (COSTS FALSE) SELECT id, ROUND((vector <-> :'v42')::numeric, 2) FROM new
          Order By: (vector <-> '{0,0,0}'::real[])
 (3 rows)
 
-SELECT id, ROUND(l2sq_dist(vector, :'v42')::numeric, 2) FROM new_small_world ORDER BY vector <-> :'v42' LIMIT 10;
+SELECT id, ROUND((vector <-> :'v42')::numeric, 2) FROM new_small_world ORDER BY vector <-> :'v42' LIMIT 10;
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized
@@ -238,7 +238,7 @@ CREATE UNLOGGED TABLE unlogged_small_world AS TABLE small_world;
 \set ON_ERROR_STOP off
 INSERT INTO small_world (id, vector) VALUES ('xxx', '{1,1,1,1}');
 ERROR:  Wrong number of dimensions: 4 instead of 3 expected
-SELECT l2sq_dist('{1,1,1,1}'::real[],'{1,1,1}'::real[]);
+SELECT '{1,1,1,1}'::real[] <-> '{1,1,1}'::real[];
 ERROR:  expected equally sized arrays but got arrays with dimensions 4 and 3
 CREATE INDEX ON unlogged_small_world USING hnsw (vector);
 INFO:  done init usearch index
