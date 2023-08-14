@@ -1,5 +1,5 @@
 -- initially, before we create an index, the variable does not exist
-\ir sql/test_helpers/small_world.sql
+\ir test_helpers/small_world.sql
 \set ON_ERROR_STOP off
 SHOW hnsw.init_k;
 \set ON_ERROR_STOP on

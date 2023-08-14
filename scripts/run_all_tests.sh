@@ -6,9 +6,9 @@ PSQL=psql
 TMP_ROOT=/tmp/lanterndb
 TMP_OUTDIR=$TMP_ROOT/tmp_output
 FILTER="${FILTER:-}"
+DB_USER="${DB_USER:-}"
 # this will be used by pg_regress while making diff file
 export PG_REGRESS_DIFF_OPTS=-u
-# read the first command line argument
 
 echo "Filter: $FILTER"
 
