@@ -142,12 +142,12 @@ add_custom_target(phony_always_runs ALL DEPENDS ${CMAKE_BINARY_DIR}/${_script_fi
 
 # AUTO-GENERATE lanterndb.control file for PostgreSQL
 set(CONTROL_TEMPLATE "${CMAKE_SOURCE_DIR}/cmake/lanterndb.control.template")
-set(CONTROL_OUTPUT "${CMAKE_SOURCE_DIR}/lanterndb.control")
+set(CONTROL_OUTPUT "${CMAKE_SOURCE_DIR}/build/lanterndb.control")
 
 configure_file(${CONTROL_TEMPLATE} ${CONTROL_OUTPUT})
 install(FILES ${CONTROL_OUTPUT} DESTINATION ${PostgreSQL_EXTENSION_DIR})
 
-set(_control_file "lanterndb.control")
+set(_control_file "./build/lanterndb.control")
 
 
 # INSTALL
