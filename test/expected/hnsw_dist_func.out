@@ -1,0 +1,160 @@
+CREATE EXTENSION IF NOT EXISTS lanterndb;
+CREATE EXTENSION
+CREATE TABLE small_world_l2 (
+    id varchar(3),
+    vector real[]
+);
+CREATE TABLE
+CREATE TABLE small_world_cos (
+    id varchar(3),
+    vector real[]
+);
+CREATE TABLE
+CREATE TABLE small_world_ham (
+    id varchar(3),
+    vector real[]
+);
+CREATE TABLE
+CREATE INDEX ON small_world_l2 USING hnsw (vector);
+psql:test/sql/hnsw_dist_func.sql:19: INFO:  done init usearch index
+psql:test/sql/hnsw_dist_func.sql:19: INFO:  inserted 0 elements
+psql:test/sql/hnsw_dist_func.sql:19: INFO:  done saving 0 vectors
+CREATE INDEX
+CREATE INDEX ON small_world_cos USING hnsw (vector ann_cos_ops);
+psql:test/sql/hnsw_dist_func.sql:20: INFO:  done init usearch index
+psql:test/sql/hnsw_dist_func.sql:20: INFO:  inserted 0 elements
+psql:test/sql/hnsw_dist_func.sql:20: INFO:  done saving 0 vectors
+CREATE INDEX
+CREATE INDEX ON small_world_ham USING hnsw (vector ann_ham_ops);
+psql:test/sql/hnsw_dist_func.sql:21: INFO:  done init usearch index
+psql:test/sql/hnsw_dist_func.sql:21: INFO:  inserted 0 elements
+psql:test/sql/hnsw_dist_func.sql:21: INFO:  done saving 0 vectors
+CREATE INDEX
+INSERT INTO small_world_l2 (id, vector) VALUES 
+('000', '{0,0,0}'),
+('001', '{0,0,1}'),
+('010', '{0,1,0}'),
+('011', '{0,1,1}'),
+('100', '{1,0,0}'),
+('101', '{1,0,1}'),
+('110', '{1,1,0}'),
+('111', '{1,1,1}');
+INSERT 0 8
+INSERT INTO small_world_cos (id, vector) VALUES 
+('000', '{0,0,0}'),
+('001', '{0,0,1}'),
+('010', '{0,1,0}'),
+('011', '{0,1,1}'),
+('100', '{1,0,0}'),
+('101', '{1,0,1}'),
+('110', '{1,1,0}'),
+('111', '{1,1,1}');
+INSERT 0 8
+INSERT INTO small_world_ham (id, vector) VALUES 
+('000', '{0,0,0}'),
+('001', '{0,0,1}'),
+('010', '{0,1,0}'),
+('011', '{0,1,1}'),
+('100', '{1,0,0}'),
+('101', '{1,0,1}'),
+('110', '{1,1,0}'),
+('111', '{1,1,1}');
+INSERT 0 8
+SELECT * FROM (
+    SELECT id, ROUND( (vector <-> array[0,1,0])::numeric, 2) as dist
+    FROM small_world_l2
+    ORDER BY vector <-> array[0,1,0] LIMIT 7
+) v ORDER BY v.dist, v.id;
+psql:test/sql/hnsw_dist_func.sql:59: INFO:  began scanning with 0 keys and 1 orderbys
+psql:test/sql/hnsw_dist_func.sql:59: INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
+psql:test/sql/hnsw_dist_func.sql:59: INFO:  usearch index initialized
+ id  | dist 
+-----+------
+ 010 | 0.00
+ 011 | 1.00
+ 110 | 1.00
+ 001 | 2.00
+ 100 | 2.00
+ 111 | 2.00
+ 101 | 3.00
+(7 rows)
+
+EXPLAIN SELECT * FROM (
+    SELECT id, ROUND( (vector <-> array[0,1,0])::numeric, 2) as dist
+    FROM small_world_l2
+    ORDER BY vector <-> array[0,1,0] LIMIT 7
+) v ORDER BY v.dist, v.id;
+                                                      QUERY PLAN                                                       
+-----------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=0.70..0.72 rows=7 width=48)
+   Sort Key: v.dist, v.id
+   ->  Subquery Scan on v  (cost=0.00..0.60 rows=7 width=48)
+         ->  Limit  (cost=0.00..0.53 rows=7 width=52)
+               ->  Index Scan using small_world_l2_vector_idx on small_world_l2  (cost=0.00..81.42 rows=1070 width=52)
+                     Order By: (vector <-> '{0,1,0}'::real[])
+(6 rows)
+
+SELECT * FROM (
+    SELECT id, ROUND( cos_dist(vector, array[0,1,0])::numeric, 2) as dist
+    FROM small_world_cos
+    ORDER BY cos_dist(vector, array[0,1,0]) LIMIT 7
+) v ORDER BY v.dist, v.id;
+ id  | dist 
+-----+------
+ 010 | 0.00
+ 011 | 0.29
+ 110 | 0.29
+ 111 | 0.42
+ 000 | 1.00
+ 001 | 1.00
+ 100 | 1.00
+(7 rows)
+
+EXPLAIN SELECT * FROM (
+    SELECT id, ROUND( (vector <-> array[0,1,0])::numeric, 2) as dist
+    FROM small_world_cos
+    ORDER BY vector <-> array[0,1,0] LIMIT 7
+) v ORDER BY v.dist, v.id;
+                                         QUERY PLAN                                         
+--------------------------------------------------------------------------------------------
+ Sort  (cost=51.96..51.97 rows=7 width=48)
+   Sort Key: v.dist, v.id
+   ->  Subquery Scan on v  (cost=51.77..51.86 rows=7 width=48)
+         ->  Limit  (cost=51.77..51.79 rows=7 width=52)
+               ->  Sort  (cost=51.77..54.44 rows=1070 width=52)
+                     Sort Key: ((small_world_cos.vector <-> '{0,1,0}'::real[]))
+                     ->  Seq Scan on small_world_cos  (cost=0.00..31.40 rows=1070 width=52)
+(7 rows)
+
+SELECT * FROM (
+    SELECT id, ROUND( ham_dist(vector, array[0,1,0])::numeric, 2) as dist
+    FROM small_world_ham
+    ORDER BY ham_dist(vector, array[0,1,0]) LIMIT 7
+) v ORDER BY v.dist, v.id;
+ id  | dist  
+-----+-------
+ 010 |  0.00
+ 000 |  7.00
+ 011 |  7.00
+ 110 |  7.00
+ 001 | 14.00
+ 100 | 14.00
+ 111 | 14.00
+(7 rows)
+
+EXPLAIN SELECT * FROM (
+    SELECT id, ROUND( (vector <-> array[0,1,0])::numeric, 2) as dist
+    FROM small_world_ham
+    ORDER BY cos_dist(vector, array[0,1,0]) LIMIT 7
+) v ORDER BY v.dist, v.id;
+                                         QUERY PLAN                                         
+--------------------------------------------------------------------------------------------
+ Sort  (cost=51.96..51.97 rows=7 width=48)
+   Sort Key: v.dist, v.id
+   ->  Subquery Scan on v  (cost=51.77..51.86 rows=7 width=48)
+         ->  Limit  (cost=51.77..51.79 rows=7 width=52)
+               ->  Sort  (cost=51.77..54.44 rows=1070 width=52)
+                     Sort Key: (cos_dist(small_world_ham.vector, '{0,1,0}'::real[]))
+                     ->  Seq Scan on small_world_ham  (cost=0.00..31.40 rows=1070 width=52)
+(7 rows)
+

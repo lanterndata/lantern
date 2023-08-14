@@ -19,7 +19,7 @@ INSERT INTO small_world (id, vector) VALUES
 ('111', '{1,1,1}');
 
 SELECT * FROM (
-    SELECT id, ROUND(l2sq_dist(vector, array[0,1,0])::numeric, 2) as dist
+    SELECT id, ROUND( (vector <-> array[0,1,0])::numeric, 2) as dist
     FROM small_world
     ORDER BY vector <-> array[0,1,0] LIMIT 7
 ) v ORDER BY v.dist, v.id;
@@ -35,7 +35,7 @@ INSERT INTO small_world (id, vector) VALUES
 ('111', '{1,1,1}');
 
 SELECT * FROM (
-    SELECT id, ROUND(l2sq_dist(vector, array[0,1,0])::numeric, 2) as dist
+    SELECT id, ROUND((vector <-> array[0,1,0])::numeric, 2) as dist
     FROM small_world
     ORDER BY vector <-> array[0,1,0] LIMIT 7
 ) v ORDER BY v.dist, v.id;
