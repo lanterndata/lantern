@@ -139,8 +139,13 @@ add_custom_command(
 
 add_custom_target(phony_always_runs ALL DEPENDS ${CMAKE_BINARY_DIR}/${_script_file})
 
-# todo:: make this generated
-set(_control_file "lanterndb.control")
+
+# AUTO-GENERATE lanterndb.control file for PostgreSQL
+set(CONTROL_TEMPLATE "${CMAKE_MODULE_PATH}/lanterndb.control.template")
+set(CONTROL_OUTPUT "${CMAKE_BINARY_DIR}/lanterndb.control")
+configure_file(${CONTROL_TEMPLATE} ${CONTROL_OUTPUT})
+set(_control_file "${CMAKE_BINARY_DIR}/lanterndb.control")
+
 
 # INSTALL
 
