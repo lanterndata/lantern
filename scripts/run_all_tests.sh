@@ -36,7 +36,6 @@ else
     
     rm -rf $TMP_OUTDIR/schedule.txt
     while IFS= read -r f; do
-        echo "Checking $f"
         if [[ $f == *"$FILTER"* ]]; then
             echo "test: $f" >> $TMP_OUTDIR/schedule.txt
         fi
