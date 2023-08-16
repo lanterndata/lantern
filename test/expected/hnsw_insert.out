@@ -39,7 +39,7 @@ INSERT INTO small_world (id, vector) VALUES
 ('110', '[1,1,0]'),
 ('111', '[1,1,1]');
 SELECT * FROM (
-    SELECT id, ROUND( (vector <-> '[0,1,0]')::numeric, 2) as dist
+    SELECT id, ROUND(vector_l2sq_dist(vector, '[0,1,0]')::numeric, 2) as dist
     FROM small_world
     ORDER BY vector <-> '[0,1,0]' LIMIT 7
 ) v ORDER BY v.dist, v.id;
@@ -67,7 +67,7 @@ INSERT INTO small_world (id, vector) VALUES
 ('110', '[1,1,0]'),
 ('111', '[1,1,1]');
 SELECT * FROM (
-    SELECT id, ROUND( (vector <-> '[0,1,0]')::numeric, 2) as dist
+    SELECT id, ROUND(vector_l2sq_dist(vector, '[0,1,0]')::numeric, 2) as dist
     FROM small_world
     ORDER BY vector <-> '[0,1,0]' LIMIT 7
 ) v ORDER BY v.dist, v.id;
@@ -90,7 +90,7 @@ SELECT v as v42 FROM sift_base1k WHERE id = 42 \gset
 BEGIN;
 DROP INDEX IF EXISTS sift_base1k_hnsw_idx;
 NOTICE:  index "sift_base1k_hnsw_idx" does not exist, skipping
-EXPLAIN SELECT id, ROUND((v <-> :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
+EXPLAIN SELECT id, ROUND(vector_l2sq_dist(v, :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
                                                                                                                                                                           QUERY PLAN                                                                                                                                                                          
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit  (cost=0.00..6.75 rows=10 width=44)
@@ -98,27 +98,27 @@ EXPLAIN SELECT id, ROUND((v <-> :'v42')::numeric, 2) FROM sift_base1k ORDER BY v
          Order By: (v <-> '[1,0,0,0,0,0,21,35,1,0,0,0,0,77,51,42,66,2,0,0,0,86,140,71,52,1,0,0,0,0,23,70,2,0,0,0,0,64,73,50,11,0,0,0,0,140,97,18,140,64,0,0,0,99,51,65,78,11,0,0,0,0,41,76,0,0,0,0,0,124,82,2,48,1,0,0,0,118,31,5,140,21,0,0,0,4,12,78,12,0,0,0,0,0,58,117,1,0,0,0,2,25,7,2,46,2,0,0,1,12,4,8,140,9,0,0,0,1,8,16,3,0,0,0,0,0,21,34]'::vector)
 (3 rows)
 
-SELECT id, ROUND((v <-> :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
+SELECT id, ROUND(vector_l2sq_dist(v, :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=128 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized
- id  | round  
------+--------
-  42 |   0.00
-  36 | 102.62
-  48 | 225.92
-  39 | 237.20
- 886 | 267.65
- 402 | 277.51
- 518 | 291.59
- 340 | 295.40
- 331 | 296.30
- 682 | 308.20
+ id  |  round   
+-----+----------
+  42 |     0.00
+  36 | 10530.00
+  48 | 51038.00
+  39 | 56265.00
+ 886 | 71637.00
+ 402 | 77013.00
+ 518 | 85024.00
+ 340 | 87261.00
+ 331 | 87796.00
+ 682 | 94988.00
 (10 rows)
 
 ROLLBACK;
 -- index scan
-EXPLAIN SELECT id, ROUND((v <-> :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
+EXPLAIN SELECT id, ROUND(vector_l2sq_dist(v, :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
                                                                                                                                                                           QUERY PLAN                                                                                                                                                                          
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit  (cost=0.00..6.75 rows=10 width=44)
@@ -126,22 +126,22 @@ EXPLAIN SELECT id, ROUND((v <-> :'v42')::numeric, 2) FROM sift_base1k ORDER BY v
          Order By: (v <-> '[1,0,0,0,0,0,21,35,1,0,0,0,0,77,51,42,66,2,0,0,0,86,140,71,52,1,0,0,0,0,23,70,2,0,0,0,0,64,73,50,11,0,0,0,0,140,97,18,140,64,0,0,0,99,51,65,78,11,0,0,0,0,41,76,0,0,0,0,0,124,82,2,48,1,0,0,0,118,31,5,140,21,0,0,0,4,12,78,12,0,0,0,0,0,58,117,1,0,0,0,2,25,7,2,46,2,0,0,1,12,4,8,140,9,0,0,0,1,8,16,3,0,0,0,0,0,21,34]'::vector)
 (3 rows)
 
-SELECT id, ROUND((v <-> :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
+SELECT id, ROUND(vector_l2sq_dist(v, :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=128 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized
- id  | round  
------+--------
-  42 |   0.00
-  36 | 102.62
-  48 | 225.92
-  39 | 237.20
- 886 | 267.65
- 402 | 277.51
- 518 | 291.59
- 340 | 295.40
- 331 | 296.30
- 682 | 308.20
+ id  |  round   
+-----+----------
+  42 |     0.00
+  36 | 10530.00
+  48 | 51038.00
+  39 | 56265.00
+ 886 | 71637.00
+ 402 | 77013.00
+ 518 | 85024.00
+ 340 | 87261.00
+ 331 | 87796.00
+ 682 | 94988.00
 (10 rows)
 
 -- todo:: craft an SQL query to compare the results of the two above so I do not have to do it manually
@@ -162,7 +162,7 @@ INSERT INTO new_small_world (id, vector) VALUES
 ('111', '[1,1,1]');
 -- index scan
 SELECT '[0,0,0]'::vector as v42  \gset
-EXPLAIN SELECT id, ROUND((vector <-> :'v42')::numeric, 2) FROM new_small_world ORDER BY vector <-> :'v42' LIMIT 10;
+EXPLAIN SELECT id, ROUND(vector_l2sq_dist(vector, :'v42')::numeric, 2) FROM new_small_world ORDER BY vector <-> :'v42' LIMIT 10;
                                                 QUERY PLAN                                                 
 -----------------------------------------------------------------------------------------------------------
  Limit  (cost=0.00..6.43 rows=10 width=56)
@@ -170,7 +170,7 @@ EXPLAIN SELECT id, ROUND((vector <-> :'v42')::numeric, 2) FROM new_small_world O
          Order By: (vector <-> '[0,0,0]'::vector)
 (3 rows)
 
-SELECT id, ROUND((vector <-> :'v42')::numeric, 2) FROM new_small_world ORDER BY vector <-> :'v42' LIMIT 10;
+SELECT id, ROUND(vector_l2sq_dist(vector, :'v42')::numeric, 2) FROM new_small_world ORDER BY vector <-> :'v42' LIMIT 10;
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized

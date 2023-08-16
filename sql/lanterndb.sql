@@ -56,7 +56,7 @@ BEGIN
 	IF type_exists THEN
 	-- The type exists
 	-- taken from pgvector so our index can work with pgvector types
-		CREATE FUNCTION vector_l2sq_dist(vector, vector) RETURNS real
+		CREATE FUNCTION vector_l2sq_dist(vector, vector) RETURNS float8
 			AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 
 		CREATE OPERATOR CLASS vector_l2_ops

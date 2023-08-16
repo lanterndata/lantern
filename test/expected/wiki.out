@@ -35,21 +35,21 @@ ALTER TABLE ONLY tsv_data
     ADD CONSTRAINT tsv_data_pkey PRIMARY KEY (id);
 \copy tsv_data FROM '/tmp/lanterndb/vector_datasets/tsv_wiki_sample.csv' DELIMITER E'\t';
 -- introduce a WITH statement to round returned distances AFTER a lookup
-with t as (select id, page_title,  context_page_description_ai <-> (select context_page_description_ai from tsv_data where id = 81386) as dist
+with t as (select id, page_title,  vector_l2sq_dist(context_page_description_ai, (select context_page_description_ai from tsv_data where id = 81386)) as dist
  from tsv_data order by dist
  limit 10) select id, page_title, ROUND( dist::numeric, 2) from t;
   id   |              page_title              | round 
 -------+--------------------------------------+-------
  81386 | Madge Elliott                        |  0.00
- 81735 | Frank Hall Crane                     |  5.53
- 95321 | Miriam Van Waters                    |  6.49
- 81583 | Emile P. Moses                       |  6.56
- 81417 | Victor Iamandi                       |  6.92
- 81601 | Graciela                             |  6.96
- 81377 | Robert Christie (Ontario politician) |  7.04
- 81375 | Ralph Dacre, 3rd Baron Dacre         |  7.12
- 95386 | Alexandre Étienne Choron             |  7.14
- 81846 | Frank Carlucci                       |  7.25
+ 81735 | Frank Hall Crane                     | 30.59
+ 95321 | Miriam Van Waters                    | 42.08
+ 81583 | Emile P. Moses                       | 42.98
+ 81417 | Victor Iamandi                       | 47.85
+ 81601 | Graciela                             | 48.44
+ 81377 | Robert Christie (Ontario politician) | 49.58
+ 81375 | Ralph Dacre, 3rd Baron Dacre         | 50.71
+ 95386 | Alexandre Étienne Choron             | 50.93
+ 81846 | Frank Carlucci                       | 52.53
 (10 rows)
 
 CREATE INDEX index1 ON tsv_data USING hnsw (context_page_description_ai vector_l2_ops);
@@ -66,23 +66,20 @@ set enable_seqscan=false;
 -- explain with t as (select id, page_title, context_page_description_ai <-> (select context_page_description_ai from tsv_data where id = 81386) as dist
 --  from tsv_data order by dist limit 10) select id, page_title, ROUND( dist::numeric, 2) from t;
 -- introduce a WITH statement to round returned distances AFTER a lookup so the index can be used
-with t as (select id, page_title, context_page_description_ai <-> (select context_page_description_ai from tsv_data where id = 81386) as dist
+with t as (select id, page_title, vector_l2sq_dist(context_page_description_ai, (select context_page_description_ai from tsv_data where id = 81386)) as dist
  from tsv_data order by dist limit 10) select id, page_title, ROUND( dist::numeric, 2) from t;
-INFO:  began scanning with 0 keys and 1 orderbys
-INFO:  starting scan with dimensions=512 M=11 efConstruction=150 ef=100
-INFO:  usearch index initialized
   id   |              page_title              | round 
 -------+--------------------------------------+-------
  81386 | Madge Elliott                        |  0.00
- 81735 | Frank Hall Crane                     |  5.53
- 95321 | Miriam Van Waters                    |  6.49
- 81583 | Emile P. Moses                       |  6.56
- 81417 | Victor Iamandi                       |  6.92
- 81601 | Graciela                             |  6.96
- 81377 | Robert Christie (Ontario politician) |  7.04
- 81375 | Ralph Dacre, 3rd Baron Dacre         |  7.12
- 95386 | Alexandre Étienne Choron             |  7.14
- 81846 | Frank Carlucci                       |  7.25
+ 81735 | Frank Hall Crane                     | 30.59
+ 95321 | Miriam Van Waters                    | 42.08
+ 81583 | Emile P. Moses                       | 42.98
+ 81417 | Victor Iamandi                       | 47.85
+ 81601 | Graciela                             | 48.44
+ 81377 | Robert Christie (Ontario politician) | 49.58
+ 81375 | Ralph Dacre, 3rd Baron Dacre         | 50.71
+ 95386 | Alexandre Étienne Choron             | 50.93
+ 81846 | Frank Carlucci                       | 52.53
 (10 rows)
 
 -- test additional inserts on wiki table

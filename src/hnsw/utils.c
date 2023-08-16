@@ -2,6 +2,9 @@
 
 #include "utils.h"
 
+#include <regex.h>
+#include <string.h>
+
 #include "hnsw.h"
 #include "options.h"
 #include "usearch.h"
@@ -36,4 +39,43 @@ void PopulateUsearchOpts(Relation index, usearch_init_options_t *opts)
     opts->metric_kind = HnswGetMetricKind(index);
     opts->metric = NULL;
     opts->quantization = usearch_scalar_f32_k;
+}
+
+int CheckOperatorUsage(const char *query)
+{
+    const char *pattern = "(<->)";
+    const char *orderby_pattern = "order by";
+    regex_t     regex;
+    regex_t     regex2;
+    regmatch_t  matches[ 1 ];
+    int         reti;
+    int         reti2;
+    int         status = 0;
+
+    reti = regcomp(&regex, pattern, REG_EXTENDED | REG_ICASE);
+    reti2 = regcomp(&regex2, orderby_pattern, REG_EXTENDED | REG_ICASE);
+    if(reti || reti2) {
+        elog(ERROR, "Could not compile regex");
+        return status;
+    }
+
+    // Find all occurrences of the <-> operator
+    int offset = 0;
+    while((reti = regexec(&regex, query + offset, 1, matches, 0)) == 0) {
+        long start = offset + matches[ 0 ].rm_so;
+        long end = offset + matches[ 0 ].rm_eo;
+        char substring[ start - offset ];
+        strncpy(substring, query + offset, start - offset);
+        // check if there is an ORDER BY
+        // in the latest matched substring
+        if(regexec(&regex2, substring, 0, NULL, 0)) {
+            status = 1;
+            break;
+        }
+        offset += matches[ 0 ].rm_eo;
+    }
+
+    regfree(&regex);
+    regfree(&regex2);
+    return status;
 }

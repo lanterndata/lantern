@@ -124,10 +124,8 @@ EXPLAIN SELECT * FROM (
 \set ON_ERROR_STOP off
 -- this should throw error about standalone usage of the operator
 SELECT array[1,2,3] <-> array[3,2,1];
-\set ON_ERROR_STOP on
 
--- the dis column in select should be null(empty), as the function 
--- is being called during index scan, so we can not throw error there
+-- this should throw error about standalone usage of the operator
 SELECT * FROM (
     SELECT id, ROUND((vector <-> array[0,1,0])::numeric, 2) as dist
     FROM small_world_ham

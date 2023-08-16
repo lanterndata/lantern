@@ -215,25 +215,10 @@ EXPLAIN SELECT * FROM (
 -- this should throw error about standalone usage of the operator
 SELECT array[1,2,3] <-> array[3,2,1];
 ERROR:  Operator <-> has no standalone meaning and is reserved for use in vector index lookups only
-\set ON_ERROR_STOP on
--- the dis column in select should be null(empty), as the function 
--- is being called during index scan, so we can not throw error there
+-- this should throw error about standalone usage of the operator
 SELECT * FROM (
     SELECT id, ROUND((vector <-> array[0,1,0])::numeric, 2) as dist
     FROM small_world_ham
     ORDER BY vector <-> array[0,1,0] LIMIT 7
 ) v ORDER BY v.dist, v.id;
-INFO:  began scanning with 0 keys and 1 orderbys
-INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
-INFO:  usearch index initialized
- id  | dist 
------+------
- 001 |     
- 010 |     
- 011 |     
- 100 |     
- 101 |     
- 110 |     
- 111 |     
-(7 rows)
-
+ERROR:  Operator <-> has no standalone meaning and is reserved for use in vector index lookups only

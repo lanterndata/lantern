@@ -56,7 +56,7 @@ SELECT * FROM ldb_get_indexes('small_world');
 (1 row)
 
 SELECT * FROM (
-	SELECT id, ROUND( (vector <-> '[0,0,0]')::numeric, 2) as dist
+	SELECT id, ROUND(vector_l2sq_dist(vector, '[0,0,0]')::numeric, 2) as dist
 	FROM small_world
 	ORDER BY vector <-> '[0,0,0]' LIMIT 7
 ) v ORDER BY v.dist, v.id;
@@ -69,13 +69,13 @@ INFO:  usearch index initialized
  001 | 1.00
  010 | 1.00
  100 | 1.00
- 011 | 1.41
- 101 | 1.41
- 110 | 1.41
+ 011 | 2.00
+ 101 | 2.00
+ 110 | 2.00
 (7 rows)
 
 SELECT * FROM (
-	SELECT id, ROUND( (vector <-> '[0,1,0]')::numeric, 2) as dist
+	SELECT id, ROUND(vector_l2sq_dist(vector, '[0,1,0]')::numeric, 2) as dist
 	FROM small_world
 	ORDER BY vector <-> '[0,1,0]' LIMIT 7
 ) v ORDER BY v.dist, v.id;
@@ -88,9 +88,9 @@ INFO:  usearch index initialized
  000 | 1.00
  011 | 1.00
  110 | 1.00
- 001 | 1.41
- 100 | 1.41
- 111 | 1.41
+ 001 | 2.00
+ 100 | 2.00
+ 111 | 2.00
 (7 rows)
 
 rollback;
@@ -112,7 +112,7 @@ SELECT * FROM ldb_get_indexes('small_world');
 -- For that reason we first run a query that only outputs distances so we can see vectors are in fact in the right (approximate)
 -- order. Then, we run the second query which outputs id, dist pairs and we sort ids for equal distances in the outer query to get
 -- deterministic output.
-SELECT ROUND( (vector <-> '[0,0,0]')::numeric, 2) as dist
+SELECT ROUND(vector_l2sq_dist(vector, '[0,0,0]')::numeric, 2) as dist
 FROM small_world
 ORDER BY vector <-> '[0,0,0]' LIMIT 7;
 INFO:  began scanning with 0 keys and 1 orderbys
@@ -124,13 +124,13 @@ INFO:  usearch index initialized
  1.00
  1.00
  1.00
- 1.41
- 1.41
- 1.41
+ 2.00
+ 2.00
+ 2.00
 (7 rows)
 
 SELECT * FROM (
-    SELECT id, ROUND( (vector <-> '[0,0,0]')::numeric, 2) as dist
+    SELECT id, ROUND(vector_l2sq_dist(vector, '[0,0,0]')::numeric, 2) as dist
     FROM small_world
     ORDER BY vector <-> '[0,0,0]' LIMIT 7
 ) v ORDER BY v.dist, v.id;
@@ -143,13 +143,13 @@ INFO:  usearch index initialized
  001 | 1.00
  010 | 1.00
  100 | 1.00
- 011 | 1.41
- 101 | 1.41
- 110 | 1.41
+ 011 | 2.00
+ 101 | 2.00
+ 110 | 2.00
 (7 rows)
 
 SELECT * FROM (
-    SELECT id, ROUND( (vector <-> '[0,1,0]')::numeric, 2) as dist
+    SELECT id, ROUND(vector_l2sq_dist(vector, '[0,1,0]')::numeric, 2) as dist
     FROM small_world
     ORDER BY vector <-> '[0,1,0]' LIMIT 7
 ) v ORDER BY v.dist, v.id;
@@ -162,9 +162,9 @@ INFO:  usearch index initialized
  000 | 1.00
  011 | 1.00
  110 | 1.00
- 001 | 1.41
- 100 | 1.41
- 111 | 1.41
+ 001 | 2.00
+ 100 | 2.00
+ 111 | 2.00
 (7 rows)
 
 rollback;
@@ -180,7 +180,7 @@ SELECT * FROM ldb_get_indexes('small_world');
 (1 row)
 
 SELECT * FROM (
-    SELECT id, ROUND( (vector <-> '[0,0,0]')::numeric, 2) as dist
+    SELECT id, ROUND(vector_l2sq_dist(vector, '[0,0,0]')::numeric, 2) as dist
     FROM small_world
     ORDER BY vector <-> '[0,0,0]' LIMIT 7
 ) v ORDER BY v.dist, v.id;
@@ -193,13 +193,13 @@ INFO:  usearch index initialized
  001 | 1.00
  010 | 1.00
  100 | 1.00
- 011 | 1.41
- 101 | 1.41
- 110 | 1.41
+ 011 | 2.00
+ 101 | 2.00
+ 110 | 2.00
 (7 rows)
 
 SELECT * FROM (
-    SELECT id, ROUND( (vector <-> '[0,1,0]')::numeric, 2) as dist
+    SELECT id, ROUND(vector_l2sq_dist(vector, '[0,1,0]')::numeric, 2) as dist
     FROM small_world
     ORDER BY vector <-> '[0,1,0]' LIMIT 7
 ) v ORDER BY v.dist, v.id;
@@ -212,9 +212,9 @@ INFO:  usearch index initialized
  000 | 1.00
  011 | 1.00
  110 | 1.00
- 001 | 1.41
- 100 | 1.41
- 111 | 1.41
+ 001 | 2.00
+ 100 | 2.00
+ 111 | 2.00
 (7 rows)
 
 rollback;
