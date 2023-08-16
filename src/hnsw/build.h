@@ -33,6 +33,7 @@ typedef struct HnswBuildState
 typedef enum
 {
     REAL_ARRAY,
+    INT_ARRAY,
     VECTOR,
     UNKNOWN
 } HnswDataType;

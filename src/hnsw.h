@@ -3,7 +3,7 @@
 
 #include "postgres.h"
 
-#include "fmgr.h"
+#include <fmgr.h>
 
 #if PG_VERSION_NUM < 110000
 #error "Requires PostgreSQL 11+"

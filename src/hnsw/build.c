@@ -82,6 +82,8 @@ HnswDataType GetIndexDataType(Relation index)
         return REAL_ARRAY;
     } else if(columnType == TypenameGetTypid("vector")) {
         return VECTOR;
+    } else if(columnType == get_array_type(INT4OID)) {
+        return INT_ARRAY;
     } else {
         return UNKNOWN;
     }
@@ -121,8 +123,8 @@ int GetHnswIndexDimensions(Relation index)
 {
     HnswDataType columnType = GetIndexDataType(index);
 
-    // check if column is type of real[]
-    if(columnType == REAL_ARRAY) {
+    // check if column is type of real[] or integer[]
+    if(columnType == REAL_ARRAY || columnType == INT_ARRAY) {
         // if column is array take dimensions from options
         return HnswGetDims(index);
     } else if(columnType == VECTOR) {
@@ -130,7 +132,7 @@ int GetHnswIndexDimensions(Relation index)
     } else {
         elog(ERROR,
              "Unsupported type"
-             "LanternDB currently supports only real[] and vector types");
+             " LanternDB currently supports only real[] and vector types");
     }
 
     return -1;
@@ -142,7 +144,7 @@ void CheckHnswIndexDimensions(Relation index, Datum arrayDatum, int dimensions)
     int          n_items;
     HnswDataType indexType = GetIndexDataType(index);
 
-    if(indexType == REAL_ARRAY) {
+    if(indexType == REAL_ARRAY || indexType == INT_ARRAY) {
         /* Check dimensions of vector */
         array = DatumGetArrayTypePCopy(arrayDatum);
         n_items = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));

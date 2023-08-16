@@ -67,10 +67,6 @@ usearch_metric_kind_t HnswGetMetricKind(Relation index)
     void          *fnaddr = fninfo->fn_addr;
     ReleaseCatCacheList(proclist);
 
-    if(!fnaddr) {
-        elog(ERROR, "procinfo not found");
-    }
-
     if(fnaddr == l2sq_dist || fnaddr == vector_l2sq_dist) {
         return usearch_metric_l2sq_k;
     } else if(fnaddr == hamming_dist) {

@@ -8,7 +8,7 @@ CREATE TABLE small_world_cos (
 );
 CREATE TABLE small_world_ham (
     id varchar(3),
-    vector real[]
+    vector integer[]
 );
 CREATE TABLE small_world_l2_vec (
     id varchar(3),
@@ -184,15 +184,15 @@ SELECT * FROM (
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized
- id  | dist  
------+-------
- 010 |  0.00
- 011 |  7.00
- 110 |  7.00
- 001 | 14.00
- 100 | 14.00
- 111 | 14.00
- 101 | 21.00
+ id  | dist 
+-----+------
+ 010 | 0.00
+ 011 | 1.00
+ 110 | 1.00
+ 001 | 2.00
+ 100 | 2.00
+ 111 | 2.00
+ 101 | 3.00
 (7 rows)
 
 -- this should use index
@@ -208,7 +208,7 @@ EXPLAIN SELECT * FROM (
    ->  Subquery Scan on v  (cost=0.00..0.60 rows=7 width=48)
          ->  Limit  (cost=0.00..0.53 rows=7 width=52)
                ->  Index Scan using small_world_ham_vector_idx on small_world_ham  (cost=0.00..81.42 rows=1070 width=52)
-                     Order By: (vector <-> '{0,1,0}'::real[])
+                     Order By: (vector <-> '{0,1,0}'::integer[])
 (6 rows)
 
 \set ON_ERROR_STOP off

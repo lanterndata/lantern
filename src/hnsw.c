@@ -218,7 +218,7 @@ Datum       hamming_dist(PG_FUNCTION_ARGS)
 {
     ArrayType *a = PG_GETARG_ARRAYTYPE_P(0);
     ArrayType *b = PG_GETARG_ARRAYTYPE_P(1);
-    PG_RETURN_FLOAT4(array_dist(a, b, usearch_metric_hamming_k));
+    PG_RETURN_INT32(array_dist(a, b, usearch_metric_hamming_k));
 }
 
 PGDLLEXPORT PG_FUNCTION_INFO_V1(vector_l2sq_dist);

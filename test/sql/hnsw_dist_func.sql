@@ -10,7 +10,7 @@ CREATE TABLE small_world_cos (
 
 CREATE TABLE small_world_ham (
     id varchar(3),
-    vector real[]
+    vector integer[]
 );
 
 CREATE TABLE small_world_l2_vec (
