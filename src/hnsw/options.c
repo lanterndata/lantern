@@ -15,12 +15,15 @@
 // We import this header file
 // to access the op class support function pointers
 #include "../hnsw.h"
+#include "utils.h"
 
 // reloption for lanterndb hnsw index creation paramters in
 // CREATE INDEX ... WITH (...)
 //                       ^^^^
 static relopt_kind ldb_hnsw_index_withopts;
 static int         ldb_hnsw_init_k;
+
+static ExecutorStart_hook_type original_executor_start_hook = NULL;
 
 int HnswGetDims(Relation index)
 {
@@ -141,11 +144,25 @@ bytea *ldb_amoptions(Datum reloptions, bool validate)
 #endif
 }
 
+void executor_hook(QueryDesc *queryDesc, int eflags)
+{
+    if(original_executor_start_hook) {
+        original_executor_start_hook(queryDesc, eflags);
+    }
+
+    if(CheckOperatorUsage(queryDesc->sourceText)) {
+        elog(ERROR, "Operator <-> has no standalone meaning and is reserved for use in vector index lookups only");
+    }
+    standard_ExecutorStart(queryDesc, eflags);
+}
+
 /*
  * Initialize index options and variables
  */
 void _PG_init(void)
 {
+    original_executor_start_hook = ExecutorStart_hook;
+    ExecutorStart_hook = executor_hook;
     // todo:: cross-check with this`
     // https://github.com/zombodb/zombodb/blob/34c732a0b143b5e424ced64c96e8c4d567a14177/src/access_method/options.rs#L895
     ldb_hnsw_index_withopts = add_reloption_kind();
@@ -241,3 +258,10 @@ HnswGetElementLimit(Relation index)
 	return HNSWLIB_DEFAULT_ELEMENT_LIMIT;
 }
 #endif
+
+// Called with extension unload.
+void _PG_fini(void)
+{
+    // Return back the original hook value.
+    ExecutorStart_hook = original_executor_start_hook;
+}

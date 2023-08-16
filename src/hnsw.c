@@ -191,31 +191,11 @@ static float8 vector_dist(Vector *a, Vector *b, usearch_metric_kind_t metric_kin
         elog(ERROR, "expected equally sized vectors but got vecors with dimensions %d and %d", a->dim, b->dim);
     }
 
-    return usearch_dist(a, b, metric_kind, a->dim, usearch_scalar_f64_k);
+    return usearch_dist(a->x, b->x, metric_kind, a->dim, usearch_scalar_f32_k);
 }
 
 PGDLLEXPORT PG_FUNCTION_INFO_V1(ldb_generic_dist);
-Datum       ldb_generic_dist(PG_FUNCTION_ARGS)
-{
-    ArrayType    *a = PG_GETARG_ARRAYTYPE_P(0);
-    ArrayType    *b = PG_GETARG_ARRAYTYPE_P(1);
-    MemoryContext m = CurrentMemoryContext;
-    bool          return_null = false;
-    while(m) {
-        if(strncmp(m->name, "PortalContext", 13) == 0) {
-            return_null = true;
-        }
-        m = m->parent;
-    }
-
-    if(return_null) {
-        // todo:: figure out why the Executor Portal is calling this function after the index scan
-        // has finished and when index scan has indicated reordering of rows is unnecessary
-        PG_RETURN_NULL();
-    }
-
-    elog(ERROR, "Operator <-> has no standalone meaning and is reserved for use in vector index lookups only");
-}
+Datum       ldb_generic_dist(PG_FUNCTION_ARGS) { PG_RETURN_NULL(); }
 
 PGDLLEXPORT PG_FUNCTION_INFO_V1(l2sq_dist);
 Datum       l2sq_dist(PG_FUNCTION_ARGS)

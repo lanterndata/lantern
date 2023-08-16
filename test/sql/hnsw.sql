@@ -40,12 +40,12 @@ begin;
 CREATE INDEX ON small_world USING hnsw (vector);
 SELECT * FROM ldb_get_indexes('small_world');
 SELECT * FROM (
-	SELECT id, ROUND( (vector <-> '[0,0,0]')::numeric, 2) as dist
+	SELECT id, ROUND(vector_l2sq_dist(vector, '[0,0,0]')::numeric, 2) as dist
 	FROM small_world
 	ORDER BY vector <-> '[0,0,0]' LIMIT 7
 ) v ORDER BY v.dist, v.id;
 SELECT * FROM (
-	SELECT id, ROUND( (vector <-> '[0,1,0]')::numeric, 2) as dist
+	SELECT id, ROUND(vector_l2sq_dist(vector, '[0,1,0]')::numeric, 2) as dist
 	FROM small_world
 	ORDER BY vector <-> '[0,1,0]' LIMIT 7
 ) v ORDER BY v.dist, v.id;
@@ -63,16 +63,16 @@ SELECT * FROM ldb_get_indexes('small_world');
 -- For that reason we first run a query that only outputs distances so we can see vectors are in fact in the right (approximate)
 -- order. Then, we run the second query which outputs id, dist pairs and we sort ids for equal distances in the outer query to get
 -- deterministic output.
-SELECT ROUND( (vector <-> '[0,0,0]')::numeric, 2) as dist
+SELECT ROUND(vector_l2sq_dist(vector, '[0,0,0]')::numeric, 2) as dist
 FROM small_world
 ORDER BY vector <-> '[0,0,0]' LIMIT 7;
 SELECT * FROM (
-    SELECT id, ROUND( (vector <-> '[0,0,0]')::numeric, 2) as dist
+    SELECT id, ROUND(vector_l2sq_dist(vector, '[0,0,0]')::numeric, 2) as dist
     FROM small_world
     ORDER BY vector <-> '[0,0,0]' LIMIT 7
 ) v ORDER BY v.dist, v.id;
 SELECT * FROM (
-    SELECT id, ROUND( (vector <-> '[0,1,0]')::numeric, 2) as dist
+    SELECT id, ROUND(vector_l2sq_dist(vector, '[0,1,0]')::numeric, 2) as dist
     FROM small_world
     ORDER BY vector <-> '[0,1,0]' LIMIT 7
 ) v ORDER BY v.dist, v.id;
@@ -82,13 +82,13 @@ begin;
 CREATE INDEX ON small_world USING hnsw (vector) WITH (M=11, ef=2, ef_construction=2);
 SELECT * FROM ldb_get_indexes('small_world');
 SELECT * FROM (
-    SELECT id, ROUND( (vector <-> '[0,0,0]')::numeric, 2) as dist
+    SELECT id, ROUND(vector_l2sq_dist(vector, '[0,0,0]')::numeric, 2) as dist
     FROM small_world
     ORDER BY vector <-> '[0,0,0]' LIMIT 7
 ) v ORDER BY v.dist, v.id;
 
 SELECT * FROM (
-    SELECT id, ROUND( (vector <-> '[0,1,0]')::numeric, 2) as dist
+    SELECT id, ROUND(vector_l2sq_dist(vector, '[0,1,0]')::numeric, 2) as dist
     FROM small_world
     ORDER BY vector <-> '[0,1,0]' LIMIT 7
 ) v ORDER BY v.dist, v.id;

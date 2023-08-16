@@ -40,7 +40,7 @@ ALTER TABLE ONLY tsv_data
 \copy tsv_data FROM '/tmp/lanterndb/vector_datasets/tsv_wiki_sample.csv' DELIMITER E'\t';
 
 -- introduce a WITH statement to round returned distances AFTER a lookup
-with t as (select id, page_title,  context_page_description_ai <-> (select context_page_description_ai from tsv_data where id = 81386) as dist
+with t as (select id, page_title,  vector_l2sq_dist(context_page_description_ai, (select context_page_description_ai from tsv_data where id = 81386)) as dist
  from tsv_data order by dist
  limit 10) select id, page_title, ROUND( dist::numeric, 2) from t;
 CREATE INDEX index1 ON tsv_data USING hnsw (context_page_description_ai vector_l2_ops);
@@ -53,7 +53,7 @@ set enable_seqscan=false;
 --  from tsv_data order by dist limit 10) select id, page_title, ROUND( dist::numeric, 2) from t;
 
 -- introduce a WITH statement to round returned distances AFTER a lookup so the index can be used
-with t as (select id, page_title, context_page_description_ai <-> (select context_page_description_ai from tsv_data where id = 81386) as dist
+with t as (select id, page_title, vector_l2sq_dist(context_page_description_ai, (select context_page_description_ai from tsv_data where id = 81386)) as dist
  from tsv_data order by dist limit 10) select id, page_title, ROUND( dist::numeric, 2) from t;
 
 -- test additional inserts on wiki table
