@@ -9,20 +9,6 @@ It provides a new index type for vector columns called `hnsw` which speeds up `O
 
 ## Quickstart
 
-### Requirements
-
-Make sure you have the following software installed:
-
-- `gcc` (version >= ?)
-- `g++` (version >= ?)
-- `postgres` (version >= ?)
-- `cmake` (version >= ?)
-- `make` (version >= ?)
-
-#### Installing pgvector
-
-Before proceeding, you need to install [pgvector](https://github.com/pgvector/pgvector), which is a dependency for LanternDB.
-
 ### Building and Installing LanternDB
 
 LanternDB builds and uses [usearch](https://github.com/unum-cloud/usearch) for its single-header state-of-the-art HNSW implementation.
