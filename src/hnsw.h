@@ -22,7 +22,8 @@
 PGDLLEXPORT void _PG_init(void);
 
 PGDLLEXPORT Datum l2sq_dist(PG_FUNCTION_ARGS);
-PGDLLEXPORT Datum ham_dist(PG_FUNCTION_ARGS);
+PGDLLEXPORT Datum vector_l2sq_dist(PG_FUNCTION_ARGS);
+PGDLLEXPORT Datum hamming_dist(PG_FUNCTION_ARGS);
 PGDLLEXPORT Datum cos_dist(PG_FUNCTION_ARGS);
 
 #endif  // LDB_HNSW_H
