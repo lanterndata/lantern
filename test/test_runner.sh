@@ -9,7 +9,15 @@ TEST_CASE_DB="ldb_test_${TESTFILE_NAME}"
 # Set database user
 if [ -z $DB_USER ]
 then
-     DB_USER="postgres"
+     # if db user is not defined
+     # try to set it as currently logged in user
+     # or postgres if the user is not set in shell
+     if [ -z $USER ]
+     then
+          DB_USER="postgres"
+     else
+          DB_USER=$USER
+     fi
 fi
 
 # Drop db after each test on exit signal

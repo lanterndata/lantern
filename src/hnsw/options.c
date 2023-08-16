@@ -5,6 +5,7 @@
 #include <access/htup_details.h>
 #include <access/reloptions.h>
 #include <catalog/pg_amproc.h>
+#include <executor/executor.h>
 #include <fmgr.h>
 #include <utils/catcache.h>
 #include <utils/guc.h>
@@ -67,18 +68,14 @@ usearch_metric_kind_t HnswGetMetricKind(Relation index)
         elog(ERROR, "procinfo not found");
     }
 
-    if(fnaddr == l2sq_dist) {
+    if(fnaddr == l2sq_dist || fnaddr == vector_l2sq_dist) {
         return usearch_metric_l2sq_k;
-    } else if(fnaddr == ham_dist) {
+    } else if(fnaddr == hamming_dist) {
         return usearch_metric_hamming_k;
     } else if(fnaddr == cos_dist) {
         return usearch_metric_cos_k;
     } else {
-        // currently returning l2sq_dist by default
-        // as pgvector dist functions are not exported
-        // so we can not check if the support function
-        // is from pgvector
-        return usearch_metric_l2sq_k;
+        elog(ERROR, "could not find distance function for index");
     }
 }
 
