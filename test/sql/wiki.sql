@@ -43,7 +43,7 @@ ALTER TABLE ONLY tsv_data
 with t as (select id, page_title,  vector_l2sq_dist(context_page_description_ai, (select context_page_description_ai from tsv_data where id = 81386)) as dist
  from tsv_data order by dist
  limit 10) select id, page_title, ROUND( dist::numeric, 2) from t;
-CREATE INDEX index1 ON tsv_data USING hnsw (context_page_description_ai vector_l2_ops);
+CREATE INDEX index1 ON tsv_data USING hnsw (context_page_description_ai dist_vec_l2sq_ops);
 CREATE INDEX ON tsv_data USING hnsw (context_page_description_ai) with (ef = 100, ef_construction=150 , M=11, alg="hnswlib");
 set enable_seqscan=false;
 

@@ -21,7 +21,7 @@ SELECT * FROM items ORDER BY trait_ai <-> '[3,1,2]' LIMIT 7;
   2 | [4,5,6]
 (2 rows)
 
-CREATE INDEX ON items USING hnsw (trait_ai vector_l2_ops);
+CREATE INDEX ON items USING hnsw (trait_ai dist_vec_l2sq_ops);
 INFO:  done init usearch index
 INFO:  inserted 2 elements
 INFO:  done saving 2 vectors

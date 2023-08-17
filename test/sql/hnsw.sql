@@ -11,7 +11,7 @@ SELECT '[1,2,3]'::vector;
 CREATE TABLE items (id bigserial PRIMARY KEY, trait_ai vector(3));
 INSERT INTO items (trait_ai) VALUES ('[1,2,3]'), ('[4,5,6]');
 SELECT * FROM items ORDER BY trait_ai <-> '[3,1,2]' LIMIT 7;
-CREATE INDEX ON items USING hnsw (trait_ai vector_l2_ops);
+CREATE INDEX ON items USING hnsw (trait_ai dist_vec_l2sq_ops);
 
 CREATE TABLE large_vector (v vector(2001));
 \set ON_ERROR_STOP off
