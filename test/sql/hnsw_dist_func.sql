@@ -19,9 +19,9 @@ CREATE TABLE small_world_l2_vec (
 );
 
 CREATE INDEX ON small_world_l2_vec USING hnsw (vector);
-CREATE INDEX ON small_world_l2 USING hnsw (vector ann_l2_ops);
-CREATE INDEX ON small_world_cos USING hnsw (vector ann_cos_ops);
-CREATE INDEX ON small_world_ham USING hnsw (vector ann_ham_ops);
+CREATE INDEX ON small_world_l2 USING hnsw (vector dist_l2sq_ops);
+CREATE INDEX ON small_world_cos USING hnsw (vector dist_cos_ops);
+CREATE INDEX ON small_world_ham USING hnsw (vector dist_hamming_ops);
 
 INSERT INTO small_world_l2_vec (id, vector) VALUES 
 ('000', '[0,0,0]'),

@@ -50,7 +50,7 @@ Then, you can create a table with a vector column and populate it with data.
 
 CREATE TABLE small_world (
     id varchar(3),
-    vector vector(3)
+    vector real[]
 );
 
 INSERT INTO small_world (id, vector) VALUES
@@ -70,15 +70,15 @@ Then, create an `hnsw` index on the table.
 -- create index with default parameters
 CREATE INDEX ON small_world USING hnsw (vector);
 -- create index with custom parameters
--- CREATE INDEX ON small_world USING hnsw (vector) WITH (M=2, ef_construction=10, ef=4);
+-- CREATE INDEX ON small_world USING hnsw (vector) WITH (M=2, ef_construction=10, ef=4, dims=3);
 ```
 
 Leverage the index in queries like:
 
 ```sql
-SELECT id, ROUND( (vector <-> '[0,0,0]')::numeric, 2) as dist
+SELECT id, ROUND(l2sq_dist(vector, array[0,0,0])::numeric, 2) as dist
 FROM small_world
-ORDER BY vector <-> '[0,0,0]' LIMIT 5;
+ORDER BY vector <-> array[0,0,0] LIMIT 5;
 ```
 
 ### A note on index construction parameters
@@ -91,6 +91,27 @@ Tuning these parameters will require experimentation for your specific use case.
 ### A note on performnace
 
 LanternDB's `hnsw` enables search latency similar to pgvector's `ivfflat` and is faster than `ivfflat` under certain construction parameters. LanternDB enables higher search throughput on the same hardware since the HNSW algorithm requires fewer distance comparisons than the IVF algorithm, leading to less CPU usage per search.
+
+### A note on operators and operator classes
+
+Currently, there is only one operator `<->` available.  
+This operator is intended exclusively for use with index lookups, such as in cases like `ORDER BY vector <-> array[0,0,0]`.  
+Consequently, attempting to execute the query `SELECT array[0,0,0] <-> array[0,0,0]` will result in an error.
+
+There are four defined operator classes that can be employed during index creation:
+
+- **dist_l2sq_ops:** Default for the type `real[]`
+- **dist_vec_l2sq_ops:** Default for the type `vector`
+- **dist_cos_ops:** Applicable to the type `real[]`
+- **dist_hamming_ops:** Applicable for the type `integer[]`
+
+When creating an index, you have the option to specify the operator class to be used, like so:
+
+```sql
+CREATE INDEX ON small_world USING hnsw (vector dist_cos_ops);
+```
+
+This approach allows the `<->` operator to automatically identify the appropriate distance function when utilized in index lookups.
 
 # Roadmap
 

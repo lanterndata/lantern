@@ -2,6 +2,7 @@
 
 #include "utils.h"
 
+#include <assert.h>
 #include <regex.h>
 #include <string.h>
 
@@ -85,18 +86,16 @@ int CheckOperatorUsage(const char *query)
 
     reti = regcomp(&regex, pattern, REG_EXTENDED | REG_ICASE);
     reti2 = regcomp(&regex2, orderby_pattern, REG_EXTENDED | REG_ICASE);
-    if(reti || reti2) {
-        elog(ERROR, "Could not compile regex");
-        return status;
-    }
+    assert(!reti);
+    assert(!reti2);
 
     // Find all occurrences of the <-> operator
     int offset = 0;
     while((reti = regexec(&regex, query + offset, 1, matches, 0)) == 0) {
         long start = offset + matches[ 0 ].rm_so;
         long end = offset + matches[ 0 ].rm_eo;
-        char substring[ start - offset ];
-        strncpy(substring, query + offset, start - offset);
+        char substring[ start - offset + 1 ];
+        strlcpy(substring, query + offset, start - offset);
         // check if there is an ORDER BY
         // in the latest matched substring
         if(regexec(&regex2, substring, 0, NULL, 0) && !IsInsideQuotes(query, start, end)) {

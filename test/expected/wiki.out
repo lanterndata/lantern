@@ -52,7 +52,7 @@ with t as (select id, page_title,  vector_l2sq_dist(context_page_description_ai,
  81846 | Frank Carlucci                       | 52.53
 (10 rows)
 
-CREATE INDEX index1 ON tsv_data USING hnsw (context_page_description_ai vector_l2_ops);
+CREATE INDEX index1 ON tsv_data USING hnsw (context_page_description_ai dist_vec_l2sq_ops);
 INFO:  done init usearch index
 INFO:  inserted 100 elements
 INFO:  done saving 100 vectors
