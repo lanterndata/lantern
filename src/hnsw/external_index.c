@@ -572,9 +572,9 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
 
         max_offset = PageGetMaxOffsetNumber(page);
 
-        if(max_offset != FirstOffsetNumber) {
-            elog(ERROR, "ERROR: Blockmap max_offset is %d but was supposed to be %d", max_offset, FirstOffsetNumber);
-        }
+        // Blockmap page is stored as a single large blob per page
+        assert(max_offset == FirstOffsetNumber);
+
         blockmap_page = (HnswBlockmapPage *)PageGetItem(page, PageGetItemId(page, FirstOffsetNumber));
         int key = id % HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
         blockno = blockmap_page->blocknos[ key ];
