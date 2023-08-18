@@ -229,3 +229,14 @@ Datum       vector_l2sq_dist(PG_FUNCTION_ARGS)
 
     PG_RETURN_FLOAT8((double)vector_dist(a, b, usearch_metric_l2sq_k));
 }
+
+PGDLLEXPORT PG_FUNCTION_INFO_V1(index_from_external);
+Datum       index_from_external(PG_FUNCTION_ARGS)
+{
+    char *tablename_str = text_to_cstring(PG_GETARG_TEXT_P(0));
+    char *index_path_str = text_to_cstring(PG_GETARG_TEXT_P(1));
+
+    // TODO : Call the build function
+
+    PG_RETURN_NULL();  // Replace with the appropriate return value
+}
