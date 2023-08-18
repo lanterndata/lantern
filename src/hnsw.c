@@ -237,6 +237,12 @@ Datum       index_from_external(PG_FUNCTION_ARGS)
     char *index_path_str = text_to_cstring(PG_GETARG_TEXT_P(1));
 
     // TODO : Call the build function
+    bool index_created = false;
+    // bool index_created = build_index(tablename_str, index_path_str);
 
-    PG_RETURN_NULL();  // Replace with the appropriate return value
+    // Free the allocated memory for converted C strings
+    pfree(tablename_str);
+    pfree(index_path_str);
+
+    return index_created ? PG_RETURN_BOOL(true) : PG_RETURN_BOOL(false);
 }
