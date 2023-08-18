@@ -233,8 +233,8 @@ Datum       vector_l2sq_dist(PG_FUNCTION_ARGS)
 PGDLLEXPORT PG_FUNCTION_INFO_V1(index_from_external);
 Datum       index_from_external(PG_FUNCTION_ARGS)
 {
-    char *tablename_str = text_to_cstring(PG_GETARG_TEXT_P(0));
-    char *index_path_str = text_to_cstring(PG_GETARG_TEXT_P(1));
+    char *tablename_str = PG_GETARG_CSTRING(0);
+    char *index_path_str = PG_GETARG_CSTRING(1);
 
     // TODO : Call the build function
     bool index_created = false;
