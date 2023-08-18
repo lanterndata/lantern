@@ -8,7 +8,8 @@
 #include <storage/bufmgr.h>  // Buffer
 #include <utils/relcache.h>  // Relation
 
-#include "insert.h"
+#include "cache.h"
+#include "extra_dirtied.h"
 #include "usearch.h"
 
 #define LDB_WAL_MAGIC_NUMBER   0xa47e20db
@@ -67,17 +68,37 @@ typedef struct
     BlockNumber blocknos[ HNSW_BLOCKMAP_BLOCKS_PER_PAGE ];
 } HnswBlockmapPage;
 
-// todo:: get rid of these. maybe pass it to usearch_set_retriever and have it pass it back?
-extern HnswIndexHeaderPage HEADER_FOR_EXTERNAL_RETRIEVER;
+typedef struct
+{
+    Cache block_numbers_cache;
 
-int  UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, int level);
-void CreateHeaderPage(Relation    index,
-                      char       *usearchHeader64,
-                      ForkNumber  forkNum,
-                      uint32      vector_dim,
-                      uint32      num_vectors,
-                      BlockNumber last_data_block,
-                      bool        update);
+    Relation index_rel;
+
+    // used for scans
+    uint32 blockmap_group_cache[ HNSW_MAX_BLOCKMAP_GROUPS ];  // todo::
+    // used for inserts
+    HnswIndexHeaderPage *header_page_under_wal;
+
+    ExtraDirtiedBufs *extra_dirted;
+
+#if LANTERNDB_COPYNODES
+    char *wal_retriever_area = NULL;
+    int   wal_retriever_area_size = 0;
+    int   wal_retriever_area_offset = 0;
+#else
+
+    Buffer *takenbuffers;
+    int     takenbuffers_next;
+#endif
+} RetrieverCtx;
+
+typedef struct
+{
+    usearch_index_t uidx;
+    RetrieverCtx   *retriever_ctx;
+} HnswInsertState;
+
+int UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, int level);
 
 void StoreExternalIndex(Relation        index,
                         usearch_index_t external_index,

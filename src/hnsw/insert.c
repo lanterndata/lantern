@@ -102,9 +102,8 @@ bool ldb_aminsert(Relation         index,
         hdr = (HnswIndexHeaderPage *)PageGetContents(hdr_page);
         assert(hdr->magicNumber == LDB_WAL_MAGIC_NUMBER);
         assert(hdr->num_vectors >= 0);
-        HEADER_FOR_EXTERNAL_RETRIEVER = *hdr;
 
-        opts.retriever_ctx = ldb_wal_retriever_area_init(index);
+        opts.retriever_ctx = ldb_wal_retriever_area_init(index, NULL);
         opts.retriever = ldb_wal_index_node_retriever;
         opts.retriever_mut = ldb_wal_index_node_retriever_mut;
 
@@ -166,7 +165,7 @@ bool ldb_aminsert(Relation         index,
     hdr_page = GenericXLogRegisterBuffer(state, hdr_buf, LDB_GENERIC_XLOG_DELTA_IMAGE);
     hdr = (HnswIndexHeaderPage *)PageGetContents(hdr_page);
 
-    HEADER_FOR_EXTERNAL_RETRIEVER = *hdr;
+    ldb_wal_retriever_area_reset(insertstate->retriever_ctx, hdr);
 
     assert(hdr->magicNumber == LDB_WAL_MAGIC_NUMBER);
     elog(DEBUG5, "Insert: at start num vectors is %d", hdr->num_vectors);
@@ -198,7 +197,7 @@ bool ldb_aminsert(Relation         index,
 
     usearch_update_header(uidx, hdr->usearch_header, &error);
 
-    ldb_wal_retriever_area_reset(insertstate->retriever_ctx);
+    ldb_wal_retriever_area_reset(insertstate->retriever_ctx, hdr);
 
     MarkBufferDirty(hdr_buf);
     // we only release the header buffer AFTER inserting is finished to make sure nobody else changes the block

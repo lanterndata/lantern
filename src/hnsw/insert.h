@@ -15,12 +15,6 @@
 // #define LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS 100
 #include "extra_dirtied.h"
 
-typedef struct
-{
-    usearch_index_t uidx;
-    RetrieverCtx   *retriever_ctx;
-} HnswInsertState;
-
 bool ldb_aminsert(Relation         index,
                   Datum           *values,
                   bool            *isnull,
