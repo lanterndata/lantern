@@ -281,6 +281,66 @@ static void BuildIndex(
 }
 
 /*
+ * Load index from a file
+ */
+static void BuildIndexFromFile(Relation        heap,
+                               Relation        index,
+                               IndexInfo      *indexInfo,
+                               HnswBuildState *buildstate,
+                               ForkNumber      forkNum,
+                               char const     *path)
+{
+    usearch_init_options_t opts;
+    usearch_error_t        error = NULL;
+    size_t                 num_added_vectors = 0;
+    int                    fd;
+    struct stat            file_stat;
+    char                  *result_buf = NULL;
+
+    // Initialize build state and options
+    InitBuildState(buildstate, heap, index, indexInfo);
+    opts.dimensions = buildstate->dimensions;
+    PopulateUsearchOpts(index, &opts);
+
+    buildstate->hnsw = NULL;
+    buildstate->usearch_index = usearch_init(&opts, &error);
+    elog(INFO, "done init usearch index");
+    assert(error == NULL);
+
+    UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_IN_MEMORY_INSERT);
+
+    // Load usearch index from file and copy to buffer
+    usearch_load(buildstate->usearch_index, path, &error);
+    assert(error == NULL);
+    usearch_save(buildstate->usearch_index, NULL, &result_buf, &error);
+    assert(error == NULL);
+    assert(result_buf != NULL);
+    num_added_vectors = usearch_size(buildstate->usearch_index, &error);
+    assert(error == NULL);
+    elog(INFO, "done saving %ld vectors", num_added_vectors);
+
+    UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_LOAD);
+
+    //****************************** saving to WAL BEGIN ******************************//
+    StoreExternalIndex(index,
+                       buildstate->usearch_index,
+                       forkNum,
+                       result_buf,
+                       file_stat.st_size,
+                       buildstate->dimensions,
+                       num_added_vectors);
+
+    //****************************** saving to WAL END ******************************//
+
+    usearch_free(buildstate->usearch_index, &error);
+    free(result_buf);
+    assert(error == NULL);
+    buildstate->usearch_index = NULL;
+
+    FreeBuildState(buildstate);
+}
+
+/*
  * Build the index for a logged table
  */
 IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInfo)
@@ -298,9 +358,35 @@ IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInf
 }
 
 /*
+ * Build the index for a logged table from a usearch bin file
+ */
+IndexBuildResult *ldb_ambuild_from_file(Relation heap, Relation index, IndexInfo *indexInfo, char const *path)
+{
+    IndexBuildResult *result;
+    HnswBuildState    buildstate;
+
+    BuildIndexFromFile(heap, index, indexInfo, &buildstate, MAIN_FORKNUM, path);
+
+    result = (IndexBuildResult *)palloc(sizeof(IndexBuildResult));
+    result->heap_tuples = buildstate.reltuples;
+    result->index_tuples = buildstate.tuples_indexed;
+
+    return result;
+}
+
+/*
  * Build the index for an unlogged table
  */
 void ldb_ambuildunlogged(Relation index)
+{
+    // todo::
+    elog(ERROR, "hnsw index on unlogged tables is currently not supported");
+}
+
+/*
+ * Build the index for an unlogged table from a usearch bin file
+ */
+void ldb_ambuildunlogged_from_file(Relation index, char const *path)
 {
     // todo::
     elog(ERROR, "hnsw index on unlogged tables is currently not supported");
