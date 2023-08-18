@@ -21,9 +21,11 @@ then
     mkdir -p $TMP_ROOT/vector_datasets
     pushd $TMP_ROOT/vector_datasets
         wget https://storage.googleapis.com/lanterndb/sift_base1k.csv
+        wget https://storage.googleapis.com/lanterndata/siftsmall/siftsmall_base.csv
         wget https://storage.googleapis.com/lanterndb/tsv_wiki_sample.csv
         # Convert vector to arrays to be used with real[] type
         cat sift_base1k.csv | sed -e 's/\[/{/g' | sed -e 's/\]/}/g' > sift_base1k_arrays.csv
+        cat siftsmall_base.csv | sed -e 's/\[/{/g' | sed -e 's/\]/}/g' > siftsmall_base_arrays.csv
     popd
 fi
 
