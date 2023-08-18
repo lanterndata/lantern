@@ -24,7 +24,7 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     int                    dimensions;
     usearch_error_t        error = NULL;
     usearch_init_options_t opts;
-    RetrieverCtx *retriever_ctx = ldb_wal_retriever_area_init(index);
+    RetrieverCtx          *retriever_ctx = ldb_wal_retriever_area_init(index, NULL);
 
     elog(INFO, "began scanning with %d keys and %d orderbys", nkeys, norderbys);
     scan = RelationGetIndexScan(index, nkeys, norderbys);
@@ -38,6 +38,7 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     opts.expansion_add = HnswGetEfConstruction(index);
     opts.expansion_search = HnswGetEf(index);
     opts.metric_kind = usearch_metric_l2sq_k;
+    // todo::^^^^ should this not change based on the index metric type/
     opts.metric = NULL;
     opts.quantization = usearch_scalar_f32_k;
 
@@ -77,7 +78,10 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     headerp = (HnswIndexHeaderPage *)PageGetContents(page);
     assert(headerp->magicNumber == LDB_WAL_MAGIC_NUMBER);
 
-    HEADER_FOR_EXTERNAL_RETRIEVER = *headerp;
+    memcpy(retriever_ctx->blockmap_group_cache,
+           headerp->blockmap_page_group_index,
+           sizeof(retriever_ctx->block_numbers_cache));
+    retriever_ctx->header_page_under_wal = NULL;
 
     usearch_mem = headerp->usearch_header;
     // this reserves memory for internal structures,
@@ -196,7 +200,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         // hnsw_search(scanstate->hnsw, vec->x, k, &num_returned, scanstate->distances, scanstate->labels);
         num_returned = usearch_search(
             scanstate->usearch_index, vec->x, usearch_scalar_f32_k, k, scanstate->labels, scanstate->distances, &error);
-        ldb_wal_retriever_area_reset(scanstate->retriever_ctx);
+        ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);
 
         scanstate->count = num_returned;
         scanstate->current = 0;

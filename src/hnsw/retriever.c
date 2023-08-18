@@ -13,12 +13,11 @@
 #include "external_index.h"
 #include "insert.h"
 
-HnswIndexHeaderPage HEADER_FOR_EXTERNAL_RETRIEVER;
-
-RetrieverCtx *ldb_wal_retriever_area_init(Relation index_rel)
+RetrieverCtx *ldb_wal_retriever_area_init(Relation index_rel, HnswIndexHeaderPage *header_page_under_wal)
 {
     RetrieverCtx *ctx = palloc0(sizeof(RetrieverCtx));
     ctx->index_rel = index_rel;
+    ctx->header_page_under_wal = header_page_under_wal;
     ctx->extra_dirted = extra_dirtied_new(index_rel);
 
 #if LANTERNDB_COPYNODES
@@ -38,7 +37,7 @@ RetrieverCtx *ldb_wal_retriever_area_init(Relation index_rel)
     return ctx;
 }
 
-void ldb_wal_retriever_area_reset(RetrieverCtx *ctx)
+void ldb_wal_retriever_area_reset(RetrieverCtx *ctx, HnswIndexHeaderPage *header_page_under_wal)
 {
 #if LANTERNDB_COPYNODES
     wal_retriever_area_offset = 0;
@@ -51,6 +50,7 @@ void ldb_wal_retriever_area_reset(RetrieverCtx *ctx)
         ctx->takenbuffers[ i ] = InvalidBuffer;
     }
     ctx->takenbuffers_next = 0;
+    ctx->header_page_under_wal = header_page_under_wal;
 #endif
 }
 
