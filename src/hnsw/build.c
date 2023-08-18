@@ -8,6 +8,7 @@
 #include <utils/array.h>
 #include <utils/lsyscache.h>
 #include <utils/memutils.h>
+#include <sys/stat.h>
 
 #include "bench.h"
 #include "external_index.h"
