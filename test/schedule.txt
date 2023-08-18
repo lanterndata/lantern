@@ -1,2 +1,1 @@
-test: debug_helpers embedding_options hnsw hnsw_insert hnsw_insert_array hnsw_insert_empty_table hnsw_type_checks wiki hnsw_dist_func 
-ignore: hnsw_operators_todo
+test: hnsw_large_table debug_helpers embedding_options hnsw hnsw_insert hnsw_insert_array hnsw_insert_empty_table hnsw_type_checks wiki hnsw_dist_func

@@ -59,7 +59,7 @@ def livedebug():
         print("resetdb result", res)
 
     # 1. run the command through a shell
-    psql_command = f"psql -U {args.user} -P pager=off -p {args.port} -h {args.host} {args.db}"
+    psql_command = f"psql -U {args.user} -P pager=off -p {args.port} {args.db}"
     psql_process = subprocess.Popen(psql_command, shell=True, stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr)
 
     # 2. forward terminal signals to psql
