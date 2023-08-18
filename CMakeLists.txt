@@ -150,13 +150,12 @@ add_custom_target(phony_always_runs ALL DEPENDS ${CMAKE_BINARY_DIR}/${_script_fi
 set(CONTROL_TEMPLATE "${CMAKE_MODULE_PATH}/lanterndb.control.template")
 set(CONTROL_OUTPUT "${CMAKE_BINARY_DIR}/lanterndb.control")
 configure_file(${CONTROL_TEMPLATE} ${CONTROL_OUTPUT})
-set(_control_file "${CMAKE_BINARY_DIR}/lanterndb.control")
 
 
 # INSTALL
 
 install(TARGETS lanterndb LIBRARY DESTINATION ${PostgreSQL_PACKAGE_LIBRARY_DIR})
-install(FILES ${_control_file} ${CMAKE_BINARY_DIR}/${_script_file}
+install(FILES ${CONTROL_OUTPUT} ${CMAKE_BINARY_DIR}/${_script_file}
         DESTINATION ${PostgreSQL_EXTENSION_DIR})
 
 foreach(_update_file ${_update_files})
@@ -171,7 +170,7 @@ endforeach()
 add_custom_target(
   uninstall
   COMMAND ${CMAKE_COMMAND} -E remove -f
-          ${PostgreSQL_EXTENSION_DIR}/${_control_file}
+          ${PostgreSQL_EXTENSION_DIR}/${CONTROL_OUTPUT}
   COMMAND ${CMAKE_COMMAND} -E remove -f
           ${PostgreSQL_EXTENSION_DIR}/${_script_file}
   COMMAND ${CMAKE_COMMAND} -E remove -f
