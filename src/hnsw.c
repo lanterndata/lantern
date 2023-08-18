@@ -244,5 +244,5 @@ Datum       index_from_external(PG_FUNCTION_ARGS)
     pfree(tablename_str);
     pfree(index_path_str);
 
-    return index_created ? PG_RETURN_BOOL(true) : PG_RETURN_BOOL(false);
+    PG_RETURN_BOOL(index_created);
 }
