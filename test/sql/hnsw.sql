@@ -94,4 +94,18 @@ SELECT * FROM (
 ) v ORDER BY v.dist, v.id;
 rollback;
 
+-- Make sure the index can handle having multiple indexes on the same table
+-- attempts to makes sure that hnsw index requires no extension-global state
+CREATE INDEX ON small_world USING hnsw (vector) WITH (M=5, ef=20, ef_construction=20);
+CREATE INDEX ON small_world USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
+INSERT INTO small_world (id, vector) VALUES
+('000', '[0,0,0]'),
+('001', '[0,0,1]'),
+('010', '[0,1,0]'),
+('011', '[0,1,1]'),
+('100', '[1,0,0]'),
+('101', '[1,0,1]'),
+('110', '[1,1,0]'),
+('111', '[1,1,1]');
+
 \echo "Done with hnsw.sql test!"

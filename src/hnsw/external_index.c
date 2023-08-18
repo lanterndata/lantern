@@ -53,20 +53,7 @@ int CreateBlockMapGroup(
 {
     // Create empty blockmap pages for the group
     const int number_of_blockmaps_in_group = 1 << blockmap_groupno;
-
-    // populated iff we open the header under our WAL
-    Buffer            hdr_buf = InvalidBuffer;
-    GenericXLogState *hdrstate = NULL;
-    if(hdr == NULL) {
-        // todo:: BAD case-work here.
-        // we should decide where header modification happens for this case, and stick with it
-        // in stead of having a nullable hdr parameter
-        hdrstate = GenericXLogStart(index);
-        hdr_buf = ReadBufferExtended(index, forkNum, 0, RBM_NORMAL, NULL);
-        LockBuffer(hdr_buf, BUFFER_LOCK_EXCLUSIVE);
-        Page page = GenericXLogRegisterBuffer(hdrstate, hdr_buf, GENERIC_XLOG_FULL_IMAGE);
-        hdr = (HnswIndexHeaderPage *)PageGetContents(page);
-    }
+    assert(hdr != NULL);
 
     for(int blockmap_id = 0; blockmap_id < number_of_blockmaps_in_group; ++blockmap_id) {
         GenericXLogState *state = GenericXLogStart(index);
@@ -111,30 +98,24 @@ int CreateBlockMapGroup(
 
     // it is possible that usearch asks for a newly added node from this blockmap range
     // we need to make sure the global header has this information
-    HEADER_FOR_EXTERNAL_RETRIEVER = *hdr;
-
-    if(hdr_buf != InvalidBuffer) {
-        assert(hdrstate != NULL);
-        GenericXLogFinish(hdrstate);
-        UnlockReleaseBuffer(hdr_buf);
-    }
 
     return number_of_blockmaps_in_group;
 }
 
-void StoreExternalIndexBlockMapGroup(Relation        index,
-                                     usearch_index_t external_index,
-                                     ForkNumber      forkNum,
-                                     char           *data,
-                                     int            *progress,
-                                     size_t          external_index_size,
-                                     int             dimension,
-                                     int             first_node_index,
-                                     size_t          num_added_vectors,
-                                     int             blockmap_groupno)
+void StoreExternalIndexBlockMapGroup(Relation             index,
+                                     usearch_index_t      external_index,
+                                     HnswIndexHeaderPage *headerp,
+                                     ForkNumber           forkNum,
+                                     char                *data,
+                                     int                 *progress,
+                                     size_t               external_index_size,
+                                     int                  dimension,
+                                     int                  first_node_index,
+                                     size_t               num_added_vectors,
+                                     int                  blockmap_groupno)
 {
     const int number_of_blockmaps_in_group
-        = CreateBlockMapGroup(NULL, index, forkNum, first_node_index, blockmap_groupno);
+        = CreateBlockMapGroup(headerp, index, forkNum, first_node_index, blockmap_groupno);
 
     // Now add nodes to data pages
     char        *node = 0;
@@ -238,17 +219,14 @@ void StoreExternalIndexBlockMapGroup(Relation        index,
         GenericXLogFinish(state);
         UnlockReleaseBuffer(buf);
     }
-    CreateHeaderPage(index, data, forkNum, dimension, -1, last_block, true);
+    headerp->last_data_block = last_block;
 
     // Update blockmap pages with correct associations
     for(int blockmap_id = 0; blockmap_id < number_of_blockmaps_in_group; ++blockmap_id) {
         // When the blockmap page group was created, header block was updated accordingly in CreateBlockMapGroup
         // call above.
-        // Then, HEADER_FOR_EXTERNAL_RETRIEVER was just updated in the CreateHeaderPage(update) call above.
-        // So, below we can take blockmap group index information from HEADER_FOR_EXTERNAL_RETRIEVER.
-        const BlockNumber blockmapno
-            = blockmap_id + HEADER_FOR_EXTERNAL_RETRIEVER.blockmap_page_group_index[ blockmap_groupno ];
-        Buffer buf = ReadBufferExtended(index, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
+        const BlockNumber blockmapno = blockmap_id + headerp->blockmap_page_group_index[ blockmap_groupno ];
+        Buffer            buf = ReadBufferExtended(index, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
         LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 
         GenericXLogState *state = GenericXLogStart(index);
@@ -275,10 +253,38 @@ void StoreExternalIndex(Relation        index,
     int progress = 64;  // usearch header size
     int blockmap_groupno = 0;
 
-    // header page is created twice. it is always at block=0 so the second time just overrides it
-    // it is added here to make sure a data block does not get to block=0.
-    // after somem sleep I will prob find a better way to do this
-    CreateHeaderPage(index, data, forkNum, dimension, num_added_vectors, -1, false);
+    Buffer               buf;
+    Page                 page;
+    GenericXLogState    *state;
+    HnswIndexHeaderPage *headerp;
+    BlockNumber          headerblockno = P_NEW;
+
+    buf = ReadBufferExtended(index, forkNum, headerblockno, RBM_NORMAL, NULL);
+
+    // even when we are creating a new page, it must always be the first page we create
+    // and should therefore have BLockNumber 0
+    assert(BufferGetBlockNumber(buf) == 0);
+    LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
+
+    state = GenericXLogStart(index);
+    page = GenericXLogRegisterBuffer(state, buf, GENERIC_XLOG_FULL_IMAGE);
+
+    PageInit(page, BufferGetPageSize(buf), 0);
+    headerp = (HnswIndexHeaderPage *)PageGetContents(page);
+
+    headerp->magicNumber = LDB_WAL_MAGIC_NUMBER;
+    headerp->version = LDB_WAL_VERSION_NUMBER;
+    headerp->vector_dim = dimension;
+
+    headerp->num_vectors = num_added_vectors;
+    headerp->blockmap_page_groups = 0;
+    MemSet(headerp->blockmap_page_group_index, 0, HNSW_MAX_BLOCKMAP_GROUPS);
+    // headerp->blockmap_page_group_index and blockmap_page_groups are
+    // updated in a separate wal entry
+    headerp->last_data_block = -1;
+
+    memcpy(headerp->usearch_header, data, 64);
+    ((PageHeader)page)->pd_lower = ((char *)headerp + sizeof(HnswIndexHeaderPage)) - (char *)page;
 
     uint32 number_of_index_pages = num_added_vectors / HNSW_BLOCKMAP_BLOCKS_PER_PAGE + 1;
     int    group_node_first_index = 0;
@@ -287,6 +293,7 @@ void StoreExternalIndex(Relation        index,
     while(num_added_vectors_remaining > 0) {
         StoreExternalIndexBlockMapGroup(index,
                                         external_index,
+                                        headerp,
                                         forkNum,
                                         data,
                                         &progress,
@@ -300,70 +307,6 @@ void StoreExternalIndex(Relation        index,
         batch_size = batch_size * 2;
         blockmap_groupno++;
     }
-}
-
-/**
- * Create a new index header page
- * @param index
- * ...
- * @param num_vectors number of vectors in the index. if update=true, this can be -1, which means
- * that the number of vectors in the header should not be updated
- * @param update if true, the header page is updated. if false, a new header page is created
- */
-void CreateHeaderPage(Relation    index,
-                      char       *usearchHeader64,
-                      ForkNumber  forkNum,
-                      uint32      vector_dim,
-                      uint32      num_vectors,
-                      BlockNumber last_data_block,
-                      bool        update)
-{
-    Buffer               buf;
-    Page                 page;
-    GenericXLogState    *state;
-    HnswIndexHeaderPage *headerp;
-    BlockNumber          headerblockno = P_NEW;
-
-    if(update) {
-        headerblockno = 0;
-    }
-    buf = ReadBufferExtended(index, forkNum, headerblockno, RBM_NORMAL, NULL);
-
-    // even when we are creating a new page, it must always be the first page we create
-    // and should therefore have BLockNumber 0
-    assert(BufferGetBlockNumber(buf) == 0);
-    LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
-
-    state = GenericXLogStart(index);
-    page = GenericXLogRegisterBuffer(state, buf, GENERIC_XLOG_FULL_IMAGE);
-
-    if(!update) {
-        PageInit(page, BufferGetPageSize(buf), 0);
-        headerp = (HnswIndexHeaderPage *)PageGetContents(page);
-
-        headerp->magicNumber = LDB_WAL_MAGIC_NUMBER;
-        headerp->version = LDB_WAL_VERSION_NUMBER;
-        headerp->vector_dim = vector_dim;
-        assert(num_vectors != -1);
-        headerp->num_vectors = num_vectors;
-        headerp->blockmap_page_groups = 0;
-        memset(headerp->blockmap_page_group_index, 0, HNSW_MAX_BLOCKMAP_GROUPS);
-    } else {
-        /* no init. we are updating the existing header page */
-        headerp = (HnswIndexHeaderPage *)PageGetContents(page);
-        if(num_vectors != -1) {
-            headerp->num_vectors = num_vectors;
-        }
-    }
-
-    // headerp->blockmap_page_group_index and blockmap_page_groups are
-    // updated in a separate wal entry
-    headerp->last_data_block = last_data_block;
-
-    memcpy(headerp->usearch_header, usearchHeader64, 64);
-    ((PageHeader)page)->pd_lower = ((char *)headerp + sizeof(HnswIndexHeaderPage)) - (char *)page;
-
-    HEADER_FOR_EXTERNAL_RETRIEVER = *headerp;
 
     MarkBufferDirty(buf);
     GenericXLogFinish(state);
@@ -495,9 +438,9 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
             // around. So, perhaps we should do what we did with blockmap and have a separate wal record for new
             // page creation.
 
-            // check the count of blockmaps, see if there's place to add the block id, if yes add, if no create a new
-            // group check if already existing blockmaps are not enough new_tuple_id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE + 1
-            // is kth blockmap we check if k is more than already created 2^groups
+            // check the count of blockmaps, see if there's place to add the block id, if yes add, if no create a
+            // new group check if already existing blockmaps are not enough new_tuple_id /
+            // HNSW_BLOCKMAP_BLOCKS_PER_PAGE + 1 is kth blockmap we check if k is more than already created 2^groups
             if(new_tuple_id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE + 1 >= (1 << (hdr->blockmap_page_groups + 1))) {
                 CreateBlockMapGroup(hdr, index_rel, MAIN_FORKNUM, new_tuple_id, hdr->blockmap_page_groups + 1);
             }
@@ -586,10 +529,12 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
     RetrieverCtx     *ctx = (RetrieverCtx *)ctxp;
     Cache            *cache = &ctx->block_numbers_cache;
     HnswBlockmapPage *blockmap_page;
-    BlockNumber blockmapno = getBlockMapPageBlockNumber(HEADER_FOR_EXTERNAL_RETRIEVER.blockmap_page_group_index, id);
-    BlockNumber blockno;
-    Buffer      buf;
-    Page        page;
+    bool              is_scan = ctx->header_page_under_wal == NULL;
+    BlockNumber       blockmapno = getBlockMapPageBlockNumber(
+        is_scan ? ctx->blockmap_group_cache : ctx->header_page_under_wal->blockmap_page_group_index, id);
+    BlockNumber     blockno;
+    Buffer          buf;
+    Page            page;
     HnswIndexTuple *nodepage;
     OffsetNumber    offset, max_offset;
     bool            idx_page_prelocked = false;
@@ -614,8 +559,8 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
     if(blockno_from_cache != InvalidBlockNumber) {
         blockno = blockno_from_cache;
     } else {
-        // it is necessary to first check the extra dirtied pages for the blockmap page, in case we are in the middle of
-        // an insert and the insert operation has the block we need under a lock
+        // it is necessary to first check the extra dirtied pages for the blockmap page, in case we are in the
+        // middle of an insert and the insert operation has the block we need under a lock
         page = extra_dirtied_get(ctx->extra_dirted, blockmapno, NULL);
         if(page == NULL) {
             buf = ReadBufferExtended(ctx->index_rel, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
@@ -700,10 +645,10 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, int id)
     RetrieverCtx     *ctx = (RetrieverCtx *)ctxp;
     Cache            *cache = &ctx->block_numbers_cache;
     HnswBlockmapPage *blockmap_page;
-    BlockNumber blockmapno = getBlockMapPageBlockNumber(HEADER_FOR_EXTERNAL_RETRIEVER.blockmap_page_group_index, id);
-    BlockNumber blockno;
-    Buffer      buf;
-    Page        page;
+    BlockNumber     blockmapno = getBlockMapPageBlockNumber(ctx->header_page_under_wal->blockmap_page_group_index, id);
+    BlockNumber     blockno;
+    Buffer          buf;
+    Page            page;
     HnswIndexTuple *nodepage;
     OffsetNumber    offset, max_offset;
     bool            idx_page_prelocked = false;
