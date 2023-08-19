@@ -3,7 +3,7 @@
 Cache cache_create()
 {
     Cache         cache;
-    MemoryContext ctx = AllocSetContextCreate(PortalContext, "BlockNumber cache", ALLOCSET_DEFAULT_SIZES);
+    MemoryContext ctx = AllocSetContextCreate(CacheMemoryContext, "BlockNumber cache", ALLOCSET_DEFAULT_SIZES);
 
     HASHCTL hctl;
     hctl.keysize = sizeof(CacheKey);
