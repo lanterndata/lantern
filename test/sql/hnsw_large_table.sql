@@ -17,7 +17,7 @@
  -- bulk insert on create
 CREATE INDEX hnsw_idx2 ON sift_base10k USING hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=4, dims=128);
 SELECT V AS v4444  FROM sift_base10k WHERE id = 4444 \gset
-EXPLAIN (ANALYZE, TIMING FALSE) SELECT * FROM sift_base10k order by v <-> :'v4444'
+EXPLAIN SELECT * FROM sift_base10k order by v <-> :'v4444'
 LIMIT 10;
 
 

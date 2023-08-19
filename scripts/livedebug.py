@@ -13,6 +13,14 @@ import time
 import argparse
 
 sql_common_script_path = os.path.join(os.path.dirname(__file__), "../test/sql/test_helpers/common.sql")
+default_user = ""
+
+try:
+    # this function is throwing an error inside container
+    default_user = os.getlogin()
+except:
+    default_user = "postgres"
+
 # helper functions
 def get_tmux_session_name() -> str:
     try:
@@ -32,7 +40,7 @@ def livedebug():
     parser = argparse.ArgumentParser(prog='livedebug',
                     description='Attaches gdb to postgres backend process for live debugging')
     parser.add_argument("-p", "--port",  default="5432", help="Port number")
-    parser.add_argument("-U", "--user",  default=os.getlogin(), help="Database user")
+    parser.add_argument("-U", "--user",  default=default_user, help="Database user")
     parser.add_argument("--usepgvector",  action='store_true', help="Initialize pgvector extension when resetting db")
     parser.add_argument("-H", "--host", default="localhost", help="Host name")
     parser.add_argument("--db", default="testdb", help="Database name", )
