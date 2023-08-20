@@ -240,9 +240,5 @@ Datum       index_from_external(PG_FUNCTION_ARGS)
     bool index_created = false;
     // bool index_created = build_index(tablename_str, index_path_str);
 
-    // Free the allocated memory for converted C strings
-    pfree(tablename_str);
-    pfree(index_path_str);
-
     PG_RETURN_BOOL(index_created);
 }
