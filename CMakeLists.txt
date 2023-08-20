@@ -185,12 +185,27 @@ add_custom_target(
 
  # DEVELOPMENT
 find_program(CLANG_FORMAT NAMES clang-format)
+
+if (CLANG_FORMAT)
+  execute_process(COMMAND ${CLANG_FORMAT} --version
+  OUTPUT_VARIABLE CLANG_FORMAT_VERSION
+  OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+  string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" CLANG_FORMAT_VERSION "${CLANG_FORMAT_VERSION}")
+
+  if(CLANG_FORMAT_VERSION VERSION_LESS 14)
+    message(WARNING "clang-format version ${CLANG_FORMAT_VERSION} found, need at least 14")
+    set(CLANG_FORMAT OFF)
+  endif()
+endif()
+
+
 if(DEV AND NOT CLANG_FORMAT)
   message(FATAL_ERROR "clang-format not found!")
 endif()
 
 if (CLANG_FORMAT)
-file(GLOB CLANG_FORMATTABLE_FILES "${SOURCES}" "${SOURCES_DIR}/**/*.h" "${SOURCES_DIR}/*.h")
+  file(GLOB CLANG_FORMATTABLE_FILES "${SOURCES}" "${SOURCES_DIR}/**/*.h" "${SOURCES_DIR}/*.h")
 
   # Add format target
   add_custom_target(
