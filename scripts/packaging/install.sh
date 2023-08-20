@@ -49,3 +49,11 @@ cp -r shared/*.sql $PG_EXTENSION_DIR
 cp -r shared/*.control $PG_EXTENSION_DIR
 
 echo "LanternDB installed successfully"
+
+EXTRAS_PACKAGE_NAME=$(find . -name "lanterndb-extras*" | head -n 1)
+
+if [ ! -z "$EXTRAS_PACKAGE_NAME" ]
+then
+  echo "Installing LanternDB Extras"
+  cd $EXTRAS_PACKAGE_NAME && make install
+fi

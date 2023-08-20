@@ -67,7 +67,9 @@ jobs:
           path: /tmp/lanterndb-package
       - name: Create universal package
         id: package
-        run: sudo su -c "GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/universal-package.sh"
+        run: sudo su -c "GITHUB_OUTPUT=$GITHUB_OUTPUT PACKAGE_EXTRAS=1 GITHUB_TOKEN=$GITHUB_TOKEN ./ci/scripts/universal-package.sh"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
