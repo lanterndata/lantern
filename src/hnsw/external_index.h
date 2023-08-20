@@ -35,7 +35,6 @@ typedef struct HnswIndexHeaderPage
     uint32      vector_dim;
     uint32      num_vectors;
     BlockNumber last_data_block;
-    uint32      blockno_index_start;
     char        usearch_header[ 64 ];
 
     uint32 blockmap_page_groups;
@@ -104,7 +103,6 @@ void StoreExternalIndex(Relation        index,
                         usearch_index_t external_index,
                         ForkNumber      forkNum,
                         char           *data,
-                        size_t          external_index_size,
                         int             dimension,
                         size_t          num_added_vectors);
 
