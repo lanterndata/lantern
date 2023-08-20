@@ -1,0 +1,78 @@
+name: build
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+      - dev
+  workflow_dispatch:
+    inputs:
+      create_release:
+        type: boolean
+        description: "Create GitHub release for current version"
+        required: false
+        default: false
+jobs:
+  ubuntu-build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - postgres: 15
+            os: ubuntu-22.04
+          - postgres: 14
+            os: ubuntu-22.04
+          - postgres: 13
+            os: ubuntu-22.04
+          - postgres: 12
+            os: ubuntu-22.04
+          - postgres: 11
+            os: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: "recursive"
+      - name: Build
+        id: build
+        run: sudo su -c "PG_VERSION=$PG_VERSION GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/build.sh"
+        env:
+          PG_VERSION: ${{ matrix.postgres }}
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+      - name: Upload archive package artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: lanterndb-extras-package
+          path: ${{ steps.build.outputs.archive_package_path }}
+  ubuntu-package:
+    runs-on: ubuntu-22.04
+    needs: [ubuntu-build]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/download-artifact@v3
+        with:
+          name: lanterndb-extras-package
+          path: /tmp/lanterndb-extras-package
+      - name: Create universal package
+        id: package
+        run: sudo su -c "GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/package.sh"
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ steps.package.outputs.package_name }}
+          path: ${{ steps.package.outputs.package_path }}
+      - uses: geekyeggo/delete-artifact@v2
+        with:
+          name: lanterndb-extras-package
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v1
+        id: create_release
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_release }}
+        with:
+          name: LanternDB Extras v${{ steps.package.outputs.package_version }}
+          tag_name: v${{ steps.package.outputs.package_version }}
+          files: ${{ steps.package.outputs.package_path }}
+          generate_release_notes: true
