@@ -1,6 +1,4 @@
-#include "postgres.h"
-
-#include "hnsw.h"
+#include <postgres.h>
 
 #include <access/amapi.h>
 #include <commands/vacuum.h>
@@ -9,6 +7,7 @@
 #include <utils/selfuncs.h>
 #include <utils/spccache.h>
 
+#include "hnsw.h"
 #include "hnsw/build.h"
 #include "hnsw/delete.h"
 #include "hnsw/insert.h"

@@ -108,7 +108,6 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
                                      ForkNumber           forkNum,
                                      char                *data,
                                      int                 *progress,
-                                     size_t               external_index_size,
                                      int                  dimension,
                                      int                  first_node_index,
                                      size_t               num_added_vectors,
@@ -246,31 +245,21 @@ void StoreExternalIndex(Relation        index,
                         usearch_index_t external_index,
                         ForkNumber      forkNum,
                         char           *data,
-                        size_t          external_index_size,
                         int             dimension,
                         size_t          num_added_vectors)
 {
-    int progress = 64;  // usearch header size
-    int blockmap_groupno = 0;
-
-    Buffer               buf;
-    Page                 page;
-    GenericXLogState    *state;
-    HnswIndexHeaderPage *headerp;
-    BlockNumber          headerblockno = P_NEW;
-
-    buf = ReadBufferExtended(index, forkNum, headerblockno, RBM_NORMAL, NULL);
+    Buffer header_buf = ReadBufferExtended(index, forkNum, P_NEW, RBM_NORMAL, NULL);
 
     // even when we are creating a new page, it must always be the first page we create
     // and should therefore have BLockNumber 0
-    assert(BufferGetBlockNumber(buf) == 0);
-    LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
+    assert(BufferGetBlockNumber(header_buf) == 0);
+    LockBuffer(header_buf, BUFFER_LOCK_EXCLUSIVE);
 
-    state = GenericXLogStart(index);
-    page = GenericXLogRegisterBuffer(state, buf, GENERIC_XLOG_FULL_IMAGE);
+    GenericXLogState *state = GenericXLogStart(index);
+    Page              header_page = GenericXLogRegisterBuffer(state, header_buf, GENERIC_XLOG_FULL_IMAGE);
 
-    PageInit(page, BufferGetPageSize(buf), 0);
-    headerp = (HnswIndexHeaderPage *)PageGetContents(page);
+    PageInit(header_page, BufferGetPageSize(header_buf), 0);
+    HnswIndexHeaderPage *headerp = (HnswIndexHeaderPage *)PageGetContents(header_page);
 
     headerp->magicNumber = LDB_WAL_MAGIC_NUMBER;
     headerp->version = LDB_WAL_VERSION_NUMBER;
@@ -284,9 +273,11 @@ void StoreExternalIndex(Relation        index,
     headerp->last_data_block = -1;
 
     memcpy(headerp->usearch_header, data, 64);
-    ((PageHeader)page)->pd_lower = ((char *)headerp + sizeof(HnswIndexHeaderPage)) - (char *)page;
+    ((PageHeader)header_page)->pd_lower = ((char *)headerp + sizeof(HnswIndexHeaderPage)) - (char *)header_page;
 
     uint32 number_of_index_pages = num_added_vectors / HNSW_BLOCKMAP_BLOCKS_PER_PAGE + 1;
+    int    progress = 64;  // usearch header size
+    int    blockmap_groupno = 0;
     int    group_node_first_index = 0;
     int    num_added_vectors_remaining = (int)num_added_vectors;
     int    batch_size = HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
@@ -297,7 +288,6 @@ void StoreExternalIndex(Relation        index,
                                         forkNum,
                                         data,
                                         &progress,
-                                        external_index_size,
                                         dimension,
                                         group_node_first_index,
                                         Min(num_added_vectors_remaining, batch_size),
@@ -308,9 +298,9 @@ void StoreExternalIndex(Relation        index,
         blockmap_groupno++;
     }
 
-    MarkBufferDirty(buf);
+    MarkBufferDirty(header_buf);
     GenericXLogFinish(state);
-    UnlockReleaseBuffer(buf);
+    UnlockReleaseBuffer(header_buf);
 }
 
 // adds a an item to hnsw index relation page. assumes the page has enough space for the item
