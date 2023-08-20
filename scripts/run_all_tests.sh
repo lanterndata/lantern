@@ -6,7 +6,7 @@ PSQL=psql
 TMP_ROOT=/tmp/lanterndb
 TMP_OUTDIR=$TMP_ROOT/tmp_output
 FILTER="${FILTER:-}"
-DB_USER="${DB_USER:-}"
+DB_USER="${DB_USER:-postgres}"
 # this will be used by pg_regress while making diff file
 export PG_REGRESS_DIFF_OPTS=-u
 
@@ -35,7 +35,7 @@ then
     SCHEDULE=schedule.txt
 else
     TEST_FILES=$(cat schedule.txt | sed -e 's/test://' | tr " " "\n" | sed -e '/^$/d')
-    
+
     rm -rf $TMP_OUTDIR/schedule.txt
     while IFS= read -r f; do
         if [[ $f == *"$FILTER"* ]]; then
@@ -43,13 +43,13 @@ else
         fi
     done <<< "$TEST_FILES"
 
-    
+
     if [ ! -f "$TMP_OUTDIR/schedule.txt" ]
     then
         echo "No tests matches filter \"$FILTER\""
         exit 0
     fi
-    
+
     SCHEDULE=$TMP_OUTDIR/schedule.txt
 fi
 
@@ -67,4 +67,4 @@ function print_diff {
 
 trap print_diff ERR
 
-$(pg_config --pkglibdir)/pgxs/src/test/regress/pg_regress --schedule=$SCHEDULE --outputdir=$TMP_OUTDIR --launcher=./test_runner.sh
+DB_USER=$DB_USER $(pg_config --pkglibdir)/pgxs/src/test/regress/pg_regress --user=$DB_USER --schedule=$SCHEDULE --outputdir=$TMP_OUTDIR --launcher=./test_runner.sh

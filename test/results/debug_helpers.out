@@ -1,0 +1,40 @@
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS lanterndb;
+-- initially, before we create an index, the variable does not exist
+\ir test_helpers/small_world.sql
+test_helpers/small_world.sql: No such file or directory
+SHOW hnsw.init_k;
+ hnsw.init_k 
+-------------
+ 10
+(1 row)
+
+CREATE INDEX ON small_world USING hnsw (vector);
+ERROR:  relation "small_world" does not exist
+-- verify that the index was created
+SELECT * FROM ldb_get_indexes('small_world');
+ERROR:  function ldb_get_indexes(unknown) does not exist
+LINE 1: SELECT * FROM ldb_get_indexes('small_world');
+                      ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+-- it exists after we create an index
+SHOW hnsw.init_k;
+ hnsw.init_k 
+-------------
+ 10
+(1 row)
+
+SET hnsw.init_k = 45;
+SHOW hnsw.init_k;
+ hnsw.init_k 
+-------------
+ 45
+(1 row)
+
+RESET ALL;
+SHOW hnsw.init_k;
+ hnsw.init_k 
+-------------
+ 10
+(1 row)
+

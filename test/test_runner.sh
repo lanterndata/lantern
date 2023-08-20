@@ -5,19 +5,11 @@ TESTFILE_NAME=${PGAPPNAME##pg_regress/}
 # Set different name for each test database
 # As pg_regress does not support cleaning db after each test
 TEST_CASE_DB="ldb_test_${TESTFILE_NAME}"
-
 # Set database user
 if [ -z $DB_USER ]
 then
-     # if db user is not defined
-     # try to set it as currently logged in user
-     # or postgres if the user is not set in shell
-     if [ -z $USER ]
-     then
-          DB_USER="postgres"
-     else
-          DB_USER=$USER
-     fi
+     echo "ERROR: DB_USER environment variable is not set before test_runner.sh is run by pg_regress"
+     exit 1
 fi
 
 # Drop db after each test on exit signal
