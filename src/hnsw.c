@@ -256,7 +256,10 @@ Datum       index_from_external(PG_FUNCTION_ARGS)
 
     // Set column name
     char *indexRelationName = tablename_str;
-    strcat(indexRelationName, "_vector_idx");
+    char *indexColumnName = "";  // todo get column name
+    strcat(indexRelationName, "_");
+    strcat(indexRelationName, indexColumnName);
+    strcat(indexRelationName, "_idx");
 
     // Create empty indexInfo to store incoming index info
     IndexInfo *indexInfo;
