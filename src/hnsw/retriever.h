@@ -15,7 +15,7 @@ RetrieverCtx* ldb_wal_retriever_area_init(Relation index_rel, HnswIndexHeaderPag
 // will no longer be used
 void ldb_wal_retriever_area_reset(RetrieverCtx* ctx, HnswIndexHeaderPage* header_page_under_wal);
 
-void ldb_wal_retriever_area_free(RetrieverCtx* ctx);
+void ldb_wal_retriever_area_fini(RetrieverCtx* ctx);
 
 void* ldb_wal_index_node_retriever(void* ctx, int id);
 void* ldb_wal_index_node_retriever_mut(void* ctx, int id);

@@ -26,9 +26,6 @@ RetrieverCtx *ldb_wal_retriever_area_init(Relation index_rel, HnswIndexHeaderPag
     ctx->wal_retriever_area_offset = 0;
 #else
     ctx->takenbuffers = palloc0(sizeof(Buffer) * TAKENBUFFERS_MAX);
-    if(ctx->takenbuffers_next > 0) {
-        elog(ERROR, "takenbuffers_next > 0 %d", ctx->takenbuffers_next);
-    }
 #endif
 
     /* fill in a buffer with blockno index information, before spilling it to disk */
@@ -50,11 +47,12 @@ void ldb_wal_retriever_area_reset(RetrieverCtx *ctx, HnswIndexHeaderPage *header
         ctx->takenbuffers[ i ] = InvalidBuffer;
     }
     ctx->takenbuffers_next = 0;
+    assert(ctx->header_page_under_wal == header_page_under_wal);
     ctx->header_page_under_wal = header_page_under_wal;
 #endif
 }
 
-void ldb_wal_retriever_area_free(RetrieverCtx *ctx)
+void ldb_wal_retriever_area_fini(RetrieverCtx *ctx)
 {
     cache_destroy(&ctx->block_numbers_cache);
 #if LANTERNDB_COPYNODES
