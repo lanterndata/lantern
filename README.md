@@ -26,7 +26,6 @@ make install
 # make test
 ```
 
-
 <details>
 <summary>If you have previously cloned LanternDB and would like to update</summary>
 ```bash
@@ -54,14 +53,14 @@ CREATE TABLE small_world (
 );
 
 INSERT INTO small_world (id, vector) VALUES
-('000', '[0,0,0]'),
-('001', '[0,0,1]'),
-('010', '[0,1,0]'),
-('011', '[0,1,1]'),
-('100', '[1,0,0]'),
-('101', '[1,0,1]'),
-('110', '[1,1,0]'),
-('111', '[1,1,1]');
+('000', '{0,0,0}'),
+('001', '{0,0,1}'),
+('010', '{0,1,0}'),
+('011', '{0,1,1}'),
+('100', '{1,0,0}'),
+('101', '{1,0,1}'),
+('110', '{1,1,0}'),
+('111', '{1,1,1}');
 ```
 
 3. Create an `hnsw` index on the table.
