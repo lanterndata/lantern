@@ -245,13 +245,13 @@ Datum       index_from_external(PG_FUNCTION_ARGS)
     Oid table_id = RelnameGetRelid(tablename_str);
     // if table invalid, return false
     if(table_id == InvalidOid) {
-        PG_RETURN_BOOL(false);
+        elog(ERROR, "Extracting Oid from %s failed, recieved Oid: %u", tablename_str, table_id);
     }
 
     Relation heapRelation = RelationIdGetRelation(table_id);
     // if table unlogged, return false (unsupported at the moment)
     if(RelationIsLogicallyLogged(heapRelation)) {
-        PG_RETURN_BOOL(false);
+        elog(ERROR, "Table %s is unlogged, this operation is unsupported", tablename_str);
     }
 
     // Set column name
