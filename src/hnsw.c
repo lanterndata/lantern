@@ -251,7 +251,7 @@ Datum       index_from_external(PG_FUNCTION_ARGS)
     Relation heapRelation = RelationIdGetRelation(table_id);
     // if table unlogged, return false (unsupported at the moment)
     if(RelationIsLogicallyLogged(heapRelation)) {
-        elog(ERROR, "Table %s is unlogged, this operation is unsupported", tablename_str);
+        elog(ERROR, "Table %s is unlogged. hnsw index on unlogged tables is currently not supported", tablename_str);
     }
 
     // Set column name
