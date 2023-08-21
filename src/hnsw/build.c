@@ -287,7 +287,6 @@ static void BuildIndexFromFile(Relation        heap,
     usearch_error_t        error = NULL;
     size_t                 num_added_vectors = 0;
     int                    fd;
-    struct stat            file_stat;
     char                  *result_buf = NULL;
 
     // Initialize build state and options
@@ -315,13 +314,8 @@ static void BuildIndexFromFile(Relation        heap,
     UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_LOAD);
 
     //****************************** saving to WAL BEGIN ******************************//
-    StoreExternalIndex(index,
-                       buildstate->usearch_index,
-                       forkNum,
-                       result_buf,
-                       file_stat.st_size,
-                       buildstate->dimensions,
-                       num_added_vectors);
+    StoreExternalIndex(
+        index, buildstate->usearch_index, forkNum, result_buf, buildstate->dimensions, num_added_vectors);
 
     //****************************** saving to WAL END ******************************//
 
