@@ -33,3 +33,9 @@ under `sql/updates`, in a file named `[CURRENT_VERSION]--latest.sql`. You should
 Note that you never modify an already existing update file that does not have `latest` in its name.
 The files that do not have `latest` in the name are part of a previous releases and help LanternDB users update
 to a newer version of the extension via `ALTER EXTENSION lanterndb UPDATE`.
+
+## Browsing the Postgres repository offline
+
+For whatever reason, you may find it useful to clone postgres offline for aiding your development. Postgres repo is huge and you don't necessarily need to clone the entire thing(this makes git slower to clone and update). One method to do it, which clones only the last commit, and ONLY clones the branch of the release you want:
+
+```git clone --single-branch --branch REL_15_STABLE https://github.com/postgres/postgres.git --depth=1```
