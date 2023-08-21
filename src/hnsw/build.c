@@ -345,23 +345,6 @@ IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInf
 }
 
 /*
- * Build the index for a logged table from a usearch bin file
- */
-IndexBuildResult *ldb_ambuild_from_file(Relation heap, Relation index, IndexInfo *indexInfo, char const *path)
-{
-    IndexBuildResult *result;
-    HnswBuildState    buildstate;
-
-    BuildIndexFromFile(heap, index, indexInfo, &buildstate, MAIN_FORKNUM, path);
-
-    result = (IndexBuildResult *)palloc(sizeof(IndexBuildResult));
-    result->heap_tuples = buildstate.reltuples;
-    result->index_tuples = buildstate.tuples_indexed;
-
-    return result;
-}
-
-/*
  * Build the index for an unlogged table
  */
 void ldb_ambuildunlogged(Relation index)
