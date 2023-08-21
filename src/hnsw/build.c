@@ -1,4 +1,6 @@
-#include "postgres.h"
+#include <postgres.h>
+
+#include "build.h"
 
 #include <assert.h>
 #include <catalog/index.h>
@@ -12,27 +14,24 @@
 #include "bench.h"
 #include "external_index.h"
 #include "hnsw.h"
-#include "usearch.h"
+#include "options.h"
 #include "utils.h"
 #include "vector.h"
 
 #if PG_VERSION_NUM >= 140000
-#include "utils/backend_progress.h"
+#include <utils/backend_progress.h>
 #elif PG_VERSION_NUM >= 120000
-#include "pgstat.h"
+#include <pgstat.h>
 #endif
 
 #if PG_VERSION_NUM >= 120000
-#include "access/tableam.h"
-#include "commands/progress.h"
+#include <access/tableam.h>
+#include <commands/progress.h>
 #else
 #define PROGRESS_CREATEIDX_SUBPHASE     0
 #define PROGRESS_CREATEIDX_TUPLES_TOTAL 0
 #define PROGRESS_CREATEIDX_TUPLES_DONE  0
 #endif
-
-#include "build.h"
-#include "options.h"
 
 #if PG_VERSION_NUM >= 130000
 #define CALLBACK_ITEM_POINTER ItemPointer tid
@@ -228,24 +227,22 @@ static void BuildIndex(
     Relation heap, Relation index, IndexInfo *indexInfo, HnswBuildState *buildstate, ForkNumber forkNum)
 {
     usearch_init_options_t opts;
-    usearch_error_t        error = NULL;
-    size_t                 num_added_vectors = 0;
-    int                    fd;
-    struct stat            file_stat;
-    char                  *data;
-
+    MemSet(&opts, 0, sizeof(opts));
     InitBuildState(buildstate, heap, index, indexInfo);
 
     opts.dimensions = buildstate->dimensions;
-
     PopulateUsearchOpts(index, &opts);
 
+    usearch_error_t error = NULL;
     buildstate->hnsw = NULL;
     buildstate->usearch_index = usearch_init(&opts, &error);
+
     elog(INFO, "done init usearch index");
     assert(error == NULL);
+
     usearch_reserve(buildstate->usearch_index, 1100000, &error);
     assert(error == NULL);
+
     UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_IN_MEMORY_INSERT);
     LanternBench("build hnsw index", ScanTable(buildstate));
 
@@ -254,21 +251,17 @@ static void BuildIndex(
 
     char *result_buf = NULL;
     usearch_save(buildstate->usearch_index, NULL, &result_buf, &error);
+    assert(error == NULL && result_buf != NULL);
+
+    size_t num_added_vectors = usearch_size(buildstate->usearch_index, &error);
     assert(error == NULL);
-    assert(result_buf != NULL);
-    num_added_vectors = usearch_size(buildstate->usearch_index, &error);
-    assert(error == NULL);
+
     elog(INFO, "done saving %ld vectors", num_added_vectors);
 
     //****************************** saving to WAL BEGIN ******************************//
     UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_LOAD);
-    StoreExternalIndex(index,
-                       buildstate->usearch_index,
-                       forkNum,
-                       result_buf,
-                       file_stat.st_size,
-                       buildstate->dimensions,
-                       num_added_vectors);
+    StoreExternalIndex(
+        index, buildstate->usearch_index, forkNum, result_buf, buildstate->dimensions, num_added_vectors);
 
     //****************************** saving to WAL END ******************************//
 

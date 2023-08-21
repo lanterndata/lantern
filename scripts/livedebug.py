@@ -7,12 +7,15 @@ import signal
 import subprocess
 import re
 import os
+import getpass
 import sys
 from select import select
 import time
 import argparse
 
 sql_common_script_path = os.path.join(os.path.dirname(__file__), "../test/sql/test_helpers/common.sql")
+default_user = getpass.getuser()
+
 # helper functions
 def get_tmux_session_name() -> str:
     try:
@@ -32,7 +35,7 @@ def livedebug():
     parser = argparse.ArgumentParser(prog='livedebug',
                     description='Attaches gdb to postgres backend process for live debugging')
     parser.add_argument("-p", "--port",  default="5432", help="Port number")
-    parser.add_argument("-U", "--user",  default="postgres", help="Database user")
+    parser.add_argument("-U", "--user",  default=default_user, help="Database user")
     parser.add_argument("--usepgvector",  action='store_true', help="Initialize pgvector extension when resetting db")
     parser.add_argument("-H", "--host", default="localhost", help="Host name")
     parser.add_argument("--db", default="testdb", help="Database name", )
@@ -59,7 +62,7 @@ def livedebug():
         print("resetdb result", res)
 
     # 1. run the command through a shell
-    psql_command = f"psql -U {args.user} -P pager=off -p {args.port} -h {args.host} {args.db}"
+    psql_command = f"psql -U {args.user} -P pager=off -p {args.port} {args.db}"
     psql_process = subprocess.Popen(psql_command, shell=True, stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr)
 
     # 2. forward terminal signals to psql

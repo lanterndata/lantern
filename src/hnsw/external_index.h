@@ -1,14 +1,15 @@
 #ifndef LDB_HNSW_EXTERNAL_INDEX_H
 #define LDB_HNSW_EXTERNAL_INDEX_H
 
-#include "postgres.h"
+#include <postgres.h>
 
 #include <access/generic_xlog.h>
 #include <common/relpath.h>  // ForkNumber
 #include <storage/bufmgr.h>  // Buffer
 #include <utils/relcache.h>  // Relation
 
-#include "insert.h"
+#include "cache.h"
+#include "extra_dirtied.h"
 #include "usearch.h"
 
 #define LDB_WAL_MAGIC_NUMBER   0xa47e20db
@@ -22,20 +23,19 @@
 // So one cannot increase this number and expect to handle larger indexes
 #define HNSW_MAX_BLOCKMAP_GROUPS 32
 
+// each blockmap entry is a 4 byte ID. 2000 fits in BLCKSZ=8192 page.
+// Note: If you make complex changes at the code of the database, you can change this number to a smaller value
+// to be able to test more of the algorithm corner cases with a small table dataset
+#define HNSW_BLOCKMAP_BLOCKS_PER_PAGE 2000
+
 typedef struct HnswIndexHeaderPage
 {
-    uint32 magicNumber;
-    uint32 version;
-    uint32 vector_dim;
-    uint32 num_vectors;
-    // todo:: switch these to BlockNumber for documentation
-    // first data block is needed because in case of creating an index on empty table it no longer
-    // is headeblockno + 1
-    uint32 last_data_block;
-    uint32 blockno_index_start;
-    // todo:: get rid of this
-    uint32 num_blocks;
-    char   usearch_header[ 64 ];
+    uint32      magicNumber;
+    uint32      version;
+    uint32      vector_dim;
+    uint32      num_vectors;
+    BlockNumber last_data_block;
+    char        usearch_header[ 64 ];
 
     uint32 blockmap_page_groups;
     uint32 blockmap_page_group_index[ HNSW_MAX_BLOCKMAP_GROUPS ];
@@ -58,8 +58,6 @@ typedef struct HnswIndexTuple
     char   node[ FLEXIBLE_ARRAY_MEMBER ];
 } HnswIndexTuple;
 
-#define HNSW_BLOCKMAP_BLOCKS_PER_PAGE 2000
-
 typedef struct
 {
     // for debugging, each block will store the ground truth index for the first
@@ -69,36 +67,42 @@ typedef struct
     BlockNumber blocknos[ HNSW_BLOCKMAP_BLOCKS_PER_PAGE ];
 } HnswBlockmapPage;
 
-// todo:: get rid of these. maybe pass it to usearch_set_retriever and have it pass it back?
-extern Relation            INDEX_RELATION_FOR_RETRIEVER;
-extern HnswIndexHeaderPage HEADER_FOR_EXTERNAL_RETRIEVER;
-extern Buffer             *EXTRA_DIRTIED;
-extern Page               *EXTRA_DIRTIED_PAGE;
-extern int                 EXTRA_DIRTIED_SIZE;
-// this area is used to return pointers back to usearch
+typedef struct
+{
+    Cache block_numbers_cache;
 
-void ldb_wal_retriever_area_init(int size);
+    Relation index_rel;
 
-// can be used after each usearch_search to tell the retriever that the pointers given out
-// will no longer be used
-void ldb_wal_retriever_area_reset();
-void ldb_wal_retriever_area_free();
+    // used for scans
+    uint32 blockmap_group_cache[ HNSW_MAX_BLOCKMAP_GROUPS ];  // todo::
+    // used for inserts
+    HnswIndexHeaderPage *header_page_under_wal;
 
-int  UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, int level);
-void CreateHeaderPage(Relation    index,
-                      char       *usearchHeader64,
-                      ForkNumber  forkNum,
-                      uint32      vector_dim,
-                      uint32      num_vectors,
-                      BlockNumber last_data_block,
-                      uint32      num_blocks,
-                      bool        update);
+    ExtraDirtiedBufs *extra_dirted;
+
+#if LANTERNDB_COPYNODES
+    char *wal_retriever_area = NULL;
+    int   wal_retriever_area_size = 0;
+    int   wal_retriever_area_offset = 0;
+#else
+
+    Buffer *takenbuffers;
+    int     takenbuffers_next;
+#endif
+} RetrieverCtx;
+
+typedef struct
+{
+    usearch_index_t uidx;
+    RetrieverCtx   *retriever_ctx;
+} HnswInsertState;
+
+int UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, int level);
 
 void StoreExternalIndex(Relation        index,
                         usearch_index_t external_index,
                         ForkNumber      forkNum,
                         char           *data,
-                        size_t          external_index_size,
                         int             dimension,
                         size_t          num_added_vectors);
 
@@ -110,13 +114,6 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
                                   usearch_metadata_t  *metadata,
                                   uint32               new_tuple_id,
                                   int                  new_tuple_level,
-                                  Buffer (*extra_dirtied)[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ],
-                                  Page (*extra_dirtied_page)[ LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS ],
-                                  int *extra_dirtied_size);
-
-void *ldb_wal_index_node_retriever(int id);
-void *ldb_wal_index_node_retriever_mut(int id);
-
-BlockNumber getBlockMapPageBlockNumber(HnswIndexHeaderPage *hdr, int id);
+                                  HnswInsertState     *insertstate);
 
 #endif  // LDB_HNSW_EXTERNAL_INDEX_H

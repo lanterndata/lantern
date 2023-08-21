@@ -6,7 +6,18 @@ PSQL=psql
 TMP_ROOT=/tmp/lanterndb
 TMP_OUTDIR=$TMP_ROOT/tmp_output
 FILTER="${FILTER:-}"
-DB_USER="${DB_USER:-}"
+# $USER is not set in docker containers, so use whoami
+DEFAULT_USER=$(whoami)
+
+# typically default user is root in a docker container
+# and in those cases postgres is the user with appropriate permissions
+# to the database
+if [ "$DEFAULT_USER" == "root" ]
+then
+    DEFAULT_USER="postgres"
+fi
+
+DB_USER="${DB_USER:-$DEFAULT_USER}"
 # this will be used by pg_regress while making diff file
 export PG_REGRESS_DIFF_OPTS=-u
 
@@ -21,9 +32,11 @@ then
     mkdir -p $TMP_ROOT/vector_datasets
     pushd $TMP_ROOT/vector_datasets
         wget https://storage.googleapis.com/lanterndb/sift_base1k.csv
+        wget https://storage.googleapis.com/lanterndata/siftsmall/siftsmall_base.csv
         wget https://storage.googleapis.com/lanterndb/tsv_wiki_sample.csv
         # Convert vector to arrays to be used with real[] type
         cat sift_base1k.csv | sed -e 's/\[/{/g' | sed -e 's/\]/}/g' > sift_base1k_arrays.csv
+        cat siftsmall_base.csv | sed -e 's/\[/{/g' | sed -e 's/\]/}/g' > siftsmall_base_arrays.csv
     popd
 fi
 
@@ -55,9 +68,14 @@ function print_diff {
     if [ -f "$TMP_OUTDIR/regression.diffs" ]
     then
         cat $TMP_OUTDIR/regression.diffs
+
+        echo
+        echo "Per-failed-test diff commands:"
+        cat $TMP_OUTDIR/regression.diffs | grep -e '^diff -u .*expected/.*\.out .*/results/.*\.out$'
+        echo
     fi
 }
 
 trap print_diff ERR
 
-$(pg_config --pkglibdir)/pgxs/src/test/regress/pg_regress --schedule=$SCHEDULE --outputdir=$TMP_OUTDIR --launcher=./test_runner.sh
+DB_USER=$DB_USER $(pg_config --pkglibdir)/pgxs/src/test/regress/pg_regress --user=$DB_USER --schedule=$SCHEDULE --outputdir=$TMP_OUTDIR --launcher=./test_runner.sh

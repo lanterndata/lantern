@@ -6,13 +6,13 @@
 #include <pgstat.h>
 #include <utils/rel.h>
 
+#include "bench.h"
 #include "build.h"
 #include "external_index.h"
 #include "hnsw.h"
 #include "options.h"
+#include "retriever.h"
 #include "vector.h"
-
-PG_MODULE_MAGIC;
 
 /*
  * Prepare for an index scan
@@ -24,6 +24,7 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     int                    dimensions;
     usearch_error_t        error = NULL;
     usearch_init_options_t opts;
+    RetrieverCtx          *retriever_ctx = ldb_wal_retriever_area_init(index, NULL);
 
     elog(INFO, "began scanning with %d keys and %d orderbys", nkeys, norderbys);
     scan = RelationGetIndexScan(index, nkeys, norderbys);
@@ -37,8 +38,14 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     opts.expansion_add = HnswGetEfConstruction(index);
     opts.expansion_search = HnswGetEf(index);
     opts.metric_kind = usearch_metric_l2sq_k;
+    // todo::^^^^ should this not change based on the index metric type/
     opts.metric = NULL;
     opts.quantization = usearch_scalar_f32_k;
+
+    scanstate->retriever_ctx = opts.retriever_ctx = retriever_ctx;
+    opts.retriever = ldb_wal_index_node_retriever;
+    opts.retriever_mut = ldb_wal_index_node_retriever_mut;
+
     elog(INFO,
          "starting scan with dimensions=%d M=%ld efConstruction=%ld ef=%ld",
          dimensions,
@@ -64,21 +71,17 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
              "block not valid");
     }
 
+    assert(scan->indexRelation == index);
     buf = ReadBuffer(scan->indexRelation, header_blockno);
     LockBuffer(buf, BUFFER_LOCK_SHARE);
     page = BufferGetPage(buf);
     headerp = (HnswIndexHeaderPage *)PageGetContents(page);
     assert(headerp->magicNumber == LDB_WAL_MAGIC_NUMBER);
 
-    INDEX_RELATION_FOR_RETRIEVER = scan->indexRelation;
-    HEADER_FOR_EXTERNAL_RETRIEVER = *headerp;
-    // scans are read only, no modifications
-    EXTRA_DIRTIED_SIZE = 0;
-    ldb_wal_retriever_area_init(BLCKSZ * 100);
-
-    usearch_set_node_retriever(
-        scanstate->usearch_index, ldb_wal_index_node_retriever, ldb_wal_index_node_retriever, &error);
-    assert(error == NULL);
+    memcpy(retriever_ctx->blockmap_group_cache,
+           headerp->blockmap_page_group_index,
+           sizeof(retriever_ctx->block_numbers_cache));
+    retriever_ctx->header_page_under_wal = NULL;
 
     usearch_mem = headerp->usearch_header;
     // this reserves memory for internal structures,
@@ -99,12 +102,9 @@ void ldb_amendscan(IndexScanDesc scan)
 {
     HnswScanState *scanstate = (HnswScanState *)scan->opaque;
 
-    /* Release pin */
-    // if (BufferIsValid(scanstate->buf))
-    // 	ReleaseBuffer(scanstate->buf);
-
-    // pairingheap_free(scanstate->listQueue);
-    // tuplesort_end(scanstate->sortstate);
+    // todo:: once VACUUM/DELETE are implemented, during scan we need to hold a pin
+    //  on the buffer we have last returned.
+    //  make sure to release that pin here
 
 #ifdef LANTERN_USE_LIBHNSW
     if(scanstate->hnsw) hnsw_destroy(scanstate->hnsw);
@@ -113,7 +113,7 @@ void ldb_amendscan(IndexScanDesc scan)
     if(scanstate->usearch_index) {
         usearch_error_t error = NULL;
         usearch_free(scanstate->usearch_index, &error);
-        ldb_wal_retriever_area_free();
+        ldb_wal_retriever_area_fini(scanstate->retriever_ctx);
         assert(error == NULL);
     }
 #else
@@ -200,7 +200,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         // hnsw_search(scanstate->hnsw, vec->x, k, &num_returned, scanstate->distances, scanstate->labels);
         num_returned = usearch_search(
             scanstate->usearch_index, vec->x, usearch_scalar_f32_k, k, scanstate->labels, scanstate->distances, &error);
-        ldb_wal_retriever_area_reset();
+        ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);
 
         scanstate->count = num_returned;
         scanstate->current = 0;

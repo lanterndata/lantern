@@ -23,6 +23,7 @@ option(DEV "Developer mode: provide code formatting, get postgres source, etc." 
 option(BUILD_WITH_USEARCH "Build with usearch as hnsw provider" ON)
 option(BUILD_LIBHNSW "Build libhnsw as hnsw provider" OFF)
 option(CODECOVERAGE "Enable code coverage for the build" OFF)
+option(BENCH "Enable benchmarking" OFF)
 
 if(CODECOVERAGE)
   message(STATUS "Code coverage is enabled.")
@@ -36,6 +37,11 @@ if(CODECOVERAGE)
   add_compile_definitions(NDEBUG)
   add_link_options(--coverage)
 endif(CODECOVERAGE)
+
+if (BENCH)
+  message(STATUS "Benchmarking is enabled.")
+  add_compile_definitions(LANTERN_BENCH)
+endif()
 
 # options passed into lanterndb sourcecode
 # todo:: tests for copynodes=ON are broken
@@ -144,13 +150,12 @@ add_custom_target(phony_always_runs ALL DEPENDS ${CMAKE_BINARY_DIR}/${_script_fi
 set(CONTROL_TEMPLATE "${CMAKE_MODULE_PATH}/lanterndb.control.template")
 set(CONTROL_OUTPUT "${CMAKE_BINARY_DIR}/lanterndb.control")
 configure_file(${CONTROL_TEMPLATE} ${CONTROL_OUTPUT})
-set(_control_file "${CMAKE_BINARY_DIR}/lanterndb.control")
 
 
 # INSTALL
 
 install(TARGETS lanterndb LIBRARY DESTINATION ${PostgreSQL_PACKAGE_LIBRARY_DIR})
-install(FILES ${_control_file} ${CMAKE_BINARY_DIR}/${_script_file}
+install(FILES ${CONTROL_OUTPUT} ${CMAKE_BINARY_DIR}/${_script_file}
         DESTINATION ${PostgreSQL_EXTENSION_DIR})
 
 foreach(_update_file ${_update_files})
@@ -165,7 +170,7 @@ endforeach()
 add_custom_target(
   uninstall
   COMMAND ${CMAKE_COMMAND} -E remove -f
-          ${PostgreSQL_EXTENSION_DIR}/${_control_file}
+          ${PostgreSQL_EXTENSION_DIR}/${CONTROL_OUTPUT}
   COMMAND ${CMAKE_COMMAND} -E remove -f
           ${PostgreSQL_EXTENSION_DIR}/${_script_file}
   COMMAND ${CMAKE_COMMAND} -E remove -f
@@ -180,22 +185,39 @@ add_custom_target(
 
  # DEVELOPMENT
 find_program(CLANG_FORMAT NAMES clang-format)
+
+if (CLANG_FORMAT)
+  execute_process(COMMAND ${CLANG_FORMAT} --version
+  OUTPUT_VARIABLE CLANG_FORMAT_VERSION
+  OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+  string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" CLANG_FORMAT_VERSION "${CLANG_FORMAT_VERSION}")
+
+  if(CLANG_FORMAT_VERSION VERSION_LESS 14)
+    message(WARNING "clang-format version ${CLANG_FORMAT_VERSION} found, need at least 14")
+    set(CLANG_FORMAT OFF)
+  endif()
+endif()
+
+
 if(DEV AND NOT CLANG_FORMAT)
   message(FATAL_ERROR "clang-format not found!")
 endif()
 
 if (CLANG_FORMAT)
+  file(GLOB CLANG_FORMATTABLE_FILES "${SOURCES}" "${SOURCES_DIR}/**/*.h" "${SOURCES_DIR}/*.h")
+
   # Add format target
   add_custom_target(
     format
-    COMMAND ${CLANG_FORMAT} -i ${SOURCES}
+    COMMAND ${CLANG_FORMAT} -i ${CLANG_FORMATTABLE_FILES}
     COMMENT "Formatting code with clang-format"
     VERBATIM
   )
   # Add format check target
   add_custom_target(
     format_check
-    COMMAND ${CLANG_FORMAT} --dry-run -Werror ${SOURCES} 
+    COMMAND ${CLANG_FORMAT} --dry-run -Werror ${CLANG_FORMATTABLE_FILES} 
     COMMENT "Checking code formatting with clang-format"
     VERBATIM
   )

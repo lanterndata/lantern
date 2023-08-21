@@ -15,7 +15,7 @@ for f in $(find "${SOURCE_DIR}/sql/updates/" -name "*.sql"); do
     cp $f ${BUILD_DIR}/${PACKAGE_NAME}/src/${dest_filename}
 done
 
-cp ${SOURCE_DIR}/lanterndb.control ${BUILD_DIR}/${PACKAGE_NAME}/src
+cp ${BUILD_DIR}/lanterndb.control ${BUILD_DIR}/${PACKAGE_NAME}/src
 
 cd ${BUILD_DIR} && tar cf ${PACKAGE_NAME}.tar ${PACKAGE_NAME}
 rm -rf ${BUILD_DIR}/${PACKAGE_NAME}

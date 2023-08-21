@@ -9,9 +9,9 @@ It provides a new index type for vector columns called `hnsw` which speeds up `O
 
 ## Quickstart
 
-Note: Currently LanternDB depends on [pgvector](https://github.com/pgvector/pgvector) for the `vector` data type. You'll need to manually install pgvector before moving to the next step.
+### Building and Installing LanternDB
 
-LanternDB builds and uses [usearch](https://github.com/unum-cloud/usearch) for its single-header state of the art HNSW implementation.
+LanternDB builds and uses [usearch](https://github.com/unum-cloud/usearch) for its single-header state-of-the-art HNSW implementation.
 
 To build and install LanternDB:
 
@@ -38,33 +38,32 @@ To install on M1 macs, replace `cmake ..` from the above with `cmake -DUSEARCH_N
 
 ## Using LanternDB
 
-Run the following to enable lanterndb:
+1. Run the following SQL command to enable lanterndb:
 
 ```sql
 CREATE EXTENSION lanterndb;
 ```
 
-Then, you can create a table with a vector column and populate it with data.
+2. Create a table with a vector column and populate it with data.
 
 ```sql
-
 CREATE TABLE small_world (
     id varchar(3),
     vector real[]
 );
 
 INSERT INTO small_world (id, vector) VALUES
-('000', '[0,0,0]'),
-('001', '[0,0,1]'),
-('010', '[0,1,0]'),
-('011', '[0,1,1]'),
-('100', '[1,0,0]'),
-('101', '[1,0,1]'),
-('110', '[1,1,0]'),
-('111', '[1,1,1]');
+('000', '{0,0,0}'),
+('001', '{0,0,1}'),
+('010', '{0,1,0}'),
+('011', '{0,1,1}'),
+('100', '{1,0,0}'),
+('101', '{1,0,1}'),
+('110', '{1,1,0}'),
+('111', '{1,1,1}');
 ```
 
-Then, create an `hnsw` index on the table.
+3. Create an `hnsw` index on the table.
 
 ```sql
 -- create index with default parameters
@@ -73,7 +72,7 @@ CREATE INDEX ON small_world USING hnsw (vector);
 -- CREATE INDEX ON small_world USING hnsw (vector) WITH (M=2, ef_construction=10, ef=4, dims=3);
 ```
 
-Leverage the index in queries like:
+4. Leverage the index in queries like:
 
 ```sql
 SELECT id, ROUND(l2sq_dist(vector, array[0,0,0])::numeric, 2) as dist
@@ -81,14 +80,14 @@ FROM small_world
 ORDER BY vector <-> array[0,0,0] LIMIT 5;
 ```
 
-### A note on index construction parameters
+### A Note on Index Construction Parameters
 
 The `M`, `ef`, and `efConstruction` parameters control the tradeoffs of the HNSW algorithm.
 In general, lower `M` and `efConstruction` speed up index creation at the cost of recall.
 Lower `M` and `ef` improve search speed and result in fewer shared buffer hits at the cost of recall.
 Tuning these parameters will require experimentation for your specific use case. An upcoming LanternDB release will include an optional auto-tuning index.
 
-### A note on performnace
+### A Note on Performance
 
 LanternDB's `hnsw` enables search latency similar to pgvector's `ivfflat` and is faster than `ivfflat` under certain construction parameters. LanternDB enables higher search throughput on the same hardware since the HNSW algorithm requires fewer distance comparisons than the IVF algorithm, leading to less CPU usage per search.
 

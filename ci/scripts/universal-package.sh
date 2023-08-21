@@ -34,6 +34,19 @@ for f in $(find "." -name "*.tar"); do
     cp $current_archive_name/src/*.so $current_dest_folder/
 done
 
+if [ ! -z "$PACKAGE_EXTRAS" ]
+then
+    EXTRAS_REPO=lanterndata/lanterndb_extras
+    EXTRAS_TAG_NAME=$(gh release list --repo $EXTRAS_REPO | head -n 1 |  awk '{print $3}')
+    if [ ! -z "$EXTRAS_TAG_NAME" ]
+    then
+      gh release download --repo $EXTRAS_REPO $EXTRAS_TAG_NAME
+      tar xf lanterndb-extras-*.tar && rm -f lanterndb-extras-*.tar && mv lanterndb-extras* $OUTPUT_DIR
+    else
+        echo "No release tag found for lanterndb_extras package"
+    fi
+fi
+
 cd /tmp && tar cf ${PACKAGE_NAME}.tar $PACKAGE_NAME
 echo "package_name=${PACKAGE_NAME}.tar" >> $GITHUB_OUTPUT
 echo "package_path=/tmp/${PACKAGE_NAME}.tar" >> $GITHUB_OUTPUT

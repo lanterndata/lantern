@@ -1,6 +1,4 @@
-#include "postgres.h"
-
-#include "hnsw.h"
+#include <postgres.h>
 
 #include <access/amapi.h>
 #include <catalog/catalog.h>
@@ -13,6 +11,7 @@
 #include <utils/selfuncs.h>
 #include <utils/spccache.h>
 
+#include "hnsw.h"
 #include "hnsw/build.h"
 #include "hnsw/delete.h"
 #include "hnsw/insert.h"
@@ -20,6 +19,8 @@
 #include "hnsw/scan.h"
 #include "hnsw/vector.h"
 #include "usearch.h"
+
+PG_MODULE_MAGIC;
 
 #if PG_VERSION_NUM >= 120000
 #include "commands/progress.h"
