@@ -369,12 +369,3 @@ void ldb_ambuildunlogged(Relation index)
     // todo::
     elog(ERROR, "hnsw index on unlogged tables is currently not supported");
 }
-
-/*
- * Build the index for an unlogged table from a usearch bin file
- */
-void ldb_ambuildunlogged_from_file(Relation index, char const *path)
-{
-    // todo::
-    elog(ERROR, "hnsw index on unlogged tables is currently not supported");
-}
