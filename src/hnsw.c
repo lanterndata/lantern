@@ -295,5 +295,16 @@ Datum       index_from_external(PG_FUNCTION_ARGS)
     // //     bool   is_internal,
     // //     Oid   *constraintId);
 
+    // IndexBuildResult *result;
+    // HnswBuildState    buildstate;
+
+    // BuildIndexFromFile(heap, index, indexInfo, &buildstate, MAIN_FORKNUM, path);
+
+    // result = (IndexBuildResult *)palloc(sizeof(IndexBuildResult));
+    // result->heap_tuples = buildstate.reltuples;
+    // result->index_tuples = buildstate.tuples_indexed;
+
+    // return result;
+
     PG_RETURN_BOOL(false);
 }
