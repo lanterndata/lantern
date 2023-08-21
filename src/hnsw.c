@@ -3,9 +3,13 @@
 #include "hnsw.h"
 
 #include <access/amapi.h>
+#include <catalog/catalog.h>
+#include <catalog/namespace.h>
 #include <commands/vacuum.h>
+#include <common/relpath.h>
 #include <float.h>
 #include <utils/guc.h>
+#include <utils/rel.h>
 #include <utils/selfuncs.h>
 #include <utils/spccache.h>
 
@@ -236,9 +240,54 @@ Datum       index_from_external(PG_FUNCTION_ARGS)
     char *tablename_str = PG_GETARG_CSTRING(0);
     char *index_path_str = PG_GETARG_CSTRING(1);
 
-    // TODO : Call the build function
-    bool index_created = false;
-    // bool index_created = build_index(tablename_str, index_path_str);
+    Oid table_id = RelnameGetRelid(tablename_str);
+    // if table invalid, return false
+    if(table_id == InvalidOid) {
+        PG_RETURN_BOOL(false);
+    }
 
-    PG_RETURN_BOOL(index_created);
+    Relation heapRelation = RelationIdGetRelation(table_id);
+    // if table unlogged, return false (unsupported at the moment)
+    if(RelationIsLogicallyLogged(heapRelation)) {
+        PG_RETURN_BOOL(false);
+    }
+
+    // Set column name
+    char *indexRelationName = "hnsw";
+
+    // Create empty indexInfo to store incoming index info
+    IndexInfo *indexInfo;
+
+    // Create single node list for column name
+    List *list;
+    list = lappend(list, CStringGetDatum("hnsw"));
+
+    // // TODO : Call the build function
+    // // bool index_created = index_create(tablename_str, index_path_str);
+    // //
+    // index_create(
+    //     heapRelation, indexRelationName, InvalidOid, InvalidOid, InvalidOid, InvalidRelFileNumber, indexInfo, );
+
+    // // Oid index_create(
+    // //     // heapRelation,
+    // //     // indexRelationName,
+    // //     // indexRelationId,
+    // //     // parentIndexRelid,
+    // //     // parentConstraintId,
+    // //     // RelFileNumber relFileNumber,
+    // //     // IndexInfo* indexInfo,
+    // //     // List* indexColNames,
+    // //     Oid accessMethodObjectId,
+    // //     Oid tableSpaceId,
+    // //     Oid * collationObjectId,
+    // //     Oid * classObjectId,
+    // //     int16 * coloptions,
+    // //     Datum  reloptions,
+    // //     bits16 flags,
+    // //     bits16 constr_flags,
+    // //     bool   allow_system_table_mods,
+    // //     bool   is_internal,
+    // //     Oid   *constraintId);
+
+    PG_RETURN_BOOL(false);
 }
