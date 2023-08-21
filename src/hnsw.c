@@ -1,5 +1,7 @@
 #include <postgres.h>
 
+#include "hnsw.h"
+
 #include <access/amapi.h>
 #include <catalog/catalog.h>
 #include <catalog/namespace.h>
@@ -11,7 +13,6 @@
 #include <utils/selfuncs.h>
 #include <utils/spccache.h>
 
-#include "hnsw.h"
 #include "hnsw/build.h"
 #include "hnsw/delete.h"
 #include "hnsw/insert.h"
@@ -254,7 +255,7 @@ Datum       index_from_external(PG_FUNCTION_ARGS)
     }
 
     // Set column name
-    char *indexRelationName = "hnsw";
+    char *indexRelationName = tablename_str + "_vector_idx";
 
     // Create empty indexInfo to store incoming index info
     IndexInfo *indexInfo;
