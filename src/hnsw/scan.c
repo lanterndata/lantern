@@ -113,7 +113,7 @@ void ldb_amendscan(IndexScanDesc scan)
     if(scanstate->usearch_index) {
         usearch_error_t error = NULL;
         usearch_free(scanstate->usearch_index, &error);
-        ldb_wal_retriever_area_free(scanstate->retriever_ctx);
+        ldb_wal_retriever_area_fini(scanstate->retriever_ctx);
         assert(error == NULL);
     }
 #else
