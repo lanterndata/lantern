@@ -1,11 +1,19 @@
 cmake_minimum_required(VERSION 3.3)
 
+# -----------------------------------------------------------------------------
+# Project Info
+# -----------------------------------------------------------------------------
+
 set(LANTERNDB_VERSION 0.0.3)
 
 project(
   LanternDB
   VERSION ${LANTERNDB_VERSION}
   LANGUAGES C CXX)
+
+# -----------------------------------------------------------------------------
+# Policies
+# -----------------------------------------------------------------------------
 
 if (POLICY CMP0074)
   # us <PackageName>_ROOT variables from inside find_package calls
@@ -18,65 +26,123 @@ if(POLICY CMP0077)
   cmake_policy(SET CMP0077 NEW)
 endif()
 
-# OPTIONS
+# -----------------------------------------------------------------------------
+# Options
+# -----------------------------------------------------------------------------
+
 option(DEV "Developer mode: provide code formatting, get postgres source, etc." OFF)
+
 option(BUILD_WITH_USEARCH "Build with usearch as hnsw provider" ON)
+
 option(BUILD_LIBHNSW "Build libhnsw as hnsw provider" OFF)
+
 option(CODECOVERAGE "Enable code coverage for the build" OFF)
+
 option(BENCH "Enable benchmarking" OFF)
 
+# options passed into lanterndb sourcecode
+# todo:: tests for copynodes=ON are broken
+option(LANTERNDB_COPYNODES "Copy postgres index tuples for external retriever during scan instead of pinning" OFF)
+
+# -----------------------------------------------------------------------------
+# Code Coverage
+# -----------------------------------------------------------------------------
+
 if(CODECOVERAGE)
+
   message(STATUS "Code coverage is enabled.")
+
   # Note that --coverage is synonym for the necessary compiler and linker flags
   # for the given compiler.  For example, with GCC, --coverage translates to
   # -fprofile-arcs -ftest-coverage when compiling and -lgcov when linking
   add_compile_options(--coverage -O0)
+
   # add NDEBUG to make sure asserts compile to a NOOP and do not negatively impact
   # code coverage. Asserts check invariants but since 'assert' is defined as a macro-condition,
   # codecov always considers it partially covered.
   add_compile_definitions(NDEBUG)
+
   add_link_options(--coverage)
+
 endif(CODECOVERAGE)
+
+# -----------------------------------------------------------------------------
+# Benchmarking
+# -----------------------------------------------------------------------------
 
 if (BENCH)
   message(STATUS "Benchmarking is enabled.")
   add_compile_definitions(LANTERN_BENCH)
 endif()
 
-# options passed into lanterndb sourcecode
-# todo:: tests for copynodes=ON are broken
-option(LANTERNDB_COPYNODES "Copy postgres index tuples for external retriever during scan instead of pinning" OFF)
+add_custom_target(
+  bench
+  COMMAND ${CMAKE_SOURCE_DIR}/scripts/bench.sh
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+# -----------------------------------------------------------------------------
+# Compiler flags
+# -----------------------------------------------------------------------------
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 
 message(STATUS "${CMAKE_COLOR_GREEN}Build type: ${CMAKE_BUILD_TYPE}${CMAKE_COLOR_RESET}")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
-find_package(PostgreSQL REQUIRED)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+# -----------------------------------------------------------------------------
+# Dependencies
+# -----------------------------------------------------------------------------
+
+find_package(PostgreSQL REQUIRED)
+
+# -----------------------------------------------------------------------------
+# Source files
+# -----------------------------------------------------------------------------
+
 set(SOURCES_DIR "src")
+
 # todo:: list out all the files instead of glob
 file(GLOB SOURCES "${SOURCES_DIR}/**/*.c" "${SOURCES_DIR}/*.c")
 
+# -----------------------------------------------------------------------------
+# USearch
+# -----------------------------------------------------------------------------
+
 set(USEARCH_USE_SIMSIMD OFF)
+
 set(USEARCH_LOOKUP_LABEL OFF)
+
 set(USEARCH_BUILD_STATIC ON)
+
 # do not add asan flags to usearch debug build of the library since
 # we still have not figured out how to load those into postgres
 set(USEARCH_DEBUG_BUILD_ASAN OFF)
+
 # the var below can be used to skip -march=native in the usearch build
 # which causes issues when built from docker on m1 macs
 # set(USEARCH_NO_MARCH_NATIVE OFF)
 set(USEARCH_BUILD_TEST OFF)
+
 set(USEARCH_BUILD_BENCHMARK OFF)
+
 add_subdirectory("./third_party/usearch/c")
+
+# -----------------------------------------------------------------------------
+# LanternDB module creation
+# -----------------------------------------------------------------------------
 
 # ADD LanternDB! Let there be light!
 add_library(lanterndb MODULE ${SOURCES})
+
+# -----------------------------------------------------------------------------
+# PostgreSQL extension packaging
+# -----------------------------------------------------------------------------
 
 # Add postgres extension packaging rules
 target_include_directories(
@@ -101,7 +167,9 @@ set_target_properties(
              LINK_FLAGS "${_link_flags}"
              POSITION_INDEPENDENT_CODE ON)
 
-# THIRD PARTY LIBRARIES
+# -----------------------------------------------------------------------------
+# Third party libraries
+# -----------------------------------------------------------------------------
 
 # needed to make sure cmake does not add libstdc++ to the linker command when an
 # external cpp library is added more at`
@@ -115,23 +183,29 @@ if(NOT APPLE)
   set(CMAKE_CXX_IMPLICIT_LINK_LIBRARIES "")
   set(CMAKE_CXX_IMPLICIT_LINK_DIRECTORIES "")
 endif()
+
 set_target_properties(lanterndb PROPERTIES LINKER_LANGUAGE C)
 
 target_include_directories(lanterndb PRIVATE "./third_party/usearch/c")
+
 target_link_directories(lanterndb PRIVATE "./src")
+
 if (${BUILD_WITH_USEARCH})
   target_link_libraries(lanterndb PRIVATE usearch_c)
   target_compile_definitions(lanterndb PRIVATE LANTERN_USE_USEARCH)
 endif()
+
 if (${BUILD_WITH_LIBHNSW})
   target_link_libraries(lanterndb PRIVATE hnsw)
   target_compile_definitions(lanterndb PRIVATE LANTERN_USE_LIBHNSW)
 endif()
+
 if (${LANTERNDB_COPYNODES})
   target_compile_definitions(lanterndb PRIVATE LANTERNDB_COPYNODES)
 endif()
 
 set(_script_file "lanterndb--${LANTERNDB_VERSION}.sql")
+
 set (_update_files
   sql/updates/0.0.1--0.0.2.sql
   sql/updates/0.0.2--0.0.3.sql)
@@ -145,16 +219,17 @@ add_custom_command(
 
 add_custom_target(phony_always_runs ALL DEPENDS ${CMAKE_BINARY_DIR}/${_script_file})
 
-
 # AUTO-GENERATE lanterndb.control file for PostgreSQL
 set(CONTROL_TEMPLATE "${CMAKE_MODULE_PATH}/lanterndb.control.template")
 set(CONTROL_OUTPUT "${CMAKE_BINARY_DIR}/lanterndb.control")
 configure_file(${CONTROL_TEMPLATE} ${CONTROL_OUTPUT})
 
-
-# INSTALL
+# -----------------------------------------------------------------------------
+# Install
+# -----------------------------------------------------------------------------
 
 install(TARGETS lanterndb LIBRARY DESTINATION ${PostgreSQL_PACKAGE_LIBRARY_DIR})
+
 install(FILES ${CONTROL_OUTPUT} ${CMAKE_BINARY_DIR}/${_script_file}
         DESTINATION ${PostgreSQL_EXTENSION_DIR})
 
@@ -166,7 +241,10 @@ endforeach()
 # todo:: add llvm bytecode generation for postgres optimizations (see how the
 # canonical extension building infra extension does it)
 
-# UNINSTALL
+# -----------------------------------------------------------------------------
+# Uninstall
+# -----------------------------------------------------------------------------
+
 add_custom_target(
   uninstall
   COMMAND ${CMAKE_COMMAND} -E remove -f
@@ -176,14 +254,20 @@ add_custom_target(
   COMMAND ${CMAKE_COMMAND} -E remove -f
           ${PostgreSQL_PACKAGE_LIBRARY_DIR}/lanterndb.so)
 
-# TEST
+# -----------------------------------------------------------------------------
+# Test
+# -----------------------------------------------------------------------------
+
 add_custom_target(
   test
   COMMAND ${CMAKE_SOURCE_DIR}/scripts/run_all_tests.sh
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/test
- )
+)
 
- # DEVELOPMENT
+# -----------------------------------------------------------------------------
+# Development
+# -----------------------------------------------------------------------------
+
 find_program(CLANG_FORMAT NAMES clang-format)
 
 if (CLANG_FORMAT)
@@ -198,7 +282,6 @@ if (CLANG_FORMAT)
     set(CLANG_FORMAT OFF)
   endif()
 endif()
-
 
 if(DEV AND NOT CLANG_FORMAT)
   message(FATAL_ERROR "clang-format not found!")
@@ -223,11 +306,9 @@ if (CLANG_FORMAT)
   )
 endif()
 
-add_custom_target(
-  bench
-  COMMAND ${CMAKE_SOURCE_DIR}/scripts/bench.sh
-  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
- )
+# -----------------------------------------------------------------------------
+# Packaging
+# -----------------------------------------------------------------------------
 
 # Package universal install script
 string(REGEX MATCH "^PostgreSQL (\[0-9]+).*"
