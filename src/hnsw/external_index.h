@@ -74,7 +74,7 @@ typedef struct
     Relation index_rel;
 
     // used for scans
-    uint32 blockmap_group_cache[ HNSW_MAX_BLOCKMAP_GROUPS ];  // todo::
+    uint32 blockmap_page_group_index_cache[ HNSW_MAX_BLOCKMAP_GROUPS ];  // todo::
     // used for inserts
     HnswIndexHeaderPage *header_page_under_wal;
 
