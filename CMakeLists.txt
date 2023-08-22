@@ -31,13 +31,9 @@ endif()
 # -----------------------------------------------------------------------------
 
 option(DEV "Developer mode: provide code formatting, get postgres source, etc." OFF)
-
 option(BUILD_WITH_USEARCH "Build with usearch as hnsw provider" ON)
-
 option(BUILD_LIBHNSW "Build libhnsw as hnsw provider" OFF)
-
 option(CODECOVERAGE "Enable code coverage for the build" OFF)
-
 option(BENCH "Enable benchmarking" OFF)
 
 # options passed into lanterndb sourcecode
@@ -49,21 +45,16 @@ option(LANTERNDB_COPYNODES "Copy postgres index tuples for external retriever du
 # -----------------------------------------------------------------------------
 
 if(CODECOVERAGE)
-
   message(STATUS "Code coverage is enabled.")
-
   # Note that --coverage is synonym for the necessary compiler and linker flags
   # for the given compiler.  For example, with GCC, --coverage translates to
   # -fprofile-arcs -ftest-coverage when compiling and -lgcov when linking
   add_compile_options(--coverage -O0)
-
   # add NDEBUG to make sure asserts compile to a NOOP and do not negatively impact
   # code coverage. Asserts check invariants but since 'assert' is defined as a macro-condition,
   # codecov always considers it partially covered.
   add_compile_definitions(NDEBUG)
-
   add_link_options(--coverage)
-
 endif(CODECOVERAGE)
 
 # -----------------------------------------------------------------------------
@@ -86,13 +77,9 @@ add_custom_target(
 # -----------------------------------------------------------------------------
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
-
 message(STATUS "${CMAKE_COLOR_GREEN}Build type: ${CMAKE_BUILD_TYPE}${CMAKE_COLOR_RESET}")
-
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # -----------------------------------------------------------------------------
@@ -106,7 +93,6 @@ find_package(PostgreSQL REQUIRED)
 # -----------------------------------------------------------------------------
 
 set(SOURCES_DIR "src")
-
 # todo:: list out all the files instead of glob
 file(GLOB SOURCES "${SOURCES_DIR}/**/*.c" "${SOURCES_DIR}/*.c")
 
@@ -115,22 +101,16 @@ file(GLOB SOURCES "${SOURCES_DIR}/**/*.c" "${SOURCES_DIR}/*.c")
 # -----------------------------------------------------------------------------
 
 set(USEARCH_USE_SIMSIMD OFF)
-
 set(USEARCH_LOOKUP_LABEL OFF)
-
 set(USEARCH_BUILD_STATIC ON)
-
 # do not add asan flags to usearch debug build of the library since
 # we still have not figured out how to load those into postgres
 set(USEARCH_DEBUG_BUILD_ASAN OFF)
-
 # the var below can be used to skip -march=native in the usearch build
 # which causes issues when built from docker on m1 macs
 # set(USEARCH_NO_MARCH_NATIVE OFF)
 set(USEARCH_BUILD_TEST OFF)
-
 set(USEARCH_BUILD_BENCHMARK OFF)
-
 add_subdirectory("./third_party/usearch/c")
 
 # -----------------------------------------------------------------------------
@@ -159,7 +139,6 @@ endforeach()
 if(APPLE)
   set(_link_flags "${_link_flags} -bundle_loader ${PG_BINARY}")
 endif()
-
 
 set_target_properties(
   lanterndb
@@ -307,11 +286,9 @@ if (CLANG_FORMAT)
 endif()
 
 file(GLOB_RECURSE SQL_FILES ${CMAKE_SOURCE_DIR}/*.sql)
-
 add_custom_target(format-sql
   COMMENT "Formatting all SQL files using pgFormatter"
 )
-
 foreach(SQL_FILE ${SQL_FILES})
   add_custom_command(TARGET format-sql
     PRE_BUILD
