@@ -7,6 +7,7 @@
 #include <catalog/catalog.h>
 #include <catalog/index.h>
 #include <catalog/namespace.h>
+#include <catalog/pg_tablespace.h>
 #include <commands/defrem.h>
 #include <commands/tablespace.h>
 #include <commands/vacuum.h>
@@ -261,8 +262,10 @@ static void create_index_from_file(const char *tablename_str, const char *index_
 
     // Open the heap relation
     Relation heapRelation = table_open(table_id, AccessShareLock);
+    Oid      relation_oid = RelationGetRelid(heapRelation);
+    elog(INFO, "Relation OID: %u", relation_oid);
 
-    // TODO: Check if table is unlogged (unsupported at the moment)
+    // TODO: Check if table is unlogged (supported at the moment)
     // if(!RelationIsLogicallyLogged(heapRelation)) {
     //     ereport(ERROR,
     //             (errmsg("Table %s is unlogged. HNSW index on unlogged tables is not supported.",
@@ -310,31 +313,36 @@ static void create_index_from_file(const char *tablename_str, const char *index_
 
     elog(INFO, "accessMethodObjectId: %u", accessMethodObjectId);
 
-    //     // Get tableSpaceId
-    //     char *spcname = GetConfigOptionByName("tablespace", NULL, false);
-    //     Oid   tableSpaceId = get_tablespace_oid(spcname, false);
+    // Get tableSpaceId
+    bool partitioned = heapRelation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE;
+    Oid  tableSpaceId = get_rel_tablespace(table_id);
+    if(tableSpaceId == InvalidOid) {
+        tableSpaceId = GetDefaultTablespace(heapRelation->rd_rel->relpersistence, partitioned);
+    }
 
-    //     // Create the index
-    //     Oid newIndexId = index_create(heapRelation,             // Relation heapRelation
-    //                                   indexRelationName,        // const char *indexRelationName
-    //                                   InvalidOid,               // Oid indexRelationId
-    //                                   InvalidOid,               // Oid parentIndexRelid
-    //                                   InvalidOid,               // Oid parentConstraintId
-    //                                   InvalidOid,               // Oid relFileNode,
-    //                                   indexInfo,                // IndexInfo* indexInfo
-    //                                   indexColNames,            // List* indexColNames
-    //                                   accessMethodObjectId,     // Oid accessMethodObjectId,
-    //                                   tableSpaceId,             // Oid tableSpaceId,
-    //                                   NULL,                     // Oid * collationObjectId,
-    //                                   NULL,                     // Oid * classObjectId,
-    //                                   NULL,                     // int16 * coloptions,
-    //                                   PointerGetDatum(NULL),    // Datum  reloptions,
-    //                                   INDEX_CREATE_SKIP_BUILD,  // bits16 flags,
-    //                                   0,                        // bits16 constr_flags
-    //                                   false,                    // bool   allow_system_table_mods
-    //                                   false,                    // bool   is_internal,
-    //                                   InvalidOid                // Oid   *constraintId
-    //     );
+    elog(INFO, "tableSpaceId: %u", tableSpaceId);
+
+    // // Create the index
+    // Oid newIndexId = index_create(heapRelation,             // Relation heapRelation
+    //                               indexRelationName,        // const char *indexRelationName
+    //                               InvalidOid,               // Oid indexRelationId
+    //                               InvalidOid,               // Oid parentIndexRelid
+    //                               InvalidOid,               // Oid parentConstraintId
+    //                               InvalidOid,               // Oid relFileNode,
+    //                               indexInfo,                // IndexInfo* indexInfo
+    //                               indexColNames,            // List* indexColNames
+    //                               accessMethodObjectId,     // Oid accessMethodObjectId,
+    //                               tableSpaceId,             // Oid tableSpaceId,
+    //                               NULL,                     // Oid * collationObjectId,
+    //                               NULL,                     // Oid * classObjectId,
+    //                               NULL,                     // int16 * coloptions,
+    //                               PointerGetDatum(NULL),    // Datum  reloptions,
+    //                               INDEX_CREATE_SKIP_BUILD,  // bits16 flags,
+    //                               0,                        // bits16 constr_flags
+    //                               false,                    // bool   allow_system_table_mods
+    //                               false,                    // bool   is_internal,
+    //                               InvalidOid                // Oid   *constraintId
+    // );
 
     //     // Open the newly created index relation
     //     Relation indexRelation = index_open(newIndexId, AccessShareLock);  // Use appropriate lock
@@ -348,7 +356,7 @@ static void create_index_from_file(const char *tablename_str, const char *index_
 
     //     // Close the relations
     //     index_close(indexRelation, NoLock);
-    //     table_close(heapRelation, NoLock);
+    table_close(heapRelation, NoLock);
 }
 
 PGDLLEXPORT PG_FUNCTION_INFO_V1(ldb_generic_dist);
