@@ -550,13 +550,11 @@ BlockNumber getDataBlockNumber(RetrieverCtx *ctx, int id, bool add_to_extra_dirt
 
     // it is necessary to first check the extra dirtied pages for the blockmap page, in case we are in the
     // middle of an insert and the insert operation has the block we need under a lock
-    // if this is th elast page and blocknos is not filled up, only read the part that is filled up
-    // todo:: when we are adding vectors, this does not take into account that the blockmap now has soft-length
-    // of num_vectors + 1
     page = extra_dirtied_get(ctx->extra_dirted, blockmapno, NULL);
     if(page == NULL) {
         buf = ReadBufferExtended(ctx->index_rel, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
-        LockBuffer(buf, BUFFER_LOCK_SHARE);
+        const int mode = add_to_extra_dirtied ? BUFFER_LOCK_EXCLUSIVE : BUFFER_LOCK_SHARE;
+        LockBuffer(buf, mode);
         page = BufferGetPage(buf);
         if(add_to_extra_dirtied) {
             extra_dirtied_add(ctx->extra_dirted, blockmapno, buf, page);
@@ -658,7 +656,7 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, int id)
     page = extra_dirtied_get(ctx->extra_dirted, data_block_no, NULL);
     if(page == NULL) {
         buf = ReadBufferExtended(ctx->index_rel, MAIN_FORKNUM, data_block_no, RBM_NORMAL, NULL);
-        LockBuffer(buf, BUFFER_LOCK_SHARE);
+        LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
         // todo:: has to be under WAL!!
         page = BufferGetPage(buf);
         extra_dirtied_add(ctx->extra_dirted, data_block_no, buf, page);
