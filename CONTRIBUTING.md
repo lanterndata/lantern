@@ -36,6 +36,7 @@ to a newer version of the extension via `ALTER EXTENSION lanterndb UPDATE`.
 
 ## Browsing the Postgres repository offline
 
-For whatever reason, you may find it useful to clone postgres offline for aiding your development. Postgres repo is huge and you don't necessarily need to clone the entire thing(this makes git slower to clone and update). One method to do it, which clones only the last commit, and ONLY clones the branch of the release you want:
+You can download PostgreSQL source code from [their ftp server](https://www.postgresql.org/ftp/source/). Alternatively, can clone their GitHub repository. 
+Note: Postgres repo is huge. If you do not intend to make changes to postgres itself, it may be better to download only the latest commit and only the relevant release branch of the repo via the following command:
 
 ```git clone --single-branch --branch REL_15_STABLE https://github.com/postgres/postgres.git --depth=1```
