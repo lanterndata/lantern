@@ -249,8 +249,9 @@ static void BuildIndex(
     elog(INFO, "inserted %ld elements", usearch_size(buildstate->usearch_index, &error));
     assert(error == NULL);
 
-    char *result_buf = NULL;
-    usearch_save(buildstate->usearch_index, NULL, &result_buf, &error);
+    char       *result_buf = NULL;
+    const char *savepath = "usearch_save.bin";
+    usearch_save(buildstate->usearch_index, savepath, &result_buf, &error);
     assert(error == NULL && result_buf != NULL);
 
     size_t num_added_vectors = usearch_size(buildstate->usearch_index, &error);
@@ -276,12 +277,12 @@ static void BuildIndex(
 /*
  * Load index from a file
  */
-static void BuildIndexFromFile(Relation        heap,
-                               Relation        index,
-                               IndexInfo      *indexInfo,
-                               HnswBuildState *buildstate,
-                               ForkNumber      forkNum,
-                               char const     *path)
+void BuildIndexFromFile(Relation        heap,
+                        Relation        index,
+                        IndexInfo      *indexInfo,
+                        HnswBuildState *buildstate,
+                        ForkNumber      forkNum,
+                        char const     *path)
 {
     usearch_init_options_t opts;
     usearch_error_t        error = NULL;

@@ -2,6 +2,7 @@
 #define LDB_HNSW_BUILD_H
 
 #include <access/genam.h>
+#include <common/relpath.h>
 #include <nodes/execnodes.h>
 #include <utils/relcache.h>
 
@@ -40,6 +41,12 @@ typedef enum
 
 IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInfo);
 void              ldb_ambuildunlogged(Relation index);
+void              BuildIndexFromFile(Relation        heap,
+                                     Relation        index,
+                                     IndexInfo      *indexInfo,
+                                     HnswBuildState *buildstate,
+                                     ForkNumber      forkNum,
+                                     char const     *path);
 HnswDataType      GetIndexDataType(Relation index);
 int               GetHnswIndexDimensions(Relation index);
 void              CheckHnswIndexDimensions(Relation index, Datum arrayDatum, int deimensions);
