@@ -12,6 +12,7 @@
 #include <commands/vacuum.h>
 #include <common/relpath.h>
 #include <float.h>
+#include <utils/builtins.h>
 #include <utils/guc.h>
 #include <utils/rel.h>
 #include <utils/selfuncs.h>
@@ -250,8 +251,8 @@ static void create_index_from_file(const char *tablename_str, const char *index_
     indexInfo->ii_NullsNotDistinct = false;
     indexInfo->ii_ReadyForInserts = true;
     indexInfo->ii_CheckedUnchanged = false;
-#endif
     indexInfo->ii_IndexUnchanged = false;
+#endif
     indexInfo->ii_Concurrent = false;
     indexInfo->ii_BrokenHotChain = false;
     indexInfo->ii_ParallelWorkers = 0;
@@ -341,8 +342,8 @@ Datum       vector_l2sq_dist(PG_FUNCTION_ARGS)
 PGDLLEXPORT PG_FUNCTION_INFO_V1(index_from_external);
 Datum       index_from_external(PG_FUNCTION_ARGS)
 {
-    char *tablename_str = PG_GETARG_CSTRING(0);
-    char *index_path_str = PG_GETARG_CSTRING(1);
+    char *tablename_str = text_to_cstring(PG_GETARG_TEXT_P(0));
+    char *index_path_str = text_to_cstring(PG_GETARG_TEXT_P(1));
 
     create_index_from_file(tablename_str, index_path_str);
 
