@@ -33,3 +33,10 @@ under `sql/updates`, in a file named `[CURRENT_VERSION]--latest.sql`. You should
 Note that you never modify an already existing update file that does not have `latest` in its name.
 The files that do not have `latest` in the name are part of a previous releases and help LanternDB users update
 to a newer version of the extension via `ALTER EXTENSION lanterndb UPDATE`.
+
+## Browsing the Postgres repository offline
+
+You can download PostgreSQL source code from [their ftp server](https://www.postgresql.org/ftp/source/). Alternatively, can clone their GitHub repository. 
+Note: Postgres repo is huge. If you do not intend to make changes to postgres itself, it may be better to download only the latest commit and only the relevant release branch of the repo via the following command:
+
+```git clone --single-branch --branch REL_15_STABLE https://github.com/postgres/postgres.git --depth=1```
