@@ -26,6 +26,11 @@ RUN apt update \
        wget \
        python3-pip \
        sudo \
+       # Install required packages for pgFormatter
+       perl \
+       make \
+       gcc \
+       libcgi-pm-perl \
     # Install libtmux using pip
     && pip install libtmux --break-system-packages
 
@@ -36,3 +41,12 @@ RUN rm -rf build \
     # Run cmake with specific flags and build the project
     && cmake -DUSEARCH_NO_MARCH_NATIVE=ON -DCMAKE_BUILD_TYPE=Debug .. \
     && make install
+
+# Install pgFormatter
+ARG PGFORMATTER_VERSION=5.3
+RUN wget https://github.com/darold/pgFormatter/archive/refs/tags/v${PGFORMATTER_VERSION}.tar.gz && \
+    tar xzf v${PGFORMATTER_VERSION}.tar.gz && \
+    cd pgFormatter-${PGFORMATTER_VERSION}/ && \
+    perl Makefile.PL && \
+    make && make install && \
+    cd ../ && rm -rf v${PGFORMATTER_VERSION}.tar.gz && rm -rf pgFormatter-${PGFORMATTER_VERSION}

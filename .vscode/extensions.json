@@ -1,5 +1,6 @@
 {
     "recommendations": [
         "twxs.cmake",
+        "bradymholt.pgformatter"
     ]
 }

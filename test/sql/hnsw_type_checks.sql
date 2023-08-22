@@ -4,12 +4,16 @@ CREATE TABLE small_world (
     vector real[]
 );
 
-INSERT INTO small_world (id, vector) VALUES ('001', '{0,0,0,0}');
+INSERT INTO small_world (id, vector)
+    VALUES ('001', '{0,0,0,0}');
 
-CREATE INDEX ON small_world USING hnsw (vector) WITH (dims=4);
+CREATE INDEX ON small_world USING hnsw (vector) WITH (dims = 4);
 
 -- should throw dimension error
-INSERT INTO small_world (id, vector) VALUES ('002', '{0,0,0}');
+INSERT INTO small_world (id, vector)
+    VALUES ('002', '{0,0,0}');
 
 -- should insert successfully
-INSERT INTO small_world (id, vector) VALUES ('003', '{0,0,0,0}');
+INSERT INTO small_world (id, vector)
+    VALUES ('003', '{0,0,0,0}');
+

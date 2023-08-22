@@ -306,6 +306,21 @@ if (CLANG_FORMAT)
   )
 endif()
 
+file(GLOB_RECURSE SQL_FILES ${CMAKE_SOURCE_DIR}/*.sql)
+
+add_custom_target(format-sql
+  COMMENT "Formatting all SQL files using pgFormatter"
+)
+
+foreach(SQL_FILE ${SQL_FILES})
+  add_custom_command(TARGET format-sql
+    PRE_BUILD
+    COMMAND pg_format -i ${SQL_FILE}
+    COMMENT "Formatting ${SQL_FILE}"
+    VERBATIM
+  )
+endforeach()
+
 # -----------------------------------------------------------------------------
 # Packaging
 # -----------------------------------------------------------------------------
