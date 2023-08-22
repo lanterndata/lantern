@@ -396,7 +396,6 @@ Datum       index_from_external(PG_FUNCTION_ARGS)
     char *tablename_str = text_to_cstring(tablename_text);
     char *index_path_str = text_to_cstring(index_path_text);
 
-    // Call your index creation logic here
     create_index_from_file(tablename_str, index_path_str);
 
     PG_RETURN_VOID();
