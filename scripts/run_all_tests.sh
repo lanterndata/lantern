@@ -29,15 +29,21 @@ mkdir -p $TMP_OUTDIR
 # create the folder
 if [ ! -d "$TMP_ROOT/vector_datasets" ]
 then
+    if ! command -v curl &> /dev/null; then
+	echo "ERROR: The binary curl is required for running tests to download necessary vector test files"
+	exit 1
+    fi
     mkdir -p $TMP_ROOT/vector_datasets
+    echo "Downloading necessary vector files..."
     pushd $TMP_ROOT/vector_datasets
-        wget https://storage.googleapis.com/lanterndb/sift_base1k.csv
-        wget https://storage.googleapis.com/lanterndata/siftsmall/siftsmall_base.csv
-        wget https://storage.googleapis.com/lanterndb/tsv_wiki_sample.csv
+        curl -sSo sift_base1k.csv https://storage.googleapis.com/lanterndb/sift_base1k.csv
+        curl -sSo siftsmall_base.csv https://storage.googleapis.com/lanterndata/siftsmall/siftsmall_base.csv
+        curl -sSo tsv_wiki_sample.csv https://storage.googleapis.com/lanterndb/tsv_wiki_sample.csv
         # Convert vector to arrays to be used with real[] type
         cat sift_base1k.csv | sed -e 's/\[/{/g' | sed -e 's/\]/}/g' > sift_base1k_arrays.csv
         cat siftsmall_base.csv | sed -e 's/\[/{/g' | sed -e 's/\]/}/g' > siftsmall_base_arrays.csv
     popd
+    echo "Successfully Downloaded all necessary vector test files"
 fi
 
 
@@ -46,7 +52,7 @@ then
     SCHEDULE=schedule.txt
 else
     TEST_FILES=$(cat schedule.txt | sed -e 's/test://' | tr " " "\n" | sed -e '/^$/d')
-    
+
     rm -rf $TMP_OUTDIR/schedule.txt
     while IFS= read -r f; do
         if [[ $f == *"$FILTER"* ]]; then
@@ -54,13 +60,13 @@ else
         fi
     done <<< "$TEST_FILES"
 
-    
+
     if [ ! -f "$TMP_OUTDIR/schedule.txt" ]
     then
-        echo "No tests matches filter \"$FILTER\""
+        echo "NOTE: No tests matches filter \"$FILTER\""
         exit 0
     fi
-    
+
     SCHEDULE=$TMP_OUTDIR/schedule.txt
 fi
 
