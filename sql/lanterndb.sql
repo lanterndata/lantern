@@ -25,7 +25,7 @@ CREATE FUNCTION hamming_dist(integer[], integer[]) RETURNS integer
 	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 
 -- Define the index creation function
-CREATE FUNCTION index_from_external(tablename *text, index_path *text) RETURNS void
+CREATE FUNCTION index_from_external(tablename text, index_path text) RETURNS void
 	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 
 -- operators

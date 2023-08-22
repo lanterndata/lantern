@@ -240,113 +240,115 @@ static void create_index_from_file(const char *tablename_str, const char *index_
     char *schema_name = extract_schema_name(tablename_str);
     char *table_name = extract_table_name(tablename_str);
 
-    Oid schema_id = InvalidOid;
-    if(schema_name != NULL) {
-        schema_id = get_namespace_oid(schema_name, false);
-        if(schema_id == InvalidOid) {
-            ereport(ERROR, (errmsg("Schema %s not found", schema_name)));
-        }
-    }
+    //     Oid schema_id = InvalidOid;
+    //     if(schema_name != NULL) {
+    //         schema_id = get_namespace_oid(schema_name, false);
+    //         if(schema_id == InvalidOid) {
+    //             ereport(ERROR, (errmsg("Schema %s not found", schema_name)));
+    //         }
+    //     }
 
-    Oid table_id = InvalidOid;
-    if(schema_id != InvalidOid) {
-        // Fully qualified table name with schema
-        table_id = get_relname_relid(table_name, schema_id);
-    }
+    //     Oid table_id = InvalidOid;
+    //     if(schema_id != InvalidOid) {
+    //         // Fully qualified table name with schema
+    //         table_id = get_relname_relid(table_name, schema_id);
+    //     }
 
-    // Check if table Oid is invalid
-    if(table_id == InvalidOid) {
-        ereport(ERROR, (errmsg("Table %s not found in schema %s", tablename_str, schema_name)));
-    }
+    //     // Check if table Oid is invalid
+    //     if(table_id == InvalidOid) {
+    //         ereport(ERROR, (errmsg("Table %s not found in schema %s", tablename_str, schema_name)));
+    //     }
 
-    // Open the heap relation
-    Relation heapRelation = table_open(table_id, AccessShareLock);
+    //     // Open the heap relation
+    //     Relation heapRelation = table_open(table_id, AccessShareLock);
 
-    // TODO: Check if table is unlogged (unsupported at the moment)
-    // if(!RelationIsLogicallyLogged(heapRelation)) {
-    //     ereport(ERROR,
-    //             (errmsg("Table %s is unlogged. HNSW index on unlogged tables is not supported.", tablename_str)));
-    // }
+    //     // TODO: Check if table is unlogged (unsupported at the moment)
+    //     // if(!RelationIsLogicallyLogged(heapRelation)) {
+    //     //     ereport(ERROR,
+    //     //             (errmsg("Table %s is unlogged. HNSW index on unlogged tables is not supported.",
+    //     tablename_str)));
+    //     // }
 
-    // Create indexRelationName based on table name and column name
-    char *indexRelationName = palloc(strlen(table_name) + strlen("_hnsw_idx") + 1);
-    snprintf(indexRelationName, strlen(table_name) + strlen("_hnsw_idx") + 1, "%s_hnsw_idx", table_name);
+    //     // Create indexRelationName based on table name and column name
+    //     char *indexRelationName = palloc(strlen(table_name) + strlen("_hnsw_idx") + 1);
+    //     snprintf(indexRelationName, strlen(table_name) + strlen("_hnsw_idx") + 1, "%s_hnsw_idx", table_name);
 
-    // Create single node list for column name
-    List *indexColNames = list_make1("hnsw");
+    //     // Create single node list for column name
+    //     List *indexColNames = list_make1("hnsw");
 
-    // Get the access method OID for HNSW
-    Oid accessMethodObjectId = get_am_oid("hnsw", false);
+    //     // Get the access method OID for HNSW
+    //     Oid accessMethodObjectId = get_am_oid("hnsw", false);
 
-    // Set up the IndexInfo structure
-    IndexInfo *indexInfo = makeNode(IndexInfo);
-    indexInfo->ii_NumIndexAttrs = 1;
-    indexInfo->ii_NumIndexKeyAttrs = 1;
-    indexInfo->ii_Expressions = NIL;
-    indexInfo->ii_ExpressionsState = NIL;
-    indexInfo->ii_Predicate = NIL;
-    indexInfo->ii_PredicateState = NULL;
-    indexInfo->ii_ExclusionOps = NULL;
-    indexInfo->ii_ExclusionProcs = NULL;
-    indexInfo->ii_ExclusionStrats = NULL;
-    indexInfo->ii_OpclassOptions = NULL;
-    indexInfo->ii_Unique = false;
-#if PG_VERSION_NUM >= 150000
-    indexInfo->ii_NullsNotDistinct = false;
-    indexInfo->ii_ReadyForInserts = false;
-    indexInfo->ii_CheckedUnchanged = false;
-    indexInfo->ii_IndexUnchanged = false;
-#endif
-    indexInfo->ii_Concurrent = false;
-    indexInfo->ii_BrokenHotChain = false;
-    indexInfo->ii_ParallelWorkers = 0;
-    indexInfo->ii_Am = accessMethodObjectId;
-    indexInfo->ii_AmCache = NULL;
-    indexInfo->ii_Context = CurrentMemoryContext;
+    //     // Set up the IndexInfo structure
+    //     IndexInfo *indexInfo = makeNode(IndexInfo);
+    //     indexInfo->ii_NumIndexAttrs = 1;
+    //     indexInfo->ii_NumIndexKeyAttrs = 1;
+    //     indexInfo->ii_Expressions = NIL;
+    //     indexInfo->ii_ExpressionsState = NIL;
+    //     indexInfo->ii_Predicate = NIL;
+    //     indexInfo->ii_PredicateState = NULL;
+    //     indexInfo->ii_ExclusionOps = NULL;
+    //     indexInfo->ii_ExclusionProcs = NULL;
+    //     indexInfo->ii_ExclusionStrats = NULL;
+    //     indexInfo->ii_OpclassOptions = NULL;
+    //     indexInfo->ii_Unique = false;
+    // #if PG_VERSION_NUM >= 150000
+    //     indexInfo->ii_NullsNotDistinct = false;
+    //     indexInfo->ii_ReadyForInserts = false;
+    //     indexInfo->ii_CheckedUnchanged = false;
+    //     indexInfo->ii_IndexUnchanged = false;
+    // #endif
+    //     indexInfo->ii_Concurrent = false;
+    //     indexInfo->ii_BrokenHotChain = false;
+    //     indexInfo->ii_ParallelWorkers = 0;
+    //     indexInfo->ii_Am = accessMethodObjectId;
+    //     indexInfo->ii_AmCache = NULL;
+    //     indexInfo->ii_Context = CurrentMemoryContext;
 
-    // Set the access method for the index
-    indexInfo->ii_Am = accessMethodObjectId;
+    //     // Set the access method for the index
+    //     indexInfo->ii_Am = accessMethodObjectId;
 
-    elog(INFO, "accessMethodObjectId: %u", accessMethodObjectId);
+    //     elog(INFO, "accessMethodObjectId: %u", accessMethodObjectId);
 
-    // Get tableSpaceId
-    char *spcname = GetConfigOptionByName("tablespace", NULL, false);
-    Oid   tableSpaceId = get_tablespace_oid(spcname, false);
+    //     // Get tableSpaceId
+    //     char *spcname = GetConfigOptionByName("tablespace", NULL, false);
+    //     Oid   tableSpaceId = get_tablespace_oid(spcname, false);
 
-    // Create the index
-    Oid newIndexId = index_create(heapRelation,             // Relation heapRelation
-                                  indexRelationName,        // const char *indexRelationName
-                                  InvalidOid,               // Oid indexRelationId
-                                  InvalidOid,               // Oid parentIndexRelid
-                                  InvalidOid,               // Oid parentConstraintId
-                                  InvalidOid,               // Oid relFileNode,
-                                  indexInfo,                // IndexInfo* indexInfo
-                                  indexColNames,            // List* indexColNames
-                                  accessMethodObjectId,     // Oid accessMethodObjectId,
-                                  tableSpaceId,             // Oid tableSpaceId,
-                                  NULL,                     // Oid * collationObjectId,
-                                  NULL,                     // Oid * classObjectId,
-                                  NULL,                     // int16 * coloptions,
-                                  PointerGetDatum(NULL),    // Datum  reloptions,
-                                  INDEX_CREATE_SKIP_BUILD,  // bits16 flags,
-                                  0,                        // bits16 constr_flags
-                                  false,                    // bool   allow_system_table_mods
-                                  false,                    // bool   is_internal,
-                                  InvalidOid                // Oid   *constraintId
-    );
+    //     // Create the index
+    //     Oid newIndexId = index_create(heapRelation,             // Relation heapRelation
+    //                                   indexRelationName,        // const char *indexRelationName
+    //                                   InvalidOid,               // Oid indexRelationId
+    //                                   InvalidOid,               // Oid parentIndexRelid
+    //                                   InvalidOid,               // Oid parentConstraintId
+    //                                   InvalidOid,               // Oid relFileNode,
+    //                                   indexInfo,                // IndexInfo* indexInfo
+    //                                   indexColNames,            // List* indexColNames
+    //                                   accessMethodObjectId,     // Oid accessMethodObjectId,
+    //                                   tableSpaceId,             // Oid tableSpaceId,
+    //                                   NULL,                     // Oid * collationObjectId,
+    //                                   NULL,                     // Oid * classObjectId,
+    //                                   NULL,                     // int16 * coloptions,
+    //                                   PointerGetDatum(NULL),    // Datum  reloptions,
+    //                                   INDEX_CREATE_SKIP_BUILD,  // bits16 flags,
+    //                                   0,                        // bits16 constr_flags
+    //                                   false,                    // bool   allow_system_table_mods
+    //                                   false,                    // bool   is_internal,
+    //                                   InvalidOid                // Oid   *constraintId
+    //     );
 
-    // Open the newly created index relation
-    Relation indexRelation = index_open(newIndexId, AccessShareLock);  // Use appropriate lock leveltRelation(, false);
+    //     // Open the newly created index relation
+    //     Relation indexRelation = index_open(newIndexId, AccessShareLock);  // Use appropriate lock leveltRelation(,
+    //     false);
 
-    // Build the index from the pre-built data
-    IndexBuildResult *result;
-    HnswBuildState    buildstate;
+    //     // Build the index from the pre-built data
+    //     IndexBuildResult *result;
+    //     HnswBuildState    buildstate;
 
-    BuildIndexFromFile(heapRelation, indexRelation, indexInfo, &buildstate, MAIN_FORKNUM, index_path_str);
+    //     BuildIndexFromFile(heapRelation, indexRelation, indexInfo, &buildstate, MAIN_FORKNUM, index_path_str);
 
-    // Close the relations
-    index_close(indexRelation, NoLock);
-    table_close(heapRelation, NoLock);
+    //     // Close the relations
+    //     index_close(indexRelation, NoLock);
+    //     table_close(heapRelation, NoLock);
 }
 
 PGDLLEXPORT PG_FUNCTION_INFO_V1(ldb_generic_dist);
@@ -388,9 +390,13 @@ Datum       vector_l2sq_dist(PG_FUNCTION_ARGS)
 PGDLLEXPORT PG_FUNCTION_INFO_V1(index_from_external);
 Datum       index_from_external(PG_FUNCTION_ARGS)
 {
-    char *tablename_str = text_to_cstring(PG_GETARG_TEXT_P(0));
-    char *index_path_str = text_to_cstring(PG_GETARG_TEXT_P(1));
+    text *tablename_text = PG_GETARG_TEXT_P(0);
+    text *index_path_text = PG_GETARG_TEXT_P(1);
 
+    char *tablename_str = text_to_cstring(tablename_text);
+    char *index_path_str = text_to_cstring(index_path_text);
+
+    // Call your index creation logic here
     create_index_from_file(tablename_str, index_path_str);
 
     PG_RETURN_VOID();
