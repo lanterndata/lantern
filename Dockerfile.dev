@@ -1,22 +1,16 @@
-# Define arguments for the image
 ARG VERSION=15
 ARG IMAGE_TAG=$VERSION-bookworm
 
-# Base image
 FROM postgres:$IMAGE_TAG
 ARG VERSION
 
-# Set the working directory in the image
 WORKDIR /lanterndb
 
-# Copy the local content into the working directory
 COPY . .
 
-# Update and install necessary dependencies
 RUN apt update \
     # Fix the locales package version to prevent unexpected updates
     && apt-mark hold locales \
-    # Install required packages for build
     && apt install -y --no-install-recommends \
        build-essential \
        cmake \
@@ -26,7 +20,6 @@ RUN apt update \
        wget \
        python3-pip \
        sudo \
-    # Install libtmux using pip
     && pip install libtmux --break-system-packages \
     && ./scripts/install_pgformatter.sh
 
@@ -34,6 +27,5 @@ RUN apt update \
 RUN rm -rf build \
     && mkdir build \
     && cd build \
-    # Run cmake with specific flags and build the project
     && cmake -DUSEARCH_NO_MARCH_NATIVE=ON -DCMAKE_BUILD_TYPE=Debug .. \
     && make install
