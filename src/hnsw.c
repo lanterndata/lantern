@@ -7,12 +7,14 @@
 #include <catalog/catalog.h>
 #include <catalog/index.h>
 #include <catalog/namespace.h>
+#include <catalog/pg_attribute.h>
 #include <catalog/pg_tablespace.h>
 #include <commands/defrem.h>
 #include <commands/tablespace.h>
 #include <commands/vacuum.h>
 #include <common/relpath.h>
 #include <float.h>
+#include <nodes/makefuncs.h>
 #include <utils/builtins.h>
 #include <utils/guc.h>
 #include <utils/lsyscache.h>
@@ -234,6 +236,18 @@ static char *extract_table_name(const char *fully_qualified_name)
     }
 }
 
+static Oid getColumnOID(const char *tableName, const char *columnName)
+{
+    Oid        relationId = RangeVarGetRelid(makeRangeVar(NULL, tableName, -1), AccessShareLock, false);
+    AttrNumber attributeNumber = get_attnum(relationId, columnName);
+
+    if(attributeNumber == InvalidAttrNumber) {
+        elog(ERROR, "Column not found: %s", columnName);
+    }
+
+    return get_atttype(relationId, attributeNumber);
+}
+
 static void create_index_from_file(const char *tablename_str, const char *index_path_str)
 {
     elog(INFO, "Received %s, %s", tablename_str, index_path_str);
@@ -277,7 +291,12 @@ static void create_index_from_file(const char *tablename_str, const char *index_
     snprintf(indexRelationName, strlen(table_name) + strlen("_hnsw_idx") + 1, "%s_hnsw_idx", table_name);
 
     // Create single node list for column name
-    List *indexColNames = list_make1("hnsw");
+    List *indexColNames = list_make1("vector");
+
+    // Get column Oid
+    Oid   colId = getColumnOID(table_name, "vector");
+    List *ii_Expressions = list_make1_oid(colId);
+    elog(INFO, "colId: %u", colId);
 
     // Get the access method OID for HNSW
     Oid accessMethodObjectId = get_am_oid("hnsw", false);
@@ -322,27 +341,32 @@ static void create_index_from_file(const char *tablename_str, const char *index_
 
     elog(INFO, "tableSpaceId: %u", tableSpaceId);
 
-    // // Create the index
-    // Oid newIndexId = index_create(heapRelation,             // Relation heapRelation
-    //                               indexRelationName,        // const char *indexRelationName
-    //                               InvalidOid,               // Oid indexRelationId
-    //                               InvalidOid,               // Oid parentIndexRelid
-    //                               InvalidOid,               // Oid parentConstraintId
-    //                               InvalidOid,               // Oid relFileNode,
-    //                               indexInfo,                // IndexInfo* indexInfo
-    //                               indexColNames,            // List* indexColNames
-    //                               accessMethodObjectId,     // Oid accessMethodObjectId,
-    //                               tableSpaceId,             // Oid tableSpaceId,
-    //                               NULL,                     // Oid * collationObjectId,
-    //                               NULL,                     // Oid * classObjectId,
-    //                               NULL,                     // int16 * coloptions,
-    //                               PointerGetDatum(NULL),    // Datum  reloptions,
-    //                               INDEX_CREATE_SKIP_BUILD,  // bits16 flags,
-    //                               0,                        // bits16 constr_flags
-    //                               false,                    // bool   allow_system_table_mods
-    //                               false,                    // bool   is_internal,
-    //                               InvalidOid                // Oid   *constraintId
-    // );
+    // Set the Oids for collations and ops
+    Oid   collationObjectId[] = {InvalidOid};
+    Oid   classObjectId[] = {InvalidOid};
+    int16 coloptions[] = {SORTBY_DEFAULT};
+
+    // Create the index
+    Oid newIndexId = index_create(heapRelation,             // Relation heapRelation
+                                  indexRelationName,        // const char *indexRelationName
+                                  InvalidOid,               // Oid indexRelationId
+                                  InvalidOid,               // Oid parentIndexRelid
+                                  InvalidOid,               // Oid parentConstraintId
+                                  InvalidOid,               // Oid relFileNode,
+                                  indexInfo,                // IndexInfo* indexInfo
+                                  indexColNames,            // List* indexColNames
+                                  accessMethodObjectId,     // Oid accessMethodObjectId,
+                                  tableSpaceId,             // Oid tableSpaceId,
+                                  collationObjectId,        // Oid * collationObjectId,
+                                  classObjectId,            // Oid * classObjectId,
+                                  coloptions,               // int16 * coloptions,
+                                  PointerGetDatum(NULL),    // Datum  reloptions,
+                                  INDEX_CREATE_SKIP_BUILD,  // bits16 flags,
+                                  0,                        // bits16 constr_flags
+                                  false,                    // bool   allow_system_table_mods
+                                  false,                    // bool   is_internal,
+                                  InvalidOid                // Oid   *constraintId
+    );
 
     //     // Open the newly created index relation
     //     Relation indexRelation = index_open(newIndexId, AccessShareLock);  // Use appropriate lock
