@@ -14,6 +14,7 @@
 #include <float.h>
 #include <utils/builtins.h>
 #include <utils/guc.h>
+#include <utils/lsyscache.h>
 #include <utils/rel.h>
 #include <utils/selfuncs.h>
 #include <utils/spccache.h>
@@ -205,28 +206,71 @@ static float8 vector_dist(Vector *a, Vector *b, usearch_metric_kind_t metric_kin
     return usearch_dist(a->x, b->x, metric_kind, a->dim, usearch_scalar_f32_k);
 }
 
+static char *extract_schema_name(const char *fully_qualified_name)
+{
+    const char *dot = strchr(fully_qualified_name, '.');
+    if(dot == NULL) {
+        return NULL;  // No schema found
+    }
+
+    int   schema_len = dot - fully_qualified_name;
+    char *schema = (char *)malloc(schema_len + 1);
+    strncpy(schema, fully_qualified_name, schema_len);
+    schema[ schema_len ] = '\0';
+
+    return schema;
+}
+
+static char *extract_table_name(const char *fully_qualified_name)
+{
+    const char *last_dot = strrchr(fully_qualified_name, '.');
+    if(last_dot == NULL) {
+        // No dot found, return a copy of the input string
+        return strdup(fully_qualified_name);
+    } else {
+        // Dot found, return a copy of the part after the last dot
+        return strdup(last_dot + 1);
+    }
+}
+
 static void create_index_from_file(const char *tablename_str, const char *index_path_str)
 {
     elog(INFO, "Received %s, %s", tablename_str, index_path_str);
 
-    Oid table_id = get_table_am_oid(tablename_str, true);
+    char *schema_name = extract_schema_name(tablename_str);
+    char *table_name = extract_table_name(tablename_str);
+
+    Oid schema_id = InvalidOid;
+    if(schema_name != NULL) {
+        schema_id = get_namespace_oid(schema_name, false);
+        if(schema_id == InvalidOid) {
+            ereport(ERROR, (errmsg("Schema %s not found", schema_name)));
+        }
+    }
+
+    Oid table_id = InvalidOid;
+    if(schema_id != InvalidOid) {
+        // Fully qualified table name with schema
+        table_id = get_relname_relid(table_name, schema_id);
+    }
+
     // Check if table Oid is invalid
     if(table_id == InvalidOid) {
-        ereport(ERROR, (errmsg("Extracting Oid from %s failed, received Oid: %u", tablename_str, table_id)));
+        ereport(ERROR, (errmsg("Table %s not found in schema %s", tablename_str, schema_name)));
     }
 
     // Open the heap relation
     Relation heapRelation = table_open(table_id, AccessShareLock);
 
-    // Check if table is unlogged (unsupported at the moment)
-    if(RelationIsLogicallyLogged(heapRelation)) {
-        ereport(ERROR,
-                (errmsg("Table %s is unlogged. HNSW index on unlogged tables is not supported.", tablename_str)));
-    }
+    // TODO: Check if table is unlogged (unsupported at the moment)
+    // if(!RelationIsLogicallyLogged(heapRelation)) {
+    //     ereport(ERROR,
+    //             (errmsg("Table %s is unlogged. HNSW index on unlogged tables is not supported.", tablename_str)));
+    // }
 
     // Create indexRelationName based on table name and column name
-    char *indexRelationName = palloc(strlen(tablename_str) + strlen("_hnsw_idx") + 1);
-    snprintf(indexRelationName, strlen(tablename_str) + strlen("_hnsw_idx") + 1, "%s_hnsw_idx", tablename_str);
+    char *indexRelationName = palloc(strlen(table_name) + strlen("_hnsw_idx") + 1);
+    snprintf(indexRelationName, strlen(table_name) + strlen("_hnsw_idx") + 1, "%s_hnsw_idx", table_name);
 
     // Create single node list for column name
     List *indexColNames = list_make1("hnsw");
@@ -246,10 +290,10 @@ static void create_index_from_file(const char *tablename_str, const char *index_
     indexInfo->ii_ExclusionProcs = NULL;
     indexInfo->ii_ExclusionStrats = NULL;
     indexInfo->ii_OpclassOptions = NULL;
-    indexInfo->ii_Unique = true;
+    indexInfo->ii_Unique = false;
 #if PG_VERSION_NUM >= 150000
     indexInfo->ii_NullsNotDistinct = false;
-    indexInfo->ii_ReadyForInserts = true;
+    indexInfo->ii_ReadyForInserts = false;
     indexInfo->ii_CheckedUnchanged = false;
     indexInfo->ii_IndexUnchanged = false;
 #endif
@@ -261,7 +305,9 @@ static void create_index_from_file(const char *tablename_str, const char *index_
     indexInfo->ii_Context = CurrentMemoryContext;
 
     // Set the access method for the index
-    indexInfo->ii_Am = accessMethodObjectId;  // Replace with the actual AM OID
+    indexInfo->ii_Am = accessMethodObjectId;
+
+    elog(INFO, "accessMethodObjectId: %u", accessMethodObjectId);
 
     // Get tableSpaceId
     char *spcname = GetConfigOptionByName("tablespace", NULL, false);
