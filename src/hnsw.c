@@ -246,9 +246,11 @@ static void create_index_from_file(const char *tablename_str, const char *index_
     indexInfo->ii_ExclusionStrats = NULL;
     indexInfo->ii_OpclassOptions = NULL;
     indexInfo->ii_Unique = true;
+#if PG_VERSION_NUM >= 150000
     indexInfo->ii_NullsNotDistinct = false;
     indexInfo->ii_ReadyForInserts = true;
     indexInfo->ii_CheckedUnchanged = false;
+#endif
     indexInfo->ii_IndexUnchanged = false;
     indexInfo->ii_Concurrent = false;
     indexInfo->ii_BrokenHotChain = false;
