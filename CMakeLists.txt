@@ -91,7 +91,7 @@ foreach(_dir ${PostgreSQL_SERVER_LIBRARY_DIRS})
 endforeach()
 
 if(APPLE)
-  set(_link_flags "${_link_flags} -bundle_loader ${PG_BINARY}")
+  set(_link_flags "${_link_flags} -bundle_loader ${PG_BINARY} -undefined dynamic_lookup")
 endif()
 
 
