@@ -286,14 +286,23 @@ if (CLANG_FORMAT)
 endif()
 
 file(GLOB_RECURSE SQL_FILES ${CMAKE_SOURCE_DIR}/*.sql)
-add_custom_target(format-sql
+add_custom_target(format_sql
+  COMMENT "Formatting all SQL files using pgFormatter"
+)
+add_custom_target(format_sql_check
   COMMENT "Formatting all SQL files using pgFormatter"
 )
 foreach(SQL_FILE ${SQL_FILES})
-  add_custom_command(TARGET format-sql
+  add_custom_command(TARGET format_sql
     PRE_BUILD
     COMMAND pg_format -i ${SQL_FILE}
-    COMMENT "Formatting ${SQL_FILE}"
+    COMMENT "Formatting SQL ${SQL_FILE}"
+    VERBATIM
+  )
+  add_custom_command(TARGET format_sql_check
+    PRE_BUILD
+    COMMAND bash -c "pg_format ${SQL_FILE} -o /tmp/$(basename ${SQL_FILE}) && diff ${SQL_FILE} /tmp/$(basename ${SQL_FILE}) > /dev/null || { echo '${SQL_FILE} is not properly formatted!'; exit 1; }"
+    COMMENT "Checking format for SQL ${SQL_FILE}"
     VERBATIM
   )
 endforeach()
