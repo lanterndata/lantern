@@ -305,7 +305,7 @@ static void create_index_from_file(const char *tablename_str, const char *index_
     IndexInfo *indexInfo = makeNode(IndexInfo);
     indexInfo->ii_NumIndexAttrs = 1;
     indexInfo->ii_NumIndexKeyAttrs = 1;
-    indexInfo->ii_Expressions = NIL;
+    indexInfo->ii_Expressions = ii_Expressions;
     indexInfo->ii_ExpressionsState = NIL;
     indexInfo->ii_Predicate = NIL;
     indexInfo->ii_PredicateState = NULL;
