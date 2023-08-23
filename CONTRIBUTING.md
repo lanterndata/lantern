@@ -36,7 +36,15 @@ to a newer version of the extension via `ALTER EXTENSION lanterndb UPDATE`.
 
 ## Browsing the Postgres repository offline
 
-You can download PostgreSQL source code from [their ftp server](https://www.postgresql.org/ftp/source/). Alternatively, can clone their GitHub repository. 
+You can download PostgreSQL source code from [their ftp server](https://www.postgresql.org/ftp/source/). Alternatively, can clone their git repository.
+
+```bash
+git clone https://git.postgresql.org/git/postgresql.git # Using https protocol
+# git clone git://git.postgresql.org/git/postgresql.git # Using git protocol
+```
+
 Note: Postgres repo is huge. If you do not intend to make changes to postgres itself, it may be better to download only the latest commit and only the relevant release branch of the repo via the following command:
 
-```git clone --single-branch --branch REL_15_STABLE https://github.com/postgres/postgres.git --depth=1```
+```bash
+git clone --single-branch --branch REL_15_STABLE https://git.postgresql.org/git/postgresql.git --depth=1
+```
