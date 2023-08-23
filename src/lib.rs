@@ -8,6 +8,9 @@ pgrx::pg_module_magic!();
 pub mod dotvecs;
 pub mod encoder;
 
+#[macro_use]
+extern crate lazy_static;
+
 #[pg_extern]
 fn clip_text<'a>(text: &'a str) -> Vec<f32> {
     return encoder::clip::process_text(text.to_owned());
