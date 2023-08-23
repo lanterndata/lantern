@@ -6,6 +6,17 @@ use tar::Archive;
 
 pgrx::pg_module_magic!();
 pub mod dotvecs;
+pub mod encoder;
+
+#[pg_extern]
+fn clip_text<'a>(text: &'a str) -> Vec<f32> {
+    return encoder::clip::process_text(text.to_owned());
+}
+
+#[pg_extern]
+fn clip_image<'a>(path_or_url: &'a str) -> Vec<f32> {
+    return encoder::clip::process_image(path_or_url.to_owned());
+}
 
 #[pg_extern]
 fn get_vectors<'a>(gzippath: &'a str) -> String {
@@ -58,8 +69,8 @@ fn download_gzipped_ftp(
     a.entries()
         .unwrap()
         .map(|entry| match entry {
-            Ok(mut e) => {
-                let mut s = String::new();
+            Ok(e) => {
+                let s = String::new();
                 notice!("entry name {}", e.path().unwrap().display());
                 Ok(s)
             }

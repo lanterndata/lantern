@@ -51,6 +51,21 @@ make install
 
 ### Building from source
 
+You should have onnxruntime in your system in order to build the extension.  
+You can download the `onnxruntime` binary realease from GitHub https://github.com/microsoft/onnxruntime/releases/tag/v1.15.1 and place it somewhere in your system (e.g. /usr/lib/onnxruntime)
+
+Then you should export these 2 environment variables
+```bash
+export ORT_STRATEGY=system 
+export ORT_LIB_LOCATION=/usr/local/lib/onnxruntime 
+```
+And also add this configuration under `.cargo/config`
+```
+[target.aarch64-unknown-linux-gnu]
+rustflags = ["-C", "link-args=-Wl,-rpath,/usr/local/lib/onnx/lib"]
+```
+*replace `aarch64-unknown-linux-gnu` with your architecture. You can get it by running `rustc -vV | sed -n 's|host: ||p'`*  
+
 This extension is written in Rust so requires Rust toolchain. It uses `pgrx`
 
 ```bash
