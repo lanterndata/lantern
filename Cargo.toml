@@ -30,6 +30,7 @@ ort = { git = "https://github.com/pykeio/ort.git", features = ["cuda", "openvino
 tokenizers = "0.13.2"
 image = "0.24.6"
 lazy_static = "1.4.0"
+anyhow = "1.0.72"
 
 [dev-dependencies]
 pgrx-tests = "=0.9.7"

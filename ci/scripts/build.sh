@@ -12,6 +12,21 @@ then
   export PG_VERSION=15
 fi
 
+install_onnx_runtime(){
+  ARCH=$(dpkg-architecture -q DEB_BUILD_ARCH)
+  PACKAGE_URL="https://github.com/microsoft/onnxruntime/releases/download/v1.15.1/onnxruntime-linux-x64-1.15.1.tgz"
+  if [[ $ARCH == *"arm"* ]]; then
+    PACKAGE_URL="https://github.com/microsoft/onnxruntime/releases/download/v1.15.1/onnxruntime-linux-aarch64-1.15.1.tgz"
+  fi
+
+  mkdir -p /usr/local/lib && cd /usr/local/lib
+  wget $PACKAGE_URL && \
+  tar xzf ./onnx* && \
+  mv ./onnx* ./onnxruntime && \
+  rm -rf ./onnx*.tgz
+}
+
+
  apt update && apt-mark hold locales && \
 # Install required packages for build
 apt install -y --no-install-recommends lsb-release wget build-essential ca-certificates zlib1g-dev pkg-config libreadline-dev clang curl gnupg libssl-dev jq && \
@@ -26,6 +41,12 @@ rm -f /usr/bin/pg_config && ln -s /usr/lib/postgresql/$PG_VERSION/bin/pg_config 
 curl -k -o /tmp/rustup.sh https://sh.rustup.rs && chmod +x /tmp/rustup.sh && \
 /tmp/rustup.sh -y && \
 . "$HOME/.cargo/env" && \
+install_onnx_runtime && \
+export ORT_STRATEGY=system && \
+export ORT_LIB_LOCATION=/usr/local/lib/onnxruntime && \
+mkdir .cargo && \
+echo "[target.$(rustc -vV | sed -n 's|host: ||p')]" > .cargo/config && \
+echo 'rustflags = ["-C", "link-args=-Wl,-rpath,/usr/local/lib/onnxruntime/lib"]' >> .cargo/config && \
 cargo install cargo-pgrx --version 0.9.7 && \
 cargo pgrx init "--pg$PG_VERSION" /usr/bin/pg_config && \
 cargo pgrx package --pg-config /usr/bin/pg_config

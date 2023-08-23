@@ -5,9 +5,10 @@ use itertools::Itertools;
 use ndarray::{Array2, Array4, CowArray, Dim};
 use ort::session::Session;
 use ort::{Environment, ExecutionProvider, GraphOptimizationLevel, SessionBuilder, Value};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Cursor, Read};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokenizers::{PaddingDirection, PaddingParams, PaddingStrategy, Tokenizer};
 
@@ -21,6 +22,27 @@ pub struct EncoderOptions {
     pub visual: bool,
     pub pad_token_sequence: bool,
     pub input_image_size: usize,
+}
+
+const DATA_PATH: &'static str = ".ldb_extras_data/";
+
+#[derive(Debug, PartialEq, Eq, Hash)]
+enum FileType {
+    TextModel,
+    VisualModel,
+    Tokenizer,
+}
+struct FileInfo {
+    url: &'static str,
+    path: PathBuf,
+}
+
+lazy_static! {
+    static ref FILE_INFO_MAP: HashMap<FileType, FileInfo> = HashMap::from([
+        (FileType::TextModel, FileInfo{url: "https://clip-as-service.s3.us-east-2.amazonaws.com/models-436c69702d61732d53657276696365/onnx/ViT-B-32-laion2b_e16/textual.onnx", path: Path::new(DATA_PATH).join("textual.onnx")}),
+        (FileType::VisualModel, FileInfo{url: "https://clip-as-service.s3.us-east-2.amazonaws.com/models-436c69702d61732d53657276696365/onnx/ViT-B-32/visual.onnx", path: Path::new(DATA_PATH).join("visual.onnx")}),
+        (FileType::Tokenizer, FileInfo{url: "https://huggingface.co/openai/clip-vit-base-patch32/resolve/main/tokenizer.json", path: Path::new(DATA_PATH).join("tokenizer.json")}),
+    ]);
 }
 
 lazy_static! {
@@ -64,9 +86,9 @@ impl EncoderService {
         environment: &Arc<Environment>,
         args: EncoderOptions,
     ) -> Result<EncoderService, Box<dyn std::error::Error + Send + Sync>> {
-        let text_model_path = "ldb_extras_models/textual.onnx";
-        let image_model_path = "ldb_extras_models/visual.onnx";
-        let tokenizer_path = "ldb_extras_models/tokenizer.json";
+        let text_model_path = &FILE_INFO_MAP.get(&FileType::TextModel).unwrap().path;
+        let image_model_path = &FILE_INFO_MAP.get(&FileType::VisualModel).unwrap().path;
+        let tokenizer_path = &FILE_INFO_MAP.get(&FileType::Tokenizer).unwrap().path;
 
         let mut tokenizer = Tokenizer::from_file(tokenizer_path)?;
         tokenizer.with_padding(Some(PaddingParams {
@@ -199,17 +221,43 @@ impl EncoderService {
     }
 }
 
-// TODO::
-// Declare image_processor and text_processor in lazy_static [done]
-// bring is_url regex check and check if image path is url download it with reqwest
-// in process_text check if textual model does not exist download it
-// in process_image check if visual model does not exist download it
-// in both functions check if tokenizer does not exist download it
 // change CI/CD build to download onnxruntime and add necessary LD flags
 
 pub mod clip {
+
+    use crate::notice;
+    use std::{fs, time::Duration};
+    use url::Url;
+
+    fn check_and_download_file(file_type: FileType) -> Result<(), anyhow::Error> {
+        let file_info = FILE_INFO_MAP.get(&file_type).unwrap();
+
+        if file_info.path.exists() {
+            return Ok(());
+        }
+
+        let prefix = file_info.path.parent().unwrap();
+
+        if !prefix.exists() {
+            fs::create_dir_all(prefix)?;
+        }
+
+        notice!("Downloading model [this is one time operation]");
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(600))
+            .build()?;
+
+        let response = client.get(file_info.url).send()?;
+        let mut content = Cursor::new(response.bytes()?);
+        let mut file = std::fs::File::create(&file_info.path)?;
+        std::io::copy(&mut content, &mut file).expect("Failed writing response to file");
+        Ok(())
+    }
+
     use super::*;
     pub fn process_text(text: String) -> Vec<f32> {
+        check_and_download_file(FileType::Tokenizer).unwrap();
+        check_and_download_file(FileType::TextModel).unwrap();
         let res = TEXT_PROCESSOR
             .process_text(&vec![text])
             .expect("Text prcoessing failed");
@@ -217,9 +265,20 @@ pub mod clip {
     }
 
     pub fn process_image(path_or_url: String) -> Vec<f32> {
+        check_and_download_file(FileType::Tokenizer).unwrap();
+        check_and_download_file(FileType::VisualModel).unwrap();
         let mut buffer = Vec::new();
-        let mut f = File::open(Path::new(&path_or_url)).unwrap();
-        f.read_to_end(&mut buffer).unwrap();
+        if let Ok(url) = Url::parse(&path_or_url) {
+            notice!("Downloading image");
+            let response = reqwest::blocking::get(url).expect("Failed to download image");
+            buffer = response
+                .bytes()
+                .expect("Failed to read response body")
+                .to_vec();
+        } else {
+            let mut f = File::open(Path::new(&path_or_url)).unwrap();
+            f.read_to_end(&mut buffer).unwrap();
+        }
         let res = IMAGE_PROCESSOR
             .process_image(&vec![buffer])
             .expect("Image processing failed");
