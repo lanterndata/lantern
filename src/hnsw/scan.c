@@ -153,6 +153,9 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
 {
     HnswScanState *scanstate = (HnswScanState *)scan->opaque;
     ItemPointer    tid;
+    // todo:: fix me. if there is way to know how many we need, use that
+    //  if no, do gradual increase of the size of retrieval
+    static int k;
 
     // posgres does not allow backwards scan on operators
     // (todo:: look into this andcite? took from pgvector)
@@ -162,13 +165,13 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
     Assert(ScanDirectionIsForward(dir));
 
     if(scanstate->first) {
-        Datum           value;
         int             num_returned;
+        Datum           value;
         Vector         *vec;
         usearch_error_t error = NULL;
-        // todo:: fix me. if there is way to know how many we need, use that
-        //  if no, do gradual increase of the size of retrieval
-        int k = 50;
+
+        /* reset k */
+        k = ldb_hnsw_init_k;
 
         /* Count index scan for stats */
         pgstat_count_index_scan(scan->indexRelation);
@@ -191,7 +194,6 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
 
         if(scanstate->distances == NULL) {
             scanstate->distances = palloc(k * sizeof(float));
-            ;
         }
         if(scanstate->labels == NULL) {
             scanstate->labels = palloc(k * sizeof(usearch_label_t));
@@ -206,6 +208,31 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         scanstate->current = 0;
 
         scanstate->first = false;
+
+        /* Clean up if we allocated a new value */
+        if(value != scan->orderByData->sk_argument) pfree(DatumGetPointer(value));
+    }
+
+    if(scanstate->current == scanstate->count) {
+        int             num_returned;
+        Datum           value;
+        Vector         *vec;
+        usearch_error_t error = NULL;
+
+        value = scan->orderByData->sk_argument;
+
+        vec = DatumGetVector(value);
+
+        /* double k and reallocate arrays to account for increased size */
+        k = k * 2;
+        scanstate->distances = repalloc(scanstate->distances, k * sizeof(float));
+        scanstate->labels = repalloc(scanstate->labels, k * sizeof(usearch_label_t));
+
+        num_returned = usearch_search(
+            scanstate->usearch_index, vec->x, usearch_scalar_f32_k, k, scanstate->labels, scanstate->distances, &error);
+        ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);
+
+        scanstate->count = num_returned;
 
         /* Clean up if we allocated a new value */
         if(value != scan->orderByData->sk_argument) pfree(DatumGetPointer(value));

@@ -21,9 +21,10 @@
 // CREATE INDEX ... WITH (...)
 //                       ^^^^
 static relopt_kind ldb_hnsw_index_withopts;
-static int         ldb_hnsw_init_k;
 
 static ExecutorStart_hook_type original_executor_start_hook = NULL;
+
+int ldb_hnsw_init_k;
 
 int HnswGetDims(Relation index)
 {
