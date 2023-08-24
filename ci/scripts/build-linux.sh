@@ -49,7 +49,7 @@ function clone_or_use_source() {
 
 function build_and_install() {
   cd /tmp/lanterndb
-  sh -c "./scripts/install_pgformatter.sh"
+  sh -c "./scripts/format/install.sh"
   mkdir build
   cd build
 

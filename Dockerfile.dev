@@ -21,7 +21,7 @@ RUN apt update \
        python3-pip \
        sudo \
     && pip install libtmux --break-system-packages \
-    && ./scripts/install_pgformatter.sh
+    && ./scripts/format/install.sh
 
 # Build lanterndb
 RUN rm -rf build \

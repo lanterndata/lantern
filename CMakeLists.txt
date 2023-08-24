@@ -295,13 +295,13 @@ add_custom_target(format_sql_check
 foreach(SQL_FILE ${SQL_FILES})
   add_custom_command(TARGET format_sql
     PRE_BUILD
-    COMMAND pg_format -i ${SQL_FILE}
+    COMMAND ${CMAKE_SOURCE_DIR}/scripts/format/run.sh format ${SQL_FILE}
     COMMENT "Formatting SQL ${SQL_FILE}"
     VERBATIM
   )
   add_custom_command(TARGET format_sql_check
     PRE_BUILD
-    COMMAND bash -c "pg_format ${SQL_FILE} -o /tmp/$(basename ${SQL_FILE}) && diff ${SQL_FILE} /tmp/$(basename ${SQL_FILE}) > /dev/null || { echo '${SQL_FILE} is not properly formatted!'; exit 1; }"
+    COMMAND ${CMAKE_SOURCE_DIR}/scripts/format/run.sh check ${SQL_FILE}
     COMMENT "Checking format for SQL ${SQL_FILE}"
     VERBATIM
   )
