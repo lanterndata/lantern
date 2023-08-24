@@ -1,17 +1,30 @@
 ARG VERSION=15
 ARG IMAGE_TAG=$VERSION-bookworm
+
 FROM postgres:$IMAGE_TAG
 ARG VERSION
 
 WORKDIR /lanterndb
+
 COPY . .
-# Set Locale
-RUN apt update && apt-mark hold locales && \
-# Install required packages for build
-apt install -y --no-install-recommends build-essential cmake postgresql-server-dev-$VERSION postgresql-$VERSION-pgvector gdb wget python3-pip sudo && \
-    pip install libtmux --break-system-packages
+
+RUN apt update \
+    # Fix the locales package version to prevent unexpected updates
+    && apt-mark hold locales \
+    && apt install -y --no-install-recommends \
+       build-essential \
+       cmake \
+       postgresql-server-dev-$VERSION \
+       postgresql-$VERSION-pgvector \
+       gdb \
+       wget \
+       python3-pip \
+       sudo \
+    && pip install libtmux --break-system-packages
 
 # Build lanterndb
-RUN rm -rf build && mkdir build && cd build && \
-# Run cmake
-cmake -DUSEARCH_NO_MARCH_NATIVE=ON -DCMAKE_BUILD_TYPE=Debug .. &&  make install
+RUN rm -rf build \
+    && mkdir build \
+    && cd build \
+    && cmake -DUSEARCH_NO_MARCH_NATIVE=ON -DCMAKE_BUILD_TYPE=Debug .. \
+    && make install
