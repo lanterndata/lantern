@@ -1,9 +1,6 @@
 #!/bin/bash
 
-if [ -z "$GITHUB_OUTPUT" ]
-then
-  export GITHUB_OUTPUT=/dev/null
-fi
+export GITHUB_OUTPUT=${GITHUB_OUTPUT:-/dev/null}
 
 PACKAGE_DIR=/tmp/lanterndb-extras-package
 PACKAGE_VERSION=$(ls -t $PACKAGE_DIR | head -1 | sed -E "s#lanterndb-extras-(.*)-postgres.*#\1#")
