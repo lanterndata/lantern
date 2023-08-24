@@ -78,7 +78,7 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     headerp = (HnswIndexHeaderPage *)PageGetContents(page);
     assert(headerp->magicNumber == LDB_WAL_MAGIC_NUMBER);
 
-    memcpy(retriever_ctx->blockmap_group_cache,
+    memcpy(retriever_ctx->blockmap_page_group_index_cache,
            headerp->blockmap_page_group_index,
            sizeof(retriever_ctx->block_numbers_cache));
     retriever_ctx->header_page_under_wal = NULL;
