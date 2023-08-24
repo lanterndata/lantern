@@ -108,4 +108,32 @@ INSERT INTO small_world (id, vector) VALUES
 ('110', '[1,1,0]'),
 ('111', '[1,1,1]');
 
+-- We need a large enough table that postgres uses the index
+CREATE TABLE sift_base10k (
+    id SERIAL PRIMARY KEY,
+    v real[128]
+);
+
+-- build index on an existing table of 10k rows
+\copy sift_base10k (v) FROM '/tmp/lanterndb/vector_datasets/siftsmall_base_arrays.csv' with csv;
+
+CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v) WITH (M=2, ef_construction=10, ef=4, dims=128);
+SELECT V AS v4444  FROM sift_base10k WHERE id = 4444 \gset
+
+WITH neighbors AS (
+    SELECT * FROM sift_base10k order by v <-> :'v4444' LIMIT 10
+) SELECT COUNT(*) from neighbors;
+WITH neighbors AS (
+    SELECT * FROM sift_base10k order by v <-> :'v4444' LIMIT 50
+) SELECT COUNT(*) from neighbors;
+
+-- change default k and make sure the number of usearch_searchs makes sense
+SET hnsw.init_k = 60;
+WITH neighbors AS (
+    SELECT * FROM sift_base10k order by v <-> :'v4444' LIMIT 50
+) SELECT COUNT(*) from neighbors;
+WITH neighbors AS (
+    SELECT * FROM sift_base10k order by v <-> :'v4444' LIMIT 130
+) SELECT COUNT(*) from neighbors;
+
 \echo "Done with hnsw.sql test!"

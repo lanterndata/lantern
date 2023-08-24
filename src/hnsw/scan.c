@@ -154,8 +154,6 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
     HnswScanState *scanstate = (HnswScanState *)scan->opaque;
     ItemPointer    tid;
     // todo:: fix me. if there is way to know how many we need, use that
-    //  if no, do gradual increase of the size of retrieval
-    static int k;
 
     // posgres does not allow backwards scan on operators
     // (todo:: look into this andcite? took from pgvector)
@@ -169,9 +167,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         Datum           value;
         Vector         *vec;
         usearch_error_t error = NULL;
-
-        /* reset k */
-        k = ldb_hnsw_init_k;
+        int             k = ldb_hnsw_init_k;
 
         /* Count index scan for stats */
         pgstat_count_index_scan(scan->indexRelation);
@@ -200,6 +196,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         }
 
         // hnsw_search(scanstate->hnsw, vec->x, k, &num_returned, scanstate->distances, scanstate->labels);
+        elog(INFO, "querying index for %d elements", k);
         num_returned = usearch_search(
             scanstate->usearch_index, vec->x, usearch_scalar_f32_k, k, scanstate->labels, scanstate->distances, &error);
         ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);
@@ -218,16 +215,17 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         Datum           value;
         Vector         *vec;
         usearch_error_t error = NULL;
+        int             k = scanstate->count * 2;
 
         value = scan->orderByData->sk_argument;
 
         vec = DatumGetVector(value);
 
         /* double k and reallocate arrays to account for increased size */
-        k = k * 2;
         scanstate->distances = repalloc(scanstate->distances, k * sizeof(float));
         scanstate->labels = repalloc(scanstate->labels, k * sizeof(usearch_label_t));
 
+        elog(INFO, "querying index for %d elements", k);
         num_returned = usearch_search(
             scanstate->usearch_index, vec->x, usearch_scalar_f32_k, k, scanstate->labels, scanstate->distances, &error);
         ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);
