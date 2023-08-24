@@ -1,7 +1,10 @@
 ARG PG_VERSION=15
+
 FROM postgres:$PG_VERSION-bookworm
 ARG PG_VERSION
 
-COPY . /tmp/lanterndb
+WORKDIR /tmp/lanterndb
 
-RUN PG_VERSION=$PG_VERSION ./tmp/lanterndb/ci/scripts/build-docker.sh 
+COPY . .
+
+RUN PG_VERSION=$PG_VERSION ./ci/scripts/build-docker.sh 
