@@ -10,6 +10,7 @@ It provides a new index type for vector columns called `hnsw` which speeds up `O
 ## Quickstart
 
 ### Building and Installing LanternDB
+Platform-specific dependencies [here](./PREREEQUISITES.md).
 
 LanternDB builds and uses [usearch](https://github.com/unum-cloud/usearch) for its single-header state-of-the-art HNSW implementation.
 
