@@ -1,5 +1,6 @@
 -- THIS IS TODO TEST FILE
 -- THIS TESTS WILL NOT PASS CURRENTLY BUT SHOULD BE FIXED LATER
+
 CREATE TABLE small_world_l2 (
     id varchar(3),
     vector real[]
@@ -8,14 +9,14 @@ CREATE TABLE small_world_l2 (
 
 
 INSERT INTO small_world_l2 (id, vector) VALUES 
-('000', '{0,0,0}'),
-('001', '{0,0,1}'),
-('010', '{0,1,0}'),
-('011', '{0,1,1}'),
-('100', '{1,0,0}'),
-('101', '{1,0,1}'),
-('110', '{1,1,0}'),
-('111', '{1,1,1}');
+    ('000', '{0,0,0}'),
+    ('001', '{0,0,1}'),
+    ('010', '{0,1,0}'),
+    ('011', '{0,1,1}'),
+    ('100', '{1,0,0}'),
+    ('101', '{1,0,1}'),
+    ('110', '{1,1,0}'),
+    ('111', '{1,1,1}');
 
 SET enable_seqscan = false;
 

@@ -1,0 +1,8 @@
+-- THIS IS TODO TEST FILE
+-- THIS TESTS WILL NOT PASS CURRENTLY BUT SHOULD BE FIXED LATER
+CREATE TABLE small_world_l2 (
+    id varchar(3),
+    vector real[]
+    vector_int integer[]
+);
+ERROR:  syntax error at or near "vector_int" at character 72
