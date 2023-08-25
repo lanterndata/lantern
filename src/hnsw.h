@@ -23,4 +23,6 @@ PGDLLEXPORT Datum vector_l2sq_dist(PG_FUNCTION_ARGS);
 PGDLLEXPORT Datum hamming_dist(PG_FUNCTION_ARGS);
 PGDLLEXPORT Datum cos_dist(PG_FUNCTION_ARGS);
 
+#define LDB_UNUSED(x) (void)(x)
+
 #endif  // LDB_HNSW_H

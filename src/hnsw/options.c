@@ -58,7 +58,7 @@ usearch_metric_kind_t HnswGetMetricKind(Relation index)
 {
     struct catclist *proclist = SearchSysCacheList1(AMPROCNUM, ObjectIdGetDatum(index->rd_opfamily[ 0 ]));
 
-    if(&proclist->n_members == 0) {
+    if(proclist->n_members == 0) {
         elog(ERROR, "no support functions found");
     }
 

@@ -137,6 +137,8 @@ void ldb_amrescan(IndexScanDesc scan, ScanKey keys, int nkeys, ScanKey orderbys,
 {
     HnswScanState *scanstate = (HnswScanState *)scan->opaque;
     scanstate->first = true;
+    LDB_UNUSED(norderbys);
+    LDB_UNUSED(nkeys);
 
     // q:: why is this the user's responsibility?
     if(keys && scan->numberOfKeys > 0) memmove(scan->keyData, keys, scan->numberOfKeys * sizeof(ScanKeyData));
@@ -152,6 +154,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
 {
     HnswScanState *scanstate = (HnswScanState *)scan->opaque;
     ItemPointer    tid;
+    LDB_UNUSED(dir);
 
     // posgres does not allow backwards scan on operators
     // (todo:: look into this andcite? took from pgvector)
