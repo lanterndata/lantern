@@ -8,6 +8,14 @@
 #include "lib_interface.h"
 #include "usearch.h"
 
+typedef enum
+{
+    REAL_ARRAY,
+    INT_ARRAY,
+    VECTOR,
+    UNKNOWN
+} HnswDataType;
+
 typedef struct HnswBuildState
 {
     /* Info */
@@ -16,7 +24,8 @@ typedef struct HnswBuildState
     IndexInfo *indexInfo;
 
     /* Settings */
-    int dimensions;
+    int          dimensions;
+    HnswDataType columnType;
 
     /* Statistics */
     double tuples_indexed;
@@ -29,14 +38,6 @@ typedef struct HnswBuildState
     /* Memory */
     MemoryContext tmpCtx;
 } HnswBuildState;
-
-typedef enum
-{
-    REAL_ARRAY,
-    INT_ARRAY,
-    VECTOR,
-    UNKNOWN
-} HnswDataType;
 
 IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInfo);
 void              ldb_ambuildunlogged(Relation index);

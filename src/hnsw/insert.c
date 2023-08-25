@@ -49,8 +49,14 @@ bool ldb_aminsert(Relation         index,
     uint32                 new_tuple_id;
     HnswIndexTuple        *new_tuple;
     usearch_init_options_t opts = {0};
+    LDB_UNUSED(heap);
+    LDB_UNUSED(indexInfo);
+#if PG_VERSION_NUM >= 140000
+    LDB_UNUSED(indexUnchanged);
+#endif
 
-    HnswInsertState *insertstate = palloc0(sizeof(HnswInsertState));
+        HnswInsertState *insertstate
+        = palloc0(sizeof(HnswInsertState));
 
     if(checkUnique != UNIQUE_CHECK_NO) {
         elog(ERROR, "unique constraints on hnsw vector indexes not supported");
@@ -118,7 +124,7 @@ bool ldb_aminsert(Relation         index,
     elog(DEBUG5, "Insert: at start num vectors is %d", hdr->num_vectors);
 
     usearch_reserve(uidx, hdr->num_vectors + 1, &error);
-    int level = usearch_newnode_level(uidx, &error);
+    uint32 level = usearch_newnode_level(uidx, &error);
     if(error != NULL) {
         elog(ERROR, "usearch newnode error: %s", error);
     }
@@ -152,6 +158,7 @@ bool ldb_aminsert(Relation         index,
     {
         XLogRecPtr ptr = GenericXLogFinish(state);
         assert(ptr != InvalidXLogRecPtr);
+        LDB_UNUSED(ptr);
     }
 
     extra_dirtied_release_all(insertstate->retriever_ctx->extra_dirted);

@@ -1,16 +1,25 @@
-#include "postgres.h"
+#include <postgres.h>
 
 #include "delete.h"
 
 #include <commands/vacuum.h>
 #include <storage/bufmgr.h>
 
+#include "hnsw.h"
+
 IndexBulkDeleteResult *ldb_ambulkdelete(IndexVacuumInfo        *info,
                                         IndexBulkDeleteResult  *stats,
                                         IndexBulkDeleteCallback callback,
                                         void                   *callback_state)
 {
-    elog(ERROR, "Deleting from hnsw index not implemented yet");
+    LDB_UNUSED(info);
+    LDB_UNUSED(stats);
+    LDB_UNUSED(callback);
+    LDB_UNUSED(callback_state);
+    elog(WARNING,
+         "LanternDB: hnsw index deletes are currently not implemented. This is a no-op. No memory will be reclaimed");
+    // the NULL is passed to vacuumcleanup which handles being passed a NULL
+    return NULL;
 }
 
 /*
@@ -19,7 +28,6 @@ IndexBulkDeleteResult *ldb_ambulkdelete(IndexVacuumInfo        *info,
 IndexBulkDeleteResult *ldb_amvacuumcleanup(IndexVacuumInfo *info, IndexBulkDeleteResult *stats)
 {
     Relation rel = info->index;
-    elog(ERROR, "VACUUM CLEANUP not implemented yet");
 
     if(info->analyze_only) return stats;
 

@@ -1,5 +1,7 @@
 #include <postgres.h>
 
+#include "hnsw.h"
+
 #include <access/amapi.h>
 #include <commands/vacuum.h>
 #include <float.h>
@@ -7,7 +9,6 @@
 #include <utils/selfuncs.h>
 #include <utils/spccache.h>
 
-#include "hnsw.h"
 #include "hnsw/build.h"
 #include "hnsw/delete.h"
 #include "hnsw/insert.h"
@@ -54,9 +55,6 @@ static void hnswcostestimate(PlannerInfo *root,
                              double      *indexPages)
 {
     GenericCosts costs;
-    double       ratio;
-    double       spc_seq_page_cost;
-    Relation     indexRel;
 #if PG_VERSION_NUM < 120000
     List *qinfos;
 #endif
@@ -93,7 +91,11 @@ static void hnswcostestimate(PlannerInfo *root,
 /*
  * Validate catalog entries for the specified operator class
  */
-static bool hnswvalidate(Oid opclassoid) { return true; }
+static bool hnswvalidate(Oid opclassoid)
+{
+    LDB_UNUSED(opclassoid);
+    return true;
+}
 
 /*
  * Define index handler
