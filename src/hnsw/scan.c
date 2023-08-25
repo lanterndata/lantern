@@ -37,8 +37,7 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     opts.dimensions = dimensions;
     opts.expansion_add = HnswGetEfConstruction(index);
     opts.expansion_search = HnswGetEf(index);
-    opts.metric_kind = usearch_metric_l2sq_k;
-    // todo::^^^^ should this not change based on the index metric type/
+    opts.metric_kind = HnswGetMetricKind(index);
     opts.metric = NULL;
     opts.quantization = usearch_scalar_f32_k;
 
