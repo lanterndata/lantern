@@ -115,7 +115,7 @@ if(NOT APPLE)
   set(CMAKE_CXX_IMPLICIT_LINK_LIBRARIES "")
   set(CMAKE_CXX_IMPLICIT_LINK_DIRECTORIES "")
 endif()
-set_target_properties(lanterndb PROPERTIES LINKER_LANGUAGE C)
+set_target_properties(lanterndb PROPERTIES LINKER_LANGUAGE CXX)
 
 target_include_directories(lanterndb PRIVATE "./third_party/usearch/c")
 target_link_directories(lanterndb PRIVATE "./src")
