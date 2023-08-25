@@ -2,6 +2,7 @@
 
 #include "build.h"
 
+#include <access/heapam.h>
 #include <assert.h>
 #include <catalog/index.h>
 #include <catalog/namespace.h>
@@ -151,6 +152,47 @@ void CheckHnswIndexDimensions(Relation index, Datum arrayDatum, int dimensions)
 }
 
 /*
+ * Infer the dimensionality of the index from the heap
+ */
+static int GetArrayLengthFromHeap(Relation heap, IndexInfo *indexInfo, int currDim)
+{
+    TableScanDesc scan;
+    HeapTuple     tuple;
+    SnapshotData  snapshot;
+    ArrayType    *array;
+    Datum         datum;
+    bool          isNull;
+    int           n_items = currDim;
+    int           indexCol;
+
+    // If NumIndexAttrs isn't 1 there's no clear way to infer the dim
+    if(indexInfo->ii_NumIndexAttrs != 1) {
+        return n_items;
+    }
+
+    indexCol = indexInfo->ii_IndexAttrNumbers[ 0 ];
+
+    // Get the first row off the heap
+    snapshot.snapshot_type = SNAPSHOT_TOAST;
+    scan = heap_beginscan(heap, &snapshot, 0, NULL, NULL, SO_TYPE_SEQSCAN);
+    tuple = heap_getnext(scan, ForwardScanDirection);
+    if(tuple == NULL){
+        return n_items;
+    }
+
+    // Get the indexed column out of the row and return it's dimensions
+    datum = heap_getattr(tuple, indexCol, RelationGetDescr(heap), &isNull);
+    if(!isNull) {
+        array = DatumGetArrayTypeP(datum);
+        n_items = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
+    }
+
+    heap_endscan(scan);
+
+    return n_items;
+}
+
+/*
  * Initialize the build state
  */
 static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation index, IndexInfo *indexInfo)
@@ -161,6 +203,8 @@ static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation i
     buildstate->columnType = GetIndexColumnType(index);
     buildstate->dimensions = GetHnswIndexDimensions(index);
 
+    // If a dimension wasn't specified try to infer it
+    //if(buildstate->dimensions < 1 || buildstate->dimensions == HNSW_DEFAULT_DIMS) buildstate->dimensions = GetArrayLengthFromHeap(heap, indexInfo, buildstate->dimensions);
     /* Require column to have dimensions to be indexed */
     if(buildstate->dimensions < 1) elog(ERROR, "column does not have dimensions");
 
