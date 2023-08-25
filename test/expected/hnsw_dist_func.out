@@ -76,7 +76,6 @@ SELECT * FROM (
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized
-INFO:  querying index for 10 elements
  id  | dist 
 -----+------
  010 | 0.00
@@ -113,7 +112,6 @@ SELECT * FROM (
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized
-INFO:  querying index for 10 elements
  id  | dist 
 -----+------
  010 | 0.00
@@ -150,7 +148,6 @@ SELECT * FROM (
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized
-INFO:  querying index for 10 elements
  id  | dist 
 -----+------
  010 | 0.00
@@ -187,7 +184,6 @@ SELECT * FROM (
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized
-INFO:  querying index for 10 elements
  id  | dist 
 -----+------
  010 | 0.00

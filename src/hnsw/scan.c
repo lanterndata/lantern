@@ -153,7 +153,6 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
 {
     HnswScanState *scanstate = (HnswScanState *)scan->opaque;
     ItemPointer    tid;
-    // todo:: fix me. if there is way to know how many we need, use that
 
     // posgres does not allow backwards scan on operators
     // (todo:: look into this andcite? took from pgvector)
@@ -196,7 +195,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         }
 
         // hnsw_search(scanstate->hnsw, vec->x, k, &num_returned, scanstate->distances, scanstate->labels);
-        elog(INFO, "querying index for %d elements", k);
+        elog(DEBUG5, "querying index for %d elements", k);
         num_returned = usearch_search(
             scanstate->usearch_index, vec->x, usearch_scalar_f32_k, k, scanstate->labels, scanstate->distances, &error);
         ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);
@@ -229,7 +228,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         scanstate->distances = repalloc(scanstate->distances, k * sizeof(float));
         scanstate->labels = repalloc(scanstate->labels, k * sizeof(usearch_label_t));
 
-        elog(INFO, "querying index for %d elements", k);
+        elog(DEBUG5, "querying index for %d elements", k);
         num_returned = usearch_search(
             scanstate->usearch_index, vec->x, usearch_scalar_f32_k, k, scanstate->labels, scanstate->distances, &error);
         ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);

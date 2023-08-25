@@ -46,7 +46,6 @@ SELECT * FROM (
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized
-INFO:  querying index for 10 elements
  id  | dist 
 -----+------
  010 | 0.00
@@ -75,7 +74,6 @@ SELECT * FROM (
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized
-INFO:  querying index for 10 elements
  id  | dist 
 -----+------
  010 | 0.00
@@ -104,7 +102,6 @@ SELECT id, ROUND(vector_l2sq_dist(v, :'v42')::numeric, 2) FROM sift_base1k ORDER
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=128 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized
-INFO:  querying index for 10 elements
  id  |  round   
 -----+----------
   42 |     0.00
@@ -133,7 +130,6 @@ SELECT id, ROUND(vector_l2sq_dist(v, :'v42')::numeric, 2) FROM sift_base1k ORDER
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=128 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized
-INFO:  querying index for 10 elements
  id  |  round   
 -----+----------
   42 |     0.00
@@ -178,7 +174,6 @@ SELECT id, ROUND(vector_l2sq_dist(vector, :'v42')::numeric, 2) FROM new_small_wo
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized
-INFO:  querying index for 10 elements
  id  | round 
 -----+-------
  000 |  0.00
