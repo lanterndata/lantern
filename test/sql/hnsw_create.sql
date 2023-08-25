@@ -33,15 +33,15 @@ CREATE INDEX ON small_world USING hnsw (v) WITH (M=129);
 -- Validate index dimension inference
 CREATE TABLE small_world4 (
     id varchar(3),
-    vector vector(4)
+    vector real[]
 );
 INSERT INTO small_world4 (id, vector) VALUES
-('000', '[1,0,0,0]'),
-('001', '[1,0,0,1]'),
-('010', '[1,0,1,0]'),
-('011', '[1,0,1,1]'),
-('100', '[1,1,0,0]'),
-('101', '[1,1,0,1]'),
-('110', '[1,1,1,0]'),
-('111', '[1,1,1,1]');
+('000', '{1,0,0,0}'),
+('001', '{1,0,0,1}'),
+('010', '{1,0,1,0}'),
+('011', '{1,0,1,1}'),
+('100', '{1,1,0,0}'),
+('101', '{1,1,0,1}'),
+('110', '{1,1,1,0}'),
+('111', '{1,1,1,1}');
 CREATE INDEX ON small_world4 USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);

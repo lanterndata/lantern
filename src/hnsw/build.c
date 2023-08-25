@@ -176,14 +176,15 @@ static int GetArrayLengthFromHeap(Relation heap, IndexInfo *indexInfo, int currD
     snapshot.snapshot_type = SNAPSHOT_TOAST;
     scan = heap_beginscan(heap, &snapshot, 0, NULL, NULL, SO_TYPE_SEQSCAN);
     tuple = heap_getnext(scan, ForwardScanDirection);
-    if(tuple == NULL){
+    if(tuple == NULL) {
+        heap_endscan(scan);
         return n_items;
     }
 
     // Get the indexed column out of the row and return it's dimensions
     datum = heap_getattr(tuple, indexCol, RelationGetDescr(heap), &isNull);
     if(!isNull) {
-        array = DatumGetArrayTypeP(datum);
+        array = DatumGetArrayTypePCopy(datum);
         n_items = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
     }
 
@@ -204,7 +205,10 @@ static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation i
     buildstate->dimensions = GetHnswIndexDimensions(index);
 
     // If a dimension wasn't specified try to infer it
-    //if(buildstate->dimensions < 1 || buildstate->dimensions == HNSW_DEFAULT_DIMS) buildstate->dimensions = GetArrayLengthFromHeap(heap, indexInfo, buildstate->dimensions);
+    // this is unecessary when the actual size is 3 but in practice this shouldn't be too common
+    if(columnType == REAL_ARRAY || columnType == INT_ARRAY)
+        if(buildstate->dimensions == HNSW_DEFAULT_DIMS)
+            buildstate->dimensions = GetArrayLengthFromHeap(heap, indexInfo, buildstate->dimensions);
     /* Require column to have dimensions to be indexed */
     if(buildstate->dimensions < 1) elog(ERROR, "column does not have dimensions");
 
