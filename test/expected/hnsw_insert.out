@@ -195,10 +195,10 @@ SELECT count(*) from sift_base1k;
 (1 row)
 
 SELECT * from ldb_get_indexes('sift_base1k');
-     indexname     |  size  |                                  indexdef                                   
--------------------+--------+-----------------------------------------------------------------------------
- sift_base1k_pkey  | 40 kB  | CREATE UNIQUE INDEX sift_base1k_pkey ON public.sift_base1k USING btree (id)
- sift_base1k_v_idx | 720 kB | CREATE INDEX sift_base1k_v_idx ON public.sift_base1k USING hnsw (v)
+     indexname     |  size  |                                  indexdef                                   | total_index_size 
+-------------------+--------+-----------------------------------------------------------------------------+------------------
+ sift_base1k_pkey  | 40 kB  | CREATE UNIQUE INDEX sift_base1k_pkey ON public.sift_base1k USING btree (id) | 760 kB
+ sift_base1k_v_idx | 720 kB | CREATE INDEX sift_base1k_v_idx ON public.sift_base1k USING hnsw (v)         | 760 kB
 (2 rows)
 
 INSERT INTO sift_base1k(v)
@@ -210,10 +210,10 @@ SELECT count(*) from sift_base1k;
 (1 row)
 
 SELECT * from ldb_get_indexes('sift_base1k');
-     indexname     |  size   |                                  indexdef                                   
--------------------+---------+-----------------------------------------------------------------------------
- sift_base1k_pkey  | 48 kB   | CREATE UNIQUE INDEX sift_base1k_pkey ON public.sift_base1k USING btree (id)
- sift_base1k_v_idx | 1016 kB | CREATE INDEX sift_base1k_v_idx ON public.sift_base1k USING hnsw (v)
+     indexname     |  size   |                                  indexdef                                   | total_index_size 
+-------------------+---------+-----------------------------------------------------------------------------+------------------
+ sift_base1k_pkey  | 48 kB   | CREATE UNIQUE INDEX sift_base1k_pkey ON public.sift_base1k USING btree (id) | 1064 kB
+ sift_base1k_v_idx | 1016 kB | CREATE INDEX sift_base1k_v_idx ON public.sift_base1k USING hnsw (v)         | 1064 kB
 (2 rows)
 
 -- make sure NULL inserts into the index are handled correctly
