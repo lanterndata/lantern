@@ -217,6 +217,10 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         usearch_error_t error = NULL;
         int             k = scanstate->count * 2;
 
+        if(usearch_size(scanstate->usearch_index, &error) == scanstate->current) {
+            return false;
+        }
+
         value = scan->orderByData->sk_argument;
 
         vec = DatumGetVector(value);
