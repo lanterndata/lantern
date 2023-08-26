@@ -214,14 +214,14 @@ static void create_index_from_file(const char *tablename_str, const char *index_
     const char *columnName = "vector";
 
     // Use a query string
-    char  *queryString;
     size_t buffer_size = strlen("CREATE INDEX on ") + strlen(tablename_str) + strlen(" using hnsw(")
                          + strlen(columnName) + strlen(")") + 1;
-    queryString = (char *)palloc(buffer_size);
+    char queryString[buffer_size];
     snprintf(queryString, buffer_size, "CREATE INDEX on %s using hnsw(%s);", tablename_str, columnName);
 
     // Define a statement for execution
-    IndexStmt *stmt = (IndexStmt *)palloc(sizeof(IndexStmt));
+    IndexStmt st = {0};
+    IndexStmt *stmt = &st;
 
     char tablename[ strlen(tablename_str) ];  // Adjust the size as needed
     strcpy(tablename, tablename_str);         // Copy contents of tablename_str into tablename
@@ -254,9 +254,9 @@ static void create_index_from_file(const char *tablename_str, const char *index_
 
     Node *parsetree = (Node *)(stmt);  // Node *parsetree = pstmt->utilityStmt;
     bool  isTopLevel
-        = true;  // TODO understand and fix if needed. utility.c value -> (context == PROCESS_UTILITY_TOPLEVEL);
+        = false;  // TODO understand and fix if needed. utility.c value -> (context == PROCESS_UTILITY_TOPLEVEL);
     bool isCompleteQuery
-        = true;  // TODO understand and fix if needed. utility.c value -> (context != PROCESS_UTILITY_SUBCOMMAND);
+        = false;  // TODO understand and fix if needed. utility.c value -> (context != PROCESS_UTILITY_SUBCOMMAND);
     bool          needCleanup;
     bool          commandCollected = false;
     ObjectAddress address;
@@ -366,10 +366,6 @@ static void create_index_from_file(const char *tablename_str, const char *index_
         if(needCleanup) EventTriggerEndCompleteQuery();
     }
     PG_END_TRY();
-
-    pfree(queryString);
-    pfree(stmt);
-
 
     // TODO : Run the ldb_ambuild from file equivalent after this
 }
