@@ -21,9 +21,10 @@
 // CREATE INDEX ... WITH (...)
 //                       ^^^^
 static relopt_kind ldb_hnsw_index_withopts;
-static int         ldb_hnsw_init_k;
 
 static ExecutorStart_hook_type original_executor_start_hook = NULL;
+
+int ldb_hnsw_init_k;
 
 int HnswGetDims(Relation index)
 {
@@ -57,7 +58,7 @@ usearch_metric_kind_t HnswGetMetricKind(Relation index)
 {
     struct catclist *proclist = SearchSysCacheList1(AMPROCNUM, ObjectIdGetDatum(index->rd_opfamily[ 0 ]));
 
-    if(&proclist->n_members == 0) {
+    if(proclist->n_members == 0) {
         elog(ERROR, "no support functions found");
     }
 

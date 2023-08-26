@@ -45,21 +45,35 @@
 #define UpdateProgress(index, val) ((void)val)
 #endif
 
-static void AddTupleToIndex(Relation index, ItemPointer tid, Datum *values, HnswBuildState *buildstate)
+static void AddTupleToUsearchIndex(ItemPointer tid, Datum *values, HnswBuildState *buildstate)
 {
     /* Detoast once for all calls */
-    usearch_error_t error = NULL;
-    Datum           value = PointerGetDatum(PG_DETOAST_DATUM(values[ 0 ]));
+    usearch_error_t       error = NULL;
+    Datum                 value = PointerGetDatum(PG_DETOAST_DATUM(values[ 0 ]));
+    usearch_scalar_kind_t usearch_scalar;
 
-    // casting tid structure to a number to be used as value in vector search
-    // tid has info about disk location of this item and is 6 bytes long
+    switch(buildstate->columnType) {
+        case REAL_ARRAY:
+        case VECTOR:
+            usearch_scalar = usearch_scalar_f32_k;
+            break;
+        case INT_ARRAY:
+            // q:: I think in this case we need to do a type conversion from int to float
+            // before passing the buffer to usearch
+            usearch_scalar = usearch_scalar_f32_k;
+            break;
+        default:
+            pg_unreachable();
+    }
+
+        // casting tid structure to a number to be used as value in vector search
+        // tid has info about disk location of this item and is 6 bytes long
 #ifdef LANTERN_USE_LIBHNSW
     if(buildstate->hnsw != NULL) hnsw_add(buildstate->hnsw, DatumGetVector(value)->x, *(unsigned long *)tid);
 #endif
 #ifdef LANTERN_USE_USEARCH
     if(buildstate->usearch_index != NULL)
-        usearch_add(
-            buildstate->usearch_index, *(unsigned long *)tid, DatumGetVector(value)->x, usearch_scalar_f32_k, &error);
+        usearch_add(buildstate->usearch_index, *(unsigned long *)tid, DatumGetVector(value)->x, usearch_scalar, &error);
 #endif
     assert(error == NULL);
     buildstate->tuples_indexed++;
@@ -96,6 +110,8 @@ static void BuildCallback(
 {
     HnswBuildState *buildstate = (HnswBuildState *)state;
     MemoryContext   oldCtx;
+    // we can later use this for some optimizations I think
+    LDB_UNUSED(tupleIsAlive);
 
 #if PG_VERSION_NUM < 130000
     ItemPointer tid = &hup->t_self;
@@ -104,14 +120,14 @@ static void BuildCallback(
     /* Skip nulls */
     if(isnull[ 0 ]) return;
 
-    HnswDataType indexType = GetIndexDataType(index);
-
     CheckHnswIndexDimensions(index, values[ 0 ], buildstate->dimensions);
 
     /* Use memory context since detoast can allocate */
     oldCtx = MemoryContextSwitchTo(buildstate->tmpCtx);
 
-    AddTupleToIndex(index, tid, values, buildstate);
+    // todo:: the argument values is assumed to be a real[] or vector (they have the same layout)
+    // do proper type checking instead of this assumption and test int int arrays and others
+    AddTupleToUsearchIndex(tid, values, buildstate);
 
     /* Reset memory context */
     MemoryContextSwitchTo(oldCtx);
@@ -161,9 +177,7 @@ static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation i
     buildstate->heap = heap;
     buildstate->index = index;
     buildstate->indexInfo = indexInfo;
-
-    HnswDataType columnType = GetIndexDataType(index);
-
+    buildstate->columnType = GetIndexDataType(index);
     buildstate->dimensions = GetHnswIndexDimensions(index);
 
     /* Require column to have dimensions to be indexed */
@@ -295,6 +309,7 @@ IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInf
  */
 void ldb_ambuildunlogged(Relation index)
 {
+    LDB_UNUSED(index);
     // todo::
     elog(ERROR, "hnsw index on unlogged tables is currently not supported");
 }

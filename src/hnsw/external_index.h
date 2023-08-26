@@ -97,8 +97,6 @@ typedef struct
     RetrieverCtx   *retriever_ctx;
 } HnswInsertState;
 
-int UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, int level);
-
 void StoreExternalIndex(Relation        index,
                         usearch_index_t external_index,
                         ForkNumber      forkNum,
@@ -113,7 +111,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
                                   HnswIndexHeaderPage *hdr,
                                   usearch_metadata_t  *metadata,
                                   uint32               new_tuple_id,
-                                  int                  new_tuple_level,
+                                  uint32               new_tuple_level,
                                   HnswInsertState     *insertstate);
 
 #endif  // LDB_HNSW_EXTERNAL_INDEX_H

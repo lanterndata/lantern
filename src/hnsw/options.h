@@ -52,4 +52,6 @@ usearch_metric_kind_t HnswGetMetricKind(Relation index);
 
 bytea *ldb_amoptions(Datum reloptions, bool validate);
 
+extern int ldb_hnsw_init_k;
+
 #endif  // LDB_HNSW_OPTIONS_H
