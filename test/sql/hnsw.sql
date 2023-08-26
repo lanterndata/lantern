@@ -108,4 +108,23 @@ INSERT INTO small_world (id, vector) VALUES
 ('110', '[1,1,0]'),
 ('111', '[1,1,1]');
 
+-- Ensure we can query an index for more elements than the value of init_k
+SET client_min_messages TO DEBUG5;
+WITH neighbors AS (
+    SELECT * FROM small_world order by vector <-> '[1,0,0]' LIMIT 10
+) SELECT COUNT(*) from neighbors;
+WITH neighbors AS (
+    SELECT * FROM small_world order by vector <-> '[1,0,0]' LIMIT 50
+) SELECT COUNT(*) from neighbors;
+
+-- change default k and make sure the number of usearch_searchs makes sense
+SET hnsw.init_k = 4;
+WITH neighbors AS (
+    SELECT * FROM small_world order by vector <-> '[1,0,0]' LIMIT 3
+) SELECT COUNT(*) from neighbors;
+WITH neighbors AS (
+    SELECT * FROM small_world order by vector <-> '[1,0,0]' LIMIT 15
+) SELECT COUNT(*) from neighbors;
+RESET client_min_messages;
+
 \echo "Done with hnsw.sql test!"
