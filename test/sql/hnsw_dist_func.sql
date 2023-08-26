@@ -16,6 +16,10 @@ INSERT INTO small_world_l2 SELECT id, v FROM small_world;
 INSERT INTO small_world_cos SELECT id, v FROM small_world;
 INSERT INTO small_world_ham SELECT id, v FROM small_world;
 
+CREATE INDEX ON small_world_l2 USING hnsw (vector dist_l2sq_ops);
+CREATE INDEX ON small_world_cos USING hnsw (vector dist_cos_ops);
+CREATE INDEX ON small_world_ham USING hnsw (vector dist_hamming_ops);
+
 SET enable_seqscan = false;
 
 -- Verify that the distance functions work (check distances)

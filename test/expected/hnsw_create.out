@@ -57,6 +57,16 @@ CREATE TABLE small_world4 (
     id varchar(3),
     vector real[]
 );
+-- If the first row is NULL we do not infer a dimension
+\set ON_ERROR_STOP off
+begin;
+INSERT INTO small_world4 (id, vector) VALUES
+('000', NULL),
+('001', '{1,0,0,1}');
+CREATE INDEX ON small_world4 USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
+ERROR:  column does not have dimensions
+rollback;
+\set ON_ERROR_STOP on
 INSERT INTO small_world4 (id, vector) VALUES
 ('000', '{1,0,0,0}'),
 ('001', '{1,0,0,1}'),

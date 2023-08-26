@@ -25,6 +25,10 @@
 #include <pgstat.h>
 #endif
 
+#if PG_VERSION_NUM <= 120000
+#include <access/htup_details.h>
+#endif
+
 #if PG_VERSION_NUM >= 120000
 #include <access/tableam.h>
 #include <commands/progress.h>
@@ -116,14 +120,73 @@ static void BuildCallback(
     MemoryContextReset(buildstate->tmpCtx);
 }
 
+static int GetArrayLengthFromHeap(Relation heap, int indexCol)
+{
+#if PG_VERSION_NUM < 120000
+    HeapScanDesc scan;
+#else
+    TableScanDesc scan;
+#endif
+    HeapTuple  tuple;
+    Snapshot   snapshot;
+    ArrayType *array;
+    Datum      datum;
+    bool       isNull;
+    int        n_items = HNSW_DEFAULT_DIMS;
+    //
+    // Get the first row off the heap
+    // if it's NULL we don't infer a length. Since vectors are expected to have fixed nonzero dimension this will result
+    // in an error later
+    snapshot = GetTransactionSnapshot();
+#if PG_VERSION_NUM < 120000
+    scan = heap_beginscan(heap, snapshot, 0, NULL);
+#else
+    scan = heap_beginscan(heap, snapshot, 0, NULL, NULL, SO_TYPE_SEQSCAN);
+#endif
+    tuple = heap_getnext(scan, ForwardScanDirection);
+    if(tuple == NULL) {
+        heap_endscan(scan);
+        return n_items;
+    }
+
+    // Get the indexed column out of the row and return it's dimensions
+    datum = heap_getattr(tuple, indexCol, RelationGetDescr(heap), &isNull);
+    if(!isNull) {
+        array = DatumGetArrayTypePCopy(datum);
+        n_items = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
+    }
+
+    heap_endscan(scan);
+
+    return n_items;
+}
+
 int GetHnswIndexDimensions(Relation index)
 {
     HnswColumnType columnType = GetIndexColumnType(index);
 
     // check if column is type of real[] or integer[]
     if(columnType == REAL_ARRAY || columnType == INT_ARRAY) {
-        // if column is array take dimensions from options
-        return HnswGetDims(index);
+        // The dimension in options is not set if the dimension is inferred so we need to actually check the key
+        int opt_dim = HnswGetDims(index);
+        if(opt_dim == HNSW_DEFAULT_DIMS) {
+            // If the option's still the default it needs to be updated to match what was inferred
+            // todo: is there a way to do this earlier? (rd_options is null in BuildInit)
+            Relation     heap;
+            HnswOptions *opts;
+            int          attrNum;
+
+            // We know there's one key because we generate an error during inference if multiple keys are specified
+            attrNum = index->rd_index->indkey.values[ 0 ];
+            heap = table_open(index->rd_index->indrelid, AccessShareLock);
+            opt_dim = GetArrayLengthFromHeap(heap, attrNum);
+            opts = (HnswOptions *)index->rd_options;
+            if(opts != NULL) {
+                opts->dims = opt_dim;
+            }
+            table_close(heap, AccessShareLock);
+        }
+        return opt_dim;
     } else if(columnType == VECTOR) {
         return TupleDescAttr(index->rd_att, 0)->atttypmod;
     } else {
@@ -154,43 +217,18 @@ void CheckHnswIndexDimensions(Relation index, Datum arrayDatum, int dimensions)
 /*
  * Infer the dimensionality of the index from the heap
  */
-static int GetArrayLengthFromHeap(Relation heap, IndexInfo *indexInfo, int currDim)
+static int InferDimension(Relation heap, IndexInfo *indexInfo)
 {
-    TableScanDesc scan;
-    HeapTuple     tuple;
-    SnapshotData  snapshot;
-    ArrayType    *array;
-    Datum         datum;
-    bool          isNull;
-    int           n_items = currDim;
-    int           indexCol;
+    int indexCol;
 
-    // If NumIndexAttrs isn't 1 there's no clear way to infer the dim
+    // If NumIndexAttrs isn't 1 the index has been instantiated on multiple columns and there's no clear way to infer
+    // the dim
     if(indexInfo->ii_NumIndexAttrs != 1) {
-        return n_items;
+        return HNSW_DEFAULT_DIMS;
     }
 
     indexCol = indexInfo->ii_IndexAttrNumbers[ 0 ];
-
-    // Get the first row off the heap
-    snapshot.snapshot_type = SNAPSHOT_TOAST;
-    scan = heap_beginscan(heap, &snapshot, 0, NULL, NULL, SO_TYPE_SEQSCAN);
-    tuple = heap_getnext(scan, ForwardScanDirection);
-    if(tuple == NULL) {
-        heap_endscan(scan);
-        return n_items;
-    }
-
-    // Get the indexed column out of the row and return it's dimensions
-    datum = heap_getattr(tuple, indexCol, RelationGetDescr(heap), &isNull);
-    if(!isNull) {
-        array = DatumGetArrayTypePCopy(datum);
-        n_items = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
-    }
-
-    heap_endscan(scan);
-
-    return n_items;
+    return GetArrayLengthFromHeap(heap, indexCol);
 }
 
 /*
@@ -205,10 +243,8 @@ static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation i
     buildstate->dimensions = GetHnswIndexDimensions(index);
 
     // If a dimension wasn't specified try to infer it
-    // this is unecessary when the actual size is 3 but in practice this shouldn't be too common
     if(columnType == REAL_ARRAY || columnType == INT_ARRAY)
-        if(buildstate->dimensions == HNSW_DEFAULT_DIMS)
-            buildstate->dimensions = GetArrayLengthFromHeap(heap, indexInfo, buildstate->dimensions);
+        if(buildstate->dimensions < 1) buildstate->dimensions = InferDimension(heap, indexInfo);
     /* Require column to have dimensions to be indexed */
     if(buildstate->dimensions < 1) elog(ERROR, "column does not have dimensions");
 
