@@ -195,6 +195,11 @@ static float8 vector_dist(Vector *a, Vector *b, usearch_metric_kind_t metric_kin
     return usearch_dist(a->x, b->x, metric_kind, a->dim, usearch_scalar_f32_k);
 }
 
+static void create_index_from_file(const char *tablename_str, const char *index_path_str)
+{
+    
+}
+
 PGDLLEXPORT PG_FUNCTION_INFO_V1(ldb_generic_dist);
 Datum       ldb_generic_dist(PG_FUNCTION_ARGS) { PG_RETURN_NULL(); }
 
@@ -229,4 +234,18 @@ Datum       vector_l2sq_dist(PG_FUNCTION_ARGS)
     Vector *b = PG_GETARG_VECTOR_P(1);
 
     PG_RETURN_FLOAT8((double)vector_dist(a, b, usearch_metric_l2sq_k));
+}
+
+PGDLLEXPORT PG_FUNCTION_INFO_V1(index_from_external);
+Datum       index_from_external(PG_FUNCTION_ARGS)
+{
+    text *tablename_text = PG_GETARG_TEXT_P(0);
+    text *index_path_text = PG_GETARG_TEXT_P(1);
+
+    char *tablename_str = text_to_cstring(tablename_text);
+    char *index_path_str = text_to_cstring(index_path_text);
+
+    create_index_from_file(tablename_str, index_path_str);
+
+    PG_RETURN_VOID();
 }
