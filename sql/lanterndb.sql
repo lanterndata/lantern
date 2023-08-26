@@ -24,6 +24,10 @@ CREATE FUNCTION cos_dist(real[], real[]) RETURNS real
 CREATE FUNCTION hamming_dist(integer[], integer[]) RETURNS integer
 	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 
+-- Define the index creation function
+CREATE FUNCTION index_from_external(tablename text, index_path text) RETURNS void
+	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+
 -- operators
 CREATE OPERATOR <-> (
 	LEFTARG = real[], RIGHTARG = real[], PROCEDURE = ldb_generic_dist,

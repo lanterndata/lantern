@@ -1,13 +1,26 @@
 #include <postgres.h>
 
+#include "hnsw.h"
+
 #include <access/amapi.h>
+#include <access/xact.h>
+#include <c.h>
+#include <catalog/namespace.h>
+#include <catalog/pg_inherits.h>
+#include <commands/defrem.h>
+#include <commands/event_trigger.h>
+#include <commands/tablecmds.h>
 #include <commands/vacuum.h>
 #include <float.h>
+#include <parser/parse_utilcmd.h>
+#include <parser/parser.h>
+#include <utils/builtins.h>
+#include <utils/elog.h>
 #include <utils/guc.h>
+#include <utils/lsyscache.h>
 #include <utils/selfuncs.h>
 #include <utils/spccache.h>
 
-#include "hnsw.h"
 #include "hnsw/build.h"
 #include "hnsw/delete.h"
 #include "hnsw/insert.h"
@@ -197,7 +210,168 @@ static float8 vector_dist(Vector *a, Vector *b, usearch_metric_kind_t metric_kin
 
 static void create_index_from_file(const char *tablename_str, const char *index_path_str)
 {
-    
+    // Column name
+    const char *columnName = "vector";
+
+    // Use a query string
+    char  *queryString;
+    size_t buffer_size = strlen("CREATE INDEX on ") + strlen(tablename_str) + strlen(" using hnsw(")
+                         + strlen(columnName) + strlen(")") + 1;
+    queryString = (char *)palloc(buffer_size);
+    snprintf(queryString, buffer_size, "CREATE INDEX on %s using hnsw(%s);", tablename_str, columnName);
+
+    // Define a statement for execution
+    IndexStmt *stmt = (IndexStmt *)palloc(sizeof(IndexStmt));
+
+    char tablename[ strlen(tablename_str) ];  // Adjust the size as needed
+    strcpy(tablename, tablename_str);         // Copy contents of tablename_str into tablename
+
+    RangeVar rv = {
+        .type = T_RangeVar,
+        .catalogname = 0x0,
+        .schemaname = 0x0,
+        .relname = tablename,
+        .inh = true,
+        .relpersistence = RELKIND_RELATION,
+        .alias = 0x0,
+        .location = 16,  // location of "small_world" token in "CREATE INDEX on small_world using hnsw(vector)"
+    };
+    IndexElem ie = {.type = T_IndexElem,
+                    .name = "vector",  // column name on which to index
+                    .expr = 0x0,
+                    .indexcolname = 0x0,
+                    .collation = 0x0,
+                    .opclass = 0x0,
+                    .opclassopts = 0x0,
+                    .ordering = SORTBY_DEFAULT,
+                    .nulls_ordering = SORTBY_NULLS_DEFAULT};
+
+    stmt->type = T_IndexStmt;
+    stmt->relation = &rv;
+    stmt->accessMethod = "hnsw";  // name of access method
+
+    stmt->indexParams = list_make1(&ie);
+
+    Node *parsetree = (Node *)(stmt);  // Node *parsetree = pstmt->utilityStmt;
+    bool  isTopLevel
+        = true;  // TODO understand and fix if needed. utility.c value -> (context == PROCESS_UTILITY_TOPLEVEL);
+    bool isCompleteQuery
+        = true;  // TODO understand and fix if needed. utility.c value -> (context != PROCESS_UTILITY_SUBCOMMAND);
+    bool          needCleanup;
+    bool          commandCollected = false;
+    ObjectAddress address;
+    ObjectAddress secondaryObject = InvalidObjectAddress;
+
+    /* All event trigger calls are done only when isCompleteQuery is true */
+    needCleanup = isCompleteQuery && EventTriggerBeginCompleteQuery();
+
+    /* PG_TRY block is to ensure we call EventTriggerEndCompleteQuery */
+    PG_TRY();
+    {
+        if(isCompleteQuery) EventTriggerDDLCommandStart(parsetree);
+
+        IndexStmt *stmt = (IndexStmt *)parsetree;
+        Oid        relid;
+        LOCKMODE   lockmode;
+        bool       is_alter_table;
+
+        if(stmt->concurrent) PreventInTransactionBlock(isTopLevel, "CREATE INDEX CONCURRENTLY");
+
+        /*
+         * Look up the relation OID just once, right here at the
+         * beginning, so that we don't end up repeating the name
+         * lookup later and latching onto a different relation
+         * partway through.  To avoid lock upgrade hazards, it's
+         * important that we take the strongest lock that will
+         * eventually be needed here, so the lockmode calculation
+         * needs to match what DefineIndex() does.
+         */
+        lockmode = stmt->concurrent ? ShareUpdateExclusiveLock : ShareLock;
+        relid = RangeVarGetRelidExtended(stmt->relation, lockmode, 0, RangeVarCallbackOwnsRelation, NULL);
+
+        /*
+         * CREATE INDEX on partitioned tables (but not regular
+         * inherited tables) recurses to partitions, so we must
+         * acquire locks early to avoid deadlocks.
+         *
+         * We also take the opportunity to verify that all
+         * partitions are something we can put an index on, to
+         * avoid building some indexes only to fail later.
+         */
+        if(stmt->relation->inh && get_rel_relkind(relid) == RELKIND_PARTITIONED_TABLE) {
+            ListCell *lc;
+            List     *inheritors = NIL;
+
+            inheritors = find_all_inheritors(relid, lockmode, NULL);
+            foreach(lc, inheritors) {
+                char relkind = get_rel_relkind(lfirst_oid(lc));
+
+                if(relkind != RELKIND_RELATION && relkind != RELKIND_MATVIEW && relkind != RELKIND_PARTITIONED_TABLE
+                   && relkind != RELKIND_FOREIGN_TABLE)
+                    elog(ERROR, "unexpected relkind \"%c\" on partition \"%s\"", relkind, stmt->relation->relname);
+
+                if(relkind == RELKIND_FOREIGN_TABLE && (stmt->unique || stmt->primary))
+                    ereport(ERROR,
+                            (errcode(ERRCODE_WRONG_OBJECT_TYPE),
+                             errmsg("cannot create unique index on partitioned table \"%s\"", stmt->relation->relname),
+                             errdetail("Table \"%s\" contains partitions that are foreign tables.",
+                                       stmt->relation->relname)));
+            }
+            list_free(inheritors);
+        }
+
+        /*
+         * If the IndexStmt is already transformed, it must have
+         * come from generateClonedIndexStmt, which in current
+         * usage means it came from expandTableLikeClause rather
+         * than from original parse analysis.  And that means we
+         * must treat it like ALTER TABLE ADD INDEX, not CREATE.
+         * (This is a bit grotty, but currently it doesn't seem
+         * worth adding a separate bool field for the purpose.)
+         */
+        is_alter_table = stmt->transformed;
+
+        /* Run parse analysis ... */
+        stmt = transformIndexStmt(relid, stmt, queryString);
+
+        /* ... and do it */
+        EventTriggerAlterTableStart(parsetree);
+        address = DefineIndex(relid, /* OID of heap relation */
+                              stmt,
+                              InvalidOid, /* no predefined OID */
+                              InvalidOid, /* no parent index */
+                              InvalidOid, /* no parent constraint */
+                              is_alter_table,
+                              true,   /* check_rights */
+                              true,   /* check_not_in_use */
+                              true,   /* skip_build : THIS IS A NOTABLE CHANGE */
+                              false); /* quiet */
+
+        /*
+         * Add the CREATE INDEX node itself to stash right away;
+         * if there were any commands stashed in the ALTER TABLE
+         * code, we need them to appear after this one.
+         */
+        EventTriggerCollectSimpleCommand(address, secondaryObject, parsetree);
+
+        EventTriggerAlterTableEnd();
+
+        if(isCompleteQuery) {
+            EventTriggerSQLDrop(parsetree);
+            EventTriggerDDLCommandEnd(parsetree);
+        }
+    }
+    PG_FINALLY();
+    {
+        if(needCleanup) EventTriggerEndCompleteQuery();
+    }
+    PG_END_TRY();
+
+    pfree(queryString);
+    pfree(stmt);
+
+
+    // TODO : Run the ldb_ambuild from file equivalent after this
 }
 
 PGDLLEXPORT PG_FUNCTION_INFO_V1(ldb_generic_dist);
