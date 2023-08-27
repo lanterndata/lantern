@@ -10,8 +10,8 @@
 
 #include "cache.h"
 #include "extra_dirtied.h"
-#include "usearch.h"
 #include "hnsw.h"
+#include "usearch.h"
 
 #define LDB_WAL_MAGIC_NUMBER   0xa47e20db
 #define LDB_WAL_VERSION_NUMBER 0x00000001

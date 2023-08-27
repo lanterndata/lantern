@@ -5,10 +5,10 @@
 #include <access/reloptions.h>
 #include <assert.h>
 
+#include "hnsw.h"
 #include "lib_interface.h"
 #include "retriever.h"
 #include "usearch.h"
-#include "hnsw.h"
 
 typedef struct HnswScanState
 {

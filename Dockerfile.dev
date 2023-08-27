@@ -21,6 +21,7 @@ RUN apt update \
        curl \
        git-all \
        tmux \
+       clang-format \
     && pip install libtmux --break-system-packages
 
 COPY . .
