@@ -178,13 +178,21 @@ int GetHnswIndexDimensions(Relation index)
 
             // We know there's one key because we generate an error during inference if multiple keys are specified
             attrNum = index->rd_index->indkey.values[ 0 ];
+#if PG_VERSION_NUM < 120000
+            heap = heap_open(index->rd_index->indrelid, AccessShareLock);
+#else
             heap = table_open(index->rd_index->indrelid, AccessShareLock);
+#endif
             opt_dim = GetArrayLengthFromHeap(heap, attrNum);
             opts = (HnswOptions *)index->rd_options;
             if(opts != NULL) {
                 opts->dims = opt_dim;
             }
+#if PG_VERSION_NUM < 120000
+            heap_close(heap, AccessShareLock);
+#else
             table_close(heap, AccessShareLock);
+#endif
         }
         return opt_dim;
     } else if(columnType == VECTOR) {
