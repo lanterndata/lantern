@@ -6,8 +6,6 @@ ARG VERSION
 
 WORKDIR /lanterndb
 
-COPY . .
-
 RUN apt update \
     # Fix the locales package version to prevent unexpected updates
     && apt-mark hold locales \
@@ -20,7 +18,13 @@ RUN apt update \
        wget \
        python3-pip \
        sudo \
+       curl \
+       git-all \
+       tmux \
+       clang-format \
     && pip install libtmux --break-system-packages
+
+COPY . .
 
 # Build lanterndb
 RUN rm -rf build \

@@ -4,5 +4,5 @@
 # - 'ignore' lines must have exactly one test
 # - 'test' lines may have multiple space-separated tests. All tests in a single 'test' line will be run in parallel
 
-ignore: hnsw_operators_todo
-test: hnsw_large_table hnsw_operators_todo debug_helpers hnsw_options hnsw hnsw_insert hnsw_insert_array hnsw_insert_empty_table hnsw_type_checks wiki hnsw_dist_func
+ignore: hnsw_todo
+test: hnsw_config hnsw_correct hnsw_create hnsw_dist_func hnsw_insert hnsw_select hnsw_todo hnsw_vector

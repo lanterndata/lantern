@@ -5,6 +5,7 @@
 #include <access/reloptions.h>
 #include <assert.h>
 
+#include "hnsw.h"
 #include "lib_interface.h"
 #include "retriever.h"
 #include "usearch.h"
@@ -15,6 +16,8 @@ typedef struct HnswScanState
     ItemPointer      iptr;
     float           *distances;
     usearch_label_t *labels;
+    HnswColumnType   columnType;
+    int              dimensions;
     // indicates whether we are retrieving the first tuple
     // actual vector-search is run when the first tuple is requested
     bool first;

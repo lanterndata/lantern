@@ -13,7 +13,7 @@ from select import select
 import time
 import argparse
 
-sql_common_script_path = os.path.join(os.path.dirname(__file__), "../test/sql/test_helpers/common.sql")
+sql_common_script_path = os.path.join(os.path.dirname(__file__), "../test/sql/utils/common.sql")
 default_user = getpass.getuser()
 
 # helper functions

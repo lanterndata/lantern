@@ -34,7 +34,6 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     scanstate->first = true;
 
     opts.connectivity = HnswGetM(index);
-    opts.dimensions = dimensions;
     opts.expansion_add = HnswGetEfConstruction(index);
     opts.expansion_search = HnswGetEf(index);
     opts.metric_kind = HnswGetMetricKind(index);
@@ -42,6 +41,8 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     opts.quantization = usearch_scalar_f32_k;
 
     scanstate->retriever_ctx = opts.retriever_ctx = retriever_ctx;
+    scanstate->columnType = GetIndexColumnType(index);
+    scanstate->dimensions = opts.dimensions = dimensions;
     opts.retriever = ldb_wal_index_node_retriever;
     opts.retriever_mut = ldb_wal_index_node_retriever_mut;
 
@@ -166,7 +167,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
     if(scanstate->first) {
         int             num_returned;
         Datum           value;
-        Vector         *vec;
+        float4          *vec;
         usearch_error_t error = NULL;
         int             k = ldb_hnsw_init_k;
 
@@ -187,7 +188,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         Assert(!VARATT_IS_COMPRESSED(DatumGetPointer(value)));
         Assert(!VARATT_IS_EXTENDED(DatumGetPointer(value)));
 
-        vec = DatumGetVector(value);
+        vec = DatumGetSizedFloatArray(value, scanstate->columnType, scanstate->dimensions);
 
         if(scanstate->distances == NULL) {
             scanstate->distances = palloc(k * sizeof(float));
@@ -199,7 +200,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         // hnsw_search(scanstate->hnsw, vec->x, k, &num_returned, scanstate->distances, scanstate->labels);
         elog(DEBUG5, "querying index for %d elements", k);
         num_returned = usearch_search(
-            scanstate->usearch_index, vec->x, usearch_scalar_f32_k, k, scanstate->labels, scanstate->distances, &error);
+            scanstate->usearch_index, vec, usearch_scalar_f32_k, k, scanstate->labels, scanstate->distances, &error);
         ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);
 
         scanstate->count = num_returned;
@@ -214,7 +215,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
     if(scanstate->current == scanstate->count) {
         int             num_returned;
         Datum           value;
-        Vector         *vec;
+        float4         *vec;
         usearch_error_t error = NULL;
         int             k = scanstate->count * 2;
 
@@ -224,7 +225,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
 
         value = scan->orderByData->sk_argument;
 
-        vec = DatumGetVector(value);
+        vec = DatumGetSizedFloatArray(value, scanstate->columnType, scanstate->dimensions);
 
         /* double k and reallocate arrays to account for increased size */
         scanstate->distances = repalloc(scanstate->distances, k * sizeof(float));
@@ -232,7 +233,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
 
         elog(DEBUG5, "querying index for %d elements", k);
         num_returned = usearch_search(
-            scanstate->usearch_index, vec->x, usearch_scalar_f32_k, k, scanstate->labels, scanstate->distances, &error);
+            scanstate->usearch_index, vec, usearch_scalar_f32_k, k, scanstate->labels, scanstate->distances, &error);
         ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);
 
         scanstate->count = num_returned;

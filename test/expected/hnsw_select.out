@@ -1,0 +1,147 @@
+---------------------------------------------------------------------
+-- Test HNSW index selects
+---------------------------------------------------------------------
+\ir utils/small_world_array.sql
+CREATE TABLE small_world (
+    id VARCHAR(3),
+    b BOOLEAN,
+    v REAL[3]
+);
+INSERT INTO small_world (id, b, v) VALUES
+    ('000', TRUE,  '{0,0,0}'),
+    ('001', TRUE,  '{0,0,1}'),
+    ('010', FALSE, '{0,1,0}'),
+    ('011', TRUE,  '{0,1,1}'),
+    ('100', FALSE, '{1,0,0}'),
+    ('101', FALSE, '{1,0,1}'),
+    ('110', FALSE, '{1,1,0}'),
+    ('111', TRUE,  '{1,1,1}');
+CREATE INDEX ON small_world USING hnsw (v) WITH (dims=3, M=5, ef=20, ef_construction=20);
+INFO:  done init usearch index
+INFO:  inserted 8 elements
+INFO:  done saving 8 vectors
+\ir utils/sift1k_array.sql
+CREATE TABLE IF NOT EXISTS sift_base1k (
+    id SERIAL,
+    v REAL[]
+);
+COPY sift_base1k (v) FROM '/tmp/lanterndb/vector_datasets/sift_base1k_arrays.csv' WITH csv;
+CREATE INDEX ON sift_base1k USING hnsw (v) WITH (dims=128, M=5, ef=20, ef_construction=20);
+INFO:  done init usearch index
+INFO:  inserted 1000 elements
+INFO:  done saving 1000 vectors
+SET enable_seqscan = false;
+-- Verify that the index is being used
+EXPLAIN (COSTS FALSE) SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 1;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Limit
+   ->  Index Scan using small_world_v_idx on small_world
+         Order By: (v <-> '{1,0,0}'::real[])
+(3 rows)
+
+-- Verify that this does not use the index
+EXPLAIN (COSTS FALSE) SELECT 1 FROM small_world WHERE v = '{0,0,0}';
+            QUERY PLAN             
+-----------------------------------
+ Seq Scan on small_world
+   Filter: (v = '{0,0,0}'::real[])
+(2 rows)
+
+-- Ensure we can query an index for more elements than the value of init_k
+SET client_min_messages TO DEBUG5;
+DEBUG:  CommitTransaction(1) name: unnamed; blockState: STARTED; state: INPROGRESS, xid/subid/cid: 0/1/0
+WITH neighbors AS (
+    SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 3
+) SELECT COUNT(*) from neighbors;
+DEBUG:  StartTransaction(1) name: unnamed; blockState: DEFAULT; state: INPROGRESS, xid/subid/cid: 0/1/0
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
+INFO:  usearch index initialized
+DEBUG:  querying index for 10 elements
+DEBUG:  CommitTransaction(1) name: unnamed; blockState: STARTED; state: INPROGRESS, xid/subid/cid: 0/1/0
+ count 
+-------
+     3
+(1 row)
+
+WITH neighbors AS (
+    SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 15
+) SELECT COUNT(*) from neighbors;
+DEBUG:  StartTransaction(1) name: unnamed; blockState: DEFAULT; state: INPROGRESS, xid/subid/cid: 0/1/0
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
+INFO:  usearch index initialized
+DEBUG:  querying index for 10 elements
+DEBUG:  CommitTransaction(1) name: unnamed; blockState: STARTED; state: INPROGRESS, xid/subid/cid: 0/1/0
+ count 
+-------
+     8
+(1 row)
+
+-- Change default k and make sure the number of usearch_searchs makes sense
+SET hnsw.init_k = 4;
+DEBUG:  StartTransaction(1) name: unnamed; blockState: DEFAULT; state: INPROGRESS, xid/subid/cid: 0/1/0
+DEBUG:  CommitTransaction(1) name: unnamed; blockState: STARTED; state: INPROGRESS, xid/subid/cid: 0/1/0
+WITH neighbors AS (
+    SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 3
+) SELECT COUNT(*) from neighbors;
+DEBUG:  StartTransaction(1) name: unnamed; blockState: DEFAULT; state: INPROGRESS, xid/subid/cid: 0/1/0
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
+INFO:  usearch index initialized
+DEBUG:  querying index for 4 elements
+DEBUG:  CommitTransaction(1) name: unnamed; blockState: STARTED; state: INPROGRESS, xid/subid/cid: 0/1/0
+ count 
+-------
+     3
+(1 row)
+
+WITH neighbors AS (
+    SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 15
+) SELECT COUNT(*) from neighbors;
+DEBUG:  StartTransaction(1) name: unnamed; blockState: DEFAULT; state: INPROGRESS, xid/subid/cid: 0/1/0
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
+INFO:  usearch index initialized
+DEBUG:  querying index for 4 elements
+DEBUG:  querying index for 8 elements
+DEBUG:  CommitTransaction(1) name: unnamed; blockState: STARTED; state: INPROGRESS, xid/subid/cid: 0/1/0
+ count 
+-------
+     8
+(1 row)
+
+RESET client_min_messages;
+DEBUG:  StartTransaction(1) name: unnamed; blockState: DEFAULT; state: INPROGRESS, xid/subid/cid: 0/1/0
+-- Verify where condition works properly and still uses index
+SELECT * FROM small_world WHERE b IS TRUE ORDER BY v <-> '{0,0,0}';
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
+INFO:  usearch index initialized
+ id  | b |    v    
+-----+---+---------
+ 000 | t | {0,0,0}
+ 001 | t | {0,0,1}
+ 011 | t | {0,1,1}
+ 111 | t | {1,1,1}
+(4 rows)
+
+EXPLAIN (COSTS FALSE) SELECT * FROM small_world WHERE b IS TRUE ORDER BY v <-> '{0,0,0}';
+                    QUERY PLAN                     
+---------------------------------------------------
+ Index Scan using small_world_v_idx on small_world
+   Order By: (v <-> '{0,0,0}'::real[])
+   Filter: (b IS TRUE)
+(3 rows)
+
+-- Verify that the index is not being used when there is no order by
+EXPLAIN (COSTS FALSE) SELECT COUNT(*) FROM small_world;
+          QUERY PLAN           
+-------------------------------
+ Aggregate
+   ->  Seq Scan on small_world
+(2 rows)
+
+-- todo:: Verify joins work and still use index
+-- todo:: Verify incremental sorts work

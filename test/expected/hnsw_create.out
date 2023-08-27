@@ -1,0 +1,55 @@
+------------------------------------------------------------------------------
+-- Test HNSW index creation
+------------------------------------------------------------------------------
+-- Validate that index creation works with a small number of vectors
+\ir utils/small_world_array.sql
+CREATE TABLE small_world (
+    id VARCHAR(3),
+    b BOOLEAN,
+    v REAL[3]
+);
+INSERT INTO small_world (id, b, v) VALUES
+    ('000', TRUE,  '{0,0,0}'),
+    ('001', TRUE,  '{0,0,1}'),
+    ('010', FALSE, '{0,1,0}'),
+    ('011', TRUE,  '{0,1,1}'),
+    ('100', FALSE, '{1,0,0}'),
+    ('101', FALSE, '{1,0,1}'),
+    ('110', FALSE, '{1,1,0}'),
+    ('111', TRUE,  '{1,1,1}');
+\ir utils/sift1k_array.sql
+CREATE TABLE IF NOT EXISTS sift_base1k (
+    id SERIAL,
+    v REAL[]
+);
+COPY sift_base1k (v) FROM '/tmp/lanterndb/vector_datasets/sift_base1k_arrays.csv' WITH csv;
+-- Validate that creating a secondary index works
+CREATE INDEX ON sift_base1k USING hnsw (v) WITH (dims=128, M=4);
+INFO:  done init usearch index
+INFO:  inserted 1000 elements
+INFO:  done saving 1000 vectors
+SELECT * FROM ldb_get_indexes('sift_base1k');
+     indexname     |  size  |                                           indexdef                                           | total_index_size 
+-------------------+--------+----------------------------------------------------------------------------------------------+------------------
+ sift_base1k_v_idx | 632 kB | CREATE INDEX sift_base1k_v_idx ON public.sift_base1k USING hnsw (v) WITH (dims='128', m='4') | 632 kB
+(1 row)
+
+-- Validate that index creation works with a larger number of vectors
+CREATE TABLE sift_base10k (
+    id SERIAL PRIMARY KEY,
+    v REAL[128]
+);
+\COPY sift_base10k (v) FROM '/tmp/lanterndb/vector_datasets/siftsmall_base_arrays.csv' WITH CSV;
+CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=4, dims=128);
+INFO:  done init usearch index
+INFO:  inserted 10000 elements
+INFO:  done saving 10000 vectors
+SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
+EXPLAIN (COSTS FALSE) SELECT * FROM sift_base10k order by v <-> :'v4444' LIMIT 10;
+                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                           
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   ->  Index Scan using hnsw_idx on sift_base10k
+         Order By: (v <-> '{55,61,11,4,5,2,13,24,65,49,13,9,23,37,94,38,54,11,14,14,40,31,50,44,53,4,0,0,27,17,8,34,12,10,4,4,22,52,68,53,9,2,0,0,2,116,119,64,119,2,0,0,2,30,119,119,116,5,0,8,47,9,5,60,7,7,10,23,56,50,23,5,28,68,6,18,24,65,50,9,119,75,3,0,1,8,12,85,119,11,4,6,8,9,5,74,25,11,8,20,18,12,2,21,11,90,25,32,33,15,2,9,84,67,8,4,22,31,11,33,119,30,3,6,0,0,0,26}'::real[])
+(3 rows)
+

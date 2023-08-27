@@ -51,6 +51,7 @@ static void AddTupleToUsearchIndex(ItemPointer tid, Datum *values, HnswBuildStat
     usearch_error_t       error = NULL;
     Datum                 value = PointerGetDatum(PG_DETOAST_DATUM(values[ 0 ]));
     usearch_scalar_kind_t usearch_scalar;
+    float4               *vector = DatumGetSizedFloatArray(value, buildstate->columnType, buildstate->dimensions);
 
     switch(buildstate->columnType) {
         case REAL_ARRAY:
@@ -69,37 +70,17 @@ static void AddTupleToUsearchIndex(ItemPointer tid, Datum *values, HnswBuildStat
         // casting tid structure to a number to be used as value in vector search
         // tid has info about disk location of this item and is 6 bytes long
 #ifdef LANTERN_USE_LIBHNSW
-    if(buildstate->hnsw != NULL) hnsw_add(buildstate->hnsw, DatumGetVector(value)->x, *(unsigned long *)tid);
+    if(buildstate->hnsw != NULL) hnsw_add(buildstate->hnsw, vector, *(unsigned long *)tid);
 #endif
 #ifdef LANTERN_USE_USEARCH
     if(buildstate->usearch_index != NULL)
-        usearch_add(buildstate->usearch_index, *(unsigned long *)tid, DatumGetVector(value)->x, usearch_scalar, &error);
+        usearch_add(buildstate->usearch_index, *(unsigned long *)tid, vector, usearch_scalar, &error);
 #endif
     assert(error == NULL);
     buildstate->tuples_indexed++;
     buildstate->reltuples++;
     UpdateProgress(PROGRESS_CREATEIDX_TUPLES_DONE, buildstate->tuples_indexed);
     UpdateProgress(PROGRESS_CREATEIDX_TUPLES_TOTAL, buildstate->reltuples);
-}
-
-/*
- * Get data type of index
- */
-HnswDataType GetIndexDataType(Relation index)
-{
-    TupleDesc         indexTupDesc = RelationGetDescr(index);
-    Form_pg_attribute attr = TupleDescAttr(indexTupDesc, 0);
-    Oid               columnType = attr->atttypid;
-
-    if(columnType == get_array_type(FLOAT4OID)) {
-        return REAL_ARRAY;
-    } else if(columnType == TypenameGetTypid("vector")) {
-        return VECTOR;
-    } else if(columnType == get_array_type(INT4OID)) {
-        return INT_ARRAY;
-    } else {
-        return UNKNOWN;
-    }
 }
 
 /*
@@ -136,7 +117,7 @@ static void BuildCallback(
 
 int GetHnswIndexDimensions(Relation index)
 {
-    HnswDataType columnType = GetIndexDataType(index);
+    HnswColumnType columnType = GetIndexColumnType(index);
 
     // check if column is type of real[] or integer[]
     if(columnType == REAL_ARRAY || columnType == INT_ARRAY) {
@@ -157,7 +138,7 @@ void CheckHnswIndexDimensions(Relation index, Datum arrayDatum, int dimensions)
 {
     ArrayType   *array;
     int          n_items;
-    HnswDataType indexType = GetIndexDataType(index);
+    HnswColumnType indexType = GetIndexColumnType(index);
 
     if(indexType == REAL_ARRAY || indexType == INT_ARRAY) {
         /* Check dimensions of vector */
@@ -177,7 +158,7 @@ static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation i
     buildstate->heap = heap;
     buildstate->index = index;
     buildstate->indexInfo = indexInfo;
-    buildstate->columnType = GetIndexDataType(index);
+    buildstate->columnType = GetIndexColumnType(index);
     buildstate->dimensions = GetHnswIndexDimensions(index);
 
     /* Require column to have dimensions to be indexed */

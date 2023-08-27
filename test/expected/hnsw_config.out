@@ -1,0 +1,54 @@
+\ir utils/small_world_array.sql
+CREATE TABLE small_world (
+    id VARCHAR(3),
+    b BOOLEAN,
+    v REAL[3]
+);
+INSERT INTO small_world (id, b, v) VALUES
+    ('000', TRUE,  '{0,0,0}'),
+    ('001', TRUE,  '{0,0,1}'),
+    ('010', FALSE, '{0,1,0}'),
+    ('011', TRUE,  '{0,1,1}'),
+    ('100', FALSE, '{1,0,0}'),
+    ('101', FALSE, '{1,0,1}'),
+    ('110', FALSE, '{1,1,0}'),
+    ('111', TRUE,  '{1,1,1}');
+-- Before the HNSW index is created, the parameter hnsw.init_k should not be available
+\set ON_ERROR_STOP off
+SHOW hnsw.init_k;
+ERROR:  unrecognized configuration parameter "hnsw.init_k"
+\set ON_ERROR_STOP on
+-- Create an index and verify that it was created
+CREATE INDEX ON small_world USING hnsw (v) WITH (dims=3);
+INFO:  done init usearch index
+INFO:  inserted 8 elements
+INFO:  done saving 8 vectors
+SELECT * FROM ldb_get_indexes('small_world');
+     indexname     | size  |                                      indexdef                                       | total_index_size 
+-------------------+-------+-------------------------------------------------------------------------------------+------------------
+ small_world_v_idx | 24 kB | CREATE INDEX small_world_v_idx ON public.small_world USING hnsw (v) WITH (dims='3') | 24 kB
+(1 row)
+
+-- Verify that hnsw.init_k exists after index creation
+SHOW hnsw.init_k;
+ hnsw.init_k 
+-------------
+ 10
+(1 row)
+
+-- Modify hnsw.init_k and verify that it was modified
+SET hnsw.init_k = 45;
+SHOW hnsw.init_k;
+ hnsw.init_k 
+-------------
+ 45
+(1 row)
+
+-- Reset all parameters and verify that hnsw.init_k was reset
+RESET ALL;
+SHOW hnsw.init_k;
+ hnsw.init_k 
+-------------
+ 10
+(1 row)
+

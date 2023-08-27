@@ -3,11 +3,13 @@
 #include "hnsw.h"
 
 #include <access/amapi.h>
+#include <catalog/namespace.h>
 #include <commands/vacuum.h>
 #include <float.h>
 #include <utils/guc.h>
 #include <utils/selfuncs.h>
 #include <utils/spccache.h>
+#include <utils/lsyscache.h>
 
 #include "hnsw/build.h"
 #include "hnsw/delete.h"
@@ -191,7 +193,7 @@ static float4 array_dist(ArrayType *a, ArrayType *b, usearch_metric_kind_t metri
 static float8 vector_dist(Vector *a, Vector *b, usearch_metric_kind_t metric_kind)
 {
     if(a->dim != b->dim) {
-        elog(ERROR, "expected equally sized vectors but got vecors with dimensions %d and %d", a->dim, b->dim);
+        elog(ERROR, "expected equally sized vectors but got vectors with dimensions %d and %d", a->dim, b->dim);
     }
 
     return usearch_dist(a->x, b->x, metric_kind, a->dim, usearch_scalar_f32_k);
@@ -231,4 +233,60 @@ Datum       vector_l2sq_dist(PG_FUNCTION_ARGS)
     Vector *b = PG_GETARG_VECTOR_P(1);
 
     PG_RETURN_FLOAT8((double)vector_dist(a, b, usearch_metric_l2sq_k));
+}
+
+/*
+ * Get data type of index
+ */
+HnswColumnType GetIndexColumnType(Relation index)
+{
+    TupleDesc         indexTupDesc = RelationGetDescr(index);
+    Form_pg_attribute attr = TupleDescAttr(indexTupDesc, 0);
+    Oid               columnType = attr->atttypid;
+
+    if(columnType == get_array_type(FLOAT4OID)) {
+        return REAL_ARRAY;
+    } else if(columnType == TypenameGetTypid("vector")) {
+        return VECTOR;
+    } else if(columnType == get_array_type(INT4OID)) {
+        return INT_ARRAY;
+    } else {
+        return UNKNOWN;
+    }
+}
+
+/*
+ * Given vector data and vector type, convert it to a float4 array
+ */
+float4 *DatumGetSizedFloatArray(Datum datum, HnswColumnType type, int dimensions)
+{
+    if (type == VECTOR) {
+        Vector *vector = DatumGetVector(datum);
+        if (vector->dim != dimensions) {
+            elog(ERROR, "Expected vector with dimension %d, got %d", dimensions, vector->dim);
+        }
+        return vector->x;
+    } else if (type == REAL_ARRAY) {
+        ArrayType *array = DatumGetArrayTypePCopy(datum);
+        int array_dim = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
+        if (array_dim != dimensions) {
+            elog(ERROR, "Expected real array with dimension %d, got %d", dimensions, array_dim);
+        }
+        return (float4 *) ARR_DATA_PTR(array);
+    } else if (type == INT_ARRAY) {
+        ArrayType *array = DatumGetArrayTypePCopy(datum);
+        int array_dim = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
+        if (array_dim != dimensions) {
+            elog(ERROR, "Expected int array with dimension %d, got %d", dimensions, array_dim);
+        }
+        int *intArray = (int *) ARR_DATA_PTR(array);
+        float4 *floatArray = (float4 *) palloc(sizeof(float) * array_dim);
+        for (int i = 0; i < array_dim; i++) {
+            floatArray[i] = (float) intArray[i];
+        }
+        // todo:: free this array
+        return floatArray;
+    } else {
+        elog(ERROR, "Unsupported type");
+    }
 }

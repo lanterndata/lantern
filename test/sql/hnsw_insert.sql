@@ -1,87 +1,72 @@
-\ir test_helpers/small_world.sql
-\ir test_helpers/sift.sql
+---------------------------------------------------------------------
+-- Test HNSW index inserts on empty table
+---------------------------------------------------------------------
 
-CREATE INDEX ON small_world USING hnsw (vector);
-CREATE INDEX ON sift_base1k USING hnsw (v);
+CREATE TABLE small_world (
+    id SERIAL PRIMARY KEY,
+    v REAL[2]
+);
+CREATE INDEX ON small_world USING hnsw (v) WITH (dims=3);
 
-SET enable_seqscan = off;
+-- Insert rows with valid vector data
+INSERT INTO small_world (v) VALUES ('{0,0,1}'), ('{0,1,0}');
+INSERT INTO small_world (v) VALUES (NULL);
 
-INSERT INTO small_world (id, vector) VALUES ('xxx', '[0,0,0]');
-INSERT INTO small_world (id, vector) VALUES ('x11', '[0,0,110]');
-INSERT INTO small_world (id, vector) VALUES 
-('000', '[0,0,0]'),
-('001', '[0,0,1]'),
-('010', '[0,1,0]'),
-('011', '[0,1,1]'),
-('100', '[1,0,0]'),
-('101', '[1,0,1]'),
-('110', '[1,1,0]'),
-('111', '[1,1,1]');
-
-SELECT * FROM (
-    SELECT id, ROUND(vector_l2sq_dist(vector, '[0,1,0]')::numeric, 2) as dist
-    FROM small_world
-    ORDER BY vector <-> '[0,1,0]' LIMIT 7
-) v ORDER BY v.dist, v.id;
-
-INSERT INTO small_world (id, vector) VALUES 
-('000', '[0,0,0]'),
-('001', '[0,0,1]'),
-('010', '[0,1,0]'),
-('011', '[0,1,1]'),
-('100', '[1,0,0]'),
-('101', '[1,0,1]'),
-('110', '[1,1,0]'),
-('111', '[1,1,1]');
-
-SELECT * FROM (
-    SELECT id, ROUND(vector_l2sq_dist(vector, '[0,1,0]')::numeric, 2) as dist
-    FROM small_world
-    ORDER BY vector <-> '[0,1,0]' LIMIT 7
-) v ORDER BY v.dist, v.id;
-
-SELECT v as v42 FROM sift_base1k WHERE id = 42 \gset 
-
--- no index scan
-BEGIN;
-DROP INDEX IF EXISTS sift_base1k_hnsw_idx;
-EXPLAIN SELECT id, ROUND(vector_l2sq_dist(v, :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
-SELECT id, ROUND(vector_l2sq_dist(v, :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
-ROLLBACK;
-
--- index scan
-EXPLAIN SELECT id, ROUND(vector_l2sq_dist(v, :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
-SELECT id, ROUND(vector_l2sq_dist(v, :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
--- todo:: craft an SQL query to compare the results of the two above so I do not have to do it manually
-
-
--- another insert test
-CREATE TABLE new_small_world as SELECT * from small_world;
-CREATE INDEX ON new_small_world USING hnsw (vector);
-
-INSERT INTO new_small_world (id, vector) VALUES
-('000', '[0,0,0]'),
-('001', '[0,0,1]'),
-('010', '[0,1,0]'),
-('011', '[0,1,1]'),
-('100', '[1,0,0]'),
-('101', '[1,0,1]'),
-('110', '[1,1,0]'),
-('111', '[1,1,1]');
--- index scan
-SELECT '[0,0,0]'::vector as v42  \gset
-EXPLAIN SELECT id, ROUND(vector_l2sq_dist(vector, :'v42')::numeric, 2) FROM new_small_world ORDER BY vector <-> :'v42' LIMIT 10;
-SELECT id, ROUND(vector_l2sq_dist(vector, :'v42')::numeric, 2) FROM new_small_world ORDER BY vector <-> :'v42' LIMIT 10;
-
-SELECT count(*) from sift_base1k;
-SELECT * from ldb_get_indexes('sift_base1k');
-INSERT INTO sift_base1k(v)
-SELECT v FROM sift_base1k WHERE id <= 444 AND v IS NOT NULL;
-SELECT count(*) from sift_base1k;
-SELECT * from ldb_get_indexes('sift_base1k');
-
--- make sure NULL inserts into the index are handled correctly
-INSERT INTO small_world (id, vector) VALUES ('xxx', NULL);
+-- Attempt to insert a row with an incorrect vector length
 \set ON_ERROR_STOP off
-INSERT INTO small_world (id, vector) VALUES ('xxx', '[1,1,1,1]');
+INSERT INTO small_world (v) VALUES ('{1,1,1,1}');
 \set ON_ERROR_STOP on
+
+DROP TABLE small_world;
+
+---------------------------------------------------------------------
+-- Test HNSW index inserts on non-empty table
+---------------------------------------------------------------------
+
+\ir utils/small_world_array.sql
+
+CREATE INDEX ON small_world USING hnsw (v) WITH (dims=3);
+
+SET enable_seqscan = false;
+
+-- Inserting vectors of the same dimension and nulls should work
+INSERT INTO small_world (v) VALUES ('{1,1,2}');
+INSERT INTO small_world (v) VALUES (NULL);
+
+-- Inserting vectors of different dimension should fail
+\set ON_ERROR_STOP off
+INSERT INTO small_world (v) VALUES ('{4,4,4,4}');
+\set ON_ERROR_STOP on
+
+-- Verify that the index works with the inserted vectors
+SELECT
+    id,
+    ROUND(l2sq_dist(v, '{0,0,0}')::numeric, 2)
+FROM
+    small_world
+ORDER BY
+    v <-> '{0,0,0}';
+
+-- Ensure the index size remains consistent after inserts
+SELECT * from ldb_get_indexes('small_world');
+
+-- Ensure the query plan remains consistent after inserts
+EXPLAIN (COSTS FALSE)
+SELECT
+    id,
+    ROUND(l2sq_dist(v, '{0,0,0}')::numeric, 2)
+FROM
+    small_world
+ORDER BY
+    v <-> '{0,0,0}'
+LIMIT 10;
+
+-- Test the index with a larger number of vectors
+CREATE TABLE sift_base10k (
+    id SERIAL PRIMARY KEY,
+    v REAL[128]
+);
+CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=4, dims=128);
+\COPY sift_base10k (v) FROM '/tmp/lanterndb/vector_datasets/siftsmall_base_arrays.csv' WITH CSV;
+SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
+EXPLAIN SELECT * FROM sift_base10k order by v <-> :'v4444'

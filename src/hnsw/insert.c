@@ -37,7 +37,7 @@ bool ldb_aminsert(Relation         index,
 {
     MemoryContext          oldCtx;
     MemoryContext          insertCtx;
-    Datum                  inserted_vector;
+    Datum                  datum;
     usearch_index_t        uidx;
     usearch_error_t        error = NULL;
     usearch_metadata_t     meta;
@@ -105,13 +105,15 @@ bool ldb_aminsert(Relation         index,
 
     insertstate->uidx = uidx;
     insertstate->retriever_ctx = opts.retriever_ctx;
+    insertstate->columnType = GetIndexColumnType(index);
 
     hdr_page = NULL;
 
     meta = usearch_metadata(uidx, &error);
     assert(!error);
 
-    inserted_vector = PointerGetDatum(PG_DETOAST_DATUM(values[ 0 ]));
+    datum = PointerGetDatum(PG_DETOAST_DATUM(values[ 0 ]));
+    float4 *vector = DatumGetSizedFloatArray(datum, insertstate->columnType, opts.dimensions);
 
 #if LANTERNDB_COPYNODES
     // currently not fully ported to the latest changes
@@ -140,7 +142,7 @@ bool ldb_aminsert(Relation         index,
 
     usearch_add_external(uidx,
                          *(unsigned long *)heap_tid,
-                         DatumGetVector(inserted_vector)->x,
+                         vector,
                          new_tuple->node,
                          usearch_scalar_f32_k,
                          level,

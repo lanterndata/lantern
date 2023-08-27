@@ -1,224 +1,117 @@
-\ir test_helpers/small_world.sql
--- creates a simple vector table
-CREATE TABLE
-  small_world (id varchar(3), vector vector (3));
-INSERT INTO
-  small_world (id, vector)
-VALUES
-  ('000', '[0,0,0]'),
-  ('001', '[0,0,1]'),
-  ('010', '[0,1,0]'),
-  ('011', '[0,1,1]'),
-  ('100', '[1,0,0]'),
-  ('101', '[1,0,1]'),
-  ('110', '[1,1,0]'),
-  ('111', '[1,1,1]');
-\ir test_helpers/sift.sql
-CREATE TABLE IF NOT EXISTS sift_base1k (
+---------------------------------------------------------------------
+-- Test HNSW index inserts on empty table
+---------------------------------------------------------------------
+CREATE TABLE small_world (
     id SERIAL PRIMARY KEY,
-    v vector(128));
-COPY sift_base1k (v) FROM '/tmp/lanterndb/vector_datasets/sift_base1k.csv' with csv;
-CREATE INDEX ON small_world USING hnsw (vector);
+    v REAL[2]
+);
+CREATE INDEX ON small_world USING hnsw (v) WITH (dims=3);
+INFO:  done init usearch index
+INFO:  inserted 0 elements
+INFO:  done saving 0 vectors
+-- Insert rows with valid vector data
+INSERT INTO small_world (v) VALUES ('{0,0,1}'), ('{0,1,0}');
+INSERT INTO small_world (v) VALUES (NULL);
+-- Attempt to insert a row with an incorrect vector length
+\set ON_ERROR_STOP off
+INSERT INTO small_world (v) VALUES ('{1,1,1,1}');
+ERROR:  Wrong number of dimensions: 4 instead of 3 expected
+\set ON_ERROR_STOP on
+DROP TABLE small_world;
+---------------------------------------------------------------------
+-- Test HNSW index inserts on non-empty table
+---------------------------------------------------------------------
+\ir utils/small_world_array.sql
+CREATE TABLE small_world (
+    id VARCHAR(3),
+    b BOOLEAN,
+    v REAL[3]
+);
+INSERT INTO small_world (id, b, v) VALUES
+    ('000', TRUE,  '{0,0,0}'),
+    ('001', TRUE,  '{0,0,1}'),
+    ('010', FALSE, '{0,1,0}'),
+    ('011', TRUE,  '{0,1,1}'),
+    ('100', FALSE, '{1,0,0}'),
+    ('101', FALSE, '{1,0,1}'),
+    ('110', FALSE, '{1,1,0}'),
+    ('111', TRUE,  '{1,1,1}');
+CREATE INDEX ON small_world USING hnsw (v) WITH (dims=3);
 INFO:  done init usearch index
 INFO:  inserted 8 elements
 INFO:  done saving 8 vectors
-CREATE INDEX ON sift_base1k USING hnsw (v);
-INFO:  done init usearch index
-INFO:  inserted 1000 elements
-INFO:  done saving 1000 vectors
-SET enable_seqscan = off;
-INSERT INTO small_world (id, vector) VALUES ('xxx', '[0,0,0]');
-INSERT INTO small_world (id, vector) VALUES ('x11', '[0,0,110]');
-INSERT INTO small_world (id, vector) VALUES 
-('000', '[0,0,0]'),
-('001', '[0,0,1]'),
-('010', '[0,1,0]'),
-('011', '[0,1,1]'),
-('100', '[1,0,0]'),
-('101', '[1,0,1]'),
-('110', '[1,1,0]'),
-('111', '[1,1,1]');
-SELECT * FROM (
-    SELECT id, ROUND(vector_l2sq_dist(vector, '[0,1,0]')::numeric, 2) as dist
-    FROM small_world
-    ORDER BY vector <-> '[0,1,0]' LIMIT 7
-) v ORDER BY v.dist, v.id;
-INFO:  began scanning with 0 keys and 1 orderbys
-INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
-INFO:  usearch index initialized
- id  | dist 
------+------
- 010 | 0.00
- 010 | 0.00
- 000 | 1.00
- 000 | 1.00
- 011 | 1.00
- 110 | 1.00
- xxx | 1.00
-(7 rows)
-
-INSERT INTO small_world (id, vector) VALUES 
-('000', '[0,0,0]'),
-('001', '[0,0,1]'),
-('010', '[0,1,0]'),
-('011', '[0,1,1]'),
-('100', '[1,0,0]'),
-('101', '[1,0,1]'),
-('110', '[1,1,0]'),
-('111', '[1,1,1]');
-SELECT * FROM (
-    SELECT id, ROUND(vector_l2sq_dist(vector, '[0,1,0]')::numeric, 2) as dist
-    FROM small_world
-    ORDER BY vector <-> '[0,1,0]' LIMIT 7
-) v ORDER BY v.dist, v.id;
-INFO:  began scanning with 0 keys and 1 orderbys
-INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
-INFO:  usearch index initialized
- id  | dist 
------+------
- 010 | 0.00
- 010 | 0.00
- 010 | 0.00
- 000 | 1.00
- 011 | 1.00
- 110 | 1.00
- 110 | 1.00
-(7 rows)
-
-SELECT v as v42 FROM sift_base1k WHERE id = 42 \gset 
--- no index scan
-BEGIN;
-DROP INDEX IF EXISTS sift_base1k_hnsw_idx;
-NOTICE:  index "sift_base1k_hnsw_idx" does not exist, skipping
-EXPLAIN SELECT id, ROUND(vector_l2sq_dist(v, :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
-                                                                                                                                                                          QUERY PLAN                                                                                                                                                                          
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Limit  (cost=0.00..6.75 rows=10 width=44)
-   ->  Index Scan using sift_base1k_v_idx on sift_base1k  (cost=0.00..675.50 rows=1000 width=44)
-         Order By: (v <-> '[1,0,0,0,0,0,21,35,1,0,0,0,0,77,51,42,66,2,0,0,0,86,140,71,52,1,0,0,0,0,23,70,2,0,0,0,0,64,73,50,11,0,0,0,0,140,97,18,140,64,0,0,0,99,51,65,78,11,0,0,0,0,41,76,0,0,0,0,0,124,82,2,48,1,0,0,0,118,31,5,140,21,0,0,0,4,12,78,12,0,0,0,0,0,58,117,1,0,0,0,2,25,7,2,46,2,0,0,1,12,4,8,140,9,0,0,0,1,8,16,3,0,0,0,0,0,21,34]'::vector)
-(3 rows)
-
-SELECT id, ROUND(vector_l2sq_dist(v, :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
-INFO:  began scanning with 0 keys and 1 orderbys
-INFO:  starting scan with dimensions=128 M=16 efConstruction=128 ef=64
-INFO:  usearch index initialized
- id  |  round   
------+----------
-  42 |     0.00
-  36 | 10530.00
-  48 | 51038.00
-  39 | 56265.00
- 886 | 71637.00
- 402 | 77013.00
- 518 | 85024.00
- 340 | 87261.00
- 331 | 87796.00
- 682 | 94988.00
-(10 rows)
-
-ROLLBACK;
--- index scan
-EXPLAIN SELECT id, ROUND(vector_l2sq_dist(v, :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
-                                                                                                                                                                          QUERY PLAN                                                                                                                                                                          
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Limit  (cost=0.00..6.75 rows=10 width=44)
-   ->  Index Scan using sift_base1k_v_idx on sift_base1k  (cost=0.00..675.50 rows=1000 width=44)
-         Order By: (v <-> '[1,0,0,0,0,0,21,35,1,0,0,0,0,77,51,42,66,2,0,0,0,86,140,71,52,1,0,0,0,0,23,70,2,0,0,0,0,64,73,50,11,0,0,0,0,140,97,18,140,64,0,0,0,99,51,65,78,11,0,0,0,0,41,76,0,0,0,0,0,124,82,2,48,1,0,0,0,118,31,5,140,21,0,0,0,4,12,78,12,0,0,0,0,0,58,117,1,0,0,0,2,25,7,2,46,2,0,0,1,12,4,8,140,9,0,0,0,1,8,16,3,0,0,0,0,0,21,34]'::vector)
-(3 rows)
-
-SELECT id, ROUND(vector_l2sq_dist(v, :'v42')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v42' LIMIT 10;
-INFO:  began scanning with 0 keys and 1 orderbys
-INFO:  starting scan with dimensions=128 M=16 efConstruction=128 ef=64
-INFO:  usearch index initialized
- id  |  round   
------+----------
-  42 |     0.00
-  36 | 10530.00
-  48 | 51038.00
-  39 | 56265.00
- 886 | 71637.00
- 402 | 77013.00
- 518 | 85024.00
- 340 | 87261.00
- 331 | 87796.00
- 682 | 94988.00
-(10 rows)
-
--- todo:: craft an SQL query to compare the results of the two above so I do not have to do it manually
--- another insert test
-CREATE TABLE new_small_world as SELECT * from small_world;
-CREATE INDEX ON new_small_world USING hnsw (vector);
-INFO:  done init usearch index
-INFO:  inserted 26 elements
-INFO:  done saving 26 vectors
-INSERT INTO new_small_world (id, vector) VALUES
-('000', '[0,0,0]'),
-('001', '[0,0,1]'),
-('010', '[0,1,0]'),
-('011', '[0,1,1]'),
-('100', '[1,0,0]'),
-('101', '[1,0,1]'),
-('110', '[1,1,0]'),
-('111', '[1,1,1]');
--- index scan
-SELECT '[0,0,0]'::vector as v42  \gset
-EXPLAIN SELECT id, ROUND(vector_l2sq_dist(vector, :'v42')::numeric, 2) FROM new_small_world ORDER BY vector <-> :'v42' LIMIT 10;
-                                                QUERY PLAN                                                 
------------------------------------------------------------------------------------------------------------
- Limit  (cost=0.00..6.43 rows=10 width=56)
-   ->  Index Scan using new_small_world_vector_idx on new_small_world  (cost=0.00..16.72 rows=26 width=56)
-         Order By: (vector <-> '[0,0,0]'::vector)
-(3 rows)
-
-SELECT id, ROUND(vector_l2sq_dist(vector, :'v42')::numeric, 2) FROM new_small_world ORDER BY vector <-> :'v42' LIMIT 10;
+SET enable_seqscan = false;
+-- Inserting vectors of the same dimension and nulls should work
+INSERT INTO small_world (v) VALUES ('{1,1,2}');
+INSERT INTO small_world (v) VALUES (NULL);
+-- Inserting vectors of different dimension should fail
+\set ON_ERROR_STOP off
+INSERT INTO small_world (v) VALUES ('{4,4,4,4}');
+ERROR:  Wrong number of dimensions: 4 instead of 3 expected
+\set ON_ERROR_STOP on
+-- Verify that the index works with the inserted vectors
+SELECT
+    id,
+    ROUND(l2sq_dist(v, '{0,0,0}')::numeric, 2)
+FROM
+    small_world
+ORDER BY
+    v <-> '{0,0,0}';
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized
  id  | round 
 -----+-------
  000 |  0.00
- 000 |  0.00
- 000 |  0.00
- 000 |  0.00
- xxx |  0.00
- 100 |  1.00
- 010 |  1.00
  001 |  1.00
- 100 |  1.00
  010 |  1.00
-(10 rows)
+ 100 |  1.00
+ 011 |  2.00
+ 101 |  2.00
+ 110 |  2.00
+ 111 |  3.00
+     |  6.00
+(9 rows)
 
-SELECT count(*) from sift_base1k;
- count 
--------
-  1000
+-- Ensure the index size remains consistent after inserts
+SELECT * from ldb_get_indexes('small_world');
+     indexname     | size  |                                      indexdef                                       | total_index_size 
+-------------------+-------+-------------------------------------------------------------------------------------+------------------
+ small_world_v_idx | 24 kB | CREATE INDEX small_world_v_idx ON public.small_world USING hnsw (v) WITH (dims='3') | 24 kB
 (1 row)
 
-SELECT * from ldb_get_indexes('sift_base1k');
-     indexname     |  size  |                                  indexdef                                   
--------------------+--------+-----------------------------------------------------------------------------
- sift_base1k_pkey  | 40 kB  | CREATE UNIQUE INDEX sift_base1k_pkey ON public.sift_base1k USING btree (id)
- sift_base1k_v_idx | 720 kB | CREATE INDEX sift_base1k_v_idx ON public.sift_base1k USING hnsw (v)
+-- Ensure the query plan remains consistent after inserts
+EXPLAIN (COSTS FALSE)
+SELECT
+    id,
+    ROUND(l2sq_dist(v, '{0,0,0}')::numeric, 2)
+FROM
+    small_world
+ORDER BY
+    v <-> '{0,0,0}'
+LIMIT 10;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Limit
+   ->  Index Scan using small_world_v_idx on small_world
+         Order By: (v <-> '{0,0,0}'::real[])
+(3 rows)
+
+-- Test the index with a larger number of vectors
+CREATE TABLE sift_base10k (
+    id SERIAL PRIMARY KEY,
+    v REAL[128]
+);
+CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=4, dims=128);
+INFO:  done init usearch index
+INFO:  inserted 0 elements
+INFO:  done saving 0 vectors
+\COPY sift_base10k (v) FROM '/tmp/lanterndb/vector_datasets/siftsmall_base_arrays.csv' WITH CSV;
+SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
+EXPLAIN SELECT * FROM sift_base10k order by v <-> :'v4444'
+                                                                                                                                                                                       QUERY PLAN                                                                                                                                                                                        
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using hnsw_idx on sift_base10k  (cost=0.00..7788.10 rows=90805 width=40)
+   Order By: (v <-> '{55,61,11,4,5,2,13,24,65,49,13,9,23,37,94,38,54,11,14,14,40,31,50,44,53,4,0,0,27,17,8,34,12,10,4,4,22,52,68,53,9,2,0,0,2,116,119,64,119,2,0,0,2,30,119,119,116,5,0,8,47,9,5,60,7,7,10,23,56,50,23,5,28,68,6,18,24,65,50,9,119,75,3,0,1,8,12,85,119,11,4,6,8,9,5,74,25,11,8,20,18,12,2,21,11,90,25,32,33,15,2,9,84,67,8,4,22,31,11,33,119,30,3,6,0,0,0,26}'::real[])
 (2 rows)
 
-INSERT INTO sift_base1k(v)
-SELECT v FROM sift_base1k WHERE id <= 444 AND v IS NOT NULL;
-SELECT count(*) from sift_base1k;
- count 
--------
-  1444
-(1 row)
-
-SELECT * from ldb_get_indexes('sift_base1k');
-     indexname     |  size   |                                  indexdef                                   
--------------------+---------+-----------------------------------------------------------------------------
- sift_base1k_pkey  | 48 kB   | CREATE UNIQUE INDEX sift_base1k_pkey ON public.sift_base1k USING btree (id)
- sift_base1k_v_idx | 1016 kB | CREATE INDEX sift_base1k_v_idx ON public.sift_base1k USING hnsw (v)
-(2 rows)
-
--- make sure NULL inserts into the index are handled correctly
-INSERT INTO small_world (id, vector) VALUES ('xxx', NULL);
-\set ON_ERROR_STOP off
-INSERT INTO small_world (id, vector) VALUES ('xxx', '[1,1,1,1]');
-ERROR:  expected 3 dimensions, not 4
-\set ON_ERROR_STOP on

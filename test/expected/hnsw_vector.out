@@ -1,0 +1,194 @@
+---------------------------------------------------------------------
+-- Test HNSW index with pgvector dependency
+---------------------------------------------------------------------
+-- Verify basic functionality of pgvector
+SELECT '[1,2,3]'::vector;
+ vector  
+---------
+ [1,2,3]
+(1 row)
+
+-- Test index creation x2 on empty table and subsequent inserts
+CREATE TABLE items (id SERIAL PRIMARY KEY, trait_ai VECTOR(3));
+INSERT INTO items (trait_ai) VALUES ('[1,2,3]'), ('[4,5,6]');
+CREATE INDEX ON items USING hnsw (trait_ai dist_vec_l2sq_ops) WITH (dims=3, M=2);
+INFO:  done init usearch index
+INFO:  inserted 2 elements
+INFO:  done saving 2 vectors
+INSERT INTO items (trait_ai) VALUES ('[6,7,8]');
+CREATE INDEX ON items USING hnsw (trait_ai dist_vec_l2sq_ops) WITH (dims=3, M=4);
+INFO:  done init usearch index
+INFO:  inserted 3 elements
+INFO:  done saving 3 vectors
+INSERT INTO items (trait_ai) VALUES ('[10,10,10]'), (NULL);
+SELECT * FROM items ORDER BY trait_ai <-> '[0,0,0]' LIMIT 3;
+ id | trait_ai 
+----+----------
+  1 | [1,2,3]
+  2 | [4,5,6]
+  3 | [6,7,8]
+(3 rows)
+
+SELECT * FROM ldb_get_indexes('items');
+      indexname      | size  |                                           indexdef                                            | total_index_size 
+---------------------+-------+-----------------------------------------------------------------------------------------------+------------------
+ items_pkey          | 16 kB | CREATE UNIQUE INDEX items_pkey ON public.items USING btree (id)                               | 64 kB
+ items_trait_ai_idx  | 24 kB | CREATE INDEX items_trait_ai_idx ON public.items USING hnsw (trait_ai) WITH (dims='3', m='2')  | 64 kB
+ items_trait_ai_idx1 | 24 kB | CREATE INDEX items_trait_ai_idx1 ON public.items USING hnsw (trait_ai) WITH (dims='3', m='4') | 64 kB
+(3 rows)
+
+-- Test index creation on table with existing data
+\ir utils/small_world_vector.sql
+CREATE TABLE small_world (
+    id VARCHAR(3),
+    b BOOLEAN,
+    v VECTOR(3)
+);
+INSERT INTO small_world (id, b, v) VALUES
+    ('000', TRUE,  '[0,0,0]'),
+    ('001', TRUE,  '[0,0,1]'),
+    ('010', FALSE, '[0,1,0]'),
+    ('011', TRUE,  '[0,1,1]'),
+    ('100', FALSE, '[1,0,0]'),
+    ('101', FALSE, '[1,0,1]'),
+    ('110', FALSE, '[1,1,0]'),
+    ('111', TRUE,  '[1,1,1]');
+SET enable_seqscan = false;
+CREATE INDEX ON small_world USING hnsw (v) WITH (dims=3, M=5, ef=20, ef_construction=20);
+INFO:  done init usearch index
+INFO:  inserted 8 elements
+INFO:  done saving 8 vectors
+SELECT * FROM ldb_get_indexes('small_world');
+     indexname     | size  |                                                         indexdef                                                          | total_index_size 
+-------------------+-------+---------------------------------------------------------------------------------------------------------------------------+------------------
+ small_world_v_idx | 24 kB | CREATE INDEX small_world_v_idx ON public.small_world USING hnsw (v) WITH (dims='3', m='5', ef='20', ef_construction='20') | 24 kB
+(1 row)
+
+INSERT INTO small_world (v) VALUES ('[99,99,2]');
+INSERT INTO small_world (v) VALUES (NULL);
+-- Distance functions
+SELECT id, ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
+INFO:  usearch index initialized
+ id  | dist 
+-----+------
+ 010 | 0.00
+ 011 | 1.00
+ 000 | 1.00
+ 110 | 1.00
+ 001 | 2.00
+ 111 | 2.00
+ 100 | 2.00
+(7 rows)
+
+EXPLAIN SELECT id, ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Limit  (cost=0.00..14.21 rows=7 width=56)
+   ->  Index Scan using small_world_v_idx on small_world  (cost=0.00..16.24 rows=8 width=56)
+         Order By: (v <-> '[0,1,0]'::vector)
+(3 rows)
+
+SELECT id, ROUND(vector_l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
+INFO:  usearch index initialized
+ id  | dist 
+-----+------
+ 010 | 0.00
+ 011 | 1.00
+ 000 | 1.00
+ 110 | 1.00
+ 001 | 2.00
+ 111 | 2.00
+ 100 | 2.00
+(7 rows)
+
+EXPLAIN SELECT id, ROUND(vector_l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Limit  (cost=0.00..14.19 rows=7 width=56)
+   ->  Index Scan using small_world_v_idx on small_world  (cost=0.00..16.22 rows=8 width=56)
+         Order By: (v <-> '[0,1,0]'::vector)
+(3 rows)
+
+-- Verify that index creation on a large vector produces an error
+CREATE TABLE large_vector (v VECTOR(2001));
+\set ON_ERROR_STOP off
+CREATE INDEX ON large_vector USING hnsw (v);
+ERROR:  vector dimension 2001 is too large. LanternDB currently supports up to 2000dim vectors
+\set ON_ERROR_STOP on
+-- Validate that index creation works with a larger number of vectors
+CREATE TABLE sift_base10k (
+    id SERIAL PRIMARY KEY,
+    v VECTOR(128)
+);
+\COPY sift_base10k (v) FROM '/tmp/lanterndb/vector_datasets/siftsmall_base.csv' WITH CSV;
+CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v);
+INFO:  done init usearch index
+INFO:  inserted 10000 elements
+INFO:  done saving 10000 vectors
+SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
+EXPLAIN SELECT * FROM sift_base10k ORDER BY v <-> :'v4444' LIMIT 10;
+                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                           
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.00..6.59 rows=10 width=44)
+   ->  Index Scan using hnsw_idx on sift_base10k  (cost=0.00..6588.00 rows=10000 width=44)
+         Order By: (v <-> '[55,61,11,4,5,2,13,24,65,49,13,9,23,37,94,38,54,11,14,14,40,31,50,44,53,4,0,0,27,17,8,34,12,10,4,4,22,52,68,53,9,2,0,0,2,116,119,64,119,2,0,0,2,30,119,119,116,5,0,8,47,9,5,60,7,7,10,23,56,50,23,5,28,68,6,18,24,65,50,9,119,75,3,0,1,8,12,85,119,11,4,6,8,9,5,74,25,11,8,20,18,12,2,21,11,90,25,32,33,15,2,9,84,67,8,4,22,31,11,33,119,30,3,6,0,0,0,26]'::vector)
+(3 rows)
+
+-- Ensure we can query an index for more elements than the value of init_k
+SET client_min_messages TO DEBUG5;
+DEBUG:  CommitTransaction(1) name: unnamed; blockState: STARTED; state: INPROGRESS, xid/subid/cid: 0/1/0
+SET hnsw.init_k = 4;
+DEBUG:  StartTransaction(1) name: unnamed; blockState: DEFAULT; state: INPROGRESS, xid/subid/cid: 0/1/0
+DEBUG:  CommitTransaction(1) name: unnamed; blockState: STARTED; state: INPROGRESS, xid/subid/cid: 0/1/0
+WITH neighbors AS (
+    SELECT * FROM small_world order by v <-> '[1,0,0]' LIMIT 3
+) SELECT COUNT(*) from neighbors;
+DEBUG:  StartTransaction(1) name: unnamed; blockState: DEFAULT; state: INPROGRESS, xid/subid/cid: 0/1/0
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
+INFO:  usearch index initialized
+DEBUG:  querying index for 4 elements
+DEBUG:  CommitTransaction(1) name: unnamed; blockState: STARTED; state: INPROGRESS, xid/subid/cid: 0/1/0
+ count 
+-------
+     3
+(1 row)
+
+WITH neighbors AS (
+    SELECT * FROM small_world order by v <-> '[1,0,0]' LIMIT 15
+) SELECT COUNT(*) from neighbors;
+DEBUG:  StartTransaction(1) name: unnamed; blockState: DEFAULT; state: INPROGRESS, xid/subid/cid: 0/1/0
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
+INFO:  usearch index initialized
+DEBUG:  querying index for 4 elements
+DEBUG:  querying index for 8 elements
+DEBUG:  querying index for 16 elements
+DEBUG:  CommitTransaction(1) name: unnamed; blockState: STARTED; state: INPROGRESS, xid/subid/cid: 0/1/0
+ count 
+-------
+     9
+(1 row)
+
+RESET client_min_messages;
+DEBUG:  StartTransaction(1) name: unnamed; blockState: DEFAULT; state: INPROGRESS, xid/subid/cid: 0/1/0
+\set ON_ERROR_STOP off
+-- Expect error due to improper use of the <-> operator outside of its supported context
+SELECT ARRAY[1,2,3] <-> ARRAY[3,2,1];
+ERROR:  Operator <-> has no standalone meaning and is reserved for use in vector index lookups only
+-- Expect error due to mismatching vector dimensions
+SELECT 1 FROM small_world ORDER BY v <-> '[0,1,0,1]' LIMIT 1;
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
+INFO:  usearch index initialized
+ERROR:  Expected vector with dimension 3, got 4
+SELECT vector_l2sq_dist('[1,1]'::vector, '[0,1,0]'::vector);
+ERROR:  expected equally sized vectors but got vectors with dimensions 2 and 3

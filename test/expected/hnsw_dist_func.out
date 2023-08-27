@@ -1,224 +1,166 @@
-CREATE TABLE small_world_l2 (
-    id varchar(3),
-    vector real[]
+---------------------------------------------------------------------
+-- Test the distance functions used by the HNSW index
+---------------------------------------------------------------------
+\ir utils/small_world_array.sql
+CREATE TABLE small_world (
+    id VARCHAR(3),
+    b BOOLEAN,
+    v REAL[3]
 );
-CREATE TABLE small_world_cos (
-    id varchar(3),
-    vector real[]
-);
-CREATE TABLE small_world_ham (
-    id varchar(3),
-    vector integer[]
-);
-CREATE TABLE small_world_l2_vec (
-    id varchar(3),
-    vector vector(3)
-);
-CREATE INDEX ON small_world_l2_vec USING hnsw (vector);
+INSERT INTO small_world (id, b, v) VALUES
+    ('000', TRUE,  '{0,0,0}'),
+    ('001', TRUE,  '{0,0,1}'),
+    ('010', FALSE, '{0,1,0}'),
+    ('011', TRUE,  '{0,1,1}'),
+    ('100', FALSE, '{1,0,0}'),
+    ('101', FALSE, '{1,0,1}'),
+    ('110', FALSE, '{1,1,0}'),
+    ('111', TRUE,  '{1,1,1}');
+CREATE TABLE small_world_l2 (id VARCHAR(3), v REAL[]);
+CREATE TABLE small_world_cos (id VARCHAR(3), v REAL[]);
+CREATE TABLE small_world_ham (id VARCHAR(3), v INTEGER[]);
+CREATE INDEX ON small_world_l2 USING hnsw (v dist_l2sq_ops) WITH (dims=3);
 INFO:  done init usearch index
 INFO:  inserted 0 elements
 INFO:  done saving 0 vectors
-CREATE INDEX ON small_world_l2 USING hnsw (vector dist_l2sq_ops);
+CREATE INDEX ON small_world_cos USING hnsw (v dist_cos_ops) WITH (dims=3);
 INFO:  done init usearch index
 INFO:  inserted 0 elements
 INFO:  done saving 0 vectors
-CREATE INDEX ON small_world_cos USING hnsw (vector dist_cos_ops);
+CREATE INDEX ON small_world_ham USING hnsw (v dist_hamming_ops) WITH (dims=3);
 INFO:  done init usearch index
 INFO:  inserted 0 elements
 INFO:  done saving 0 vectors
-CREATE INDEX ON small_world_ham USING hnsw (vector dist_hamming_ops);
-INFO:  done init usearch index
-INFO:  inserted 0 elements
-INFO:  done saving 0 vectors
-INSERT INTO small_world_l2_vec (id, vector) VALUES 
-('000', '[0,0,0]'),
-('001', '[0,0,1]'),
-('010', '[0,1,0]'),
-('011', '[0,1,1]'),
-('100', '[1,0,0]'),
-('101', '[1,0,1]'),
-('110', '[1,1,0]'),
-('111', '[1,1,1]');
-INSERT INTO small_world_l2 (id, vector) VALUES 
-('000', '{0,0,0}'),
-('001', '{0,0,1}'),
-('010', '{0,1,0}'),
-('011', '{0,1,1}'),
-('100', '{1,0,0}'),
-('101', '{1,0,1}'),
-('110', '{1,1,0}'),
-('111', '{1,1,1}');
-INSERT INTO small_world_cos (id, vector) VALUES 
-('000', '{0,0,0}'),
-('001', '{0,0,1}'),
-('010', '{0,1,0}'),
-('011', '{0,1,1}'),
-('100', '{1,0,0}'),
-('101', '{1,0,1}'),
-('110', '{1,1,0}'),
-('111', '{1,1,1}');
-INSERT INTO small_world_ham (id, vector) VALUES 
-('000', '{0,0,0}'),
-('001', '{0,0,1}'),
-('010', '{0,1,0}'),
-('011', '{0,1,1}'),
-('100', '{1,0,0}'),
-('101', '{1,0,1}'),
-('110', '{1,1,0}'),
-('111', '{1,1,1}');
+INSERT INTO small_world_l2 SELECT id, v FROM small_world;
+INSERT INTO small_world_cos SELECT id, v FROM small_world;
+INSERT INTO small_world_ham SELECT id, v FROM small_world;
 SET enable_seqscan = false;
--- l2
-SELECT * FROM (
-    SELECT id, ROUND(l2sq_dist(vector, array[0,1,0])::numeric, 2) as dist
-    FROM small_world_l2
-    ORDER BY vector <-> array[0,1,0] LIMIT 7
-) v ORDER BY v.dist, v.id;
+-- Verify that the distance functions work (check distances)
+SELECT ROUND(l2sq_dist(v, '{0,1,0}')::numeric, 2) FROM small_world_l2 ORDER BY v <-> '{0,1,0}';
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized
- id  | dist 
------+------
- 010 | 0.00
- 011 | 1.00
- 110 | 1.00
- 001 | 2.00
- 100 | 2.00
- 111 | 2.00
- 101 | 3.00
-(7 rows)
+ round 
+-------
+  0.00
+  1.00
+  1.00
+  1.00
+  2.00
+  2.00
+  2.00
+  3.00
+(8 rows)
 
--- this should use index
-EXPLAIN SELECT * FROM (
-    SELECT id, ROUND(l2sq_dist(vector, array[0,1,0])::numeric, 2) as dist
-    FROM small_world_l2
-    ORDER BY vector <-> array[0,1,0] LIMIT 7
-) v ORDER BY v.dist, v.id;
-                                                      QUERY PLAN                                                       
------------------------------------------------------------------------------------------------------------------------
- Sort  (cost=0.70..0.72 rows=7 width=48)
-   Sort Key: v.dist, v.id
-   ->  Subquery Scan on v  (cost=0.00..0.60 rows=7 width=48)
-         ->  Limit  (cost=0.00..0.53 rows=7 width=52)
-               ->  Index Scan using small_world_l2_vector_idx on small_world_l2  (cost=0.00..81.42 rows=1070 width=52)
-                     Order By: (vector <-> '{0,1,0}'::real[])
-(6 rows)
-
--- l2 vector
-SELECT * FROM (
-    SELECT id, ROUND(l2sq_dist(vector, '[0,1,0]'::vector)::numeric, 2) as dist
-    FROM small_world_l2_vec
-    ORDER BY vector <-> '[0,1,0]'::vector LIMIT 7
-) v ORDER BY v.dist, v.id;
+SELECT ROUND(cos_dist(v, '{0,1,0}')::numeric, 2) FROM small_world_cos ORDER BY v <-> '{0,1,0}';
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized
- id  | dist 
------+------
- 010 | 0.00
- 000 | 1.00
- 011 | 1.00
- 110 | 1.00
- 001 | 2.00
- 100 | 2.00
- 111 | 2.00
-(7 rows)
+ round 
+-------
+  0.00
+  0.29
+  0.29
+  0.42
+  1.00
+  1.00
+  1.00
+  1.00
+(8 rows)
 
--- this should use index
-EXPLAIN SELECT * FROM (
-    SELECT id, ROUND(l2sq_dist(vector, '[0,1,0]'::vector)::numeric, 2) as dist
-    FROM small_world_l2_vec
-    ORDER BY vector <-> '[0,1,0]'::vector LIMIT 7
-) v ORDER BY v.dist, v.id;
-                                                          QUERY PLAN                                                           
--------------------------------------------------------------------------------------------------------------------------------
- Sort  (cost=0.72..0.74 rows=7 width=48)
-   Sort Key: v.dist, v.id
-   ->  Subquery Scan on v  (cost=0.00..0.62 rows=7 width=48)
-         ->  Limit  (cost=0.00..0.55 rows=7 width=56)
-               ->  Index Scan using small_world_l2_vec_vector_idx on small_world_l2_vec  (cost=0.00..84.10 rows=1070 width=56)
-                     Order By: (vector <-> '[0,1,0]'::vector)
-(6 rows)
-
--- cos
-SELECT * FROM (
-    SELECT id, ROUND(cos_dist(vector, array[0,1,0])::numeric, 2) as dist
-    FROM small_world_cos
-    ORDER BY vector <-> array[0,1,0] LIMIT 7
-) v ORDER BY v.dist, v.id;
+SELECT ROUND(hamming_dist(v, '{0,1,0}')::numeric, 2) FROM small_world_ham ORDER BY v <-> '{0,1,0}';
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized
- id  | dist 
------+------
- 010 | 0.00
- 011 | 0.29
- 110 | 0.29
- 111 | 0.42
- 001 | 1.00
- 100 | 1.00
- 101 | 1.00
-(7 rows)
+ round 
+-------
+  0.00
+  1.00
+  1.00
+  1.00
+  2.00
+  2.00
+  2.00
+  3.00
+(8 rows)
 
--- this should use index
-EXPLAIN SELECT * FROM (
-    SELECT id, ROUND(cos_dist(vector, array[0,1,0])::numeric, 2) as dist
-    FROM small_world_cos
-    ORDER BY vector <-> array[0,1,0] LIMIT 7
-) v ORDER BY v.dist, v.id;
-                                                       QUERY PLAN                                                        
--------------------------------------------------------------------------------------------------------------------------
- Sort  (cost=0.70..0.72 rows=7 width=48)
-   Sort Key: v.dist, v.id
-   ->  Subquery Scan on v  (cost=0.00..0.60 rows=7 width=48)
-         ->  Limit  (cost=0.00..0.53 rows=7 width=52)
-               ->  Index Scan using small_world_cos_vector_idx on small_world_cos  (cost=0.00..81.42 rows=1070 width=52)
-                     Order By: (vector <-> '{0,1,0}'::real[])
-(6 rows)
+-- Verify that the distance functions work (check IDs)
+SELECT ARRAY_AGG(id ORDER BY id), ROUND(l2sq_dist(v, '{0,1,0}')::numeric, 2) FROM small_world_l2 GROUP BY 2 ORDER BY 2;
+   array_agg   | round 
+---------------+-------
+ {010}         |  0.00
+ {000,011,110} |  1.00
+ {001,100,111} |  2.00
+ {101}         |  3.00
+(4 rows)
 
--- ham
-SELECT * FROM (
-    SELECT id, ROUND(hamming_dist(vector, array[0,1,0])::numeric, 2) as dist
-    FROM small_world_ham
-    ORDER BY vector <-> array[0,1,0] LIMIT 7
-) v ORDER BY v.dist, v.id;
-INFO:  began scanning with 0 keys and 1 orderbys
-INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
-INFO:  usearch index initialized
- id  | dist 
------+------
- 010 | 0.00
- 011 | 1.00
- 110 | 1.00
- 001 | 2.00
- 100 | 2.00
- 111 | 2.00
- 101 | 3.00
-(7 rows)
+SELECT ARRAY_AGG(id ORDER BY id), ROUND(cos_dist(v, '{0,1,0}')::numeric, 2) FROM small_world_cos GROUP BY 2 ORDER BY 2;
+     array_agg     | round 
+-------------------+-------
+ {010}             |  0.00
+ {011,110}         |  0.29
+ {111}             |  0.42
+ {000,001,100,101} |  1.00
+(4 rows)
 
--- this should use index
-EXPLAIN SELECT * FROM (
-    SELECT id, ROUND(hamming_dist(vector, array[0,1,0])::numeric, 2) as dist
-    FROM small_world_ham
-    ORDER BY vector <-> array[0,1,0] LIMIT 7
-) v ORDER BY v.dist, v.id;
-                                                       QUERY PLAN                                                        
--------------------------------------------------------------------------------------------------------------------------
- Sort  (cost=0.70..0.72 rows=7 width=48)
-   Sort Key: v.dist, v.id
-   ->  Subquery Scan on v  (cost=0.00..0.60 rows=7 width=48)
-         ->  Limit  (cost=0.00..0.53 rows=7 width=52)
-               ->  Index Scan using small_world_ham_vector_idx on small_world_ham  (cost=0.00..81.42 rows=1070 width=52)
-                     Order By: (vector <-> '{0,1,0}'::integer[])
-(6 rows)
+SELECT ARRAY_AGG(id ORDER BY id), ROUND(hamming_dist(v, '{0,1,0}')::numeric, 2) FROM small_world_ham GROUP BY 2 ORDER BY 2;
+   array_agg   | round 
+---------------+-------
+ {010}         |  0.00
+ {000,011,110} |  1.00
+ {001,100,111} |  2.00
+ {101}         |  3.00
+(4 rows)
+
+-- Verify that the indexes is being used
+EXPLAIN SELECT id FROM small_world_l2 ORDER BY v <-> '{0,1,0}';
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Index Scan using small_world_l2_v_idx on small_world_l2  (cost=0.00..73.40 rows=1070 width=20)
+   Order By: (v <-> '{0,1,0}'::real[])
+(2 rows)
+
+EXPLAIN SELECT id FROM small_world_cos ORDER BY v <-> '{0,1,0}';
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
+ Index Scan using small_world_cos_v_idx on small_world_cos  (cost=0.00..73.40 rows=1070 width=20)
+   Order By: (v <-> '{0,1,0}'::real[])
+(2 rows)
+
+EXPLAIN SELECT id FROM small_world_ham ORDER BY v <-> '{0,1,0}';
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
+ Index Scan using small_world_ham_v_idx on small_world_ham  (cost=0.00..73.40 rows=1070 width=20)
+   Order By: (v <-> '{0,1,0}'::integer[])
+(2 rows)
 
 \set ON_ERROR_STOP off
--- this should throw error about standalone usage of the operator
+-- Expect errors due to mismatching vector dimensions
+SELECT 1 FROM small_world_l2 ORDER BY v <-> '{0,1,0,1}' LIMIT 1;
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
+INFO:  usearch index initialized
+ERROR:  Expected real array with dimension 3, got 4
+SELECT 1 FROM small_world_cos ORDER BY v <-> '{0,1,0,1}' LIMIT 1;
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
+INFO:  usearch index initialized
+ERROR:  Expected real array with dimension 3, got 4
+SELECT 1 FROM small_world_ham ORDER BY v <-> '{0,1,0,1}' LIMIT 1;
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
+INFO:  usearch index initialized
+ERROR:  Expected int array with dimension 3, got 4
+SELECT l2sq_dist('{1,1}', '{0,1,0}');
+ERROR:  expected equally sized arrays but got arrays with dimensions 2 and 3
+SELECT cos_dist('{1,1}', '{0,1,0}');
+ERROR:  expected equally sized arrays but got arrays with dimensions 2 and 3
+SELECT hamming_dist('{1,1}', '{0,1,0}');
+ERROR:  expected equally sized arrays but got arrays with dimensions 2 and 3
+-- Expect errors due to improper use of the <-> operator outside of its supported context
 SELECT array[1,2,3] <-> array[3,2,1];
 ERROR:  Operator <-> has no standalone meaning and is reserved for use in vector index lookups only
--- this should throw error about standalone usage of the operator
-SELECT * FROM (
-    SELECT id, ROUND((vector <-> array[0,1,0])::numeric, 2) as dist
-    FROM small_world_ham
-    ORDER BY vector <-> array[0,1,0] LIMIT 7
-) v ORDER BY v.dist, v.id;
+SELECT ROUND((v <-> array[0,1,0])::numeric, 2) FROM small_world_cos ORDER BY v <-> '{0,1,0}' LIMIT 7;
+ERROR:  Operator <-> has no standalone meaning and is reserved for use in vector index lookups only
+SELECT ROUND((v <-> array[0,1,0])::numeric, 2) FROM small_world_ham ORDER BY v <-> '{0,1,0}' LIMIT 7;
 ERROR:  Operator <-> has no standalone meaning and is reserved for use in vector index lookups only

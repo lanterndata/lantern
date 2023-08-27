@@ -10,6 +10,7 @@
 
 #include "cache.h"
 #include "extra_dirtied.h"
+#include "hnsw.h"
 #include "usearch.h"
 
 #define LDB_WAL_MAGIC_NUMBER   0xa47e20db
@@ -95,6 +96,7 @@ typedef struct
 {
     usearch_index_t uidx;
     RetrieverCtx   *retriever_ctx;
+    HnswColumnType  columnType;
 } HnswInsertState;
 
 void StoreExternalIndex(Relation        index,

@@ -5,16 +5,9 @@
 #include <nodes/execnodes.h>
 #include <utils/relcache.h>
 
+#include "hnsw.h"
 #include "lib_interface.h"
 #include "usearch.h"
-
-typedef enum
-{
-    REAL_ARRAY,
-    INT_ARRAY,
-    VECTOR,
-    UNKNOWN
-} HnswDataType;
 
 typedef struct HnswBuildState
 {
@@ -24,8 +17,8 @@ typedef struct HnswBuildState
     IndexInfo *indexInfo;
 
     /* Settings */
-    int          dimensions;
-    HnswDataType columnType;
+    int            dimensions;
+    HnswColumnType columnType;
 
     /* Statistics */
     double tuples_indexed;
@@ -41,7 +34,7 @@ typedef struct HnswBuildState
 
 IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInfo);
 void              ldb_ambuildunlogged(Relation index);
-HnswDataType      GetIndexDataType(Relation index);
 int               GetHnswIndexDimensions(Relation index);
 void              CheckHnswIndexDimensions(Relation index, Datum arrayDatum, int deimensions);
+// todo: does this render my check unnecessary
 #endif  // LDB_HNSW_BUILD_H

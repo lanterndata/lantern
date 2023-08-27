@@ -1,133 +1,50 @@
-CREATE TABLE small_world_l2 (
-    id varchar(3),
-    vector real[]
-);
+---------------------------------------------------------------------
+-- Test the distance functions used by the HNSW index
+---------------------------------------------------------------------
 
-CREATE TABLE small_world_cos (
-    id varchar(3),
-    vector real[]
-);
+\ir utils/small_world_array.sql
 
-CREATE TABLE small_world_ham (
-    id varchar(3),
-    vector integer[]
-);
+CREATE TABLE small_world_l2 (id VARCHAR(3), v REAL[]);
+CREATE TABLE small_world_cos (id VARCHAR(3), v REAL[]);
+CREATE TABLE small_world_ham (id VARCHAR(3), v INTEGER[]);
 
-CREATE TABLE small_world_l2_vec (
-    id varchar(3),
-    vector vector(3)
-);
+CREATE INDEX ON small_world_l2 USING hnsw (v dist_l2sq_ops) WITH (dims=3);
+CREATE INDEX ON small_world_cos USING hnsw (v dist_cos_ops) WITH (dims=3);
+CREATE INDEX ON small_world_ham USING hnsw (v dist_hamming_ops) WITH (dims=3);
 
-CREATE INDEX ON small_world_l2_vec USING hnsw (vector);
-CREATE INDEX ON small_world_l2 USING hnsw (vector dist_l2sq_ops);
-CREATE INDEX ON small_world_cos USING hnsw (vector dist_cos_ops);
-CREATE INDEX ON small_world_ham USING hnsw (vector dist_hamming_ops);
-
-INSERT INTO small_world_l2_vec (id, vector) VALUES 
-('000', '[0,0,0]'),
-('001', '[0,0,1]'),
-('010', '[0,1,0]'),
-('011', '[0,1,1]'),
-('100', '[1,0,0]'),
-('101', '[1,0,1]'),
-('110', '[1,1,0]'),
-('111', '[1,1,1]');
-
-INSERT INTO small_world_l2 (id, vector) VALUES 
-('000', '{0,0,0}'),
-('001', '{0,0,1}'),
-('010', '{0,1,0}'),
-('011', '{0,1,1}'),
-('100', '{1,0,0}'),
-('101', '{1,0,1}'),
-('110', '{1,1,0}'),
-('111', '{1,1,1}');
-
-INSERT INTO small_world_cos (id, vector) VALUES 
-('000', '{0,0,0}'),
-('001', '{0,0,1}'),
-('010', '{0,1,0}'),
-('011', '{0,1,1}'),
-('100', '{1,0,0}'),
-('101', '{1,0,1}'),
-('110', '{1,1,0}'),
-('111', '{1,1,1}');
-
-INSERT INTO small_world_ham (id, vector) VALUES 
-('000', '{0,0,0}'),
-('001', '{0,0,1}'),
-('010', '{0,1,0}'),
-('011', '{0,1,1}'),
-('100', '{1,0,0}'),
-('101', '{1,0,1}'),
-('110', '{1,1,0}'),
-('111', '{1,1,1}');
+INSERT INTO small_world_l2 SELECT id, v FROM small_world;
+INSERT INTO small_world_cos SELECT id, v FROM small_world;
+INSERT INTO small_world_ham SELECT id, v FROM small_world;
 
 SET enable_seqscan = false;
 
--- l2
-SELECT * FROM (
-    SELECT id, ROUND(l2sq_dist(vector, array[0,1,0])::numeric, 2) as dist
-    FROM small_world_l2
-    ORDER BY vector <-> array[0,1,0] LIMIT 7
-) v ORDER BY v.dist, v.id;
+-- Verify that the distance functions work (check distances)
+SELECT ROUND(l2sq_dist(v, '{0,1,0}')::numeric, 2) FROM small_world_l2 ORDER BY v <-> '{0,1,0}';
+SELECT ROUND(cos_dist(v, '{0,1,0}')::numeric, 2) FROM small_world_cos ORDER BY v <-> '{0,1,0}';
+SELECT ROUND(hamming_dist(v, '{0,1,0}')::numeric, 2) FROM small_world_ham ORDER BY v <-> '{0,1,0}';
 
--- this should use index
-EXPLAIN SELECT * FROM (
-    SELECT id, ROUND(l2sq_dist(vector, array[0,1,0])::numeric, 2) as dist
-    FROM small_world_l2
-    ORDER BY vector <-> array[0,1,0] LIMIT 7
-) v ORDER BY v.dist, v.id;
+-- Verify that the distance functions work (check IDs)
+SELECT ARRAY_AGG(id ORDER BY id), ROUND(l2sq_dist(v, '{0,1,0}')::numeric, 2) FROM small_world_l2 GROUP BY 2 ORDER BY 2;
+SELECT ARRAY_AGG(id ORDER BY id), ROUND(cos_dist(v, '{0,1,0}')::numeric, 2) FROM small_world_cos GROUP BY 2 ORDER BY 2;
+SELECT ARRAY_AGG(id ORDER BY id), ROUND(hamming_dist(v, '{0,1,0}')::numeric, 2) FROM small_world_ham GROUP BY 2 ORDER BY 2;
 
--- l2 vector
-SELECT * FROM (
-    SELECT id, ROUND(l2sq_dist(vector, '[0,1,0]'::vector)::numeric, 2) as dist
-    FROM small_world_l2_vec
-    ORDER BY vector <-> '[0,1,0]'::vector LIMIT 7
-) v ORDER BY v.dist, v.id;
-
--- this should use index
-EXPLAIN SELECT * FROM (
-    SELECT id, ROUND(l2sq_dist(vector, '[0,1,0]'::vector)::numeric, 2) as dist
-    FROM small_world_l2_vec
-    ORDER BY vector <-> '[0,1,0]'::vector LIMIT 7
-) v ORDER BY v.dist, v.id;
-
--- cos
-SELECT * FROM (
-    SELECT id, ROUND(cos_dist(vector, array[0,1,0])::numeric, 2) as dist
-    FROM small_world_cos
-    ORDER BY vector <-> array[0,1,0] LIMIT 7
-) v ORDER BY v.dist, v.id;
-
--- this should use index
-EXPLAIN SELECT * FROM (
-    SELECT id, ROUND(cos_dist(vector, array[0,1,0])::numeric, 2) as dist
-    FROM small_world_cos
-    ORDER BY vector <-> array[0,1,0] LIMIT 7
-) v ORDER BY v.dist, v.id;
-
--- ham
-SELECT * FROM (
-    SELECT id, ROUND(hamming_dist(vector, array[0,1,0])::numeric, 2) as dist
-    FROM small_world_ham
-    ORDER BY vector <-> array[0,1,0] LIMIT 7
-) v ORDER BY v.dist, v.id;
-
--- this should use index
-EXPLAIN SELECT * FROM (
-    SELECT id, ROUND(hamming_dist(vector, array[0,1,0])::numeric, 2) as dist
-    FROM small_world_ham
-    ORDER BY vector <-> array[0,1,0] LIMIT 7
-) v ORDER BY v.dist, v.id;
+-- Verify that the indexes is being used
+EXPLAIN SELECT id FROM small_world_l2 ORDER BY v <-> '{0,1,0}';
+EXPLAIN SELECT id FROM small_world_cos ORDER BY v <-> '{0,1,0}';
+EXPLAIN SELECT id FROM small_world_ham ORDER BY v <-> '{0,1,0}';
 
 \set ON_ERROR_STOP off
--- this should throw error about standalone usage of the operator
-SELECT array[1,2,3] <-> array[3,2,1];
 
--- this should throw error about standalone usage of the operator
-SELECT * FROM (
-    SELECT id, ROUND((vector <-> array[0,1,0])::numeric, 2) as dist
-    FROM small_world_ham
-    ORDER BY vector <-> array[0,1,0] LIMIT 7
-) v ORDER BY v.dist, v.id;
+-- Expect errors due to mismatching vector dimensions
+SELECT 1 FROM small_world_l2 ORDER BY v <-> '{0,1,0,1}' LIMIT 1;
+SELECT 1 FROM small_world_cos ORDER BY v <-> '{0,1,0,1}' LIMIT 1;
+SELECT 1 FROM small_world_ham ORDER BY v <-> '{0,1,0,1}' LIMIT 1;
+SELECT l2sq_dist('{1,1}', '{0,1,0}');
+SELECT cos_dist('{1,1}', '{0,1,0}');
+SELECT hamming_dist('{1,1}', '{0,1,0}');
+
+-- Expect errors due to improper use of the <-> operator outside of its supported context
+SELECT array[1,2,3] <-> array[3,2,1];
+SELECT ROUND((v <-> array[0,1,0])::numeric, 2) FROM small_world_cos ORDER BY v <-> '{0,1,0}' LIMIT 7;
+SELECT ROUND((v <-> array[0,1,0])::numeric, 2) FROM small_world_ham ORDER BY v <-> '{0,1,0}' LIMIT 7;
+
