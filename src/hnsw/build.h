@@ -35,7 +35,6 @@ typedef struct HnswBuildState
 IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInfo);
 void              ldb_ambuildunlogged(Relation index);
 int               GetHnswIndexDimensions(Relation index);
-void              CheckHnswIndexDimensions(Relation index,
-                                           Datum    arrayDatum,
-                                           int      deimensions);  // todo: does this render my check unnecessary
-#endif                                                        // LDB_HNSW_BUILD_H
+void              CheckHnswIndexDimensions(Relation index, Datum arrayDatum, int deimensions);
+// todo: does this render my check unnecessary
+#endif  // LDB_HNSW_BUILD_H
