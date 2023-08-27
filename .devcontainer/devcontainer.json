@@ -1,0 +1,22 @@
+{
+    "name": "Lantern Dev",
+    "dockerFile": "../Dockerfile.dev",
+    "context": "..",
+    "runArgs": [
+        "--cap-add=SYS_PTRACE",
+        "--security-opt",
+        "seccomp=unconfined",
+        "-e",
+        "POSTGRES_PASSWORD=postgres"
+    ],
+    "mounts": ["source=${localWorkspaceFolder},target=/lanterndb,type=bind,consistency=cached"],
+    "overrideCommand": false,
+    "customizations": {
+        "vscode": {
+            "extensions": [],
+            "settings": {
+                "terminal.integrated.shell.linux": "/bin/bash"
+            }
+        }
+    }
+}
