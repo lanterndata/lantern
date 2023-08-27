@@ -279,7 +279,13 @@ float *DatumGetSizedFloatArray(Datum datum, HnswColumnType type, int dimensions)
         if (array_dim != dimensions) {
             elog(ERROR, "Expected int array with dimension %d, got %d", dimensions, array_dim);
         }
-        // TODO: Create int array
+        int *intArray = (int *) ARR_DATA_PTR(array);
+        float *floatArray = (float *) palloc(sizeof(float) * array_dim);
+        for (int i = 0; i < array_dim; i++) {
+            floatArray[i] = (float) intArray[i];
+        }
+        // todo:: free this array
+        return floatArray;
     } else {
         elog(ERROR, "Unsupported type");
     }
