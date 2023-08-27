@@ -176,7 +176,7 @@ int GetHnswIndexDimensions(Relation index)
             HnswOptions *opts;
             int          attrNum;
 
-            // We know there's one key because we generate an error during inference if multiple keys are specified
+            assert(index->rd_index->indnatts == 1);
             attrNum = index->rd_index->indkey.values[ 0 ];
 #if PG_VERSION_NUM < 120000
             heap = heap_open(index->rd_index->indrelid, AccessShareLock);
@@ -208,8 +208,8 @@ int GetHnswIndexDimensions(Relation index)
 
 void CheckHnswIndexDimensions(Relation index, Datum arrayDatum, int dimensions)
 {
-    ArrayType   *array;
-    int          n_items;
+    ArrayType     *array;
+    int            n_items;
     HnswColumnType indexType = GetIndexColumnType(index);
 
     if(indexType == REAL_ARRAY || indexType == INT_ARRAY) {
@@ -229,7 +229,7 @@ static int InferDimension(Relation heap, IndexInfo *indexInfo)
 {
     int indexCol;
 
-    // If NumIndexAttrs isn't 1 the index has been instantiated on multiple columns and there's no clear way to infer
+    // If NumIndexAttrs isn't 1 the index has been instantiated on multiple keys and there's no clear way to infer
     // the dim
     if(indexInfo->ii_NumIndexAttrs != 1) {
         return HNSW_DEFAULT_DIMS;
@@ -251,8 +251,9 @@ static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation i
     buildstate->dimensions = GetHnswIndexDimensions(index);
 
     // If a dimension wasn't specified try to infer it
-    if(buildstate->columnType == REAL_ARRAY || buildstate->columnType == INT_ARRAY)
-        if(buildstate->dimensions < 1) buildstate->dimensions = InferDimension(heap, indexInfo);
+    if(buildstate->dimensions < 1) {
+        buildstate->dimensions = InferDimension(heap, indexInfo);
+    }
     /* Require column to have dimensions to be indexed */
     if(buildstate->dimensions < 1) elog(ERROR, "column does not have dimensions, please specify one");
 
