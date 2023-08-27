@@ -20,6 +20,7 @@ RUN apt update \
        sudo \
        curl \
        git-all \
+       tmux \
     && pip install libtmux --break-system-packages
 
 COPY . .
