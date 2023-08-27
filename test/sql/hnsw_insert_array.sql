@@ -84,6 +84,8 @@ SELECT id, ROUND(l2sq_dist(vector, :'v42')::numeric, 2) FROM new_small_world ORD
 
 SELECT count(*) from sift_base1k;
 SELECT * from ldb_get_indexes('sift_base1k');
+EXPLAIN SELECT v FROM sift_base1k WHERE id <= 444 AND v IS NOT NULL;
+SELECT v FROM sift_base1k WHERE id <= 444 AND v IS NOT NULL;
 SELECT count(*) from sift_base1k;
 SELECT * from ldb_get_indexes('sift_base1k');
 
