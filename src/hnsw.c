@@ -256,9 +256,9 @@ HnswColumnType GetIndexColumnType(Relation index)
 }
 
 /*
- * Given vector data and vector type, convert it to a float array
+ * Given vector data and vector type, convert it to a float4 array
  */
-float *DatumGetSizedFloatArray(Datum datum, HnswColumnType type, int dimensions)
+float4 *DatumGetSizedFloatArray(Datum datum, HnswColumnType type, int dimensions)
 {
     if (type == VECTOR) {
         Vector *vector = DatumGetVector(datum);
@@ -280,7 +280,7 @@ float *DatumGetSizedFloatArray(Datum datum, HnswColumnType type, int dimensions)
             elog(ERROR, "Expected int array with dimension %d, got %d", dimensions, array_dim);
         }
         int *intArray = (int *) ARR_DATA_PTR(array);
-        float *floatArray = (float *) palloc(sizeof(float) * array_dim);
+        float4 *floatArray = (float4 *) palloc(sizeof(float) * array_dim);
         for (int i = 0; i < array_dim; i++) {
             floatArray[i] = (float) intArray[i];
         }

@@ -113,7 +113,7 @@ bool ldb_aminsert(Relation         index,
     assert(!error);
 
     datum = PointerGetDatum(PG_DETOAST_DATUM(values[ 0 ]));
-    float *vector = DatumGetSizedFloatArray(datum, insertstate->columnType, opts.dimensions);
+    float4 *vector = DatumGetSizedFloatArray(datum, insertstate->columnType, opts.dimensions);
 
 #if LANTERNDB_COPYNODES
     // currently not fully ported to the latest changes

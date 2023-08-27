@@ -51,7 +51,7 @@ static void AddTupleToUsearchIndex(ItemPointer tid, Datum *values, HnswBuildStat
     usearch_error_t       error = NULL;
     Datum                 value = PointerGetDatum(PG_DETOAST_DATUM(values[ 0 ]));
     usearch_scalar_kind_t usearch_scalar;
-    float                *vector = DatumGetSizedFloatArray(value, buildstate->columnType, buildstate->dimensions);
+    float4               *vector = DatumGetSizedFloatArray(value, buildstate->columnType, buildstate->dimensions);
 
     switch(buildstate->columnType) {
         case REAL_ARRAY:

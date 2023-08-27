@@ -33,7 +33,7 @@ PGDLLEXPORT Datum hamming_dist(PG_FUNCTION_ARGS);
 PGDLLEXPORT Datum cos_dist(PG_FUNCTION_ARGS);
 
 HnswColumnType GetIndexColumnType(Relation index);
-float         *DatumGetSizedFloatArray(Datum datum, HnswColumnType type, int dimensions);
+float4        *DatumGetSizedFloatArray(Datum datum, HnswColumnType type, int dimensions);
 
 #define LDB_UNUSED(x) (void)(x)
 
