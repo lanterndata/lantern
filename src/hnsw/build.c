@@ -243,7 +243,7 @@ static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation i
     buildstate->dimensions = GetHnswIndexDimensions(index);
 
     // If a dimension wasn't specified try to infer it
-    if(columnType == REAL_ARRAY || columnType == INT_ARRAY)
+    if(buildstate->columnType == REAL_ARRAY || buildstate->columnType == INT_ARRAY)
         if(buildstate->dimensions < 1) buildstate->dimensions = InferDimension(heap, indexInfo);
     /* Require column to have dimensions to be indexed */
     if(buildstate->dimensions < 1) elog(ERROR, "column does not have dimensions");
