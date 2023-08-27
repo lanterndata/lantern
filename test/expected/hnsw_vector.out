@@ -191,4 +191,4 @@ INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
 INFO:  usearch index initialized
 ERROR:  Expected vector with dimension 3, got 4
 SELECT vector_l2sq_dist('[1,1]'::vector, '[0,1,0]'::vector);
-ERROR:  expected equally sized vectors but got vecors with dimensions 2 and 3
+ERROR:  expected equally sized vectors but got vectors with dimensions 2 and 3
