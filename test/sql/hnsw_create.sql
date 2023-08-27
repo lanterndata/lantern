@@ -20,21 +20,12 @@ CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v dist_l2sq_ops) WITH (M=2, ef
 SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
 EXPLAIN (COSTS FALSE) SELECT * FROM sift_base10k order by v <-> :'v4444' LIMIT 10;
 
----- Verify allowed range of M parameter i.e. [2, 128]
-\set ON_ERROR_STOP off
---- Should throw an error: out of range parameter
-CREATE INDEX ON small_world USING hnsw (v) WITH (M=1);
-\set ON_ERROR_STOP on
-
---- Shouldn't throw an error: parameter is in range
+--- Validate that M values inside the allowed range [2, 128] do not throw an error
 CREATE INDEX ON small_world USING hnsw (v) WITH (M=2);
-
---- Shouldn't throw an error: parameter is in range
 CREATE INDEX ON small_world USING hnsw (v) WITH (M=128);
 
+---- Validate that M values outside the allowed range [2, 128] throw an error
 \set ON_ERROR_STOP off
---- Should throw an error: out of range parameter
+CREATE INDEX ON small_world USING hnsw (v) WITH (M=1);
 CREATE INDEX ON small_world USING hnsw (v) WITH (M=129);
 \set ON_ERROR_STOP on
-
-DROP TABLE small_world;

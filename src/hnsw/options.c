@@ -177,7 +177,7 @@ void _PG_init(void)
                       "dims",
                       "Number of dimensions of the vector",
                       HNSW_DEFAULT_DIMS,
-                      2,
+                      1,
                       HNSW_MAX_DIMS
 #if PG_VERSION_NUM >= 130000
                       ,
@@ -188,7 +188,7 @@ void _PG_init(void)
                       "m",
                       "HNSW M hyperparameter",
                       HNSW_DEFAULT_M,
-                      1,
+                      2,
                       HNSW_MAX_M
 #if PG_VERSION_NUM >= 130000
                       ,
