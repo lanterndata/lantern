@@ -5,10 +5,9 @@ CREATE TABLE small_world (
     v REAL[2]
 );
 INSERT INTO small_world (b, v) VALUES
-    (TRUE, NULL),
     (TRUE, '{1,1}'),
-    (TRUE, '{2,2}'),
     (TRUE, '{3,3}'),
+    (TRUE, '{2,2}'),
     (TRUE, '{4,4}'),
     (TRUE, '{1,9}');
 -- Before the HNSW index is created, the parameter hnsw.init_k should not be available

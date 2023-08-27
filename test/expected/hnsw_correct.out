@@ -9,8 +9,8 @@ CREATE TABLE small_world (
 );
 INSERT INTO small_world (b, v) VALUES
     (TRUE, '{1,1}'),
-    (TRUE, '{2,2}'),
     (TRUE, '{3,3}'),
+    (TRUE, '{2,2}'),
     (TRUE, '{4,4}'),
     (TRUE, '{1,9}');
 -- Create index
@@ -19,39 +19,6 @@ INFO:  done init usearch index
 INFO:  inserted 5 elements
 INFO:  done saving 5 vectors
 SET enable_seqscan = off;
-SELECT
-    id,
-    l2sq_dist(v, '{0,0}') AS dist
-FROM
-    small_world
-ORDER BY l2sq_dist(v, '{0,0}');
- id | dist 
-----+------
-  1 |    2
-  2 |    8
-  3 |   18
-  4 |   32
-  5 |   82
-(5 rows)
-
-SELECT
-    id,
-    l2sq_dist(v, '{0,0}') AS dist
-FROM
-    small_world
-ORDER BY v <-> '{0,0}';
-INFO:  began scanning with 0 keys and 1 orderbys
-INFO:  starting scan with dimensions=2 M=4 efConstruction=128 ef=64
-INFO:  usearch index initialized
- id | dist 
-----+------
-  5 |   82
-  4 |   32
-  3 |   18
-  2 |    8
-  1 |    2
-(5 rows)
-
 -- Get the results without the index
 CREATE TEMP TABLE results_wo_index AS
 SELECT
@@ -81,14 +48,11 @@ SELECT
 FROM 
     results_w_index a
 JOIN 
-    results_wo_index b 
-USING (row_num);
+    results_wo_index b
+USING (row_num)
+WHERE
+    a.id != b.id;
  row_num | id_with_index | id_without_index | dist_with_index | dist_without_index 
 ---------+---------------+------------------+-----------------+--------------------
-       1 |             5 |                1 |              82 |                  2
-       2 |             4 |                2 |              32 |                  8
-       3 |             3 |                3 |              18 |                 18
-       4 |             2 |                4 |               8 |                 32
-       5 |             1 |                5 |               2 |                 82
-(5 rows)
+(0 rows)
 

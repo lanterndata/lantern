@@ -8,6 +8,7 @@
 #include "lib_interface.h"
 #include "retriever.h"
 #include "usearch.h"
+#include "hnsw.h"
 
 typedef struct HnswScanState
 {
@@ -15,6 +16,8 @@ typedef struct HnswScanState
     ItemPointer      iptr;
     float           *distances;
     usearch_label_t *labels;
+    HnswColumnType   columnType;
+    int              dimensions;
     // indicates whether we are retrieving the first tuple
     // actual vector-search is run when the first tuple is requested
     bool first;

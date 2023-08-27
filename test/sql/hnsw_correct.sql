@@ -36,5 +36,7 @@ SELECT
 FROM 
     results_w_index a
 JOIN 
-    results_wo_index b 
-USING (row_num);
+    results_wo_index b
+USING (row_num)
+WHERE
+    a.id != b.id;

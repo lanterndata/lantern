@@ -3,7 +3,7 @@
 
 CREATE TABLE small_world_l2 (
     id varchar(3),
-    vector real[]
+    vector real[],
     vector_int integer[]
 );
 

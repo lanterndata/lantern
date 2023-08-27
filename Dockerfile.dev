@@ -18,6 +18,8 @@ RUN apt update \
        wget \
        python3-pip \
        sudo \
+       curl \
+       git-all \
     && pip install libtmux --break-system-packages
 
 COPY . .

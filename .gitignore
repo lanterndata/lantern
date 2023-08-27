@@ -17,4 +17,5 @@ test/tmp_output/
 .DS_Store
 build
 data
-.vscode
+.vscode/
+.devcontainer/
