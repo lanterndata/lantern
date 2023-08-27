@@ -82,7 +82,10 @@ SELECT '{0,0,0}'::real[] as v42  \gset
 EXPLAIN (COSTS FALSE) SELECT id, ROUND(l2sq_dist(vector, :'v42')::numeric, 2) FROM new_small_world ORDER BY vector <-> :'v42' LIMIT 10;
 SELECT id, ROUND(l2sq_dist(vector, :'v42')::numeric, 2) FROM new_small_world ORDER BY vector <-> :'v42' LIMIT 10;
 
-SELECT COUNT(*) FROM sift_base1k WHERE id <= 444 AND v IS NOT NULL;
+SELECT count(*) from sift_base1k;
+SELECT * from ldb_get_indexes('sift_base1k');
+SELECT count(*) from sift_base1k;
+SELECT * from ldb_get_indexes('sift_base1k');
 
 -- make sure NULL inserts into the index are handled correctly
 INSERT INTO small_world (id, vector) VALUES ('xxx', NULL);
