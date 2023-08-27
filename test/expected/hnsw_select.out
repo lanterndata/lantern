@@ -30,6 +30,15 @@ EXPLAIN (COSTS FALSE) SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 1
          Order By: (v <-> '{1,0,0}'::real[])
 (3 rows)
 
+-- Verify that this does not use the index
+EXPLAIN (COSTS FALSE) SELECT COUNT(*) FROM small_world WHERE v = '{0,0,0}';
+               QUERY PLAN                
+-----------------------------------------
+ Aggregate
+   ->  Seq Scan on small_world
+         Filter: (v = '{0,0,0}'::real[])
+(3 rows)
+
 -- Ensure we can query an index for more elements than the value of init_k
 SET client_min_messages TO DEBUG5;
 DEBUG:  CommitTransaction(1) name: unnamed; blockState: STARTED; state: INPROGRESS, xid/subid/cid: 0/1/0

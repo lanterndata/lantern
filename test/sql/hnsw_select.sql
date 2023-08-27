@@ -9,6 +9,9 @@ SET enable_seqscan = off;
 -- Verify that the index is being used
 EXPLAIN (COSTS FALSE) SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 1;
 
+-- Verify that this does not use the index
+EXPLAIN (COSTS FALSE) SELECT COUNT(*) FROM small_world WHERE v = '{0,0,0}';
+
 -- Ensure we can query an index for more elements than the value of init_k
 SET client_min_messages TO DEBUG5;
 WITH neighbors AS (
