@@ -46,6 +46,17 @@ CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v);
 SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
 EXPLAIN SELECT * FROM sift_base10k ORDER BY v <-> :'v4444' LIMIT 10;
 
+-- Ensure we can query an index for more elements than the value of init_k
+SET client_min_messages TO DEBUG5;
+SET hnsw.init_k = 4;
+WITH neighbors AS (
+    SELECT * FROM small_world order by v <-> '[1,0,0]' LIMIT 3
+) SELECT COUNT(*) from neighbors;
+WITH neighbors AS (
+    SELECT * FROM small_world order by v <-> '[1,0,0]' LIMIT 15
+) SELECT COUNT(*) from neighbors;
+RESET client_min_messages;
+
 -- Test cases expecting errors due to improper use of the <-> operator outside of its supported context
 \set ON_ERROR_STOP off
 SELECT ARRAY[1,2,3] <-> ARRAY[3,2,1];

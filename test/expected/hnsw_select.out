@@ -16,8 +16,91 @@ INSERT INTO small_world (id, b, v) VALUES
     ('101', FALSE, '{1,0,1}'),
     ('110', FALSE, '{1,1,0}'),
     ('111', TRUE,  '{1,1,1}');
+CREATE INDEX ON small_world USING hnsw (v) WITH (dims=3, M=5, ef=20, ef_construction=20);
+INFO:  done init usearch index
+INFO:  inserted 8 elements
+INFO:  done saving 8 vectors
+SET enable_seqscan = off;
+-- Verify that the index is being used
+EXPLAIN (COSTS FALSE) SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 1;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Limit
+   ->  Index Scan using small_world_v_idx on small_world
+         Order By: (v <-> '{1,0,0}'::real[])
+(3 rows)
+
+-- Ensure we can query an index for more elements than the value of init_k
+SET client_min_messages TO DEBUG5;
+DEBUG:  CommitTransaction(1) name: unnamed; blockState: STARTED; state: INPROGRESS, xid/subid/cid: 0/1/0
+WITH neighbors AS (
+    SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 3
+) SELECT COUNT(*) from neighbors;
+DEBUG:  StartTransaction(1) name: unnamed; blockState: DEFAULT; state: INPROGRESS, xid/subid/cid: 0/1/0
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
+INFO:  usearch index initialized
+DEBUG:  querying index for 10 elements
+DEBUG:  CommitTransaction(1) name: unnamed; blockState: STARTED; state: INPROGRESS, xid/subid/cid: 0/1/0
+ count 
+-------
+     3
+(1 row)
+
+WITH neighbors AS (
+    SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 15
+) SELECT COUNT(*) from neighbors;
+DEBUG:  StartTransaction(1) name: unnamed; blockState: DEFAULT; state: INPROGRESS, xid/subid/cid: 0/1/0
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
+INFO:  usearch index initialized
+DEBUG:  querying index for 10 elements
+DEBUG:  CommitTransaction(1) name: unnamed; blockState: STARTED; state: INPROGRESS, xid/subid/cid: 0/1/0
+ count 
+-------
+     8
+(1 row)
+
+-- Change default k and make sure the number of usearch_searchs makes sense
+SET hnsw.init_k = 4;
+DEBUG:  StartTransaction(1) name: unnamed; blockState: DEFAULT; state: INPROGRESS, xid/subid/cid: 0/1/0
+DEBUG:  CommitTransaction(1) name: unnamed; blockState: STARTED; state: INPROGRESS, xid/subid/cid: 0/1/0
+WITH neighbors AS (
+    SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 3
+) SELECT COUNT(*) from neighbors;
+DEBUG:  StartTransaction(1) name: unnamed; blockState: DEFAULT; state: INPROGRESS, xid/subid/cid: 0/1/0
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
+INFO:  usearch index initialized
+DEBUG:  querying index for 4 elements
+DEBUG:  CommitTransaction(1) name: unnamed; blockState: STARTED; state: INPROGRESS, xid/subid/cid: 0/1/0
+ count 
+-------
+     3
+(1 row)
+
+WITH neighbors AS (
+    SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 15
+) SELECT COUNT(*) from neighbors;
+DEBUG:  StartTransaction(1) name: unnamed; blockState: DEFAULT; state: INPROGRESS, xid/subid/cid: 0/1/0
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
+INFO:  usearch index initialized
+DEBUG:  querying index for 4 elements
+DEBUG:  querying index for 8 elements
+DEBUG:  CommitTransaction(1) name: unnamed; blockState: STARTED; state: INPROGRESS, xid/subid/cid: 0/1/0
+ count 
+-------
+     8
+(1 row)
+
+RESET client_min_messages;
+DEBUG:  StartTransaction(1) name: unnamed; blockState: DEFAULT; state: INPROGRESS, xid/subid/cid: 0/1/0
 -- Verify where condition works properly and still uses index
 SELECT * FROM small_world WHERE b IS TRUE ORDER BY v <-> '{0,0,0}';
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
+INFO:  usearch index initialized
  id  | b |    v    
 -----+---+---------
  000 | t | {0,0,0}
@@ -27,13 +110,12 @@ SELECT * FROM small_world WHERE b IS TRUE ORDER BY v <-> '{0,0,0}';
 (4 rows)
 
 EXPLAIN (COSTS FALSE) SELECT * FROM small_world WHERE b IS TRUE ORDER BY v <-> '{0,0,0}';
-               QUERY PLAN                
------------------------------------------
- Sort
-   Sort Key: ((v <-> '{0,0,0}'::real[]))
-   ->  Seq Scan on small_world
-         Filter: (b IS TRUE)
-(4 rows)
+                    QUERY PLAN                     
+---------------------------------------------------
+ Index Scan using small_world_v_idx on small_world
+   Order By: (v <-> '{0,0,0}'::real[])
+   Filter: (b IS TRUE)
+(3 rows)
 
 -- todo:: Verify joins work and still use index
 -- todo:: Verify incremental sorts work

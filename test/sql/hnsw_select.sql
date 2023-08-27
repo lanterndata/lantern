@@ -3,6 +3,30 @@
 ---------------------------------------------------------------------
 
 \ir utils/small_world_array.sql
+CREATE INDEX ON small_world USING hnsw (v) WITH (dims=3, M=5, ef=20, ef_construction=20);
+SET enable_seqscan = off;
+
+-- Verify that the index is being used
+EXPLAIN (COSTS FALSE) SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 1;
+
+-- Ensure we can query an index for more elements than the value of init_k
+SET client_min_messages TO DEBUG5;
+WITH neighbors AS (
+    SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 3
+) SELECT COUNT(*) from neighbors;
+WITH neighbors AS (
+    SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 15
+) SELECT COUNT(*) from neighbors;
+
+-- Change default k and make sure the number of usearch_searchs makes sense
+SET hnsw.init_k = 4;
+WITH neighbors AS (
+    SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 3
+) SELECT COUNT(*) from neighbors;
+WITH neighbors AS (
+    SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 15
+) SELECT COUNT(*) from neighbors;
+RESET client_min_messages;
 
 -- Verify where condition works properly and still uses index
 SELECT * FROM small_world WHERE b IS TRUE ORDER BY v <-> '{0,0,0}';
