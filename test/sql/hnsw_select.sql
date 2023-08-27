@@ -4,6 +4,10 @@
 
 \ir utils/small_world_array.sql
 CREATE INDEX ON small_world USING hnsw (v) WITH (dims=3, M=5, ef=20, ef_construction=20);
+
+\ir utils/sift1k_array.sql
+CREATE INDEX ON sift_base1k USING hnsw (v) WITH (dims=128, M=5, ef=20, ef_construction=20);
+
 SET enable_seqscan = false;
 
 -- Verify that the index is being used
@@ -34,6 +38,9 @@ RESET client_min_messages;
 -- Verify where condition works properly and still uses index
 SELECT * FROM small_world WHERE b IS TRUE ORDER BY v <-> '{0,0,0}';
 EXPLAIN (COSTS FALSE) SELECT * FROM small_world WHERE b IS TRUE ORDER BY v <-> '{0,0,0}';
+
+-- Verify that the index is not being used when there is no order by
+EXPLAIN (COSTS FALSE) SELECT COUNT(*) FROM small_world;
 
 -- todo:: Verify joins work and still use index
 -- todo:: Verify incremental sorts work

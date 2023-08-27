@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS sift_base1k (
-    id SERIAL PRIMARY KEY,
+    id SERIAL,
     v REAL[]
 );
 

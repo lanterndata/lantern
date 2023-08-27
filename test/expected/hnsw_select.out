@@ -20,6 +20,16 @@ CREATE INDEX ON small_world USING hnsw (v) WITH (dims=3, M=5, ef=20, ef_construc
 INFO:  done init usearch index
 INFO:  inserted 8 elements
 INFO:  done saving 8 vectors
+\ir utils/sift1k_array.sql
+CREATE TABLE IF NOT EXISTS sift_base1k (
+    id SERIAL,
+    v REAL[]
+);
+COPY sift_base1k (v) FROM '/tmp/lanterndb/vector_datasets/sift_base1k_arrays.csv' WITH csv;
+CREATE INDEX ON sift_base1k USING hnsw (v) WITH (dims=128, M=5, ef=20, ef_construction=20);
+INFO:  done init usearch index
+INFO:  inserted 1000 elements
+INFO:  done saving 1000 vectors
 SET enable_seqscan = false;
 -- Verify that the index is being used
 EXPLAIN (COSTS FALSE) SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 1;
@@ -124,6 +134,14 @@ EXPLAIN (COSTS FALSE) SELECT * FROM small_world WHERE b IS TRUE ORDER BY v <-> '
    Order By: (v <-> '{0,0,0}'::real[])
    Filter: (b IS TRUE)
 (3 rows)
+
+-- Verify that the index is not being used when there is no order by
+EXPLAIN (COSTS FALSE) SELECT COUNT(*) FROM small_world;
+          QUERY PLAN           
+-------------------------------
+ Aggregate
+   ->  Seq Scan on small_world
+(2 rows)
 
 -- todo:: Verify joins work and still use index
 -- todo:: Verify incremental sorts work

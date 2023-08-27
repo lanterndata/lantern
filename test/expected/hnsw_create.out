@@ -19,7 +19,7 @@ INSERT INTO small_world (id, b, v) VALUES
     ('111', TRUE,  '{1,1,1}');
 \ir utils/sift1k_array.sql
 CREATE TABLE IF NOT EXISTS sift_base1k (
-    id SERIAL PRIMARY KEY,
+    id SERIAL,
     v REAL[]
 );
 COPY sift_base1k (v) FROM '/tmp/lanterndb/vector_datasets/sift_base1k_arrays.csv' WITH csv;
@@ -31,9 +31,8 @@ INFO:  done saving 1000 vectors
 SELECT * FROM ldb_get_indexes('sift_base1k');
      indexname     |  size  |                                           indexdef                                           | total_index_size 
 -------------------+--------+----------------------------------------------------------------------------------------------+------------------
- sift_base1k_pkey  | 40 kB  | CREATE UNIQUE INDEX sift_base1k_pkey ON public.sift_base1k USING btree (id)                  | 672 kB
- sift_base1k_v_idx | 632 kB | CREATE INDEX sift_base1k_v_idx ON public.sift_base1k USING hnsw (v) WITH (dims='128', m='4') | 672 kB
-(2 rows)
+ sift_base1k_v_idx | 632 kB | CREATE INDEX sift_base1k_v_idx ON public.sift_base1k USING hnsw (v) WITH (dims='128', m='4') | 632 kB
+(1 row)
 
 -- Validate that index creation works with a larger number of vectors
 CREATE TABLE sift_base10k (
