@@ -21,7 +21,11 @@ SET enable_seqscan = false;
 
 \set ON_ERROR_STOP off
 
--- this should throw error, as it is out of index usage
+-- this should throw error, as it is out of index usage (no index)
+SELECT 1 FROM small_world_l2 order by vector <-> '{1,0,0}' LIMIT 3;
+EXPLAIN (COSTS FALSE) SELECT 1 FROM small_world_l2 order by vector <-> '{1,0,0}' LIMIT 3;
+
+-- this should throw error, as it is out of index usage (in select)
 SELECT * FROM (
     SELECT id, ROUND((vector <-> array[0,1,0])::numeric, 2) as dist
     FROM small_world_l2
