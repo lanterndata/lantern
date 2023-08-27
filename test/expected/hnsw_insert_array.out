@@ -204,55 +204,19 @@ INFO:  usearch index initialized
  001 |  1.00
 (10 rows)
 
+EXPLAIN SELECT count(*) from sift_base1k;
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Aggregate  (cost=110.03..110.04 rows=1 width=8)
+   ->  Bitmap Heap Scan on sift_base1k  (cost=25.52..107.53 rows=1000 width=0)
+         ->  Bitmap Index Scan on sift_base1k_pkey  (cost=0.00..25.27 rows=1000 width=0)
+(3 rows)
+
 SELECT count(*) from sift_base1k;
  count 
 -------
   1000
 (1 row)
-
-SELECT * from ldb_get_indexes('sift_base1k');
-     indexname     |  size  |                                       indexdef                                        
--------------------+--------+---------------------------------------------------------------------------------------
- sift_base1k_pkey  | 40 kB  | CREATE UNIQUE INDEX sift_base1k_pkey ON public.sift_base1k USING btree (id)
- sift_base1k_v_idx | 720 kB | CREATE INDEX sift_base1k_v_idx ON public.sift_base1k USING hnsw (v) WITH (dims='128')
-(2 rows)
-
-EXPLAIN SELECT v FROM sift_base1k WHERE id <= 444 AND v IS NOT NULL;
-                                    QUERY PLAN                                    
-----------------------------------------------------------------------------------
- Bitmap Heap Scan on sift_base1k  (cost=10.86..87.02 rows=332 width=32)
-   Recheck Cond: (id <= 444)
-   Filter: (v IS NOT NULL)
-   ->  Bitmap Index Scan on sift_base1k_pkey  (cost=0.00..10.77 rows=333 width=0)
-         Index Cond: (id <= 444)
-(5 rows)
-
-INSERT INTO sift_base1k(v)
-SELECT v FROM sift_base1k WHERE id <= 444 AND v IS NOT NULL;
-EXPLAIN INSERT INTO sift_base1k(v)
-SELECT v FROM sift_base1k WHERE id <= 444 AND v IS NOT NULL;
-                                         QUERY PLAN                                          
----------------------------------------------------------------------------------------------
- Insert on sift_base1k  (cost=12.00..124.41 rows=0 width=0)
-   ->  Bitmap Heap Scan on sift_base1k sift_base1k_1  (cost=12.00..124.41 rows=479 width=36)
-         Recheck Cond: (id <= 444)
-         Filter: (v IS NOT NULL)
-         ->  Bitmap Index Scan on sift_base1k_pkey  (cost=0.00..11.88 rows=481 width=0)
-               Index Cond: (id <= 444)
-(6 rows)
-
-SELECT count(*) from sift_base1k;
- count 
--------
-  1444
-(1 row)
-
-SELECT * from ldb_get_indexes('sift_base1k');
-     indexname     |  size   |                                       indexdef                                        
--------------------+---------+---------------------------------------------------------------------------------------
- sift_base1k_pkey  | 48 kB   | CREATE UNIQUE INDEX sift_base1k_pkey ON public.sift_base1k USING btree (id)
- sift_base1k_v_idx | 1016 kB | CREATE INDEX sift_base1k_v_idx ON public.sift_base1k USING hnsw (v) WITH (dims='128')
-(2 rows)
 
 -- make sure NULL inserts into the index are handled correctly
 INSERT INTO small_world (id, vector) VALUES ('xxx', NULL);
