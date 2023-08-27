@@ -246,7 +246,7 @@ static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation i
     if(buildstate->columnType == REAL_ARRAY || buildstate->columnType == INT_ARRAY)
         if(buildstate->dimensions < 1) buildstate->dimensions = InferDimension(heap, indexInfo);
     /* Require column to have dimensions to be indexed */
-    if(buildstate->dimensions < 1) elog(ERROR, "column does not have dimensions");
+    if(buildstate->dimensions < 1) elog(ERROR, "column does not have dimensions, please specify one");
 
     // not supported because of 8K page limit in postgres WAL pages
     // can pass this limit once quantization is supported
