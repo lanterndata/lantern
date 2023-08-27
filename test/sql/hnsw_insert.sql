@@ -27,7 +27,7 @@ DROP TABLE small_world;
 
 CREATE INDEX ON small_world USING hnsw (v) WITH (dims=3);
 
-SET enable_seqscan = off;
+SET enable_seqscan = false;
 
 -- Inserting vectors of the same dimension and nulls should work
 INSERT INTO small_world (v) VALUES ('{1,1,2}');

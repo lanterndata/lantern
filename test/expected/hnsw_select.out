@@ -20,7 +20,7 @@ CREATE INDEX ON small_world USING hnsw (v) WITH (dims=3, M=5, ef=20, ef_construc
 INFO:  done init usearch index
 INFO:  inserted 8 elements
 INFO:  done saving 8 vectors
-SET enable_seqscan = off;
+SET enable_seqscan = false;
 -- Verify that the index is being used
 EXPLAIN (COSTS FALSE) SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 1;
                        QUERY PLAN                        
@@ -31,13 +31,12 @@ EXPLAIN (COSTS FALSE) SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 1
 (3 rows)
 
 -- Verify that this does not use the index
-EXPLAIN (COSTS FALSE) SELECT COUNT(*) FROM small_world WHERE v = '{0,0,0}';
-               QUERY PLAN                
------------------------------------------
- Aggregate
-   ->  Seq Scan on small_world
-         Filter: (v = '{0,0,0}'::real[])
-(3 rows)
+EXPLAIN (COSTS FALSE) SELECT 1 FROM small_world WHERE v = '{0,0,0}';
+            QUERY PLAN             
+-----------------------------------
+ Seq Scan on small_world
+   Filter: (v = '{0,0,0}'::real[])
+(2 rows)
 
 -- Ensure we can query an index for more elements than the value of init_k
 SET client_min_messages TO DEBUG5;

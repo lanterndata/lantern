@@ -53,7 +53,7 @@ INSERT INTO small_world (id, b, v) VALUES
     ('101', FALSE, '[1,0,1]'),
     ('110', FALSE, '[1,1,0]'),
     ('111', TRUE,  '[1,1,1]');
-SET enable_seqscan = off;
+SET enable_seqscan = false;
 CREATE INDEX ON small_world USING hnsw (v) WITH (dims=3, M=5, ef=20, ef_construction=20);
 INFO:  done init usearch index
 INFO:  inserted 8 elements

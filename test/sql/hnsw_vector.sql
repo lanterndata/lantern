@@ -17,7 +17,7 @@ SELECT * FROM ldb_get_indexes('items');
 
 -- Test index creation on table with existing data
 \ir utils/small_world_vector.sql
-SET enable_seqscan = off;
+SET enable_seqscan = false;
 CREATE INDEX ON small_world USING hnsw (v) WITH (dims=3, M=5, ef=20, ef_construction=20);
 SELECT * FROM ldb_get_indexes('small_world');
 INSERT INTO small_world (v) VALUES ('[99,99,2]');
