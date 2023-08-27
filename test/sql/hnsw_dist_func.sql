@@ -33,8 +33,14 @@ EXPLAIN SELECT id FROM small_world_l2 ORDER BY v <-> '{0,1,0}';
 EXPLAIN SELECT id FROM small_world_cos ORDER BY v <-> '{0,1,0}';
 EXPLAIN SELECT id FROM small_world_ham ORDER BY v <-> '{0,1,0}';
 
--- Test cases expecting errors due to improper use of the <-> operator outside of its supported context
 \set ON_ERROR_STOP off
+
+-- Expect errors due to mismatching vector dimensions
+SELECT 1 FROM small_world_l2 ORDER BY v <-> '{0,1,0,1}' LIMIT 1;
+SELECT 1 FROM small_world_cos ORDER BY v <-> '{0,1,0,1}' LIMIT 1;
+SELECT 1 FROM small_world_ham ORDER BY v <-> '{0,1,0,1}' LIMIT 1;
+
+-- Expect errors due to improper use of the <-> operator outside of its supported context
 SELECT array[1,2,3] <-> array[3,2,1];
 SELECT ROUND((v <-> array[0,1,0])::numeric, 2) FROM small_world_cos ORDER BY v <-> '{0,1,0}' LIMIT 7;
 SELECT ROUND((v <-> array[0,1,0])::numeric, 2) FROM small_world_ham ORDER BY v <-> '{0,1,0}' LIMIT 7;

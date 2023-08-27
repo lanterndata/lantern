@@ -134,8 +134,24 @@ EXPLAIN SELECT id FROM small_world_ham ORDER BY v <-> '{0,1,0}';
    Order By: (v <-> '{0,1,0}'::integer[])
 (2 rows)
 
--- Test cases expecting errors due to improper use of the <-> operator outside of its supported context
 \set ON_ERROR_STOP off
+-- Expect errors due to mismatching vector dimensions
+SELECT 1 FROM small_world_l2 ORDER BY v <-> '{0,1,0,1}' LIMIT 1;
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
+INFO:  usearch index initialized
+ERROR:  Expected real array with dimension 3, got 4
+SELECT 1 FROM small_world_cos ORDER BY v <-> '{0,1,0,1}' LIMIT 1;
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
+INFO:  usearch index initialized
+ERROR:  Expected real array with dimension 3, got 4
+SELECT 1 FROM small_world_ham ORDER BY v <-> '{0,1,0,1}' LIMIT 1;
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
+INFO:  usearch index initialized
+ERROR:  Expected int array with dimension 3, got 4
+-- Expect errors due to improper use of the <-> operator outside of its supported context
 SELECT array[1,2,3] <-> array[3,2,1];
 ERROR:  Operator <-> has no standalone meaning and is reserved for use in vector index lookups only
 SELECT ROUND((v <-> array[0,1,0])::numeric, 2) FROM small_world_cos ORDER BY v <-> '{0,1,0}' LIMIT 7;
