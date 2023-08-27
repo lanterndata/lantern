@@ -92,6 +92,31 @@ FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
          Order By: (v <-> '[0,1,0]'::vector)
 (3 rows)
 
+SELECT id, ROUND(vector_l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
+INFO:  usearch index initialized
+ id  | dist 
+-----+------
+ 010 | 0.00
+ 011 | 1.00
+ 000 | 1.00
+ 110 | 1.00
+ 001 | 2.00
+ 111 | 2.00
+ 100 | 2.00
+(7 rows)
+
+EXPLAIN SELECT id, ROUND(vector_l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Limit  (cost=0.00..14.19 rows=7 width=56)
+   ->  Index Scan using small_world_v_idx on small_world  (cost=0.00..16.22 rows=8 width=56)
+         Order By: (v <-> '[0,1,0]'::vector)
+(3 rows)
+
 -- Verify that index creation on a large vector produces an error
 CREATE TABLE large_vector (v VECTOR(2001));
 \set ON_ERROR_STOP off
@@ -165,5 +190,5 @@ INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
 INFO:  usearch index initialized
 ERROR:  Expected vector with dimension 3, got 4
-SELECT vector_l2sq_dist('[1,1]', '[0,1,0]');
+SELECT vector_l2sq_dist('[1,1]'::vector, '[0,1,0]'::vector);
 ERROR:  expected equally sized vectors but got vecors with dimensions 2 and 3
