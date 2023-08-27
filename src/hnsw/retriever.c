@@ -11,6 +11,7 @@
 
 #include "cache.h"
 #include "external_index.h"
+#include "fa_cache.h"
 #include "insert.h"
 
 RetrieverCtx *ldb_wal_retriever_area_init(Relation index_rel, HnswIndexHeaderPage *header_page_under_wal)
@@ -19,6 +20,7 @@ RetrieverCtx *ldb_wal_retriever_area_init(Relation index_rel, HnswIndexHeaderPag
     ctx->index_rel = index_rel;
     ctx->header_page_under_wal = header_page_under_wal;
     ctx->extra_dirted = extra_dirtied_new(index_rel);
+    fa_cache_init(&ctx->fa_cache);
 
 #if LANTERNDB_COPYNODES
     ctx->wal_retriever_area = palloc(BLCKSZ * 100);

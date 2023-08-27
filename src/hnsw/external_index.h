@@ -10,6 +10,7 @@
 
 #include "cache.h"
 #include "extra_dirtied.h"
+#include "fa_cache.h"
 #include "hnsw.h"
 #include "usearch.h"
 
@@ -89,6 +90,9 @@ typedef struct
 
     Buffer *takenbuffers;
     int     takenbuffers_next;
+
+    FullyAssociativeCache fa_cache;
+
 #endif
 } RetrieverCtx;
 
