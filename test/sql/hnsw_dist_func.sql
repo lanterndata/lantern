@@ -39,6 +39,9 @@ EXPLAIN SELECT id FROM small_world_ham ORDER BY v <-> '{0,1,0}';
 SELECT 1 FROM small_world_l2 ORDER BY v <-> '{0,1,0,1}' LIMIT 1;
 SELECT 1 FROM small_world_cos ORDER BY v <-> '{0,1,0,1}' LIMIT 1;
 SELECT 1 FROM small_world_ham ORDER BY v <-> '{0,1,0,1}' LIMIT 1;
+SELECT l2sq_dist('{1,1}', '{0,1,0}');
+SELECT cos_dist('{1,1}', '{0,1,0}');
+SELECT hamming_dist('{1,1}', '{0,1,0}');
 
 -- Expect errors due to improper use of the <-> operator outside of its supported context
 SELECT array[1,2,3] <-> array[3,2,1];

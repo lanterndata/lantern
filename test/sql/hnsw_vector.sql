@@ -57,6 +57,11 @@ WITH neighbors AS (
 ) SELECT COUNT(*) from neighbors;
 RESET client_min_messages;
 
--- Test cases expecting errors due to improper use of the <-> operator outside of its supported context
 \set ON_ERROR_STOP off
+
+-- Expect error due to improper use of the <-> operator outside of its supported context
 SELECT ARRAY[1,2,3] <-> ARRAY[3,2,1];
+
+-- Expect error due to mismatching vector dimensions
+SELECT 1 FROM small_world ORDER BY v <-> '[0,1,0,1]' LIMIT 1;
+SELECT vector_l2sq_dist('[1,1]', '[0,1,0]');

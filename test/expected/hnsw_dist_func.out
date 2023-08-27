@@ -151,6 +151,12 @@ INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized
 ERROR:  Expected int array with dimension 3, got 4
+SELECT l2sq_dist('{1,1}', '{0,1,0}');
+ERROR:  expected equally sized arrays but got arrays with dimensions 2 and 3
+SELECT cos_dist('{1,1}', '{0,1,0}');
+ERROR:  expected equally sized arrays but got arrays with dimensions 2 and 3
+SELECT hamming_dist('{1,1}', '{0,1,0}');
+ERROR:  expected equally sized arrays but got arrays with dimensions 2 and 3
 -- Expect errors due to improper use of the <-> operator outside of its supported context
 SELECT array[1,2,3] <-> array[3,2,1];
 ERROR:  Operator <-> has no standalone meaning and is reserved for use in vector index lookups only

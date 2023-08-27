@@ -193,7 +193,7 @@ static float4 array_dist(ArrayType *a, ArrayType *b, usearch_metric_kind_t metri
 static float8 vector_dist(Vector *a, Vector *b, usearch_metric_kind_t metric_kind)
 {
     if(a->dim != b->dim) {
-        elog(ERROR, "expected equally sized vectors but got vecors with dimensions %d and %d", a->dim, b->dim);
+        elog(ERROR, "expected equally sized vectors but got vectors with dimensions %d and %d", a->dim, b->dim);
     }
 
     return usearch_dist(a->x, b->x, metric_kind, a->dim, usearch_scalar_f32_k);
