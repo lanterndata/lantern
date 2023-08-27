@@ -8,7 +8,7 @@
 
 -- Validate that creating a secondary index works
 CREATE INDEX ON sift_base1k USING hnsw (v) WITH (dims=128, M=4);
-SELECT ldb_get_indexes('sift_base1k');
+SELECT * FROM ldb_get_indexes('sift_base1k');
 
 -- Validate that index creation works with a larger number of vectors
 CREATE TABLE sift_base10k (

@@ -4,16 +4,19 @@
 -- Validate that index creation works with a small number of vectors
 \ir utils/small_world_array.sql
 CREATE TABLE small_world (
-    id SERIAL,
+    id VARCHAR(3),
     b BOOLEAN,
-    v REAL[2]
+    v REAL[3]
 );
-INSERT INTO small_world (b, v) VALUES
-    (TRUE, '{1,1}'),
-    (TRUE, '{3,3}'),
-    (TRUE, '{2,2}'),
-    (TRUE, '{4,4}'),
-    (TRUE, '{1,9}');
+INSERT INTO small_world (id, b, v) VALUES
+    ('000', TRUE,  '{0,0,0}'),
+    ('001', TRUE,  '{0,0,1}'),
+    ('010', FALSE, '{0,1,0}'),
+    ('011', TRUE,  '{0,1,1}'),
+    ('100', FALSE, '{1,0,0}'),
+    ('101', FALSE, '{1,0,1}'),
+    ('110', FALSE, '{1,1,0}'),
+    ('111', TRUE,  '{1,1,1}');
 \ir utils/sift1k_array.sql
 CREATE TABLE IF NOT EXISTS sift_base1k (
     id SERIAL PRIMARY KEY,
@@ -25,11 +28,11 @@ CREATE INDEX ON sift_base1k USING hnsw (v) WITH (dims=128, M=4);
 INFO:  done init usearch index
 INFO:  inserted 1000 elements
 INFO:  done saving 1000 vectors
-SELECT ldb_get_indexes('sift_base1k');
-                                                           ldb_get_indexes                                                            
---------------------------------------------------------------------------------------------------------------------------------------
- (sift_base1k_pkey,"40 kB","CREATE UNIQUE INDEX sift_base1k_pkey ON public.sift_base1k USING btree (id)","672 kB")
- (sift_base1k_v_idx,"632 kB","CREATE INDEX sift_base1k_v_idx ON public.sift_base1k USING hnsw (v) WITH (dims='128', m='4')","672 kB")
+SELECT * FROM ldb_get_indexes('sift_base1k');
+     indexname     |  size  |                                           indexdef                                           | total_index_size 
+-------------------+--------+----------------------------------------------------------------------------------------------+------------------
+ sift_base1k_pkey  | 40 kB  | CREATE UNIQUE INDEX sift_base1k_pkey ON public.sift_base1k USING btree (id)                  | 672 kB
+ sift_base1k_v_idx | 632 kB | CREATE INDEX sift_base1k_v_idx ON public.sift_base1k USING hnsw (v) WITH (dims='128', m='4') | 672 kB
 (2 rows)
 
 -- Validate that index creation works with a larger number of vectors

@@ -6,15 +6,15 @@ CREATE TABLE small_world (
     id SERIAL PRIMARY KEY,
     v REAL[2]
 );
-CREATE INDEX ON small_world USING hnsw (v) WITH (dims=2);
+CREATE INDEX ON small_world USING hnsw (v) WITH (dims=3);
 
 -- Insert rows with valid vector data
-INSERT INTO small_world (v) VALUES ('{0,0}'), ('{0,1}'), ('{1,0}'), ('{1,1}');
+INSERT INTO small_world (v) VALUES ('{0,0,1}'), ('{0,1,0}');
 INSERT INTO small_world (v) VALUES (NULL);
 
 -- Attempt to insert a row with an incorrect vector length
 \set ON_ERROR_STOP off
-INSERT INTO small_world (v) VALUES ('{1,1,1}');
+INSERT INTO small_world (v) VALUES ('{1,1,1,1}');
 \set ON_ERROR_STOP on
 
 DROP TABLE small_world;
@@ -25,27 +25,27 @@ DROP TABLE small_world;
 
 \ir utils/small_world_array.sql
 
-CREATE INDEX ON small_world USING hnsw (v) WITH (dims=2);
+CREATE INDEX ON small_world USING hnsw (v) WITH (dims=3);
 
 SET enable_seqscan = off;
 
 -- Inserting vectors of the same dimension and nulls should work
-INSERT INTO small_world (v) VALUES ('{10,10}');
+INSERT INTO small_world (v) VALUES ('{1,1,2}');
 INSERT INTO small_world (v) VALUES (NULL);
 
 -- Inserting vectors of different dimension should fail
 \set ON_ERROR_STOP off
-INSERT INTO small_world (v) VALUES ('{4,4,4}');
+INSERT INTO small_world (v) VALUES ('{4,4,4,4}');
 \set ON_ERROR_STOP on
 
 -- Verify that the index works with the inserted vectors
 SELECT
     id,
-    ROUND(l2sq_dist(v, ARRAY[0,0])::numeric, 2)
+    ROUND(l2sq_dist(v, '{0,0,0}')::numeric, 2)
 FROM
     small_world
 ORDER BY
-    v <-> ARRAY[0,0];
+    v <-> '{0,0,0}';
 
 -- Ensure the index size remains consistent after inserts
 SELECT * from ldb_get_indexes('small_world');
@@ -54,11 +54,11 @@ SELECT * from ldb_get_indexes('small_world');
 EXPLAIN (COSTS FALSE)
 SELECT
     id,
-    ROUND(l2sq_dist(v, ARRAY[0,0])::numeric, 2)
+    ROUND(l2sq_dist(v, '{0,0,0}')::numeric, 2)
 FROM
     small_world
 ORDER BY
-    v <-> ARRAY[0,0]
+    v <-> '{0,0,0}'
 LIMIT 10;
 
 -- Test the index with a larger number of vectors

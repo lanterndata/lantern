@@ -2,7 +2,12 @@
 -- Test HNSW index correctness
 ------------------------------------------------------------------------------
 
-\ir utils/small_world_array.sql
+-- Create table with values that have unique Euclidean distances
+CREATE TABLE small_world (
+    id SERIAL PRIMARY KEY,
+    v REAL[2]
+);
+INSERT INTO small_world (v) VALUES ('{0,0}'), ('{1,1}'), ('{2,2}'), ('{3,3}');
 
 -- Create index
 CREATE INDEX ON small_world USING hnsw (v dist_l2sq_ops) WITH (dims=2, M=4);

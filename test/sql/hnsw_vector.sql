@@ -18,17 +18,17 @@ SELECT * FROM ldb_get_indexes('items');
 -- Test index creation on table with existing data
 \ir utils/small_world_vector.sql
 SET enable_seqscan = off;
-CREATE INDEX ON small_world USING hnsw (v) WITH (dims=2, M=5, ef=20, ef_construction=20);
+CREATE INDEX ON small_world USING hnsw (v) WITH (dims=3, M=5, ef=20, ef_construction=20);
 SELECT * FROM ldb_get_indexes('small_world');
-INSERT INTO small_world (v) VALUES ('[99,99]');
+INSERT INTO small_world (v) VALUES ('[99,99,2]');
 INSERT INTO small_world (v) VALUES (NULL);
 
 -- Distance functions
-SELECT id, ROUND(l2sq_dist(v, '[0,0]'::VECTOR)::numeric, 2) as dist
-FROM small_world ORDER BY v <-> '[0,0]'::VECTOR LIMIT 7;
+SELECT id, ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
 
-EXPLAIN SELECT id, ROUND(l2sq_dist(v, '[0,0]'::VECTOR)::numeric, 2) as dist
-FROM small_world ORDER BY v <-> '[0,0]'::VECTOR LIMIT 7;
+EXPLAIN SELECT id, ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
 
 -- Verify that index creation on a large vector produces an error
 CREATE TABLE large_vector (v VECTOR(2001));
