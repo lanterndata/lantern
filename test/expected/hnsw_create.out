@@ -53,3 +53,19 @@ EXPLAIN (COSTS FALSE) SELECT * FROM sift_base10k order by v <-> :'v4444' LIMIT 1
          Order By: (v <-> '{55,61,11,4,5,2,13,24,65,49,13,9,23,37,94,38,54,11,14,14,40,31,50,44,53,4,0,0,27,17,8,34,12,10,4,4,22,52,68,53,9,2,0,0,2,116,119,64,119,2,0,0,2,30,119,119,116,5,0,8,47,9,5,60,7,7,10,23,56,50,23,5,28,68,6,18,24,65,50,9,119,75,3,0,1,8,12,85,119,11,4,6,8,9,5,74,25,11,8,20,18,12,2,21,11,90,25,32,33,15,2,9,84,67,8,4,22,31,11,33,119,30,3,6,0,0,0,26}'::real[])
 (3 rows)
 
+--- Validate that M values inside the allowed range [2, 128] do not throw an error
+CREATE INDEX ON small_world USING hnsw (v) WITH (M=2);
+INFO:  done init usearch index
+INFO:  inserted 8 elements
+INFO:  done saving 8 vectors
+CREATE INDEX ON small_world USING hnsw (v) WITH (M=128);
+INFO:  done init usearch index
+INFO:  inserted 8 elements
+INFO:  done saving 8 vectors
+---- Validate that M values outside the allowed range [2, 128] throw an error
+\set ON_ERROR_STOP off
+CREATE INDEX ON small_world USING hnsw (v) WITH (M=1);
+ERROR:  value 1 out of bounds for option "m"
+CREATE INDEX ON small_world USING hnsw (v) WITH (M=129);
+ERROR:  value 129 out of bounds for option "m"
+\set ON_ERROR_STOP on

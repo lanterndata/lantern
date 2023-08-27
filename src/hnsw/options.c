@@ -188,7 +188,7 @@ void _PG_init(void)
                       "m",
                       "HNSW M hyperparameter",
                       HNSW_DEFAULT_M,
-                      1,
+                      2,
                       HNSW_MAX_M
 #if PG_VERSION_NUM >= 130000
                       ,
