@@ -25,7 +25,7 @@ RetrieverCtx *ldb_wal_retriever_area_init(Relation index_rel, HnswIndexHeaderPag
     ctx->wal_retriever_area_size = BLCKSZ * 100;
     ctx->wal_retriever_area_offset = 0;
 #else
-    ctx->takenbuffers = palloc0(sizeof(Buffer) * TAKENBUFFERS_MAX);
+    dlist_init(&ctx->takenbuffers);
 #endif
 
     /* fill in a buffer with blockno index information, before spilling it to disk */
@@ -39,14 +39,17 @@ void ldb_wal_retriever_area_reset(RetrieverCtx *ctx, HnswIndexHeaderPage *header
 #if LANTERNDB_COPYNODES
     wal_retriever_area_offset = 0;
 #else
-    for(int i = 0; i < TAKENBUFFERS_MAX; i++) {
-        if(ctx->takenbuffers[ i ] == InvalidBuffer) {
-            continue;
+    dlist_mutable_iter miter;
+    dlist_foreach_modify(miter, &ctx->takenbuffers) {
+        BufferNode *node = dlist_container(BufferNode, node, miter.cur);
+        if(node->buf != InvalidBuffer) {
+            ReleaseBuffer(node->buf);
         }
-        ReleaseBuffer(ctx->takenbuffers[ i ]);
-        ctx->takenbuffers[ i ] = InvalidBuffer;
+        dlist_delete(miter.cur);
+        pfree(node);
     }
-    ctx->takenbuffers_next = 0;
+    dlist_init(&ctx->takenbuffers);
+
     assert(ctx->header_page_under_wal == header_page_under_wal);
     ctx->header_page_under_wal = header_page_under_wal;
 #endif
@@ -61,15 +64,16 @@ void ldb_wal_retriever_area_fini(RetrieverCtx *ctx)
     ctx->wal_retriever_area_size = 0;
     ctx->wal_retriever_area_offset = 0;
 #else
-    for(int i = 0; i < TAKENBUFFERS_MAX; i++) {
-        if(ctx->takenbuffers[ i ] == InvalidBuffer) {
-            continue;
+    dlist_mutable_iter miter;
+    dlist_foreach_modify(miter, &ctx->takenbuffers) {
+        BufferNode *node = dlist_container(BufferNode, node, miter.cur);
+        if(node->buf != InvalidBuffer) {
+            ReleaseBuffer(node->buf);
         }
-        ReleaseBuffer(ctx->takenbuffers[ i ]);
-        ctx->takenbuffers[ i ] = InvalidBuffer;
+        dlist_delete(miter.cur);
+        pfree(node);
     }
-    pfree(ctx->takenbuffers);
-    ctx->takenbuffers_next = 0;
+    dlist_init(&ctx->takenbuffers);
 #endif
 
     extra_dirtied_free(ctx->extra_dirted);

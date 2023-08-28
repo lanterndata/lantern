@@ -6,6 +6,7 @@
 #include <access/generic_xlog.h>
 #include <common/relpath.h>  // ForkNumber
 #include <storage/bufmgr.h>  // Buffer
+#include <lib/ilist.h>       // Dlist
 #include <utils/relcache.h>  // Relation
 
 #include "cache.h"
@@ -86,11 +87,15 @@ typedef struct
     int   wal_retriever_area_size = 0;
     int   wal_retriever_area_offset = 0;
 #else
-
-    Buffer *takenbuffers;
-    int     takenbuffers_next;
+    dlist_head takenbuffers;
 #endif
 } RetrieverCtx;
+
+typedef struct
+{
+    Buffer buf;
+    dlist_node node;
+} BufferNode;
 
 typedef struct
 {

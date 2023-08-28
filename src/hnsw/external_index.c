@@ -614,18 +614,13 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
             return wal_retriever_area + wal_retriever_area_offset - nodepage->size;
 #else
             if(!idx_page_prelocked) {
-                if(ctx->takenbuffers[ ctx->takenbuffers_next ] != InvalidBuffer) {
-                    ReleaseBuffer(ctx->takenbuffers[ ctx->takenbuffers_next ]);
-                    ctx->takenbuffers[ ctx->takenbuffers_next ] = InvalidBuffer;
-                }
-                ctx->takenbuffers[ ctx->takenbuffers_next ] = buf;
-                ctx->takenbuffers_next++;
+                // Wrap buf in a linked list node
+                BufferNode *buffNode;
+                buffNode = (BufferNode*)palloc(sizeof(BufferNode));
+                buffNode->buf = buf;
 
-                if(ctx->takenbuffers_next == TAKENBUFFERS_MAX) {
-                    // todo:: use a postgres linked list here (pairing heap) to avoid the limit
-                    // and bulk allocation
-                    ctx->takenbuffers_next = 0;
-                }
+                // Add buffNode to list of pinned buffers
+                dlist_push_tail(&ctx->takenbuffers, &buffNode->node);
                 LockBuffer(buf, BUFFER_LOCK_UNLOCK);
             }
             return nodepage->node;
