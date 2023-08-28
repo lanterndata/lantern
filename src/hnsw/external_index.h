@@ -82,18 +82,16 @@ typedef struct
 
     ExtraDirtiedBufs *extra_dirted;
 
-#if LANTERNDB_COPYNODES
-    char *wal_retriever_area = NULL;
-    int   wal_retriever_area_size = 0;
-    int   wal_retriever_area_offset = 0;
-#else
     dlist_head takenbuffers;
-#endif
 } RetrieverCtx;
 
 typedef struct
 {
+#if LANTERNDB_COPYNODES
+    char* buf;
+#else
     Buffer buf;
+#endif
     dlist_node node;
 } BufferNode;
 

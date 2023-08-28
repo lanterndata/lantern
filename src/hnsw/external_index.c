@@ -601,17 +601,15 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
             levels[ nodepage->level ]++;
 #endif
 #if LANTERNDB_COPYNODES
-            if(wal_retriever_area == NULL || wal_retriever_area_offset + nodepage->size > wal_retriever_area_size) {
-                elog(ERROR,
-                     "ERROR: wal_retriever_area "
-                     "is NULL or full");
-            }
-            memcpy(wal_retriever_area + wal_retriever_area_offset, nodepage->node, nodepage->size);
-            wal_retriever_area_offset += nodepage->size;
+            BufferNode *buffNode;
+            buffNode = (BufferNode*)palloc(sizeof(BufferNode));
+            buffNode->buf = (char*)palloc(nodepage->size);
+            memcpy(buffNode->buf, nodepage->node, nodepage->size);
             if(!idx_page_prelocked) {
                 UnlockReleaseBuffer(buf);
             }
-            return wal_retriever_area + wal_retriever_area_offset - nodepage->size;
+            dlist_push_tail(&ctx->takenbuffers, &buffNode->node);
+            return buffNode->buf;
 #else
             if(!idx_page_prelocked) {
                 // Wrap buf in a linked list node

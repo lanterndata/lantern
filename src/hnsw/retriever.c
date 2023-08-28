@@ -20,13 +20,7 @@ RetrieverCtx *ldb_wal_retriever_area_init(Relation index_rel, HnswIndexHeaderPag
     ctx->header_page_under_wal = header_page_under_wal;
     ctx->extra_dirted = extra_dirtied_new(index_rel);
 
-#if LANTERNDB_COPYNODES
-    ctx->wal_retriever_area = palloc(BLCKSZ * 100);
-    ctx->wal_retriever_area_size = BLCKSZ * 100;
-    ctx->wal_retriever_area_offset = 0;
-#else
     dlist_init(&ctx->takenbuffers);
-#endif
 
     /* fill in a buffer with blockno index information, before spilling it to disk */
     ctx->block_numbers_cache = cache_create();
@@ -36,15 +30,17 @@ RetrieverCtx *ldb_wal_retriever_area_init(Relation index_rel, HnswIndexHeaderPag
 
 void ldb_wal_retriever_area_reset(RetrieverCtx *ctx, HnswIndexHeaderPage *header_page_under_wal)
 {
-#if LANTERNDB_COPYNODES
-    wal_retriever_area_offset = 0;
-#else
     dlist_mutable_iter miter;
     dlist_foreach_modify(miter, &ctx->takenbuffers) {
         BufferNode *node = dlist_container(BufferNode, node, miter.cur);
+#if LANTERNDB_COPYNODES
+        pfree(node->buf);
+#else
+        // todo: check may be unecessary, I don't know enough about how buffers are managed elsewhere to say
         if(node->buf != InvalidBuffer) {
             ReleaseBuffer(node->buf);
         }
+#endif
         dlist_delete(miter.cur);
         pfree(node);
     }
@@ -52,29 +48,25 @@ void ldb_wal_retriever_area_reset(RetrieverCtx *ctx, HnswIndexHeaderPage *header
 
     assert(ctx->header_page_under_wal == header_page_under_wal);
     ctx->header_page_under_wal = header_page_under_wal;
-#endif
 }
 
 void ldb_wal_retriever_area_fini(RetrieverCtx *ctx)
 {
     cache_destroy(&ctx->block_numbers_cache);
-#if LANTERNDB_COPYNODES
-    pfree(ctx->wal_retriever_area);
-    ctx->wal_retriever_area = NULL;
-    ctx->wal_retriever_area_size = 0;
-    ctx->wal_retriever_area_offset = 0;
-#else
     dlist_mutable_iter miter;
     dlist_foreach_modify(miter, &ctx->takenbuffers) {
         BufferNode *node = dlist_container(BufferNode, node, miter.cur);
+#if LANTERNDB_COPYNODES
+        pfree(node->buf);
+#else
         if(node->buf != InvalidBuffer) {
             ReleaseBuffer(node->buf);
         }
+#endif
         dlist_delete(miter.cur);
         pfree(node);
     }
     dlist_init(&ctx->takenbuffers);
-#endif
 
     extra_dirtied_free(ctx->extra_dirted);
 }
