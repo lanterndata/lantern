@@ -71,7 +71,7 @@ This extension is written in Rust so requires Rust toolchain. It uses `pgrx`
 ```bash
 cargo build
 cargo package
-cargo pgrx run # runs in a testing environment
+cargo pgrx run --package lanterndb_extras # runs in a testing environment
 ```
 
 ### Initializing with psql
@@ -80,3 +80,34 @@ Once the extension is installed, in a psql shell or in your favorite SQL environ
 ```sql
 CREATE EXTENSION lanterndb_extras;
 ```
+
+## LanternDB Index Builder
+
+## Description
+This is a cli applications, which will help to create an index file for LanternDB, which will can later be imported into database.
+Advantages of this project againts casual index creation is the parallelization of the job.
+
+## How to use
+
+### Installation
+
+Run `cargo install --path lanterndb_create_index` to install the binary
+
+### Usage
+
+Run `ldb-create-index --help` to show the cli options.
+
+```
+Usage: ldb-create-index --uri <URI> --table <TABLE> --column <COLUMN> -m <M> --efc <EFC> --ef <EF> -d <DIMS> --metric-kind <METRIC_KIND> --out <OUT>
+```
+
+### Example
+
+```
+ldb-create-index -u "postgresql://localhost/test" -t "small_world" -c "vec" -m 16 --ef 64 --efc 128 -d 3 --metric-kind cos --out /tmp/index.usearch
+```
+
+### Notes
+The index should be created from the same database on which it will be loaded, so row tids will match later.  
+Currently version of usearch is not up to date, so it will match with LanternDB's usearch version, but this version has bugs when creating index with more than 8k items.
+

@@ -1,0 +1,45 @@
+[package]
+name = "lanterndb_extras"
+version = "0.0.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+default = ["pg13"]
+pg11 = ["pgrx/pg11", "pgrx-tests/pg11" ]
+pg12 = ["pgrx/pg12", "pgrx-tests/pg12" ]
+pg13 = ["pgrx/pg13", "pgrx-tests/pg13" ]
+pg14 = ["pgrx/pg14", "pgrx-tests/pg14" ]
+pg15 = ["pgrx/pg15", "pgrx-tests/pg15" ]
+pg_test = []
+
+[dependencies]
+pgrx = "=0.9.7"
+reqwest = { version = "0.11", default-features = false, features = ["blocking"] }
+flate2 = "1.0"
+url = "2.2"
+ftp = "3"
+tar = "0.4"
+itertools = "0.11"
+backtrace = "0.3"
+ndarray = "0.15.0"
+num_cpus = "1.15.0"
+ort = { git = "https://github.com/pykeio/ort.git", features = ["cuda", "openvino"] }
+tokenizers = "0.13.2"
+image = "0.24.6"
+lazy_static = "1.4.0"
+anyhow = "1.0.75"
+
+[dev-dependencies]
+pgrx-tests = "=0.9.7"
+
+[profile.dev]
+panic = "unwind"
+
+[profile.release]
+panic = "unwind"
+opt-level = 3
+lto = "fat"
+codegen-units = 1

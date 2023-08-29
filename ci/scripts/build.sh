@@ -65,7 +65,7 @@ function setup_cargo_deps() {
 }
 
 function package_extension() {
-  cargo pgrx package --pg-config /usr/bin/pg_config
+  cargo pgrx package --pg-config /usr/bin/pg_config --package lanterndb_extras
 
   EXT_VERSION=$(cargo metadata --format-version 1 | jq '.packages[] | select( .name == "lanterndb_extras") | .version' | tr -d '"')
   PACKAGE_NAME=lanterndb-extras-${EXT_VERSION}-postgres-${PG_VERSION}-${ARCH}
