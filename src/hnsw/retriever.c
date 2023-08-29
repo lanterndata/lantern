@@ -31,7 +31,8 @@ RetrieverCtx *ldb_wal_retriever_area_init(Relation index_rel, HnswIndexHeaderPag
 void ldb_wal_retriever_area_reset(RetrieverCtx *ctx, HnswIndexHeaderPage *header_page_under_wal)
 {
     dlist_mutable_iter miter;
-    dlist_foreach_modify(miter, &ctx->takenbuffers) {
+    dlist_foreach_modify(miter, &ctx->takenbuffers)
+    {
         BufferNode *node = dlist_container(BufferNode, node, miter.cur);
 #if LANTERNDB_COPYNODES
         pfree(node->buf);
@@ -54,7 +55,8 @@ void ldb_wal_retriever_area_fini(RetrieverCtx *ctx)
 {
     cache_destroy(&ctx->block_numbers_cache);
     dlist_mutable_iter miter;
-    dlist_foreach_modify(miter, &ctx->takenbuffers) {
+    dlist_foreach_modify(miter, &ctx->takenbuffers)
+    {
         BufferNode *node = dlist_container(BufferNode, node, miter.cur);
 #if LANTERNDB_COPYNODES
         pfree(node->buf);

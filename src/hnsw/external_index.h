@@ -5,8 +5,8 @@
 
 #include <access/generic_xlog.h>
 #include <common/relpath.h>  // ForkNumber
-#include <storage/bufmgr.h>  // Buffer
 #include <lib/ilist.h>       // Dlist
+#include <storage/bufmgr.h>  // Buffer
 #include <utils/relcache.h>  // Relation
 
 #include "cache.h"
@@ -88,7 +88,7 @@ typedef struct
 typedef struct
 {
 #if LANTERNDB_COPYNODES
-    char* buf;
+    char *buf;
 #else
     Buffer buf;
 #endif

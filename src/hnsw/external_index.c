@@ -602,8 +602,8 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
 #endif
 #if LANTERNDB_COPYNODES
             BufferNode *buffNode;
-            buffNode = (BufferNode*)palloc(sizeof(BufferNode));
-            buffNode->buf = (char*)palloc(nodepage->size);
+            buffNode = (BufferNode *)palloc(sizeof(BufferNode));
+            buffNode->buf = (char *)palloc(nodepage->size);
             memcpy(buffNode->buf, nodepage->node, nodepage->size);
             if(!idx_page_prelocked) {
                 UnlockReleaseBuffer(buf);
@@ -614,7 +614,7 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
             if(!idx_page_prelocked) {
                 // Wrap buf in a linked list node
                 BufferNode *buffNode;
-                buffNode = (BufferNode*)palloc(sizeof(BufferNode));
+                buffNode = (BufferNode *)palloc(sizeof(BufferNode));
                 buffNode->buf = buf;
 
                 // Add buffNode to list of pinned buffers
