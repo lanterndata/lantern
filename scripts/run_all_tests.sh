@@ -46,6 +46,19 @@ then
     echo "Successfully Downloaded all necessary vector test files"
 fi
 
+# if $TMP_ROOT/files does not exist
+# create the folder
+if [ ! -d "$TMP_ROOT/files" ]
+then
+    mkdir -p $TMP_ROOT/files
+    echo "Downloading necessary files for tests..."
+    pushd $TMP_ROOT/files
+       curl -sSo index-sift1k-cos.usearch https://storage.googleapis.com/lanterndata/lanterndb_binary_indexes/index-sift1k-cos.usearch
+       curl -sSo index-sift1k-l2.usearch https://storage.googleapis.com/lanterndata/lanterndb_binary_indexes/index-sift1k-l2.usearch
+    popd
+    echo "Successfully downloaded all necessary test files"
+fi
+
 # Check if pgvector is available
 pgvector_installed=$($PSQL -U $DB_USER -c "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'" -tA)
 

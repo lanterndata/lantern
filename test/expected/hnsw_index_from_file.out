@@ -1,0 +1,91 @@
+------------------------------------------------------------------------------
+-- Test HNSW index creation from file
+------------------------------------------------------------------------------
+-- Index files were created with ldb-create-index program which source is under https://github.com/lanterndata/lanterndb_extras/
+-- We have exported index files for sift1k dataset for cosine and l2sq distances
+-- With the following params m=16 ef=64 ef_construction=128 dims=128
+-- Validate that index creation works with a small number of vectors
+\ir utils/sift1k_array.sql
+CREATE TABLE IF NOT EXISTS sift_base1k (
+    id SERIAL,
+    v REAL[]
+);
+COPY sift_base1k (v) FROM '/tmp/lanterndb/vector_datasets/sift_base1k_arrays.csv' WITH csv;
+-- Validate that creating an index from file works
+CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v dist_l2sq_ops) WITH (dims=128, M=16, ef=64, ef_construction=128, _experimental_index_path='/tmp/lanterndb/files/index-sift1k-l2.usearch');
+INFO:  done init usearch index
+INFO:  done loading usearch index
+INFO:  done saving 1000 vectors
+SELECT * FROM ldb_get_indexes('sift_base1k');
+   indexname   |  size  |                                                                                              indexdef                                                                                              | total_index_size 
+---------------+--------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+------------------
+ hnsw_l2_index | 720 kB | CREATE INDEX hnsw_l2_index ON public.sift_base1k USING hnsw (v) WITH (dims='128', m='16', ef='64', ef_construction='128', _experimental_index_path='/tmp/lanterndb/files/index-sift1k-l2.usearch') | 720 kB
+(1 row)
+
+SET enable_seqscan = false;
+SELECT v AS v777 FROM sift_base1k WHERE id = 777 \gset
+EXPLAIN (COSTS FALSE) SELECT ROUND(l2sq_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <-> :'v777' LIMIT 10;
+                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   ->  Index Scan using hnsw_l2_index on sift_base1k
+         Order By: (v <-> '{97,67,0,0,0,0,0,14,49,107,23,0,0,0,5,24,4,25,48,5,0,1,8,3,0,5,17,3,1,1,3,3,126,126,0,0,0,0,0,27,49,126,49,8,1,4,11,14,0,6,37,39,10,22,25,0,0,0,12,27,7,23,35,3,126,9,1,0,0,0,19,126,28,11,8,7,1,39,126,126,0,1,28,27,3,126,126,0,1,3,7,9,0,52,126,5,13,5,8,0,0,0,33,72,78,19,18,3,0,3,21,126,42,13,64,83,1,9,8,23,1,4,22,68,3,1,4,0}'::real[])
+(3 rows)
+
+SELECT ROUND(l2sq_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <-> :'v777' LIMIT 10;
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=128 M=16 efConstruction=128 ef=64
+INFO:  usearch index initialized
+   round   
+-----------
+      0.00
+  98486.00
+ 108785.00
+ 115194.00
+ 117411.00
+ 127293.00
+ 127986.00
+ 130663.00
+ 130863.00
+ 132455.00
+(10 rows)
+
+DROP INDEX hnsw_l2_index;
+-- Validate that creating an index from file works with cosine distance function
+CREATE INDEX hnsw_cos_index ON sift_base1k USING hnsw (v dist_cos_ops) WITH (dims=128, M=16, ef=64, ef_construction=128, _experimental_index_path='/tmp/lanterndb/files/index-sift1k-cos.usearch');
+INFO:  done init usearch index
+INFO:  done loading usearch index
+INFO:  done saving 1000 vectors
+SELECT * FROM ldb_get_indexes('sift_base1k');
+   indexname    |  size  |                                                                                                     indexdef                                                                                                      | total_index_size 
+----------------+--------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+------------------
+ hnsw_cos_index | 720 kB | CREATE INDEX hnsw_cos_index ON public.sift_base1k USING hnsw (v dist_cos_ops) WITH (dims='128', m='16', ef='64', ef_construction='128', _experimental_index_path='/tmp/lanterndb/files/index-sift1k-cos.usearch') | 720 kB
+(1 row)
+
+SELECT v AS v777 FROM sift_base1k WHERE id = 777 \gset
+EXPLAIN (COSTS FALSE) SELECT ROUND(cos_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <-> :'v777' LIMIT 10;
+                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   ->  Index Scan using hnsw_cos_index on sift_base1k
+         Order By: (v <-> '{97,67,0,0,0,0,0,14,49,107,23,0,0,0,5,24,4,25,48,5,0,1,8,3,0,5,17,3,1,1,3,3,126,126,0,0,0,0,0,27,49,126,49,8,1,4,11,14,0,6,37,39,10,22,25,0,0,0,12,27,7,23,35,3,126,9,1,0,0,0,19,126,28,11,8,7,1,39,126,126,0,1,28,27,3,126,126,0,1,3,7,9,0,52,126,5,13,5,8,0,0,0,33,72,78,19,18,3,0,3,21,126,42,13,64,83,1,9,8,23,1,4,22,68,3,1,4,0}'::real[])
+(3 rows)
+
+SELECT ROUND(cos_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <-> :'v777' LIMIT 10;
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=128 M=16 efConstruction=128 ef=64
+INFO:  usearch index initialized
+ round 
+-------
+  0.00
+  0.19
+  0.21
+  0.22
+  0.23
+  0.25
+  0.25
+  0.25
+  0.25
+  0.26
+(10 rows)
+
