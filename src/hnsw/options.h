@@ -10,7 +10,7 @@
 // based on vector element size
 
 /* HNSW vector dim constraints */
-#define HNSW_DEFAULT_DIMS 3
+#define HNSW_DEFAULT_DIMS -1
 #define HNSW_MAX_DIMS     2000
 
 /* 32 in faiss */
