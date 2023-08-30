@@ -46,29 +46,42 @@ then
     echo "Successfully Downloaded all necessary vector test files"
 fi
 
+# Check if pgvector is available
+pgvector_installed=$($PSQL -U $DB_USER -c "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'" -tA)
 
-if [ -z $FILTER ]
-then
-    SCHEDULE=schedule.txt
-else
-    TEST_FILES=$(cat schedule.txt | sed -e 's/test://' | tr " " "\n" | sed -e '/^$/d')
+# Generate schedule.txt
+rm -rf $TMP_OUTDIR/schedule.txt
+if [ -n "$FILTER" ]; then
+    if [[ "$pgvector_installed" == "1" ]]; then
+        TEST_FILES=$(cat schedule.txt | grep -E '^(test:|test_pgvector:)' | sed -e 's/^\(test:\|test_pgvector:\)//' | tr " " "\n" | sed -e '/^$/d')
+    else
+        TEST_FILES=$(cat schedule.txt | grep '^test:' | sed -e 's/^test://' | tr " " "\n" | sed -e '/^$/d')
+    fi
 
-    rm -rf $TMP_OUTDIR/schedule.txt
     while IFS= read -r f; do
         if [[ $f == *"$FILTER"* ]]; then
             echo "test: $f" >> $TMP_OUTDIR/schedule.txt
         fi
     done <<< "$TEST_FILES"
 
-
     if [ ! -f "$TMP_OUTDIR/schedule.txt" ]
     then
         echo "NOTE: No tests matches filter \"$FILTER\""
         exit 0
     fi
-
-    SCHEDULE=$TMP_OUTDIR/schedule.txt
+else
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^test_pgvector: ]]; then
+            test_name=$(echo "$line" | sed -e 's/test_pgvector://')
+            if [ "$pgvector_installed" == "1" ]; then
+                echo "test: $test_name" >> $TMP_OUTDIR/schedule.txt
+            fi
+        else
+            echo "$line" >> $TMP_OUTDIR/schedule.txt
+        fi
+    done < schedule.txt
 fi
+SCHEDULE=$TMP_OUTDIR/schedule.txt
 
 function print_diff {
     if [ -f "$TMP_OUTDIR/regression.diffs" ]
