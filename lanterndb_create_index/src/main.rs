@@ -21,17 +21,22 @@ impl<'a> FromSql<'a> for Tid {
     ) -> Result<Self, Box<dyn std::error::Error + Sync + Send>> {
         let mut bytes: Vec<u8> = Vec::with_capacity(raw.len());
 
+        // Copy bytes of block_number->bi_hi first 2 bytes
+        for b in raw[..2].iter().rev() {
+            bytes.push(*b);
+        }
+
+        // Copy bytes of block_number->bi_lo next 2 bytes
+        for b in raw[2..4].iter().rev() {
+            bytes.push(*b);
+        }
+
         // Copy bytes of index_number last 2 bytes
-        for i in 4..6 {
-            bytes.push(raw[i]);
+        for b in raw[4..6].iter().rev() {
+            bytes.push(*b);
         }
 
-        // Copy bytes of block_number first 4 bytes
-        for i in 0..4 {
-            bytes.push(raw[i]);
-        }
-
-        let label: u64 = utils::bytes_to_integer(&bytes);
+        let label: u64 = utils::bytes_to_integer_le(&bytes);
         Ok(Tid { label })
     }
 
@@ -104,7 +109,7 @@ async fn create_usearch_index(args: cli::Args, client: Client) -> Result<(), any
 
     index.reserve(count as usize)?;
 
-    let chunks = 1000;
+    let chunks = 10000;
     let mut tasks = Vec::new();
 
     let iterations = if count < chunks {
@@ -151,11 +156,16 @@ async fn create_usearch_index(args: cli::Args, client: Client) -> Result<(), any
 async fn main() {
     let args = cli::Args::parse();
     let (client, connection) = tokio_postgres::connect(&args.uri, NoTls).await.unwrap();
+
     tokio::spawn(async move {
         if let Err(e) = connection.await {
-            eprintln!("connection error: {}", e);
+            panic!("connection error: {}", e);
         }
     });
 
+    println!(
+        "[*] Creating index with parameters dimensions={} m={} ef={} ef_construction={}",
+        args.dims, args.m, args.ef, args.efc
+    );
     create_usearch_index(args, client).await.unwrap();
 }

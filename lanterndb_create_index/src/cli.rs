@@ -40,15 +40,15 @@ pub struct Args {
     pub column: String,
 
     /// Number of neighbours for each vector
-    #[arg(short)]
+    #[arg(short, default_value_t = 16)]
     pub m: usize,
 
     /// The size of the dynamic list for the nearest neighbors in construction
-    #[arg(long)]
+    #[arg(long, default_value_t = 128)]
     pub efc: usize,
 
     /// The size of the dynamic list for the nearest neighbors in search
-    #[arg(long)]
+    #[arg(long, default_value_t = 64)]
     pub ef: usize,
 
     /// Dimensions of vector
@@ -56,10 +56,10 @@ pub struct Args {
     pub dims: usize,
 
     /// Distance algorithm
-    #[arg(long)] // arg_enum here
+    #[arg(long, value_enum, default_value_t = UMetricKind::L2sq)] // arg_enum here
     pub metric_kind: UMetricKind,
 
     /// Index output file
-    #[arg(short, long)] // arg_enum here
+    #[arg(short, long, default_value = "index.usearch")] // arg_enum here
     pub out: String,
 }
