@@ -1,10 +1,10 @@
 # schedule.txt rules:
 # - every test that needs to be run must appear in a 'test:' line
 # - every test that needs to be run and is expected to fail must appear in an 'ignore:' line *before* the corresponding test line
-# - every test that needs to be run iff pgvector is installed appears in a 'pgvector:' line
+# - every test that needs to be run iff pgvector is installed appears in a 'test_pgvector:' line
 # - 'ignore' lines must have exactly one test
 # - 'test' lines may have multiple space-separated tests. All tests in a single 'test' line will be run in parallel
 
 ignore: hnsw_todo
-pgvector: hnsw_vector
+test_pgvector: hnsw_vector
 test: hnsw_config hnsw_correct hnsw_create hnsw_dist_func hnsw_insert hnsw_select hnsw_todo

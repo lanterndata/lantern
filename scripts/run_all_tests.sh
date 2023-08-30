@@ -53,7 +53,7 @@ pgvector_installed=$($PSQL -U $DB_USER -c "SELECT 1 FROM pg_available_extensions
 rm -rf $TMP_OUTDIR/schedule.txt
 if [ -n "$FILTER" ]; then
     if [[ "$pgvector_installed" == "1" ]]; then
-        TEST_FILES=$(cat schedule.txt | grep -E '^(test:|pgvector:)' | sed -e 's/^\(test:\|pgvector:\)//' | tr " " "\n" | sed -e '/^$/d')
+        TEST_FILES=$(cat schedule.txt | grep -E '^(test:|test_pgvector:)' | sed -e 's/^\(test:\|test_pgvector:\)//' | tr " " "\n" | sed -e '/^$/d')
     else
         TEST_FILES=$(cat schedule.txt | grep '^test:' | sed -e 's/^test://' | tr " " "\n" | sed -e '/^$/d')
     fi
@@ -71,8 +71,8 @@ if [ -n "$FILTER" ]; then
     fi
 else
     while IFS= read -r line; do
-        if [[ "$line" =~ ^pgvector: ]]; then
-            test_name=$(echo "$line" | sed -e 's/pgvector://')
+        if [[ "$line" =~ ^test_pgvector: ]]; then
+            test_name=$(echo "$line" | sed -e 's/test_pgvector://')
             if [ "$pgvector_installed" == "1" ]; then
                 echo "test: $test_name" >> $TMP_OUTDIR/schedule.txt
             fi
