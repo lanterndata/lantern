@@ -2,7 +2,11 @@
 -- Test HNSW index with pgvector dependency
 ---------------------------------------------------------------------
 
+-- Note: We drop the Lantern extension and re-create it because Lantern only supports
+-- pgvector if it is present on initialization
+DROP EXTENSION lanterndb;
 CREATE EXTENSION vector;
+CREATE EXTENSION lanterndb;
 
 -- Verify basic functionality of pgvector
 SELECT '[1,2,3]'::vector;
