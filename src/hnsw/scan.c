@@ -12,6 +12,7 @@
 #include "hnsw.h"
 #include "options.h"
 #include "retriever.h"
+#include "utils.h"
 #include "vector.h"
 
 /*
@@ -167,7 +168,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
     if(scanstate->first) {
         int             num_returned;
         Datum           value;
-        float4          *vec;
+        float4         *vec;
         usearch_error_t error = NULL;
         int             k = ldb_hnsw_init_k;
 

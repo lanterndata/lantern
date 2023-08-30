@@ -39,7 +39,8 @@ typedef struct HnswOptions
     int   m;
     int   ef_construction;
     int   ef;
-    int   alg;
+    int   experimantal_index_path_offset;
+    int   alg_offset;
     // char[ALG_OPTION_MAX_STRING_LEN] alg;
 } HnswOptions;
 
@@ -48,9 +49,10 @@ int                   HnswGetM(Relation index);
 int                   HnswGetEfConstruction(Relation index);
 int                   HnswGetEf(Relation index);
 int                   HnswGetElementLimit(Relation index);
+char*                 HnswGetIndexFilePath(Relation index);
 usearch_metric_kind_t HnswGetMetricKind(Relation index);
 
-bytea *ldb_amoptions(Datum reloptions, bool validate);
+bytea* ldb_amoptions(Datum reloptions, bool validate);
 
 extern int ldb_hnsw_init_k;
 

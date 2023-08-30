@@ -109,3 +109,10 @@ int CheckOperatorUsage(const char *query)
     regfree(&regex2);
     return status;
 }
+
+usearch_label_t GetUsearchLabel(ItemPointer itemPtr)
+{
+    usearch_label_t label = 0;
+    memcpy((unsigned long *)&label, itemPtr, 6);
+    return label;
+}

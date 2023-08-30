@@ -12,6 +12,12 @@
 #include <utils/rel.h>  // RelationData
 #include <utils/syscache.h>
 
+#ifdef _WIN32
+#define access _access
+#else
+#include <unistd.h>
+#endif
+
 // We import this header file
 // to access the op class support function pointers
 #include "../hnsw.h"
@@ -52,6 +58,17 @@ int HnswGetEf(Relation index)
     HnswOptions *opts = (HnswOptions *)index->rd_options;
     if(opts) return opts->ef;
     return HNSW_DEFAULT_EF;
+}
+
+char *HnswGetIndexFilePath(Relation index)
+{
+    HnswOptions *opts = (HnswOptions *)index->rd_options;
+    if(!opts) return NULL;
+    if(!opts->experimantal_index_path_offset) {
+        return NULL;
+    }
+
+    return (char *)opts + opts->experimantal_index_path_offset;
 }
 
 usearch_metric_kind_t HnswGetMetricKind(Relation index)
@@ -108,21 +125,28 @@ static void HnswAlgorithmParamValidator(const char *value)
     }
 }
 
+static void IndexFileParamValidator(const char *value)
+{
+    if(value == NULL) return;
+
+    if(access(value, F_OK) != 0) {
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), errmsg("Invalid index file path ")));
+    }
+}
+
 /*
  * Parse and validate the reloptions
  */
 bytea *ldb_amoptions(Datum reloptions, bool validate)
 {
-    static const relopt_parse_elt tab[] = {{"dims", RELOPT_TYPE_INT, offsetof(HnswOptions, dims)},
-                                           {"element_limit", RELOPT_TYPE_INT, offsetof(HnswOptions, element_limit)},
-                                           {"m", RELOPT_TYPE_INT, offsetof(HnswOptions, m)},
-                                           {"ef_construction", RELOPT_TYPE_INT, offsetof(HnswOptions, ef_construction)},
-                                           {"ef", RELOPT_TYPE_INT, offsetof(HnswOptions, ef)},
-                                           // todo:: alg reloption for some reason is not parsed properly.
-                                           //  it puts the string "0" in the alg field and never anything else
-                                           //  it puts 0x14 (or decimal 20) if alg is an int.
-                                           //  or maybe it just does not put anything and does not even reset?
-                                           {"alg", RELOPT_TYPE_STRING, offsetof(HnswOptions, alg)}};
+    static const relopt_parse_elt tab[]
+        = {{"dims", RELOPT_TYPE_INT, offsetof(HnswOptions, dims)},
+           {"element_limit", RELOPT_TYPE_INT, offsetof(HnswOptions, element_limit)},
+           {"m", RELOPT_TYPE_INT, offsetof(HnswOptions, m)},
+           {"ef_construction", RELOPT_TYPE_INT, offsetof(HnswOptions, ef_construction)},
+           {"ef", RELOPT_TYPE_INT, offsetof(HnswOptions, ef)},
+           {"_experimental_index_path", RELOPT_TYPE_STRING, offsetof(HnswOptions, experimantal_index_path_offset)},
+           {"alg", RELOPT_TYPE_STRING, offsetof(HnswOptions, alg_offset)}};
 
 #if PG_VERSION_NUM >= 130000
     return (bytea *)build_reloptions(
@@ -216,6 +240,16 @@ void _PG_init(void)
 #if PG_VERSION_NUM >= 130000
                       ,
                       AccessExclusiveLock
+#endif
+    );
+    add_string_reloption(ldb_hnsw_index_withopts,
+                         "_experimental_index_path",
+                         "LanternDB expored index file path",
+                         NULL,
+                         IndexFileParamValidator
+#if PG_VERSION_NUM >= 130000
+                         ,
+                         AccessExclusiveLock
 #endif
     );
     add_string_reloption(ldb_hnsw_index_withopts,
