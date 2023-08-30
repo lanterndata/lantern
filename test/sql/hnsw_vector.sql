@@ -2,6 +2,8 @@
 -- Test HNSW index with pgvector dependency
 ---------------------------------------------------------------------
 
+CREATE EXTENSION vector;
+
 -- Verify basic functionality of pgvector
 SELECT '[1,2,3]'::vector;
 
