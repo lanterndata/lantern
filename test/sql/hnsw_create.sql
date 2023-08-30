@@ -37,6 +37,7 @@ CREATE TABLE small_world4 (
 );
 -- If the first row is NULL we do not infer a dimension
 \set ON_ERROR_STOP off
+CREATE INDEX ON small_world4 USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
 begin;
 INSERT INTO small_world4 (id, vector) VALUES
 ('000', NULL),
