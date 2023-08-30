@@ -226,12 +226,6 @@ if (CLANG_FORMAT)
   )
 endif()
 
-add_custom_target(
-  bench
-  COMMAND ${CMAKE_SOURCE_DIR}/scripts/bench.sh
-  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
- )
-
 # Package universal install script
 string(REGEX MATCH "^PostgreSQL (\[0-9]+).*"
   PostgreSQL_VERSION_NUMBER ${PostgreSQL_VERSION_STRING})
