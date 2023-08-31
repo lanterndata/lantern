@@ -11,6 +11,11 @@ CREATE TABLE IF NOT EXISTS sift_base1k (
     v REAL[]
 );
 COPY sift_base1k (v) FROM '/tmp/lanterndb/vector_datasets/sift_base1k_arrays.csv' WITH csv;
+-- Validate error on invalid path
+\set ON_ERROR_STOP off
+CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v dist_l2sq_ops) WITH (dims=128, M=16, ef=64, ef_construction=128, _experimental_index_path='/tmp/lanterndb/files/invalid-path');
+ERROR:  Invalid index file path 
+\set ON_ERROR_STOP on
 -- Validate that creating an index from file works
 CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v dist_l2sq_ops) WITH (dims=128, M=16, ef=64, ef_construction=128, _experimental_index_path='/tmp/lanterndb/files/index-sift1k-l2.usearch');
 INFO:  done init usearch index
@@ -50,7 +55,37 @@ INFO:  usearch index initialized
  132455.00
 (10 rows)
 
-DROP INDEX hnsw_l2_index;
+-- Validate that inserting rows on index created from file works as expected
+INSERT INTO sift_base1k (v) VALUES 
+('{1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1}'), 
+('{2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2}');
+SELECT v AS v1001 FROM sift_base1k WHERE id = 1001 \gset
+SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <-> :'v1001' LIMIT 10;
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=128 M=16 efConstruction=128 ef=64
+INFO:  usearch index initialized
+   round   
+-----------
+      0.00
+    128.00
+ 249249.00
+ 249285.00
+ 249418.00
+ 249457.00
+ 249515.00
+ 249589.00
+ 249647.00
+ 249652.00
+(10 rows)
+
+-- Drop and recreate table
+DROP TABLE sift_base1k CASCADE;
+\ir utils/sift1k_array.sql
+CREATE TABLE IF NOT EXISTS sift_base1k (
+    id SERIAL,
+    v REAL[]
+);
+COPY sift_base1k (v) FROM '/tmp/lanterndb/vector_datasets/sift_base1k_arrays.csv' WITH csv;
 -- Validate that creating an index from file works with cosine distance function
 CREATE INDEX hnsw_cos_index ON sift_base1k USING hnsw (v dist_cos_ops) WITH (dims=128, M=16, ef=64, ef_construction=128, _experimental_index_path='/tmp/lanterndb/files/index-sift1k-cos.usearch');
 INFO:  done init usearch index
@@ -87,5 +122,116 @@ INFO:  usearch index initialized
   0.25
   0.25
   0.26
+(10 rows)
+
+--- Test scenarious ---
+-----------------------------------------
+-- Case 1:
+-- Index is created externally.
+-- More vectors are added to the table
+-- CREATE INDEX is run on the table with the external file
+DROP TABLE sift_base1k CASCADE;
+\ir utils/sift1k_array.sql
+CREATE TABLE IF NOT EXISTS sift_base1k (
+    id SERIAL,
+    v REAL[]
+);
+COPY sift_base1k (v) FROM '/tmp/lanterndb/vector_datasets/sift_base1k_arrays.csv' WITH csv;
+INSERT INTO sift_base1k (v) VALUES 
+('{1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1}'), 
+('{2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2}');
+CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v dist_l2sq_ops) WITH (dims=128, M=16, ef=64, ef_construction=128, _experimental_index_path='/tmp/lanterndb/files/index-sift1k-l2.usearch');
+INFO:  done init usearch index
+INFO:  done loading usearch index
+INFO:  done saving 1000 vectors
+-- The 1001 and 1002 vectors will be ignored in search, so the first row will not be 0 in result
+SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <-> :'v1001' LIMIT 10;
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=128 M=16 efConstruction=128 ef=64
+INFO:  usearch index initialized
+   round   
+-----------
+ 249285.00
+ 249418.00
+ 249457.00
+ 249515.00
+ 249589.00
+ 249647.00
+ 249675.00
+ 249695.00
+ 249736.00
+ 249796.00
+(10 rows)
+
+-- Case 2:
+-- Index is created externally
+-- Vectors are deleted from the table
+-- CREATE INDEX is run on the table with external file
+DROP TABLE sift_base1k CASCADE;
+\ir utils/sift1k_array.sql
+CREATE TABLE IF NOT EXISTS sift_base1k (
+    id SERIAL,
+    v REAL[]
+);
+COPY sift_base1k (v) FROM '/tmp/lanterndb/vector_datasets/sift_base1k_arrays.csv' WITH csv;
+DELETE FROM sift_base1k WHERE id=777;
+CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v dist_l2sq_ops) WITH (dims=128, M=16, ef=64, ef_construction=128, _experimental_index_path='/tmp/lanterndb/files/index-sift1k-l2.usearch');
+INFO:  done init usearch index
+INFO:  done loading usearch index
+INFO:  done saving 1000 vectors
+-- This should not throw error, but the first result will not be 0 as vector 777 is deleted from the table
+SELECT ROUND(l2sq_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <-> :'v777' LIMIT 10;
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=128 M=16 efConstruction=128 ef=64
+INFO:  usearch index initialized
+   round   
+-----------
+  98486.00
+ 108785.00
+ 115194.00
+ 117411.00
+ 127293.00
+ 127986.00
+ 130663.00
+ 130863.00
+ 132455.00
+ 132813.00
+(10 rows)
+
+-- Case 3:
+-- Index is created externally
+-- Vectors updated
+-- CREATE INDEX is run on the table with external file
+DROP TABLE sift_base1k CASCADE;
+\ir utils/sift1k_array.sql
+CREATE TABLE IF NOT EXISTS sift_base1k (
+    id SERIAL,
+    v REAL[]
+);
+COPY sift_base1k (v) FROM '/tmp/lanterndb/vector_datasets/sift_base1k_arrays.csv' WITH csv;
+UPDATE  sift_base1k SET v=:'v1001' WHERE id=777;
+CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v dist_l2sq_ops) WITH (dims=128, M=16, ef=64, ef_construction=128, _experimental_index_path='/tmp/lanterndb/files/index-sift1k-l2.usearch');
+INFO:  done init usearch index
+INFO:  done loading usearch index
+INFO:  done saving 1000 vectors
+-- The first row will not be 0 now as the vector under id=777 was updated to 1,1,1,1... but it was indexed with different vector
+-- So the usearch index can not find 1,1,1,1,1.. vector in the index and wrong results will be returned
+-- This is an expected behaviour for now
+SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <-> :'v1001' LIMIT 10;
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=128 M=16 efConstruction=128 ef=64
+INFO:  usearch index initialized
+   round   
+-----------
+ 249285.00
+ 249418.00
+ 249457.00
+ 249515.00
+ 249589.00
+ 249647.00
+ 249675.00
+ 249695.00
+ 249736.00
+ 249796.00
 (10 rows)
 

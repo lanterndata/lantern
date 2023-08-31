@@ -96,35 +96,6 @@ usearch_metric_kind_t HnswGetMetricKind(Relation index)
     }
 }
 
-static void HnswAlgorithmParamValidator(const char *value)
-{
-    if(value == NULL) {
-        ereport(ERROR,
-                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("Invalid algorithm value. Cannot b null"),
-                 errhint("Valid values are: 'own', 'diskann', "
-                         "'usearch', 'hnswlib'")));
-    }
-
-    if(strlen(value) > ALG_OPTION_MAX_STRING_LEN) {
-        ereport(ERROR,
-                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("Invalid algorithm value. Cannot be "
-                        "longer than %d characters",
-                        ALG_OPTION_MAX_STRING_LEN),
-                 errhint("Valid values are: 'own', 'diskann', "
-                         "'usearch', 'hnswlib'")));
-    }
-
-    if(strcmp(value, "own") != 0 && strcmp(value, "diskann") != 0 && strcmp(value, "usearch") != 0
-       && strcmp(value, "hnswlib") != 0) {
-        ereport(ERROR,
-                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("Invalid algorithm value. Valid values are: "
-                        "'own', 'diskann', 'usearch', 'hnswlib'")));
-    }
-}
-
 static void IndexFileParamValidator(const char *value)
 {
     if(value == NULL) return;
@@ -145,8 +116,7 @@ bytea *ldb_amoptions(Datum reloptions, bool validate)
            {"m", RELOPT_TYPE_INT, offsetof(HnswOptions, m)},
            {"ef_construction", RELOPT_TYPE_INT, offsetof(HnswOptions, ef_construction)},
            {"ef", RELOPT_TYPE_INT, offsetof(HnswOptions, ef)},
-           {"_experimental_index_path", RELOPT_TYPE_STRING, offsetof(HnswOptions, experimantal_index_path_offset)},
-           {"alg", RELOPT_TYPE_STRING, offsetof(HnswOptions, alg_offset)}};
+           {"_experimental_index_path", RELOPT_TYPE_STRING, offsetof(HnswOptions, experimantal_index_path_offset)}};
 
 #if PG_VERSION_NUM >= 130000
     return (bytea *)build_reloptions(
@@ -247,16 +217,6 @@ void _PG_init(void)
                          "LanternDB expored index file path",
                          NULL,
                          IndexFileParamValidator
-#if PG_VERSION_NUM >= 130000
-                         ,
-                         AccessExclusiveLock
-#endif
-    );
-    add_string_reloption(ldb_hnsw_index_withopts,
-                         "alg",
-                         "Algorithm or specific search library to use for vector search",
-                         HNSW_DEFAULT_PROVIDER,
-                         HnswAlgorithmParamValidator
 #if PG_VERSION_NUM >= 130000
                          ,
                          AccessExclusiveLock

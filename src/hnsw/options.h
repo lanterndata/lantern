@@ -24,7 +24,6 @@
 #define HNSW_MAX_EF                   400
 #define HNSW_DEFAULT_PROVIDER         "usearch"
 #define HNSW_MAX_ELEMENT_LIMIT        200000000
-#define ALG_OPTION_MAX_STRING_LEN     32
 #define HNSWLIB_DEFAULT_ELEMENT_LIMIT 2000000
 
 #define LDB_HNSW_DEFAULT_K 10
@@ -40,8 +39,6 @@ typedef struct HnswOptions
     int   ef_construction;
     int   ef;
     int   experimantal_index_path_offset;
-    int   alg_offset;
-    // char[ALG_OPTION_MAX_STRING_LEN] alg;
 } HnswOptions;
 
 int                   HnswGetDims(Relation index);

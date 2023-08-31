@@ -315,12 +315,11 @@ static void ScanTable(HnswBuildState *buildstate)
 static void BuildIndex(
     Relation heap, Relation index, IndexInfo *indexInfo, HnswBuildState *buildstate, ForkNumber forkNum)
 {
-    InitBuildState(buildstate, heap, index, indexInfo);
-
     usearch_error_t        error = NULL;
     usearch_init_options_t opts;
     MemSet(&opts, 0, sizeof(opts));
 
+    InitBuildState(buildstate, heap, index, indexInfo);
     opts.dimensions = buildstate->dimensions;
     PopulateUsearchOpts(index, &opts);
 
