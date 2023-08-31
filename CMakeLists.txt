@@ -184,9 +184,16 @@ add_custom_target(
   test
   COMMAND ${CMAKE_SOURCE_DIR}/scripts/run_all_tests.sh
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/test
- )
+)
 
- # DEVELOPMENT
+# BENCHMARK
+add_custom_target(
+  benchmark
+  COMMAND ${CMAKE_SOURCE_DIR}/scripts/run_benchmarking.sh
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/build
+)
+
+# DEVELOPMENT
 find_program(CLANG_FORMAT NAMES clang-format)
 
 if (CLANG_FORMAT)
