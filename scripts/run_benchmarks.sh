@@ -22,6 +22,7 @@ cd benchmark
 
 # Run setup
 if [ "$SKIP_SETUP" -ne 1 ] && [ "$PRINT_ONLY" -ne 1 ]; then
+    echo "Running data setup"
     python3 -m core.setup --datapath /tmp/benchmark_data $BASE_PARAMS
 else
     echo "Skipping data setup"
@@ -29,6 +30,7 @@ fi
 
 # Run benchmarks
 if [ "$PRINT_ONLY" -ne 1 ]; then
+    echo "Running benchmarks"
     python3 -m external.run_benchmarks $PARAMS
 fi
 

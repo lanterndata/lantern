@@ -26,7 +26,7 @@ echo "local   all             all                                     trust" >  
 echo "host    all             all             127.0.0.1/32            trust" >>  $PGDATA/pg_hba.conf
 echo "host    all             all             ::1/128                 trust" >>  $PGDATA/pg_hba.conf
 
-POSTGRES_HOST_AUTH_METHOD=trust /usr/lib/postgresql/$PG_VERSION/bin/postgres 1>/tmp/pg-out.log 2>/tmp/pg-error.log
+POSTGRES_HOST_AUTH_METHOD=trust /usr/lib/postgresql/$PG_VERSION/bin/postgres 1>/tmp/pg-out.log 2>/tmp/pg-error.log &
 wait_for_pg
 cd $WORKDIR/build
 
