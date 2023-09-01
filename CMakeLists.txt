@@ -189,7 +189,17 @@ add_custom_target(
 # BENCHMARK
 add_custom_target(
   benchmark
-  COMMAND ${CMAKE_SOURCE_DIR}/scripts/run_benchmarking.sh
+  COMMAND ${CMAKE_SOURCE_DIR}/scripts/run_benchmarks.sh
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/build
+)
+add_custom_target(
+  benchmark-skip-setup
+  COMMAND ${CMAKE_SOURCE_DIR}/scripts/run_benchmarks.sh --skip-setup
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/build
+)
+add_custom_target(
+  benchmark-print-only
+  COMMAND ${CMAKE_SOURCE_DIR}/scripts/run_benchmarks.sh --print-only
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/build
 )
 
