@@ -27,7 +27,7 @@ jobs:
 
       - name: Run benchmarking
         id: test
-        run: sudo su postgres -c "./scripts/run-benchmarks.sh"
+        run: sudo su postgres -c "./ci/scripts/run-benchmarks.sh"
         env:
           BASE_REF: ${{ github.base_ref }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
