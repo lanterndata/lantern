@@ -36,6 +36,7 @@ GCOV_PREFIX=$WORKDIR/build/CMakeFiles/lanterndb.dir/ GCOV_PREFIX_STRIP=5 POSTGRE
 wait_for_pg
 cd $WORKDIR/build
 
+export DATABASE_URL=postgresql://localhost:5432/testdb
 git clone https://github.com/lanterndata/benchmark
 cd benchmark
 pip install -r core/requirements.txt
