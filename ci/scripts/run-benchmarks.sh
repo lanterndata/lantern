@@ -16,23 +16,17 @@ wait_for_pg(){
 }
 
 export WORKDIR=/tmp/lanterndb
-
-if [ -z "$PG_VERSION" ]
-then
-  export PG_VERSION=15
-fi
-
-if [ -z "$GITHUB_OUTPUT" ]
-then
-  export GITHUB_OUTPUT=/dev/null
-fi
-
+export PG_VERSION=15
+export GITHUB_OUTPUT=/dev/null
 export PGDATA=/etc/postgresql/$PG_VERSION/main/
-# Set port
+
 echo "port = 5432" >> $PGDATA/postgresql.conf
-# Run postgres database
-GCOV_PREFIX=$WORKDIR/build/CMakeFiles/lanterndb.dir/ GCOV_PREFIX_STRIP=5 POSTGRES_HOST_AUTH_METHOD=trust /usr/lib/postgresql/$PG_VERSION/bin/postgres 1>/tmp/pg-out.log 2>/tmp/pg-error.log &
-# Wait for start
+# Enable auth without password
+echo "local   all             all                                     trust" >  $PGDATA/pg_hba.conf
+echo "host    all             all             127.0.0.1/32            trust" >>  $PGDATA/pg_hba.conf
+echo "host    all             all             ::1/128                 trust" >>  $PGDATA/pg_hba.conf
+
+POSTGRES_HOST_AUTH_METHOD=trust /usr/lib/postgresql/$PG_VERSION/bin/postgres 1>/tmp/pg-out.log 2>/tmp/pg-error.log
 wait_for_pg
 cd $WORKDIR/build
 
