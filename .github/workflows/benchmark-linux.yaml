@@ -12,7 +12,7 @@ on:
 
 jobs:
   ubuntu-build:
-    runs-on: ubuntu-22.04
+    runs-on: buildjet-32vcpu-ubuntu-2204
 
     steps:
       - uses: actions/checkout@v3
