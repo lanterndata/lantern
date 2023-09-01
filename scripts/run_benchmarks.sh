@@ -16,16 +16,16 @@ PARAMS="$BASE_PARAMS $INDEX_PARAMS --K 5"
 # Settings
 SKIP_SETUP=0
 PRINT_ONLY=0
-BENCHMARK_DIR="benchmark"
-if [ -d "$BENCHMARK_DIR" ]; then
-    while [[ "$#" -gt 0 ]]; do
-        case $1 in
-            --skip-setup) SKIP_SETUP=1 ;;
-            --print-only) PRINT_ONLY=1 ;;
-        esac
-        shift
-    done
-fi
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --skip-setup) SKIP_SETUP=1 ;;
+        --print-only) PRINT_ONLY=1 ;;
+    esac
+    shift
+done
+
+# Go to benchmark directory
+cd benchmark
 
 # Run setup
 if [ "$SKIP_SETUP" -ne 1 ] && [ "$PRINT_ONLY" -ne 1 ]; then
