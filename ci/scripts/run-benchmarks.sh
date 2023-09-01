@@ -39,6 +39,7 @@ git clone https://github.com/lanterndata/benchmark
 cd benchmark
 pip install -r core/requirements.txt
 pip install -r external/requirements.txt
+cd ..
 
 make benchmark
 killall postgres
