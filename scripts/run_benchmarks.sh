@@ -27,23 +27,6 @@ if [ -d "$BENCHMARK_DIR" ]; then
     done
 fi
 
-# Pull benchmarking repo
-if [ ! -d "$BENCHMARK_DIR" ]; then
-    git clone https://github.com/lanterndata/benchmark "$BENCHMARK_DIR"
-    cd "$BENCHMARK_DIR"
-else
-    cd "$BENCHMARK_DIR"
-    if [ "$SKIP_SETUP" -ne 1 ] && [ "$PRINT_ONLY" -ne 1 ]; then
-        git pull origin main
-    fi
-fi
-
-# Install requirements
-if [ "$SKIP_SETUP" -ne 1 ] && [ "$PRINT_ONLY" -ne 1 ]; then
-    pip install -r core/requirements.txt --break-system-packages
-    pip install -r external/requirements.txt --break-system-packages
-fi
-
 # Run setup
 if [ "$SKIP_SETUP" -ne 1 ] && [ "$PRINT_ONLY" -ne 1 ]; then
     python3 -m core.setup --datapath /tmp/benchmark_data $BASE_PARAMS
