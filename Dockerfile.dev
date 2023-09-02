@@ -17,6 +17,7 @@ RUN apt update \
        gdb \
        wget \
        python3-pip \
+       python3-dev \
        sudo \
        curl \
        git-all \
