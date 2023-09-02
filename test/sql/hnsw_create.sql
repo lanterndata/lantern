@@ -72,6 +72,6 @@ INSERT INTO small_world4 (id, vector) VALUES
 DROP INDEX small_world4_hnsw_idx;
 UPDATE small_world4 SET vector = '{0,0,0}' WHERE id = '001';
 -- but then, I cannot create the same dimension-inferred index
-\set ON_ERROR_STOP on
-CREATE INDEX ON small_world4 USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
 \set ON_ERROR_STOP off
+CREATE INDEX ON small_world4 USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
+\set ON_ERROR_STOP on
