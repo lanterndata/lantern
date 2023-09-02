@@ -13,6 +13,7 @@
 #include "extra_dirtied.h"
 #include "fa_cache.h"
 #include "hnsw.h"
+#include "options.h"
 #include "usearch.h"
 
 #define LDB_WAL_MAGIC_NUMBER   0xa47e20db
@@ -31,14 +32,20 @@
 // to be able to test more of the algorithm corner cases with a small table dataset
 #define HNSW_BLOCKMAP_BLOCKS_PER_PAGE 2000
 
+#define USEARCH_HEADER_SIZE 80
+
 typedef struct HnswIndexHeaderPage
 {
-    uint32      magicNumber;
-    uint32      version;
-    uint32      vector_dim;
-    uint32      num_vectors;
-    BlockNumber last_data_block;
-    char        usearch_header[ 64 ];
+    uint32                magicNumber;
+    uint32                version;
+    uint32                vector_dim;
+    uint32                m;
+    uint32                ef_construction;
+    uint32                ef;
+    usearch_metric_kind_t metric_kind;
+    uint32                num_vectors;
+    BlockNumber           last_data_block;
+    char                  usearch_header[ USEARCH_HEADER_SIZE ];
 
     uint32 blockmap_page_groups;
     uint32 blockmap_page_group_index[ HNSW_MAX_BLOCKMAP_GROUPS ];
@@ -105,12 +112,12 @@ typedef struct
     HnswColumnType  columnType;
 } HnswInsertState;
 
-void StoreExternalIndex(Relation        index,
-                        usearch_index_t external_index,
-                        ForkNumber      forkNum,
-                        char           *data,
-                        int             dimension,
-                        size_t          num_added_vectors);
+void StoreExternalIndex(Relation                index,
+                        usearch_index_t         external_index,
+                        ForkNumber              forkNum,
+                        char                   *data,
+                        usearch_init_options_t *opts,
+                        size_t                  num_added_vectors);
 
 // add the fully constructed index tuple to the index via wal
 // hdr is passed in so num_vectors, first_block_no, last_block_no can be updated

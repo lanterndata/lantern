@@ -8,12 +8,16 @@
 -- Validate that index creation works with a small number of vectors
 \ir utils/sift1k_array.sql
 
--- Validate error on invalid path
 \set ON_ERROR_STOP off
-CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v dist_l2sq_ops) WITH (dims=128, M=16, ef=64, ef_construction=128, _experimental_index_path='/tmp/lanterndb/files/invalid-path');
+-- Validate error on invalid path
+CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lanterndb/files/invalid-path');
+-- Validate error on incompatible version
+CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lanterndb/files/index-sift1k-l2-0.0.0.usearch');
+-- Validate error on invalid file
+CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lanterndb/files/index-sift1k-l2-corrupted.usearch');
 \set ON_ERROR_STOP on
 -- Validate that creating an index from file works
-CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v dist_l2sq_ops) WITH (dims=128, M=16, ef=64, ef_construction=128, _experimental_index_path='/tmp/lanterndb/files/index-sift1k-l2.usearch');
+CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lanterndb/files/index-sift1k-l2.usearch');
 SELECT * FROM ldb_get_indexes('sift_base1k');
 
 SET enable_seqscan = false;
@@ -33,7 +37,7 @@ DROP TABLE sift_base1k CASCADE;
 \ir utils/sift1k_array.sql
 
 -- Validate that creating an index from file works with cosine distance function
-CREATE INDEX hnsw_cos_index ON sift_base1k USING hnsw (v dist_cos_ops) WITH (dims=128, M=16, ef=64, ef_construction=128, _experimental_index_path='/tmp/lanterndb/files/index-sift1k-cos.usearch');
+CREATE INDEX hnsw_cos_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lanterndb/files/index-sift1k-cos.usearch');
 SELECT * FROM ldb_get_indexes('sift_base1k');
 
 SELECT v AS v777 FROM sift_base1k WHERE id = 777 \gset
@@ -50,6 +54,6 @@ SELECT ROUND(cos_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <-> :
 DROP TABLE sift_base1k CASCADE;
 \ir utils/sift1k_array.sql
 DELETE FROM sift_base1k WHERE id=777;
-CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v dist_l2sq_ops) WITH (dims=128, M=16, ef=64, ef_construction=128, _experimental_index_path='/tmp/lanterndb/files/index-sift1k-l2.usearch');
+CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lanterndb/files/index-sift1k-l2.usearch');
 -- This should not throw error, but the first result will not be 0 as vector 777 is deleted from the table
 SELECT ROUND(l2sq_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <-> :'v777' LIMIT 10;
