@@ -1,6 +1,7 @@
 ---------------------------------------------------------------------
 -- Test HNSW index selects
 ---------------------------------------------------------------------
+SET client_min_messages=debug5;
 
 \ir utils/small_world_array.sql
 CREATE INDEX ON small_world USING hnsw (v) WITH (dims=3, M=5, ef=20, ef_construction=20);
@@ -17,7 +18,6 @@ EXPLAIN (COSTS FALSE) SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 1
 EXPLAIN (COSTS FALSE) SELECT 1 FROM small_world WHERE v = '{0,0,0}';
 
 -- Ensure we can query an index for more elements than the value of init_k
-SET client_min_messages TO DEBUG5;
 WITH neighbors AS (
     SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 3
 ) SELECT COUNT(*) from neighbors;

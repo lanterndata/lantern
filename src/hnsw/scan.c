@@ -199,7 +199,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         }
 
         // hnsw_search(scanstate->hnsw, vec->x, k, &num_returned, scanstate->distances, scanstate->labels);
-        elog(DEBUG5, "querying index for %d elements", k);
+        elog(DEBUG5, "LANTERN querying index for %d elements", k);
         num_returned = usearch_search(
             scanstate->usearch_index, vec, usearch_scalar_f32_k, k, scanstate->labels, scanstate->distances, &error);
         ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);
@@ -232,7 +232,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         scanstate->distances = repalloc(scanstate->distances, k * sizeof(float));
         scanstate->labels = repalloc(scanstate->labels, k * sizeof(usearch_label_t));
 
-        elog(DEBUG5, "querying index for %d elements", k);
+        elog(DEBUG5, "LANTERN - querying index for %d elements", k);
         num_returned = usearch_search(
             scanstate->usearch_index, vec, usearch_scalar_f32_k, k, scanstate->labels, scanstate->distances, &error);
         ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);
