@@ -7,4 +7,4 @@
 
 ignore: hnsw_todo
 test_pgvector: hnsw_vector
-test: hnsw_config hnsw_correct hnsw_create hnsw_dist_func hnsw_insert hnsw_select hnsw_todo
+test: hnsw_config hnsw_correct hnsw_create hnsw_dist_func hnsw_insert hnsw_select hnsw_todo hnsw_index_from_file

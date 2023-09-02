@@ -51,3 +51,36 @@ CREATE TABLE small_world_ham (
 INSERT INTO small_world_ham (v) VALUES ('{0,0}'), ('{1,1}'), ('{2,2}'), ('{3,3}');
 CREATE INDEX ON small_world_ham USING hnsw (v dist_hamming_ops) WITH (dims=2);
 SELECT ROUND(hamming_dist(v, '{0,0}')::numeric, 2) FROM small_world_ham ORDER BY v <-> '{0,0}';
+
+
+--- Test scenarious ---
+-----------------------------------------
+-- Case:
+-- Index is created externally.
+-- More vectors are added to the table
+-- CREATE INDEX is run on the table with the external file
+
+SELECT array_fill(0, ARRAY[128]) AS v0 \gset
+
+DROP TABLE IF EXISTS sift_base1k CASCADE;
+\ir utils/sift1k_array.sql
+INSERT INTO sift_base1k (id, v) VALUES 
+(1001, array_fill(1, ARRAY[128])),
+(1102, array_fill(2, ARRAY[128]));
+SELECT v AS v1001 FROM sift_base1k WHERE id = 1001 \gset
+CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v dist_l2sq_ops) WITH (dims=128, M=16, ef=64, ef_construction=128, _experimental_index_path='/tmp/lanterndb/files/index-sift1k-l2.usearch');
+-- The 1001 and 1002 vectors will be ignored in search, so the first row will not be 0 in result
+SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <-> :'v1001' LIMIT 1;
+
+-- Case:
+-- Index is created externally
+-- Vectors updated
+-- CREATE INDEX is run on the table with external file
+DROP TABLE sift_base1k CASCADE;
+\ir utils/sift1k_array.sql
+UPDATE sift_base1k SET v=:'v1001' WHERE id=777;
+CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v dist_l2sq_ops) WITH (dims=128, M=16, ef=64, ef_construction=128, _experimental_index_path='/tmp/lanterndb/files/index-sift1k-l2.usearch');
+-- The first row will not be 0 now as the vector under id=777 was updated to 1,1,1,1... but it was indexed with different vector
+-- So the usearch index can not find 1,1,1,1,1.. vector in the index and wrong results will be returned
+-- This is an expected behaviour for now
+SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <-> :'v1001' LIMIT 1;

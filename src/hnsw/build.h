@@ -19,6 +19,7 @@ typedef struct HnswBuildState
     /* Settings */
     int            dimensions;
     HnswColumnType columnType;
+    char          *index_file_path;
 
     /* Statistics */
     double tuples_indexed;

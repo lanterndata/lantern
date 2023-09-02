@@ -72,14 +72,14 @@ static void AddTupleToUsearchIndex(ItemPointer tid, Datum *values, HnswBuildStat
             pg_unreachable();
     }
 
-        // casting tid structure to a number to be used as value in vector search
-        // tid has info about disk location of this item and is 6 bytes long
+    // casting tid structure to a number to be used as value in vector search
+    // tid has info about disk location of this item and is 6 bytes long
+    usearch_label_t label = GetUsearchLabel(tid);
 #ifdef LANTERN_USE_LIBHNSW
-    if(buildstate->hnsw != NULL) hnsw_add(buildstate->hnsw, vector, *(unsigned long *)tid);
+    if(buildstate->hnsw != NULL) hnsw_add(buildstate->hnsw, vector, label);
 #endif
 #ifdef LANTERN_USE_USEARCH
-    if(buildstate->usearch_index != NULL)
-        usearch_add(buildstate->usearch_index, *(unsigned long *)tid, vector, usearch_scalar, &error);
+    if(buildstate->usearch_index != NULL) usearch_add(buildstate->usearch_index, label, vector, usearch_scalar, &error);
 #endif
     assert(error == NULL);
     buildstate->tuples_indexed++;
@@ -249,6 +249,7 @@ static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation i
     buildstate->indexInfo = indexInfo;
     buildstate->columnType = GetIndexColumnType(index);
     buildstate->dimensions = GetHnswIndexDimensions(index);
+    buildstate->index_file_path = HnswGetIndexFilePath(index);
 
     // If a dimension wasn't specified try to infer it
     if(buildstate->dimensions < 1) {
@@ -314,28 +315,41 @@ static void ScanTable(HnswBuildState *buildstate)
 static void BuildIndex(
     Relation heap, Relation index, IndexInfo *indexInfo, HnswBuildState *buildstate, ForkNumber forkNum)
 {
+    usearch_error_t        error = NULL;
     usearch_init_options_t opts;
     MemSet(&opts, 0, sizeof(opts));
-    InitBuildState(buildstate, heap, index, indexInfo);
 
+    InitBuildState(buildstate, heap, index, indexInfo);
     opts.dimensions = buildstate->dimensions;
     PopulateUsearchOpts(index, &opts);
 
-    usearch_error_t error = NULL;
-    buildstate->hnsw = NULL;
     buildstate->usearch_index = usearch_init(&opts, &error);
-
     elog(INFO, "done init usearch index");
     assert(error == NULL);
 
-    usearch_reserve(buildstate->usearch_index, 1100000, &error);
-    assert(error == NULL);
+    buildstate->hnsw = NULL;
+    if(buildstate->index_file_path) {
+        usearch_load(buildstate->usearch_index, buildstate->index_file_path, &error);
+        assert(error == NULL);
+        elog(INFO, "done loading usearch index");
 
-    UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_IN_MEMORY_INSERT);
-    LanternBench("build hnsw index", ScanTable(buildstate));
+        // todo determine how we can set index rd_options
+        // HnswOptions *opts = (HnswOptions *)index->rd_options;
+        // opts->m = usearch_connectivity(buildstate->usearch_index, &error);
+        // assert(error == NULL);
+        // opts->dims = usearch_dimensions(buildstate->usearch_index, &error);
+        // assert(error == NULL);
+        // todo determine how to get ef construction and ef search params
+    } else {
+        usearch_reserve(buildstate->usearch_index, 1100000, &error);
+        assert(error == NULL);
 
-    elog(INFO, "inserted %ld elements", usearch_size(buildstate->usearch_index, &error));
-    assert(error == NULL);
+        UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_IN_MEMORY_INSERT);
+        LanternBench("build hnsw index", ScanTable(buildstate));
+
+        elog(INFO, "inserted %ld elements", usearch_size(buildstate->usearch_index, &error));
+        assert(error == NULL);
+    }
 
     char *result_buf = NULL;
     usearch_save(buildstate->usearch_index, NULL, &result_buf, &error);
