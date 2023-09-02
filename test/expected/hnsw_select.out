@@ -1,6 +1,7 @@
 ---------------------------------------------------------------------
 -- Test HNSW index selects
 ---------------------------------------------------------------------
+SET client_min_messages=debug5;
 \ir utils/small_world_array.sql
 CREATE TABLE small_world (
     id VARCHAR(3),
@@ -33,12 +34,13 @@ INFO:  done saving 1000 vectors
 SET enable_seqscan = false;
 -- Verify that the index is being used
 EXPLAIN (COSTS FALSE) SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 1;
-INFO:  Query cost estimator
-INFO:  ---------------------
-INFO:  Total cost: 12.060000
-INFO:  Selectivity: 1.000000
-INFO:  Num pages: 3.000000
-INFO:  Num tuples: 8.000000
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 4.015000
+DEBUG:  LANTERN - Selectivity: 1.000000
+DEBUG:  LANTERN - Num pages: 1.000000
+DEBUG:  LANTERN - Num tuples: 2.000000
+DEBUG:  LANTERN - ---------------------
                        QUERY PLAN                        
 ---------------------------------------------------------
  Limit
@@ -55,23 +57,20 @@ EXPLAIN (COSTS FALSE) SELECT 1 FROM small_world WHERE v = '{0,0,0}';
 (2 rows)
 
 -- Ensure we can query an index for more elements than the value of init_k
-SET client_min_messages TO DEBUG5;
-DEBUG:  CommitTransaction(1) name: unnamed; blockState: STARTED; state: INPROGRESS, xid/subid/cid: 0/1/0
 WITH neighbors AS (
     SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 3
 ) SELECT COUNT(*) from neighbors;
-DEBUG:  StartTransaction(1) name: unnamed; blockState: DEFAULT; state: INPROGRESS, xid/subid/cid: 0/1/0
-INFO:  Query cost estimator
-INFO:  ---------------------
-INFO:  Total cost: 12.060000
-INFO:  Selectivity: 1.000000
-INFO:  Num pages: 3.000000
-INFO:  Num tuples: 8.000000
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 4.015000
+DEBUG:  LANTERN - Selectivity: 1.000000
+DEBUG:  LANTERN - Num pages: 1.000000
+DEBUG:  LANTERN - Num tuples: 2.000000
+DEBUG:  LANTERN - ---------------------
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
 INFO:  usearch index initialized
-DEBUG:  querying index for 10 elements
-DEBUG:  CommitTransaction(1) name: unnamed; blockState: STARTED; state: INPROGRESS, xid/subid/cid: 0/1/0
+DEBUG:  LANTERN querying index for 10 elements
  count 
 -------
      3
@@ -80,18 +79,17 @@ DEBUG:  CommitTransaction(1) name: unnamed; blockState: STARTED; state: INPROGRE
 WITH neighbors AS (
     SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 15
 ) SELECT COUNT(*) from neighbors;
-DEBUG:  StartTransaction(1) name: unnamed; blockState: DEFAULT; state: INPROGRESS, xid/subid/cid: 0/1/0
-INFO:  Query cost estimator
-INFO:  ---------------------
-INFO:  Total cost: 12.060000
-INFO:  Selectivity: 1.000000
-INFO:  Num pages: 3.000000
-INFO:  Num tuples: 8.000000
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 4.015000
+DEBUG:  LANTERN - Selectivity: 1.000000
+DEBUG:  LANTERN - Num pages: 1.000000
+DEBUG:  LANTERN - Num tuples: 2.000000
+DEBUG:  LANTERN - ---------------------
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
 INFO:  usearch index initialized
-DEBUG:  querying index for 10 elements
-DEBUG:  CommitTransaction(1) name: unnamed; blockState: STARTED; state: INPROGRESS, xid/subid/cid: 0/1/0
+DEBUG:  LANTERN querying index for 10 elements
  count 
 -------
      8
@@ -99,23 +97,20 @@ DEBUG:  CommitTransaction(1) name: unnamed; blockState: STARTED; state: INPROGRE
 
 -- Change default k and make sure the number of usearch_searchs makes sense
 SET hnsw.init_k = 4;
-DEBUG:  StartTransaction(1) name: unnamed; blockState: DEFAULT; state: INPROGRESS, xid/subid/cid: 0/1/0
-DEBUG:  CommitTransaction(1) name: unnamed; blockState: STARTED; state: INPROGRESS, xid/subid/cid: 0/1/0
 WITH neighbors AS (
     SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 3
 ) SELECT COUNT(*) from neighbors;
-DEBUG:  StartTransaction(1) name: unnamed; blockState: DEFAULT; state: INPROGRESS, xid/subid/cid: 0/1/0
-INFO:  Query cost estimator
-INFO:  ---------------------
-INFO:  Total cost: 12.060000
-INFO:  Selectivity: 1.000000
-INFO:  Num pages: 3.000000
-INFO:  Num tuples: 8.000000
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 4.015000
+DEBUG:  LANTERN - Selectivity: 1.000000
+DEBUG:  LANTERN - Num pages: 1.000000
+DEBUG:  LANTERN - Num tuples: 2.000000
+DEBUG:  LANTERN - ---------------------
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
 INFO:  usearch index initialized
-DEBUG:  querying index for 4 elements
-DEBUG:  CommitTransaction(1) name: unnamed; blockState: STARTED; state: INPROGRESS, xid/subid/cid: 0/1/0
+DEBUG:  LANTERN querying index for 4 elements
  count 
 -------
      3
@@ -124,34 +119,26 @@ DEBUG:  CommitTransaction(1) name: unnamed; blockState: STARTED; state: INPROGRE
 WITH neighbors AS (
     SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 15
 ) SELECT COUNT(*) from neighbors;
-DEBUG:  StartTransaction(1) name: unnamed; blockState: DEFAULT; state: INPROGRESS, xid/subid/cid: 0/1/0
-INFO:  Query cost estimator
-INFO:  ---------------------
-INFO:  Total cost: 12.060000
-INFO:  Selectivity: 1.000000
-INFO:  Num pages: 3.000000
-INFO:  Num tuples: 8.000000
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 4.015000
+DEBUG:  LANTERN - Selectivity: 1.000000
+DEBUG:  LANTERN - Num pages: 1.000000
+DEBUG:  LANTERN - Num tuples: 2.000000
+DEBUG:  LANTERN - ---------------------
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
 INFO:  usearch index initialized
-DEBUG:  querying index for 4 elements
-DEBUG:  querying index for 8 elements
-DEBUG:  CommitTransaction(1) name: unnamed; blockState: STARTED; state: INPROGRESS, xid/subid/cid: 0/1/0
+DEBUG:  LANTERN querying index for 4 elements
+DEBUG:  LANTERN - querying index for 8 elements
  count 
 -------
      8
 (1 row)
 
 RESET client_min_messages;
-DEBUG:  StartTransaction(1) name: unnamed; blockState: DEFAULT; state: INPROGRESS, xid/subid/cid: 0/1/0
 -- Verify where condition works properly and still uses index
 SELECT * FROM small_world WHERE b IS TRUE ORDER BY v <-> '{0,0,0}';
-INFO:  Query cost estimator
-INFO:  ---------------------
-INFO:  Total cost: 12.060000
-INFO:  Selectivity: 1.000000
-INFO:  Num pages: 3.000000
-INFO:  Num tuples: 8.000000
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
 INFO:  usearch index initialized
@@ -164,12 +151,6 @@ INFO:  usearch index initialized
 (4 rows)
 
 EXPLAIN (COSTS FALSE) SELECT * FROM small_world WHERE b IS TRUE ORDER BY v <-> '{0,0,0}';
-INFO:  Query cost estimator
-INFO:  ---------------------
-INFO:  Total cost: 12.060000
-INFO:  Selectivity: 1.000000
-INFO:  Num pages: 3.000000
-INFO:  Num tuples: 8.000000
                     QUERY PLAN                     
 ---------------------------------------------------
  Index Scan using small_world_v_idx on small_world
