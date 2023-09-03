@@ -19,7 +19,7 @@ RetrieverCtx *ldb_wal_retriever_area_init(Relation index_rel, HnswIndexHeaderPag
     RetrieverCtx *ctx = palloc0(sizeof(RetrieverCtx));
     ctx->index_rel = index_rel;
     ctx->header_page_under_wal = header_page_under_wal;
-    ctx->extra_dirted = extra_dirtied_new(index_rel);
+    ctx->extra_dirted = extra_dirtied_new();
     fa_cache_init(&ctx->fa_cache);
 
     dlist_init(&ctx->takenbuffers);

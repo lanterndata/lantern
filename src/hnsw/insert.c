@@ -157,6 +157,7 @@ bool ldb_aminsert(Relation         index,
     // we only release the header buffer AFTER inserting is finished to make sure nobody else changes the block
     // structure. todo:: critical section here can definitely be shortened
     {
+        // GenericXLogFinish also calls MarkBufferDirty(buf)
         XLogRecPtr ptr = GenericXLogFinish(state);
         assert(ptr != InvalidXLogRecPtr);
         LDB_UNUSED(ptr);
@@ -171,7 +172,7 @@ bool ldb_aminsert(Relation         index,
 
     // unlock the header page
     assert(BufferIsValid(hdr_buf));
-    MarkBufferDirty(hdr_buf);
+    // GenericXLogFinish already marks hdr_buf as dirty
     UnlockReleaseBuffer(hdr_buf);
 
     ldb_wal_retriever_area_fini(insertstate->retriever_ctx);

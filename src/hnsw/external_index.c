@@ -85,7 +85,7 @@ int CreateBlockMapGroup(
         special->lastId = first_node_index + (blockmap_id + 1) * HNSW_BLOCKMAP_BLOCKS_PER_PAGE - 1;
         special->nextblockno = BufferGetBlockNumber(buf) + 1;
 
-        MarkBufferDirty(buf);
+        // GenericXLogFinish also calls MarkBufferDirty(buf)
         GenericXLogFinish(state);
         UnlockReleaseBuffer(buf);
         // GenericXLog allows registering up to 4 buffers at a time. So, we cannot set up large BlockMapGroups
