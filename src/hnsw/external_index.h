@@ -5,7 +5,6 @@
 
 #include <access/generic_xlog.h>
 #include <common/relpath.h>  // ForkNumber
-#include <lib/ilist.h>       // Dlist
 #include <storage/bufmgr.h>  // Buffer
 #include <utils/relcache.h>  // Relation
 
@@ -83,20 +82,19 @@ typedef struct
 
     ExtraDirtiedBufs *extra_dirted;
 
+#if LANTERNDB_COPYNODES
+    char *wal_retriever_area = NULL;
+    int   wal_retriever_area_size = 0;
+    int   wal_retriever_area_offset = 0;
+#else
+
+    Buffer *takenbuffers;
+    int     takenbuffers_next;
+
     FullyAssociativeCache fa_cache;
 
-    dlist_head takenbuffers;
-} RetrieverCtx;
-
-typedef struct
-{
-#if LANTERNDB_COPYNODES
-    char *buf;
-#else
-    Buffer buf;
 #endif
-    dlist_node node;
-} BufferNode;
+} RetrieverCtx;
 
 typedef struct
 {

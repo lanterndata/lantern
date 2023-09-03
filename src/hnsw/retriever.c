@@ -22,7 +22,13 @@ RetrieverCtx *ldb_wal_retriever_area_init(Relation index_rel, HnswIndexHeaderPag
     ctx->extra_dirted = extra_dirtied_new(index_rel);
     fa_cache_init(&ctx->fa_cache);
 
-    dlist_init(&ctx->takenbuffers);
+#if LANTERNDB_COPYNODES
+    ctx->wal_retriever_area = palloc(BLCKSZ * 100);
+    ctx->wal_retriever_area_size = BLCKSZ * 100;
+    ctx->wal_retriever_area_offset = 0;
+#else
+    ctx->takenbuffers = palloc0(sizeof(Buffer) * TAKENBUFFERS_MAX);
+#endif
 
     /* fill in a buffer with blockno index information, before spilling it to disk */
     ctx->block_numbers_cache = cache_create();
@@ -32,44 +38,41 @@ RetrieverCtx *ldb_wal_retriever_area_init(Relation index_rel, HnswIndexHeaderPag
 
 void ldb_wal_retriever_area_reset(RetrieverCtx *ctx, HnswIndexHeaderPage *header_page_under_wal)
 {
-    dlist_mutable_iter miter;
-    dlist_foreach_modify(miter, &ctx->takenbuffers)
-    {
-        BufferNode *node = dlist_container(BufferNode, node, miter.cur);
 #if LANTERNDB_COPYNODES
-        pfree(node->buf);
+    wal_retriever_area_offset = 0;
 #else
-        if(node->buf != InvalidBuffer) {
-            ReleaseBuffer(node->buf);
+    for(int i = 0; i < TAKENBUFFERS_MAX; i++) {
+        if(ctx->takenbuffers[ i ] == InvalidBuffer) {
+            continue;
         }
-#endif
-        dlist_delete(miter.cur);
-        pfree(node);
+        ReleaseBuffer(ctx->takenbuffers[ i ]);
+        ctx->takenbuffers[ i ] = InvalidBuffer;
     }
-    dlist_init(&ctx->takenbuffers);
-
+    ctx->takenbuffers_next = 0;
     assert(ctx->header_page_under_wal == header_page_under_wal);
     ctx->header_page_under_wal = header_page_under_wal;
+#endif
 }
 
 void ldb_wal_retriever_area_fini(RetrieverCtx *ctx)
 {
     cache_destroy(&ctx->block_numbers_cache);
-    dlist_mutable_iter miter;
-    dlist_foreach_modify(miter, &ctx->takenbuffers)
-    {
-        BufferNode *node = dlist_container(BufferNode, node, miter.cur);
 #if LANTERNDB_COPYNODES
-        pfree(node->buf);
+    pfree(ctx->wal_retriever_area);
+    ctx->wal_retriever_area = NULL;
+    ctx->wal_retriever_area_size = 0;
+    ctx->wal_retriever_area_offset = 0;
 #else
-        if(node->buf != InvalidBuffer) {
-            ReleaseBuffer(node->buf);
+    for(int i = 0; i < TAKENBUFFERS_MAX; i++) {
+        if(ctx->takenbuffers[ i ] == InvalidBuffer) {
+            continue;
         }
-#endif
-        dlist_delete(miter.cur);
-        pfree(node);
+        ReleaseBuffer(ctx->takenbuffers[ i ]);
+        ctx->takenbuffers[ i ] = InvalidBuffer;
     }
-    dlist_init(&ctx->takenbuffers);
+    pfree(ctx->takenbuffers);
+    ctx->takenbuffers_next = 0;
+#endif
 
     extra_dirtied_free(ctx->extra_dirted);
 }

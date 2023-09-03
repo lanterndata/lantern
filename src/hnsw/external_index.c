@@ -607,24 +607,31 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
             levels[ nodepage->level ]++;
 #endif
 #if LANTERNDB_COPYNODES
-            BufferNode *buffNode;
-            buffNode = (BufferNode *)palloc(sizeof(BufferNode));
-            buffNode->buf = (char *)palloc(nodepage->size);
-            memcpy(buffNode->buf, nodepage->node, nodepage->size);
+            if(wal_retriever_area == NULL || wal_retriever_area_offset + nodepage->size > wal_retriever_area_size) {
+                elog(ERROR,
+                     "ERROR: wal_retriever_area "
+                     "is NULL or full");
+            }
+            memcpy(wal_retriever_area + wal_retriever_area_offset, nodepage->node, nodepage->size);
+            wal_retriever_area_offset += nodepage->size;
             if(!idx_page_prelocked) {
                 UnlockReleaseBuffer(buf);
             }
-            dlist_push_tail(&ctx->takenbuffers, &buffNode->node);
-            return buffNode->buf;
+            return wal_retriever_area + wal_retriever_area_offset - nodepage->size;
 #else
             if(!idx_page_prelocked) {
-                // Wrap buf in a linked list node
-                BufferNode *buffNode;
-                buffNode = (BufferNode *)palloc(sizeof(BufferNode));
-                buffNode->buf = buf;
+                if(ctx->takenbuffers[ ctx->takenbuffers_next ] != InvalidBuffer) {
+                    ReleaseBuffer(ctx->takenbuffers[ ctx->takenbuffers_next ]);
+                    ctx->takenbuffers[ ctx->takenbuffers_next ] = InvalidBuffer;
+                }
+                ctx->takenbuffers[ ctx->takenbuffers_next ] = buf;
+                ctx->takenbuffers_next++;
 
-                // Add buffNode to list of pinned buffers
-                dlist_push_tail(&ctx->takenbuffers, &buffNode->node);
+                if(ctx->takenbuffers_next == TAKENBUFFERS_MAX) {
+                    // todo:: use a postgres linked list here (pairing heap) to avoid the limit
+                    // and bulk allocation
+                    ctx->takenbuffers_next = 0;
+                }
                 LockBuffer(buf, BUFFER_LOCK_UNLOCK);
             }
 
