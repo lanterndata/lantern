@@ -33,8 +33,10 @@ jobs:
           - postgres: 11
             os: ubuntu-22.04
     steps:
+      # trigger CI
       - uses: actions/checkout@v3
         with:
+          fetch-depth: 0
           submodules: "recursive"
       - name: Build
         id: build
