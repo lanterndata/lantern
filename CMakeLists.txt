@@ -24,6 +24,7 @@ option(BUILD_WITH_USEARCH "Build with usearch as hnsw provider" ON)
 option(BUILD_LIBHNSW "Build libhnsw as hnsw provider" OFF)
 option(CODECOVERAGE "Enable code coverage for the build" OFF)
 option(BENCH "Enable benchmarking" OFF)
+option(BUILD_VIA_INSERTS "Use inserts to populate hnsw index when created on a table with existing rows" OFF)
 
 if(CODECOVERAGE)
   message(STATUS "Code coverage is enabled.")
@@ -41,6 +42,11 @@ endif(CODECOVERAGE)
 if (BENCH)
   message(STATUS "Benchmarking is enabled.")
   add_compile_definitions(LANTERN_BENCH)
+endif()
+
+if (BUILD_VIA_INSERTS)
+  message(STATUS "Build via Inserts is enabled.")
+  add_compile_definitions(BUILD_VIA_INSERTS)
 endif()
 
 # options passed into lanterndb sourcecode
