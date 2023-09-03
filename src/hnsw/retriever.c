@@ -39,7 +39,6 @@ void ldb_wal_retriever_area_reset(RetrieverCtx *ctx, HnswIndexHeaderPage *header
 #if LANTERNDB_COPYNODES
         pfree(node->buf);
 #else
-        // todo: check may be unecessary, I don't know enough about how buffers are managed elsewhere to say
         if(node->buf != InvalidBuffer) {
             ReleaseBuffer(node->buf);
         }
