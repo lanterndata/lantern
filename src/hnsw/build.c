@@ -2,6 +2,7 @@
 
 #include "build.h"
 
+#include <access/heapam.h>
 #include <assert.h>
 #include <catalog/index.h>
 #include <catalog/namespace.h>
@@ -22,6 +23,10 @@
 #include <utils/backend_progress.h>
 #elif PG_VERSION_NUM >= 120000
 #include <pgstat.h>
+#endif
+
+#if PG_VERSION_NUM <= 120000
+#include <access/htup_details.h>
 #endif
 
 #if PG_VERSION_NUM >= 120000
@@ -67,14 +72,14 @@ static void AddTupleToUsearchIndex(ItemPointer tid, Datum *values, HnswBuildStat
             pg_unreachable();
     }
 
-        // casting tid structure to a number to be used as value in vector search
-        // tid has info about disk location of this item and is 6 bytes long
+    // casting tid structure to a number to be used as value in vector search
+    // tid has info about disk location of this item and is 6 bytes long
+    usearch_label_t label = GetUsearchLabel(tid);
 #ifdef LANTERN_USE_LIBHNSW
-    if(buildstate->hnsw != NULL) hnsw_add(buildstate->hnsw, vector, *(unsigned long *)tid);
+    if(buildstate->hnsw != NULL) hnsw_add(buildstate->hnsw, vector, label);
 #endif
 #ifdef LANTERN_USE_USEARCH
-    if(buildstate->usearch_index != NULL)
-        usearch_add(buildstate->usearch_index, *(unsigned long *)tid, vector, usearch_scalar, &error);
+    if(buildstate->usearch_index != NULL) usearch_add(buildstate->usearch_index, label, vector, usearch_scalar, &error);
 #endif
     assert(error == NULL);
     buildstate->tuples_indexed++;
@@ -115,14 +120,81 @@ static void BuildCallback(
     MemoryContextReset(buildstate->tmpCtx);
 }
 
+static int GetArrayLengthFromHeap(Relation heap, int indexCol)
+{
+#if PG_VERSION_NUM < 120000
+    HeapScanDesc scan;
+#else
+    TableScanDesc scan;
+#endif
+    HeapTuple  tuple;
+    Snapshot   snapshot;
+    ArrayType *array;
+    Datum      datum;
+    bool       isNull;
+    int        n_items = HNSW_DEFAULT_DIMS;
+    //
+    // Get the first row off the heap
+    // if it's NULL we don't infer a length. Since vectors are expected to have fixed nonzero dimension this will result
+    // in an error later
+    snapshot = GetTransactionSnapshot();
+#if PG_VERSION_NUM < 120000
+    scan = heap_beginscan(heap, snapshot, 0, NULL);
+#else
+    scan = heap_beginscan(heap, snapshot, 0, NULL, NULL, SO_TYPE_SEQSCAN);
+#endif
+    tuple = heap_getnext(scan, ForwardScanDirection);
+    if(tuple == NULL) {
+        heap_endscan(scan);
+        return n_items;
+    }
+
+    // Get the indexed column out of the row and return it's dimensions
+    datum = heap_getattr(tuple, indexCol, RelationGetDescr(heap), &isNull);
+    if(!isNull) {
+        array = DatumGetArrayTypePCopy(datum);
+        n_items = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
+    }
+
+    heap_endscan(scan);
+
+    return n_items;
+}
+
 int GetHnswIndexDimensions(Relation index)
 {
     HnswColumnType columnType = GetIndexColumnType(index);
 
     // check if column is type of real[] or integer[]
     if(columnType == REAL_ARRAY || columnType == INT_ARRAY) {
-        // if column is array take dimensions from options
-        return HnswGetDims(index);
+        // The dimension in options is not set if the dimension is inferred so we need to actually check the key
+        int opt_dim = HnswGetDims(index);
+        if(opt_dim == HNSW_DEFAULT_DIMS) {
+            // If the option's still the default it needs to be updated to match what was inferred
+            // todo: is there a way to do this earlier? (rd_options is null in BuildInit)
+            Relation     heap;
+            HnswOptions *opts;
+            int          attrNum;
+
+            assert(index->rd_index->indnatts == 1);
+            attrNum = index->rd_index->indkey.values[ 0 ];
+#if PG_VERSION_NUM < 120000
+            heap = heap_open(index->rd_index->indrelid, AccessShareLock);
+#else
+            heap = table_open(index->rd_index->indrelid, AccessShareLock);
+#endif
+            opt_dim = GetArrayLengthFromHeap(heap, attrNum);
+            opts = (HnswOptions *)index->rd_options;
+            if(opts != NULL) {
+                opts->dims = opt_dim;
+            }
+#if PG_VERSION_NUM < 120000
+            heap_close(heap, AccessShareLock);
+#else
+            table_close(heap, AccessShareLock);
+#endif
+        }
+        return opt_dim;
     } else if(columnType == VECTOR) {
         return TupleDescAttr(index->rd_att, 0)->atttypmod;
     } else {
@@ -136,8 +208,8 @@ int GetHnswIndexDimensions(Relation index)
 
 void CheckHnswIndexDimensions(Relation index, Datum arrayDatum, int dimensions)
 {
-    ArrayType   *array;
-    int          n_items;
+    ArrayType     *array;
+    int            n_items;
     HnswColumnType indexType = GetIndexColumnType(index);
 
     if(indexType == REAL_ARRAY || indexType == INT_ARRAY) {
@@ -151,6 +223,23 @@ void CheckHnswIndexDimensions(Relation index, Datum arrayDatum, int dimensions)
 }
 
 /*
+ * Infer the dimensionality of the index from the heap
+ */
+static int InferDimension(Relation heap, IndexInfo *indexInfo)
+{
+    int indexCol;
+
+    // If NumIndexAttrs isn't 1 the index has been instantiated on multiple keys and there's no clear way to infer
+    // the dim
+    if(indexInfo->ii_NumIndexAttrs != 1) {
+        return HNSW_DEFAULT_DIMS;
+    }
+
+    indexCol = indexInfo->ii_IndexAttrNumbers[ 0 ];
+    return GetArrayLengthFromHeap(heap, indexCol);
+}
+
+/*
  * Initialize the build state
  */
 static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation index, IndexInfo *indexInfo)
@@ -160,9 +249,14 @@ static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation i
     buildstate->indexInfo = indexInfo;
     buildstate->columnType = GetIndexColumnType(index);
     buildstate->dimensions = GetHnswIndexDimensions(index);
+    buildstate->index_file_path = HnswGetIndexFilePath(index);
 
+    // If a dimension wasn't specified try to infer it
+    if(buildstate->dimensions < 1) {
+        buildstate->dimensions = InferDimension(heap, indexInfo);
+    }
     /* Require column to have dimensions to be indexed */
-    if(buildstate->dimensions < 1) elog(ERROR, "column does not have dimensions");
+    if(buildstate->dimensions < 1) elog(ERROR, "column does not have dimensions, please specify one");
 
     // not supported because of 8K page limit in postgres WAL pages
     // can pass this limit once quantization is supported
@@ -221,28 +315,41 @@ static void ScanTable(HnswBuildState *buildstate)
 static void BuildIndex(
     Relation heap, Relation index, IndexInfo *indexInfo, HnswBuildState *buildstate, ForkNumber forkNum)
 {
+    usearch_error_t        error = NULL;
     usearch_init_options_t opts;
     MemSet(&opts, 0, sizeof(opts));
-    InitBuildState(buildstate, heap, index, indexInfo);
 
+    InitBuildState(buildstate, heap, index, indexInfo);
     opts.dimensions = buildstate->dimensions;
     PopulateUsearchOpts(index, &opts);
 
-    usearch_error_t error = NULL;
-    buildstate->hnsw = NULL;
     buildstate->usearch_index = usearch_init(&opts, &error);
-
     elog(INFO, "done init usearch index");
     assert(error == NULL);
 
-    usearch_reserve(buildstate->usearch_index, 1100000, &error);
-    assert(error == NULL);
+    buildstate->hnsw = NULL;
+    if(buildstate->index_file_path) {
+        usearch_load(buildstate->usearch_index, buildstate->index_file_path, &error);
+        assert(error == NULL);
+        elog(INFO, "done loading usearch index");
 
-    UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_IN_MEMORY_INSERT);
-    LanternBench("build hnsw index", ScanTable(buildstate));
+        // todo determine how we can set index rd_options
+        // HnswOptions *opts = (HnswOptions *)index->rd_options;
+        // opts->m = usearch_connectivity(buildstate->usearch_index, &error);
+        // assert(error == NULL);
+        // opts->dims = usearch_dimensions(buildstate->usearch_index, &error);
+        // assert(error == NULL);
+        // todo determine how to get ef construction and ef search params
+    } else {
+        usearch_reserve(buildstate->usearch_index, 1100000, &error);
+        assert(error == NULL);
 
-    elog(INFO, "inserted %ld elements", usearch_size(buildstate->usearch_index, &error));
-    assert(error == NULL);
+        UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_IN_MEMORY_INSERT);
+        LanternBench("build hnsw index", ScanTable(buildstate));
+
+        elog(INFO, "inserted %ld elements", usearch_size(buildstate->usearch_index, &error));
+        assert(error == NULL);
+    }
 
     char *result_buf = NULL;
     usearch_save(buildstate->usearch_index, NULL, &result_buf, &error);

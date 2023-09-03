@@ -65,6 +65,8 @@ file(GLOB SOURCES "${SOURCES_DIR}/**/*.c" "${SOURCES_DIR}/*.c")
 
 set(USEARCH_USE_SIMSIMD OFF)
 set(USEARCH_LOOKUP_LABEL OFF)
+# we always use a usearch index from a single thread
+set(USEARCH_CONCURRENT OFF)
 set(USEARCH_BUILD_STATIC ON)
 # do not add asan flags to usearch debug build of the library since
 # we still have not figured out how to load those into postgres
@@ -182,9 +184,26 @@ add_custom_target(
   test
   COMMAND ${CMAKE_SOURCE_DIR}/scripts/run_all_tests.sh
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/test
- )
+)
 
- # DEVELOPMENT
+# BENCHMARK
+add_custom_target(
+  benchmark
+  COMMAND ${CMAKE_SOURCE_DIR}/scripts/run_benchmarks.sh
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/build
+)
+add_custom_target(
+  benchmark-skip-setup
+  COMMAND ${CMAKE_SOURCE_DIR}/scripts/run_benchmarks.sh --skip-setup
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/build
+)
+add_custom_target(
+  benchmark-print-only
+  COMMAND ${CMAKE_SOURCE_DIR}/scripts/run_benchmarks.sh --print-only
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/build
+)
+
+# DEVELOPMENT
 find_program(CLANG_FORMAT NAMES clang-format)
 
 if (CLANG_FORMAT)
@@ -223,12 +242,6 @@ if (CLANG_FORMAT)
     VERBATIM
   )
 endif()
-
-add_custom_target(
-  bench
-  COMMAND ${CMAKE_SOURCE_DIR}/scripts/bench.sh
-  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
- )
 
 # Package universal install script
 string(REGEX MATCH "^PostgreSQL (\[0-9]+).*"

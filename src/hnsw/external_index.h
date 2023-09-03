@@ -11,6 +11,7 @@
 
 #include "cache.h"
 #include "extra_dirtied.h"
+#include "fa_cache.h"
 #include "hnsw.h"
 #include "usearch.h"
 
@@ -81,6 +82,8 @@ typedef struct
     HnswIndexHeaderPage *header_page_under_wal;
 
     ExtraDirtiedBufs *extra_dirted;
+
+    FullyAssociativeCache fa_cache;
 
     dlist_head takenbuffers;
 } RetrieverCtx;

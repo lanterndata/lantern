@@ -10,7 +10,7 @@
 // based on vector element size
 
 /* HNSW vector dim constraints */
-#define HNSW_DEFAULT_DIMS 3
+#define HNSW_DEFAULT_DIMS -1
 #define HNSW_MAX_DIMS     2000
 
 /* 32 in faiss */
@@ -24,7 +24,6 @@
 #define HNSW_MAX_EF                   400
 #define HNSW_DEFAULT_PROVIDER         "usearch"
 #define HNSW_MAX_ELEMENT_LIMIT        200000000
-#define ALG_OPTION_MAX_STRING_LEN     32
 #define HNSWLIB_DEFAULT_ELEMENT_LIMIT 2000000
 
 #define LDB_HNSW_DEFAULT_K 10
@@ -39,8 +38,7 @@ typedef struct HnswOptions
     int   m;
     int   ef_construction;
     int   ef;
-    int   alg;
-    // char[ALG_OPTION_MAX_STRING_LEN] alg;
+    int   experimantal_index_path_offset;
 } HnswOptions;
 
 int                   HnswGetDims(Relation index);
@@ -48,9 +46,10 @@ int                   HnswGetM(Relation index);
 int                   HnswGetEfConstruction(Relation index);
 int                   HnswGetEf(Relation index);
 int                   HnswGetElementLimit(Relation index);
+char*                 HnswGetIndexFilePath(Relation index);
 usearch_metric_kind_t HnswGetMetricKind(Relation index);
 
-bytea *ldb_amoptions(Datum reloptions, bool validate);
+bytea* ldb_amoptions(Datum reloptions, bool validate);
 
 extern int ldb_hnsw_init_k;
 

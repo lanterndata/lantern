@@ -1,0 +1,40 @@
+name: benchmark
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+      - dev
+
+jobs:
+  ubuntu-build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: "recursive"
+
+      - name: Build
+        id: build
+        run: sudo su -c "PG_VERSION=15 USE_SOURCE=1 ./ci/scripts/build-linux.sh"
+        env:
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+
+      - name: Run benchmarking
+        id: test
+        run: sudo su postgres -c "./ci/scripts/run-benchmarks.sh"
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload to artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: benchmark-results
+          path: |
+            /tmp/benchmarks-out.json

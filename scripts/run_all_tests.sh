@@ -46,29 +46,55 @@ then
     echo "Successfully Downloaded all necessary vector test files"
 fi
 
-
-if [ -z $FILTER ]
+# if $TMP_ROOT/files does not exist
+# create the folder
+if [ ! -d "$TMP_ROOT/files" ]
 then
-    SCHEDULE=schedule.txt
-else
-    TEST_FILES=$(cat schedule.txt | sed -e 's/test://' | tr " " "\n" | sed -e '/^$/d')
+    mkdir -p $TMP_ROOT/files
+    echo "Downloading necessary files for tests..."
+    pushd $TMP_ROOT/files
+       curl -sSo index-sift1k-cos.usearch https://storage.googleapis.com/lanterndata/lanterndb_binary_indexes/index-sift1k-cos.usearch
+       curl -sSo index-sift1k-l2.usearch https://storage.googleapis.com/lanterndata/lanterndb_binary_indexes/index-sift1k-l2.usearch
+    popd
+    echo "Successfully downloaded all necessary test files"
+fi
 
-    rm -rf $TMP_OUTDIR/schedule.txt
+# Check if pgvector is available
+pgvector_installed=$($PSQL -U $DB_USER -c "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'" -tA)
+
+# Generate schedule.txt
+rm -rf $TMP_OUTDIR/schedule.txt
+if [ -n "$FILTER" ]; then
+    if [[ "$pgvector_installed" == "1" ]]; then
+        TEST_FILES=$(cat schedule.txt | grep -E '^(test:|test_pgvector:)' | sed -e 's/^\(test:\|test_pgvector:\)//' | tr " " "\n" | sed -e '/^$/d')
+    else
+        TEST_FILES=$(cat schedule.txt | grep '^test:' | sed -e 's/^test://' | tr " " "\n" | sed -e '/^$/d')
+    fi
+
     while IFS= read -r f; do
         if [[ $f == *"$FILTER"* ]]; then
             echo "test: $f" >> $TMP_OUTDIR/schedule.txt
         fi
     done <<< "$TEST_FILES"
 
-
     if [ ! -f "$TMP_OUTDIR/schedule.txt" ]
     then
         echo "NOTE: No tests matches filter \"$FILTER\""
         exit 0
     fi
-
-    SCHEDULE=$TMP_OUTDIR/schedule.txt
+else
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^test_pgvector: ]]; then
+            test_name=$(echo "$line" | sed -e 's/test_pgvector://')
+            if [ "$pgvector_installed" == "1" ]; then
+                echo "test: $test_name" >> $TMP_OUTDIR/schedule.txt
+            fi
+        else
+            echo "$line" >> $TMP_OUTDIR/schedule.txt
+        fi
+    done < schedule.txt
 fi
+SCHEDULE=$TMP_OUTDIR/schedule.txt
 
 function print_diff {
     if [ -f "$TMP_OUTDIR/regression.diffs" ]

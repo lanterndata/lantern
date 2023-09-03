@@ -17,6 +17,7 @@ RUN apt update \
        gdb \
        wget \
        python3-pip \
+       python3-dev \
        sudo \
        curl \
        git-all \
@@ -32,3 +33,10 @@ RUN rm -rf build \
     && cd build \
     && cmake -DUSEARCH_NO_MARCH_NATIVE=ON -DCMAKE_BUILD_TYPE=Debug .. \
     && make install
+
+# Install benchmarking tools in build folder
+RUN git clone https://github.com/lanterndata/benchmark \
+    && cd benchmark \
+    && pip install -r core/requirements.txt --break-system-packages \
+    && pip install -r external/requirements.txt --break-system-packages
+ENV DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres

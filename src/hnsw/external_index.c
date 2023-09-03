@@ -577,12 +577,18 @@ BlockNumber getDataBlockNumber(RetrieverCtx *ctx, int id, bool add_to_extra_dirt
 void *ldb_wal_index_node_retriever(void *ctxp, int id)
 {
     RetrieverCtx   *ctx = (RetrieverCtx *)ctxp;
-    BlockNumber     data_block_no = getDataBlockNumber(ctx, id, false);
+    BlockNumber     data_block_no;
     HnswIndexTuple *nodepage;
     Page            page;
     OffsetNumber    offset, max_offset;
     Buffer          buf = InvalidBuffer;
     bool            idx_page_prelocked = false;
+    void           *cached_node = fa_cache_get(&ctx->fa_cache, id);
+    if(cached_node != NULL) {
+        return cached_node;
+    }
+
+    data_block_no = getDataBlockNumber(ctx, id, false);
 
     page = extra_dirtied_get(ctx->extra_dirted, data_block_no, NULL);
     if(page == NULL) {
@@ -621,6 +627,9 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
                 dlist_push_tail(&ctx->takenbuffers, &buffNode->node);
                 LockBuffer(buf, BUFFER_LOCK_UNLOCK);
             }
+
+            fa_cache_insert(&ctx->fa_cache, id, nodepage->node);
+
             return nodepage->node;
 #endif
         }
@@ -642,6 +651,9 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, int id)
     Buffer          buf = InvalidBuffer;
     bool            idx_page_prelocked = false;
 
+    // here, we don't bother looking up the fully associative cache because
+    // given the current usage of _mut, it is never going to be in the chache
+
     page = extra_dirtied_get(ctx->extra_dirted, data_block_no, NULL);
     if(page == NULL) {
         buf = ReadBufferExtended(ctx->index_rel, MAIN_FORKNUM, data_block_no, RBM_NORMAL, NULL);
@@ -657,6 +669,8 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, int id)
     for(offset = FirstOffsetNumber; offset <= max_offset; offset = OffsetNumberNext(offset)) {
         nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
         if(nodepage->id == id) {
+            fa_cache_insert(&ctx->fa_cache, id, nodepage->node);
+
             return nodepage->node;
         }
     }

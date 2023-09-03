@@ -55,8 +55,7 @@ bool ldb_aminsert(Relation         index,
     LDB_UNUSED(indexUnchanged);
 #endif
 
-        HnswInsertState *insertstate
-        = palloc0(sizeof(HnswInsertState));
+    HnswInsertState *insertstate = palloc0(sizeof(HnswInsertState));
 
     if(checkUnique != UNIQUE_CHECK_NO) {
         elog(ERROR, "unique constraints on hnsw vector indexes not supported");
