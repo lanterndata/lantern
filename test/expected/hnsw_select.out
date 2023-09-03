@@ -33,12 +33,6 @@ INFO:  done saving 1000 vectors
 SET enable_seqscan = false;
 -- Verify that the index is being used
 EXPLAIN (COSTS FALSE) SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 1;
-INFO:  Query cost estimator
-INFO:  ---------------------
-INFO:  Total cost: 12.060000
-INFO:  Selectivity: 1.000000
-INFO:  Num pages: 3.000000
-INFO:  Num tuples: 8.000000
                        QUERY PLAN                        
 ---------------------------------------------------------
  Limit
@@ -61,12 +55,6 @@ WITH neighbors AS (
     SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 3
 ) SELECT COUNT(*) from neighbors;
 DEBUG:  StartTransaction(1) name: unnamed; blockState: DEFAULT; state: INPROGRESS, xid/subid/cid: 0/1/0
-INFO:  Query cost estimator
-INFO:  ---------------------
-INFO:  Total cost: 12.060000
-INFO:  Selectivity: 1.000000
-INFO:  Num pages: 3.000000
-INFO:  Num tuples: 8.000000
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
 INFO:  usearch index initialized
@@ -81,12 +69,6 @@ WITH neighbors AS (
     SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 15
 ) SELECT COUNT(*) from neighbors;
 DEBUG:  StartTransaction(1) name: unnamed; blockState: DEFAULT; state: INPROGRESS, xid/subid/cid: 0/1/0
-INFO:  Query cost estimator
-INFO:  ---------------------
-INFO:  Total cost: 12.060000
-INFO:  Selectivity: 1.000000
-INFO:  Num pages: 3.000000
-INFO:  Num tuples: 8.000000
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
 INFO:  usearch index initialized
@@ -105,12 +87,6 @@ WITH neighbors AS (
     SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 3
 ) SELECT COUNT(*) from neighbors;
 DEBUG:  StartTransaction(1) name: unnamed; blockState: DEFAULT; state: INPROGRESS, xid/subid/cid: 0/1/0
-INFO:  Query cost estimator
-INFO:  ---------------------
-INFO:  Total cost: 12.060000
-INFO:  Selectivity: 1.000000
-INFO:  Num pages: 3.000000
-INFO:  Num tuples: 8.000000
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
 INFO:  usearch index initialized
@@ -125,12 +101,6 @@ WITH neighbors AS (
     SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 15
 ) SELECT COUNT(*) from neighbors;
 DEBUG:  StartTransaction(1) name: unnamed; blockState: DEFAULT; state: INPROGRESS, xid/subid/cid: 0/1/0
-INFO:  Query cost estimator
-INFO:  ---------------------
-INFO:  Total cost: 12.060000
-INFO:  Selectivity: 1.000000
-INFO:  Num pages: 3.000000
-INFO:  Num tuples: 8.000000
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
 INFO:  usearch index initialized
@@ -146,12 +116,6 @@ RESET client_min_messages;
 DEBUG:  StartTransaction(1) name: unnamed; blockState: DEFAULT; state: INPROGRESS, xid/subid/cid: 0/1/0
 -- Verify where condition works properly and still uses index
 SELECT * FROM small_world WHERE b IS TRUE ORDER BY v <-> '{0,0,0}';
-INFO:  Query cost estimator
-INFO:  ---------------------
-INFO:  Total cost: 12.060000
-INFO:  Selectivity: 1.000000
-INFO:  Num pages: 3.000000
-INFO:  Num tuples: 8.000000
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
 INFO:  usearch index initialized
@@ -164,12 +128,6 @@ INFO:  usearch index initialized
 (4 rows)
 
 EXPLAIN (COSTS FALSE) SELECT * FROM small_world WHERE b IS TRUE ORDER BY v <-> '{0,0,0}';
-INFO:  Query cost estimator
-INFO:  ---------------------
-INFO:  Total cost: 12.060000
-INFO:  Selectivity: 1.000000
-INFO:  Num pages: 3.000000
-INFO:  Num tuples: 8.000000
                     QUERY PLAN                     
 ---------------------------------------------------
  Index Scan using small_world_v_idx on small_world

@@ -27,18 +27,6 @@ INFO:  inserted 3 elements
 INFO:  done saving 3 vectors
 INSERT INTO items (trait_ai) VALUES ('[10,10,10]'), (NULL);
 SELECT * FROM items ORDER BY trait_ai <-> '[0,0,0]' LIMIT 3;
-INFO:  Query cost estimator
-INFO:  ---------------------
-INFO:  Total cost: 12.022500
-INFO:  Selectivity: 1.000000
-INFO:  Num pages: 3.000000
-INFO:  Num tuples: 3.000000
-INFO:  Query cost estimator
-INFO:  ---------------------
-INFO:  Total cost: 12.022500
-INFO:  Selectivity: 1.000000
-INFO:  Num pages: 3.000000
-INFO:  Num tuples: 3.000000
  id | trait_ai 
 ----+----------
   1 | [1,2,3]
@@ -86,12 +74,6 @@ INSERT INTO small_world (v) VALUES (NULL);
 -- Distance functions
 SELECT id, ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
-INFO:  Query cost estimator
-INFO:  ---------------------
-INFO:  Total cost: 12.060000
-INFO:  Selectivity: 1.000000
-INFO:  Num pages: 3.000000
-INFO:  Num tuples: 8.000000
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
 INFO:  usearch index initialized
@@ -108,12 +90,6 @@ INFO:  usearch index initialized
 
 EXPLAIN SELECT id, ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
-INFO:  Query cost estimator
-INFO:  ---------------------
-INFO:  Total cost: 12.060000
-INFO:  Selectivity: 1.000000
-INFO:  Num pages: 3.000000
-INFO:  Num tuples: 8.000000
                                          QUERY PLAN                                          
 ---------------------------------------------------------------------------------------------
  Limit  (cost=0.00..14.21 rows=7 width=56)
@@ -123,12 +99,6 @@ INFO:  Num tuples: 8.000000
 
 SELECT id, ROUND(vector_l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
-INFO:  Query cost estimator
-INFO:  ---------------------
-INFO:  Total cost: 12.060000
-INFO:  Selectivity: 1.000000
-INFO:  Num pages: 3.000000
-INFO:  Num tuples: 8.000000
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
 INFO:  usearch index initialized
@@ -145,12 +115,6 @@ INFO:  usearch index initialized
 
 EXPLAIN SELECT id, ROUND(vector_l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
-INFO:  Query cost estimator
-INFO:  ---------------------
-INFO:  Total cost: 12.060000
-INFO:  Selectivity: 1.000000
-INFO:  Num pages: 3.000000
-INFO:  Num tuples: 8.000000
                                          QUERY PLAN                                          
 ---------------------------------------------------------------------------------------------
  Limit  (cost=0.00..14.19 rows=7 width=56)
@@ -176,12 +140,6 @@ INFO:  inserted 10000 elements
 INFO:  done saving 10000 vectors
 SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
 EXPLAIN SELECT * FROM sift_base10k ORDER BY v <-> :'v4444' LIMIT 10;
-INFO:  Query cost estimator
-INFO:  ---------------------
-INFO:  Total cost: 3603.000000
-INFO:  Selectivity: 1.000000
-INFO:  Num pages: 882.000000
-INFO:  Num tuples: 10000.000000
                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                           
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit  (cost=0.00..6.59 rows=10 width=44)
@@ -199,12 +157,6 @@ WITH neighbors AS (
     SELECT * FROM small_world order by v <-> '[1,0,0]' LIMIT 3
 ) SELECT COUNT(*) from neighbors;
 DEBUG:  StartTransaction(1) name: unnamed; blockState: DEFAULT; state: INPROGRESS, xid/subid/cid: 0/1/0
-INFO:  Query cost estimator
-INFO:  ---------------------
-INFO:  Total cost: 12.060000
-INFO:  Selectivity: 1.000000
-INFO:  Num pages: 3.000000
-INFO:  Num tuples: 8.000000
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
 INFO:  usearch index initialized
@@ -219,12 +171,6 @@ WITH neighbors AS (
     SELECT * FROM small_world order by v <-> '[1,0,0]' LIMIT 15
 ) SELECT COUNT(*) from neighbors;
 DEBUG:  StartTransaction(1) name: unnamed; blockState: DEFAULT; state: INPROGRESS, xid/subid/cid: 0/1/0
-INFO:  Query cost estimator
-INFO:  ---------------------
-INFO:  Total cost: 12.060000
-INFO:  Selectivity: 1.000000
-INFO:  Num pages: 3.000000
-INFO:  Num tuples: 8.000000
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
 INFO:  usearch index initialized
@@ -245,12 +191,6 @@ SELECT ARRAY[1,2,3] <-> ARRAY[3,2,1];
 ERROR:  Operator <-> has no standalone meaning and is reserved for use in vector index lookups only
 -- Expect error due to mismatching vector dimensions
 SELECT 1 FROM small_world ORDER BY v <-> '[0,1,0,1]' LIMIT 1;
-INFO:  Query cost estimator
-INFO:  ---------------------
-INFO:  Total cost: 12.060000
-INFO:  Selectivity: 1.000000
-INFO:  Num pages: 3.000000
-INFO:  Num tuples: 8.000000
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
 INFO:  usearch index initialized

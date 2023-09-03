@@ -88,13 +88,6 @@ static void hnswcostestimate(PlannerInfo *root,
     *indexSelectivity = costs.indexSelectivity;
     *indexCorrelation = 0;
     *indexPages = costs.numIndexPages;
-
-    elog(INFO, "Query cost estimator");
-    elog(INFO, "---------------------");
-    elog(INFO, "Total cost: %lf", costs.indexTotalCost);
-    elog(INFO, "Selectivity: %lf", costs.indexSelectivity);
-    elog(INFO, "Num pages: %lf", costs.numIndexPages);
-    elog(INFO, "Num tuples: %lf", costs.numIndexTuples);
 }
 
 /*
