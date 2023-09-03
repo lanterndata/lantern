@@ -44,7 +44,15 @@ SELECT cos_dist('{1,1}', '{0,1,0}');
 SELECT hamming_dist('{1,1}', '{0,1,0}');
 
 -- Expect errors due to improper use of the <-> operator outside of its supported context
-SELECT array[1,2,3] <-> array[3,2,1];
-SELECT ROUND((v <-> array[0,1,0])::numeric, 2) FROM small_world_cos ORDER BY v <-> '{0,1,0}' LIMIT 7;
-SELECT ROUND((v <-> array[0,1,0])::numeric, 2) FROM small_world_ham ORDER BY v <-> '{0,1,0}' LIMIT 7;
+SELECT ARRAY[1,2,3] <-> ARRAY[3,2,1];
+SELECT ROUND((v <-> ARRAY[0,1,0])::numeric, 2) FROM small_world_cos ORDER BY v <-> '{0,1,0}' LIMIT 7;
+SELECT ROUND((v <-> ARRAY[0,1,0])::numeric, 2) FROM small_world_ham ORDER BY v <-> '{0,1,0}' LIMIT 7;
 
+CREATE TABLE test (v REAL[]);
+INSERT INTO test (v) VALUES (ARRAY['{1,2}'::REAL[] <-> '{4,2}'::REAL[], 0]);
+SELECT v <-> '{1,2}' FROM test ORDER BY v <-> '{1,3}';
+SELECT v <-> '{1,2}' FROM test;
+WITH temp AS (SELECT v <-> '{1,2}' FROM test) SELECT 1 FROM temp;
+SELECT t.res FROM (SELECT v <-> '{1,2}' AS res FROM test) t;
+SELECT (SELECT v <-> '{1,2}' FROM test LIMIT 1) FROM test;
+SELECT COALESCE(v <-> '{1,2}', 0) FROM test;

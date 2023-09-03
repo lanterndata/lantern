@@ -73,43 +73,6 @@ int IsInsideQuotes(const char *query, int op_start, int op_end)
     return 0;
 }
 
-int CheckOperatorUsage(const char *query)
-{
-    const char *pattern = "(<->)";
-    const char *orderby_pattern = "order by";
-    regex_t     regex;
-    regex_t     regex2;
-    regmatch_t  matches[ 1 ];
-    int         reti;
-    int         reti2;
-    int         status = 0;
-
-    reti = regcomp(&regex, pattern, REG_EXTENDED | REG_ICASE);
-    reti2 = regcomp(&regex2, orderby_pattern, REG_EXTENDED | REG_ICASE);
-    assert(!reti);
-    assert(!reti2);
-
-    // Find all occurrences of the <-> operator
-    int offset = 0;
-    while((reti = regexec(&regex, query + offset, 1, matches, 0)) == 0) {
-        long start = offset + matches[ 0 ].rm_so;
-        long end = offset + matches[ 0 ].rm_eo;
-        char substring[ start - offset + 1 ];
-        strlcpy(substring, query + offset, start - offset);
-        // check if there is an ORDER BY
-        // in the latest matched substring
-        if(regexec(&regex2, substring, 0, NULL, 0) && !IsInsideQuotes(query, start, end)) {
-            status = 1;
-            break;
-        }
-        offset += matches[ 0 ].rm_eo;
-    }
-
-    regfree(&regex);
-    regfree(&regex2);
-    return status;
-}
-
 usearch_label_t GetUsearchLabel(ItemPointer itemPtr)
 {
     usearch_label_t label = 0;

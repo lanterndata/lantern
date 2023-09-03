@@ -5,12 +5,15 @@
 #include <access/htup_details.h>
 #include <access/reloptions.h>
 #include <catalog/pg_amproc.h>
-#include <executor/executor.h>
+#include <parser/parse_oper.h>
+#include <parser/analyze.h>
+#include <nodes/makefuncs.h>
 #include <fmgr.h>
 #include <utils/catcache.h>
 #include <utils/guc.h>
 #include <utils/rel.h>  // RelationData
 #include <utils/syscache.h>
+#include <utils/lsyscache.h>
 
 #ifdef _WIN32
 #define access _access
@@ -28,7 +31,7 @@
 //                       ^^^^
 static relopt_kind ldb_hnsw_index_withopts;
 
-static ExecutorStart_hook_type original_executor_start_hook = NULL;
+static post_parse_analyze_hook_type original_post_parse_analyze_hook = NULL;
 
 int ldb_hnsw_init_k;
 
@@ -135,16 +138,157 @@ bytea *ldb_amoptions(Datum reloptions, bool validate)
 #endif
 }
 
-void executor_hook(QueryDesc *queryDesc, int eflags)
+List *
+collect_sublinks(Node *node, List *sublink_list)
 {
-    if(original_executor_start_hook) {
-        original_executor_start_hook(queryDesc, eflags);
+    if (node == NULL)
+        return sublink_list;
+
+    if (IsA(node, SubLink))
+        sublink_list = lappend(sublink_list, node);
+
+    return expression_tree_walker(node, collect_sublinks, sublink_list);
+}
+
+static bool isOperatorUsedOutsideOrderBy(Node *node, bool outsideOrderBy, Oid intOperator, Oid floatOperator) {
+    if (node == NULL) return false;
+
+    if (IsA(node, TargetEntry)) {
+        TargetEntry *te = (TargetEntry *) node;
+        if (te->resjunk) {
+            return false;
+        }
+        return isOperatorUsedOutsideOrderBy(te->expr, outsideOrderBy, intOperator, floatOperator);
     }
 
-    if(CheckOperatorUsage(queryDesc->sourceText)) {
-        elog(ERROR, "Operator <-> has no standalone meaning and is reserved for use in vector index lookups only");
+    if (IsA(node, FuncExpr)) {
+        FuncExpr *funcExpr = (FuncExpr *) node;
+        ListCell *lc;
+        foreach(lc, funcExpr->args) {
+            if (isOperatorUsedOutsideOrderBy((Node *) lfirst(lc), outsideOrderBy, intOperator, floatOperator)) {
+                return true;
+            }
+        }
     }
-    standard_ExecutorStart(queryDesc, eflags);
+    
+    // If it's a Query node, handle its main parts and recurse into its subqueries
+    if (IsA(node, Query)) {
+        Query *query = (Query *) node;
+
+        // Checking if sortClause exists
+        if (query->sortClause != NIL) {
+            // Check if operator is used directly within ORDER BY
+            if (isOperatorUsedOutsideOrderBy((Node *) query->sortClause, false, intOperator, floatOperator)) {
+                return false;
+            }
+        }
+        
+        if (isOperatorUsedOutsideOrderBy((Node *) query->jointree, true, intOperator, floatOperator)) {
+            return true;
+        }
+
+        if (isOperatorUsedOutsideOrderBy((Node *) query->targetList, true, intOperator, floatOperator)) {
+            return true;
+        }
+
+        // Recurse into sublinks (subqueries within this query)
+        List *subLinks = collect_sublinks(node, NIL);
+        ListCell *lc;
+        foreach(lc, subLinks) {
+            SubLink *sublink = (SubLink *) lfirst(lc);
+            if (isOperatorUsedOutsideOrderBy(sublink->subselect, true, intOperator, floatOperator)) {
+                return true;
+            }
+        }
+
+        // Recurse into RTEs that are subqueries
+        foreach(lc, query->rtable) {
+            RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc);
+            if (rte->rtekind == RTE_SUBQUERY) {
+                if (isOperatorUsedOutsideOrderBy((Node *) rte->subquery, outsideOrderBy, intOperator, floatOperator)) {
+                    return true;
+                }
+            }
+        }
+
+        foreach(lc, query->cteList) {
+            CommonTableExpr *cte = (CommonTableExpr *) lfirst(lc);
+            if (isOperatorUsedOutsideOrderBy(cte->ctequery, outsideOrderBy, intOperator, floatOperator)) {
+                return true;
+            }
+        }
+    }
+
+
+    if (IsA(node, OpExpr)) {
+        OpExpr *opExpr = (OpExpr *) node;
+        if (opExpr->opno == intOperator || opExpr->opno == floatOperator) {
+            return outsideOrderBy;
+        }
+    }
+    
+    // If it's a list, recurse into its items
+    if (IsA(node, List)) {
+        List *list = (List *) node;
+
+        ListCell *lc;
+        foreach(lc, list) {
+            if (isOperatorUsedOutsideOrderBy((Node *) lfirst(lc), outsideOrderBy, intOperator, floatOperator)) {
+                return true;
+            }
+        }
+    }
+    
+    if (IsA(node, ArrayExpr)) {
+        ArrayExpr *arrayExpr = (ArrayExpr *) node;
+        ListCell *lc;
+        foreach(lc, arrayExpr->elements) {
+            if (isOperatorUsedOutsideOrderBy((Node *) lfirst(lc), outsideOrderBy, intOperator, floatOperator)) {
+                return true;
+            }
+        }
+    }
+
+    if (IsA(node, SubLink)) {
+        SubLink *sublink = (SubLink *) node;
+        if (isOperatorUsedOutsideOrderBy(sublink->subselect, true, intOperator, floatOperator)) {
+            return true;
+        }
+        return false;
+    }
+
+    if (IsA(node, CoalesceExpr)) {
+        CoalesceExpr *coalesce = (CoalesceExpr *)node;
+        ListCell *lc;
+        foreach(lc, coalesce->args) {
+            if (isOperatorUsedOutsideOrderBy(lfirst(lc), true, intOperator, floatOperator)) {
+                return true;
+            }
+        }
+    }
+
+
+    return false;
+}
+
+void post_parse_analyze_hook_with_operator_check(ParseState *pstate, Query *query, JumbleState *jstate)
+{
+    // If there was a previous hook, call it
+    if (original_post_parse_analyze_hook) {
+        original_post_parse_analyze_hook(pstate, query, jstate);
+    }
+
+    // Now, traverse and print the AST using the 'query' node as a starting point
+    Oid intArrayOid = get_array_type(INT4OID);
+    Oid floatArrayOid = get_array_type(FLOAT4OID);
+    List *nameList = lappend(NIL, makeString("<->"));
+    Oid intOperator = LookupOperName(pstate, nameList, intArrayOid, intArrayOid, true, -1);
+    Oid floatOperator = LookupOperName(pstate, nameList, floatArrayOid, floatArrayOid, true, -1);
+    if (OidIsValid(intOperator) && OidIsValid(floatOperator)) {
+        if (isOperatorUsedOutsideOrderBy((Node *) query, true, intOperator, floatOperator)) {
+            elog(ERROR, "The '<->' operator is used outside the ORDER BY clause");
+        }
+    }
 }
 
 /*
@@ -152,8 +296,8 @@ void executor_hook(QueryDesc *queryDesc, int eflags)
  */
 void _PG_init(void)
 {
-    original_executor_start_hook = ExecutorStart_hook;
-    ExecutorStart_hook = executor_hook;
+    original_post_parse_analyze_hook = post_parse_analyze_hook;
+    post_parse_analyze_hook = post_parse_analyze_hook_with_operator_check;
     // todo:: cross-check with this`
     // https://github.com/zombodb/zombodb/blob/34c732a0b143b5e424ced64c96e8c4d567a14177/src/access_method/options.rs#L895
     ldb_hnsw_index_withopts = add_reloption_kind();
@@ -254,5 +398,5 @@ HnswGetElementLimit(Relation index)
 void _PG_fini(void)
 {
     // Return back the original hook value.
-    ExecutorStart_hook = original_executor_start_hook;
+    post_parse_analyze_hook = original_post_parse_analyze_hook;
 }
