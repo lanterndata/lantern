@@ -37,6 +37,12 @@ INSERT INTO small_world_ham SELECT id, v FROM small_world;
 SET enable_seqscan = false;
 -- Verify that the distance functions work (check distances)
 SELECT ROUND(l2sq_dist(v, '{0,1,0}')::numeric, 2) FROM small_world_l2 ORDER BY v <-> '{0,1,0}';
+INFO:  Query cost estimator
+INFO:  ---------------------
+INFO:  Total cost: 20.025000
+INFO:  Selectivity: 1.000000
+INFO:  Num pages: 3.000000
+INFO:  Num tuples: 1070.000000
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized
@@ -53,6 +59,12 @@ INFO:  usearch index initialized
 (8 rows)
 
 SELECT ROUND(cos_dist(v, '{0,1,0}')::numeric, 2) FROM small_world_cos ORDER BY v <-> '{0,1,0}';
+INFO:  Query cost estimator
+INFO:  ---------------------
+INFO:  Total cost: 20.025000
+INFO:  Selectivity: 1.000000
+INFO:  Num pages: 3.000000
+INFO:  Num tuples: 1070.000000
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized
@@ -69,6 +81,12 @@ INFO:  usearch index initialized
 (8 rows)
 
 SELECT ROUND(hamming_dist(v, '{0,1,0}')::numeric, 2) FROM small_world_ham ORDER BY v <-> '{0,1,0}';
+INFO:  Query cost estimator
+INFO:  ---------------------
+INFO:  Total cost: 20.025000
+INFO:  Selectivity: 1.000000
+INFO:  Num pages: 3.000000
+INFO:  Num tuples: 1070.000000
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized
@@ -114,39 +132,75 @@ SELECT ARRAY_AGG(id ORDER BY id), ROUND(hamming_dist(v, '{0,1,0}')::numeric, 2) 
 
 -- Verify that the indexes is being used
 EXPLAIN SELECT id FROM small_world_l2 ORDER BY v <-> '{0,1,0}';
+INFO:  Query cost estimator
+INFO:  ---------------------
+INFO:  Total cost: 20.025000
+INFO:  Selectivity: 1.000000
+INFO:  Num pages: 3.000000
+INFO:  Num tuples: 1070.000000
                                            QUERY PLAN                                           
 ------------------------------------------------------------------------------------------------
- Index Scan using small_world_l2_v_idx on small_world_l2  (cost=0.00..60.05 rows=1070 width=20)
+ Index Scan using small_world_l2_v_idx on small_world_l2  (cost=0.00..73.40 rows=1070 width=20)
    Order By: (v <-> '{0,1,0}'::real[])
 (2 rows)
 
 EXPLAIN SELECT id FROM small_world_cos ORDER BY v <-> '{0,1,0}';
+INFO:  Query cost estimator
+INFO:  ---------------------
+INFO:  Total cost: 20.025000
+INFO:  Selectivity: 1.000000
+INFO:  Num pages: 3.000000
+INFO:  Num tuples: 1070.000000
                                             QUERY PLAN                                            
 --------------------------------------------------------------------------------------------------
- Index Scan using small_world_cos_v_idx on small_world_cos  (cost=0.00..60.05 rows=1070 width=20)
+ Index Scan using small_world_cos_v_idx on small_world_cos  (cost=0.00..73.40 rows=1070 width=20)
    Order By: (v <-> '{0,1,0}'::real[])
 (2 rows)
 
 EXPLAIN SELECT id FROM small_world_ham ORDER BY v <-> '{0,1,0}';
+INFO:  Query cost estimator
+INFO:  ---------------------
+INFO:  Total cost: 20.025000
+INFO:  Selectivity: 1.000000
+INFO:  Num pages: 3.000000
+INFO:  Num tuples: 1070.000000
                                             QUERY PLAN                                            
 --------------------------------------------------------------------------------------------------
- Index Scan using small_world_ham_v_idx on small_world_ham  (cost=0.00..60.05 rows=1070 width=20)
+ Index Scan using small_world_ham_v_idx on small_world_ham  (cost=0.00..73.40 rows=1070 width=20)
    Order By: (v <-> '{0,1,0}'::integer[])
 (2 rows)
 
 \set ON_ERROR_STOP off
 -- Expect errors due to mismatching vector dimensions
 SELECT 1 FROM small_world_l2 ORDER BY v <-> '{0,1,0,1}' LIMIT 1;
+INFO:  Query cost estimator
+INFO:  ---------------------
+INFO:  Total cost: 20.025000
+INFO:  Selectivity: 1.000000
+INFO:  Num pages: 3.000000
+INFO:  Num tuples: 1070.000000
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized
 ERROR:  Expected real array with dimension 3, got 4
 SELECT 1 FROM small_world_cos ORDER BY v <-> '{0,1,0,1}' LIMIT 1;
+INFO:  Query cost estimator
+INFO:  ---------------------
+INFO:  Total cost: 20.025000
+INFO:  Selectivity: 1.000000
+INFO:  Num pages: 3.000000
+INFO:  Num tuples: 1070.000000
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized
 ERROR:  Expected real array with dimension 3, got 4
 SELECT 1 FROM small_world_ham ORDER BY v <-> '{0,1,0,1}' LIMIT 1;
+INFO:  Query cost estimator
+INFO:  ---------------------
+INFO:  Total cost: 20.025000
+INFO:  Selectivity: 1.000000
+INFO:  Num pages: 3.000000
+INFO:  Num tuples: 1070.000000
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized
@@ -161,6 +215,18 @@ ERROR:  expected equally sized arrays but got arrays with dimensions 2 and 3
 SELECT array[1,2,3] <-> array[3,2,1];
 ERROR:  Operator <-> has no standalone meaning and is reserved for use in vector index lookups only
 SELECT ROUND((v <-> array[0,1,0])::numeric, 2) FROM small_world_cos ORDER BY v <-> '{0,1,0}' LIMIT 7;
+INFO:  Query cost estimator
+INFO:  ---------------------
+INFO:  Total cost: 20.025000
+INFO:  Selectivity: 1.000000
+INFO:  Num pages: 3.000000
+INFO:  Num tuples: 1070.000000
 ERROR:  Operator <-> has no standalone meaning and is reserved for use in vector index lookups only
 SELECT ROUND((v <-> array[0,1,0])::numeric, 2) FROM small_world_ham ORDER BY v <-> '{0,1,0}' LIMIT 7;
+INFO:  Query cost estimator
+INFO:  ---------------------
+INFO:  Total cost: 20.025000
+INFO:  Selectivity: 1.000000
+INFO:  Num pages: 3.000000
+INFO:  Num tuples: 1070.000000
 ERROR:  Operator <-> has no standalone meaning and is reserved for use in vector index lookups only

@@ -47,8 +47,6 @@ CREATE INDEX ON large_vector USING hnsw (v);
 \set ON_ERROR_STOP on
 
 -- Validate that index creation works with a larger number of vectors
-SET client_min_messages=debug5;
-
 CREATE TABLE sift_base10k (
     id SERIAL PRIMARY KEY,
     v VECTOR(128)
@@ -59,6 +57,7 @@ SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
 EXPLAIN SELECT * FROM sift_base10k ORDER BY v <-> :'v4444' LIMIT 10;
 
 -- Ensure we can query an index for more elements than the value of init_k
+SET client_min_messages TO DEBUG5;
 SET hnsw.init_k = 4;
 WITH neighbors AS (
     SELECT * FROM small_world order by v <-> '[1,0,0]' LIMIT 3

@@ -41,9 +41,8 @@ psql -U ${DB_USER} \
           sed  -e 's! Memory: [0-9]\{1,\}kB!!' \
                -e 's! Memory Usage: [0-9]\{1,\}kB!!' \
                -e 's! Average  Peak Memory: [0-9]\{1,\}kB!!' \
+               -e 's! (Buffers: shared hit=[0-9]\+) dirtied=[0-9]\+!!' \
                -e 's! time=[0-9]\+\.[0-9]\+\.\.[0-9]\+\.[0-9]\+!!' | \
           grep -v 'DEBUG:  rehashing catalog cache id' | \
           grep -Gv '^ Planning Time:' | \
-          grep -Gv '^ Execution Time:' | \
-          # Only print debug messages followed by LANTERN
-          grep -vP 'DEBUG:(?!.*LANTERN)'
+          grep -Gv '^ Execution Time:'
