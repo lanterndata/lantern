@@ -118,7 +118,7 @@ bool ldb_aminsert(Relation         index,
     // currently not fully ported to the latest changes
     assert(false);
 #else
-    assert(insertstate->retriever_ctx->takenbuffers_next == 0);
+    assert(dlist_is_empty(&insertstate->retriever_ctx->takenbuffers));
 #endif
 
     assert(hdr->magicNumber == LDB_WAL_MAGIC_NUMBER);

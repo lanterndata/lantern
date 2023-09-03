@@ -7,7 +7,6 @@
 
 #include "external_index.h"
 
-#define TAKENBUFFERS_MAX 1000
 // this area is used to return pointers back to usearch
 
 RetrieverCtx* ldb_wal_retriever_area_init(Relation index_rel, HnswIndexHeaderPage* header_page_under_wal);
