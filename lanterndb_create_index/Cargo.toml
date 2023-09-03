@@ -16,4 +16,4 @@ cxx = "1.0.106"
 postgres-types = { version = "0.2.6", features = ["derive"] }
 tokio = { version = "1.32.0", features = ["full" ] }
 tokio-postgres = "0.7.10"
-usearch = "0.22.3"
+usearch = { git = "https://github.com/Ngalstyan4/usearch.git", branch = "pg-rebase" }
