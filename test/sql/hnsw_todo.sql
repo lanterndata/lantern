@@ -43,15 +43,14 @@ SELECT ROUND(hamming_dist(v, '{0,0}')::numeric, 2) FROM small_world_ham ORDER BY
 
 -- todo: operators: handle when index is not created
 -- todo: operators: throw errors here too
-SELECT MAX(v <-> '{1,2}') FROM test;
-SELECT test.v FROM test JOIN test2 ON test.v <-> '{1,2}' = test2.v <-> '{1,3}';
-SELECT CASE WHEN v <-> '{1,2}' > 1 THEN 'High' ELSE 'Low' END FROM test;
-SELECT (v <-> '{1,2}') + (v <-> '{1,3}') FROM test;
-SELECT v <-> '{1,2}' FROM test UNION SELECT v <-> '{1,3}' FROM test;
-SELECT v FROM test  WHERE ARRAY[v <-> '{1,2}', v <-> '{1,3}'] && ARRAY[1.5, 2.0];
-INSERT INTO test (v) VALUES ('{2,3}') RETURNING v <-> '{1,2}';
-SELECT v <-> '{1,2}' FROM test ORDER BY id OFFSET 5 FETCH NEXT 10 ROWS ONLY;
-(SELECT v <-> '{1,2}' FROM test WHERE id < 5) UNION (SELECT v <-> '{1,3}' FROM test WHERE id >= 5);
+CREATE TABLE test1 (id SERIAL, v REAL[]);
+CREATE TABLE test2 (id SERIAL, v REAL[]);
+SELECT MAX(v <-> '{1,2}') FROM test1;
+SELECT test1.v FROM test1 JOIN test2 ON test1.v <-> '{1,2}' = test2.v <-> '{1,3}';
+SELECT CASE WHEN v <-> '{1,2}' > 1 THEN 'High' ELSE 'Low' END FROM test1;
+SELECT (v <-> '{1,2}') + (v <-> '{1,3}') FROM test1;
+INSERT INTO test1 (v) VALUES ('{2,3}') RETURNING v <-> '{1,2}';
+SELECT * FROM test1 JOIN test2 ON test1.v <-> test2.v < 0.5;
 
 --- Test scenarious ---
 -----------------------------------------

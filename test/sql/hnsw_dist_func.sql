@@ -50,20 +50,25 @@ SELECT ROUND((v <-> ARRAY[0,1,0])::numeric, 2) FROM small_world_ham ORDER BY v <
 
 -- More robust distance operator tests
 
-CREATE TABLE test (id SERIAL, v REAL[]);
-INSERT INTO test (v) VALUES ('{5,3}');
+CREATE TABLE test1 (id SERIAL, v REAL[]);
+CREATE TABLE test2 (id SERIAL, v REAL[]);
+INSERT INTO test1 (v) VALUES ('{5,3}');
+INSERT INTO test2 (v) VALUES ('{5,4}');
 
 -- Expect success
-SELECT COALESCE(id, 0) FROM test ORDER BY v <-> '{1,2}';
+SELECT COALESCE(id, 0) FROM test1 ORDER BY v <-> '{1,2}';
 SELECT 0 + 1;
-SELECT 1 FROM test WHERE id = 0 + 1;
+SELECT 1 FROM test1 WHERE id = 0 + 1;
 
 -- Expect errors
-INSERT INTO test (v) VALUES (ARRAY['{1,2}'::REAL[] <-> '{4,2}'::REAL[], 0]);
-SELECT v <-> '{1,2}' FROM test ORDER BY v <-> '{1,3}';
-SELECT v <-> '{1,2}' FROM test;
-WITH temp AS (SELECT v <-> '{1,2}' FROM test) SELECT 1 FROM temp;
-SELECT t.res FROM (SELECT v <-> '{1,2}' AS res FROM test) t;
-SELECT (SELECT v <-> '{1,2}' FROM test LIMIT 1) FROM test;
-SELECT COALESCE(v <-> '{1,2}', 0) FROM test;
-SELECT EXISTS (SELECT v <-> '{1,2}' FROM test);
+INSERT INTO test1 (v) VALUES (ARRAY['{1,2}'::REAL[] <-> '{4,2}'::REAL[], 0]);
+SELECT v <-> '{1,2}' FROM test1 ORDER BY v <-> '{1,3}';
+SELECT v <-> '{1,2}' FROM test1;
+WITH temp AS (SELECT v <-> '{1,2}' FROM test1) SELECT 1 FROM temp;
+SELECT t.res FROM (SELECT v <-> '{1,2}' AS res FROM test1) t;
+SELECT (SELECT v <-> '{1,2}' FROM test1 LIMIT 1) FROM test1;
+SELECT COALESCE(v <-> '{1,2}', 0) FROM test1;
+SELECT EXISTS (SELECT v <-> '{1,2}' FROM test1);
+SELECT test1.v <-> test2.v FROM test1 JOIN test2 USING (id);
+SELECT v <-> '{1,2}' FROM test1 UNION SELECT v <-> '{1,3}' FROM test1;
+(SELECT v <-> '{1,2}' FROM test1 WHERE id < 5) UNION (SELECT v <-> '{1,3}' FROM test1 WHERE id >= 5);
