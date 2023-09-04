@@ -42,37 +42,6 @@ void PopulateUsearchOpts(Relation index, usearch_init_options_t *opts)
     opts->quantization = usearch_scalar_f32_k;
 }
 
-int IsInsideQuotes(const char *query, int op_start, int op_end)
-{
-    if(op_start == 0) return 0;
-
-    int    single_quote_start = -1;
-    size_t offset = 0;
-
-    while(strcmp(query + offset, "\0") != 0) {
-        char s = *(query + offset);
-        if(s == '\'') {
-            // if current char is single quote
-            if(single_quote_start == -1) {
-                // if we didn't encounter any unclosed single quote before
-                // keep the start offset
-                single_quote_start = offset;
-            } else {
-                // if we already have open single quote
-                // check if our operator is inside quotes
-                // return 1
-                if(single_quote_start < op_start && offset > op_end) {
-                    return 1;
-                }
-                single_quote_start = -1;
-            }
-        }
-        offset += 1;
-    }
-
-    return 0;
-}
-
 usearch_label_t GetUsearchLabel(ItemPointer itemPtr)
 {
     usearch_label_t label = 0;
