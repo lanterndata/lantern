@@ -5,6 +5,7 @@
 #include <access/htup_details.h>
 #include <access/reloptions.h>
 #include <catalog/pg_amproc.h>
+#include <catalog/pg_type_d.h>
 #include <parser/parse_oper.h>
 #include <parser/analyze.h>
 #include <nodes/makefuncs.h>
