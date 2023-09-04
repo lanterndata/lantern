@@ -138,7 +138,7 @@ bytea *ldb_amoptions(Datum reloptions, bool validate)
 #endif
 }
 
-static bool isOperatorUsedOutsideOrderBy(Node *node, Oid intOperator, Oid floatOperator) {
+static bool isOperatorUsedOutsideOrderBy(Node *node, List* oidList) {
     if (node == NULL) return false;
 
     if (IsA(node, TargetEntry)) {
@@ -146,14 +146,14 @@ static bool isOperatorUsedOutsideOrderBy(Node *node, Oid intOperator, Oid floatO
         if (te->resjunk) {
             return false;
         }
-        return isOperatorUsedOutsideOrderBy(te->expr, intOperator, floatOperator);
+        return isOperatorUsedOutsideOrderBy(te->expr, oidList);
     }
 
     if (IsA(node, FuncExpr)) {
         FuncExpr *funcExpr = (FuncExpr *) node;
         ListCell *lc;
         foreach(lc, funcExpr->args) {
-            if (isOperatorUsedOutsideOrderBy((Node *) lfirst(lc), intOperator, floatOperator)) {
+            if (isOperatorUsedOutsideOrderBy((Node *) lfirst(lc), oidList)) {
                 return true;
             }
         }
@@ -163,7 +163,7 @@ static bool isOperatorUsedOutsideOrderBy(Node *node, Oid intOperator, Oid floatO
     if (IsA(node, Query)) {
         Query *query = (Query *) node;
 
-        if (isOperatorUsedOutsideOrderBy((Node *) query->targetList, intOperator, floatOperator)) {
+        if (isOperatorUsedOutsideOrderBy((Node *) query->targetList, oidList)) {
             return true;
         }
 
@@ -172,7 +172,7 @@ static bool isOperatorUsedOutsideOrderBy(Node *node, Oid intOperator, Oid floatO
         foreach(lc, query->rtable) {
             RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc);
             if (rte->rtekind == RTE_SUBQUERY) {
-                if (isOperatorUsedOutsideOrderBy((Node *) rte->subquery, intOperator, floatOperator)) {
+                if (isOperatorUsedOutsideOrderBy((Node *) rte->subquery, oidList)) {
                     return true;
                 }
             }
@@ -180,7 +180,7 @@ static bool isOperatorUsedOutsideOrderBy(Node *node, Oid intOperator, Oid floatO
 
         foreach(lc, query->cteList) {
             CommonTableExpr *cte = (CommonTableExpr *) lfirst(lc);
-            if (isOperatorUsedOutsideOrderBy(cte->ctequery, intOperator, floatOperator)) {
+            if (isOperatorUsedOutsideOrderBy(cte->ctequery, oidList)) {
                 return true;
             }
         }
@@ -189,7 +189,7 @@ static bool isOperatorUsedOutsideOrderBy(Node *node, Oid intOperator, Oid floatO
 
     if (IsA(node, OpExpr)) {
         OpExpr *opExpr = (OpExpr *) node;
-        if (opExpr->opno == intOperator || opExpr->opno == floatOperator) {
+        if (list_member_oid(oidList, opExpr->opno)) {
             return true;
         }
     }
@@ -200,7 +200,7 @@ static bool isOperatorUsedOutsideOrderBy(Node *node, Oid intOperator, Oid floatO
 
         ListCell *lc;
         foreach(lc, list) {
-            if (isOperatorUsedOutsideOrderBy((Node *) lfirst(lc), intOperator, floatOperator)) {
+            if (isOperatorUsedOutsideOrderBy((Node *) lfirst(lc), oidList)) {
                 return true;
             }
         }
@@ -210,7 +210,7 @@ static bool isOperatorUsedOutsideOrderBy(Node *node, Oid intOperator, Oid floatO
         ArrayExpr *arrayExpr = (ArrayExpr *) node;
         ListCell *lc;
         foreach(lc, arrayExpr->elements) {
-            if (isOperatorUsedOutsideOrderBy((Node *) lfirst(lc), intOperator, floatOperator)) {
+            if (isOperatorUsedOutsideOrderBy((Node *) lfirst(lc), oidList)) {
                 return true;
             }
         }
@@ -218,7 +218,7 @@ static bool isOperatorUsedOutsideOrderBy(Node *node, Oid intOperator, Oid floatO
 
     if (IsA(node, SubLink)) {
         SubLink *sublink = (SubLink *) node;
-        if (isOperatorUsedOutsideOrderBy(sublink->subselect, intOperator, floatOperator)) {
+        if (isOperatorUsedOutsideOrderBy(sublink->subselect, oidList)) {
             return true;
         }
     }
@@ -227,13 +227,38 @@ static bool isOperatorUsedOutsideOrderBy(Node *node, Oid intOperator, Oid floatO
         CoalesceExpr *coalesce = (CoalesceExpr *)node;
         ListCell *lc;
         foreach(lc, coalesce->args) {
-            if (isOperatorUsedOutsideOrderBy(lfirst(lc), intOperator, floatOperator)) {
+            if (isOperatorUsedOutsideOrderBy(lfirst(lc), oidList)) {
                 return true;
             }
         }
     }
 
     return false;
+}
+
+List *
+get_operator_oids(ParseState *pstate)
+{
+    List *oidList = NIL;
+
+    Oid intArrayOid = get_array_type(INT4OID);
+    Oid floatArrayOid = get_array_type(FLOAT4OID);
+
+    List *nameList = lappend(NIL, makeString("<->"));
+
+    Oid intOperator = LookupOperName(pstate, nameList, intArrayOid, intArrayOid, true, -1);
+    Oid floatOperator = LookupOperName(pstate, nameList, floatArrayOid, floatArrayOid, true, -1);
+
+    if (OidIsValid(intOperator)) {
+        oidList = lappend_oid(oidList, intOperator);
+    }
+    if (OidIsValid(floatOperator)) {
+        oidList = lappend_oid(oidList, floatOperator);
+    }
+
+    list_free(nameList);
+
+    return oidList;
 }
 
 void post_parse_analyze_hook_with_operator_check(ParseState *pstate, Query *query, JumbleState *jstate)
@@ -244,16 +269,13 @@ void post_parse_analyze_hook_with_operator_check(ParseState *pstate, Query *quer
     }
 
     // Now, traverse and print the AST using the 'query' node as a starting point
-    Oid intArrayOid = get_array_type(INT4OID);
-    Oid floatArrayOid = get_array_type(FLOAT4OID);
-    List *nameList = lappend(NIL, makeString("<->"));
-    Oid intOperator = LookupOperName(pstate, nameList, intArrayOid, intArrayOid, true, -1);
-    Oid floatOperator = LookupOperName(pstate, nameList, floatArrayOid, floatArrayOid, true, -1);
-    if (OidIsValid(intOperator) && OidIsValid(floatOperator)) {
-        if (isOperatorUsedOutsideOrderBy((Node *) query, intOperator, floatOperator)) {
+    List *oidList = get_operator_oids(pstate);
+    if (oidList != NIL) {
+        if (isOperatorUsedOutsideOrderBy((Node *) query, oidList)) {
             elog(ERROR, "The '<->' operator is used outside the ORDER BY clause");
         }
     }
+    list_free(oidList);
 }
 
 /*
