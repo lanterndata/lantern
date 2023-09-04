@@ -138,18 +138,6 @@ bytea *ldb_amoptions(Datum reloptions, bool validate)
 #endif
 }
 
-List *
-collect_sublinks(Node *node, List *sublink_list)
-{
-    if (node == NULL)
-        return sublink_list;
-
-    if (IsA(node, SubLink))
-        sublink_list = lappend(sublink_list, node);
-
-    return expression_tree_walker(node, collect_sublinks, sublink_list);
-}
-
 static bool isOperatorUsedOutsideOrderBy(Node *node, bool outsideOrderBy, Oid intOperator, Oid floatOperator) {
     if (node == NULL) return false;
 
@@ -191,17 +179,8 @@ static bool isOperatorUsedOutsideOrderBy(Node *node, bool outsideOrderBy, Oid in
             return true;
         }
 
-        // Recurse into sublinks (subqueries within this query)
-        List *subLinks = collect_sublinks(node, NIL);
-        ListCell *lc;
-        foreach(lc, subLinks) {
-            SubLink *sublink = (SubLink *) lfirst(lc);
-            if (isOperatorUsedOutsideOrderBy(sublink->subselect, true, intOperator, floatOperator)) {
-                return true;
-            }
-        }
-
         // Recurse into RTEs that are subqueries
+        ListCell *lc;
         foreach(lc, query->rtable) {
             RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc);
             if (rte->rtekind == RTE_SUBQUERY) {
