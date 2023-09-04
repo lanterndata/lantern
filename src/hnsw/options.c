@@ -261,11 +261,19 @@ get_operator_oids(ParseState *pstate)
     return oidList;
 }
 
-void post_parse_analyze_hook_with_operator_check(ParseState *pstate, Query *query, JumbleState *jstate)
+void post_parse_analyze_hook_with_operator_check(ParseState *pstate, Query *query
+#if PG_VERSION_NUM >= 140000
+    , JumbleState *jstate
+#endif
+)
 {
     // If there was a previous hook, call it
     if (original_post_parse_analyze_hook) {
+#if PG_VERSION_NUM >= 140000
         original_post_parse_analyze_hook(pstate, query, jstate);
+#else
+        original_post_parse_analyze_hook(pstate, query);
+#endif
     }
 
     // Now, traverse and print the AST using the 'query' node as a starting point
