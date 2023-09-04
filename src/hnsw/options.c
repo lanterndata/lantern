@@ -1,17 +1,19 @@
 #include <postgres.h>
 
 #include "options.h"
-#include "parse_op.h"
+
 #include <access/htup_details.h>
 #include <access/reloptions.h>
 #include <catalog/pg_amproc.h>
 #include <catalog/pg_type_d.h>
-#include <parser/analyze.h>
 #include <fmgr.h>
+#include <parser/analyze.h>
 #include <utils/catcache.h>
 #include <utils/guc.h>
 #include <utils/rel.h>  // RelationData
 #include <utils/syscache.h>
+
+#include "parse_op.h"
 
 #ifdef _WIN32
 #define access _access
@@ -136,14 +138,16 @@ bytea *ldb_amoptions(Datum reloptions, bool validate)
 #endif
 }
 
-void post_parse_analyze_hook_with_operator_check(ParseState *pstate, Query *query
+void post_parse_analyze_hook_with_operator_check(ParseState *pstate,
+                                                 Query      *query
 #if PG_VERSION_NUM >= 140000
-    , JumbleState *jstate
+                                                 ,
+                                                 JumbleState *jstate
 #endif
 )
 {
     // If there was a previous hook, call it
-    if (original_post_parse_analyze_hook) {
+    if(original_post_parse_analyze_hook) {
 #if PG_VERSION_NUM >= 140000
         original_post_parse_analyze_hook(pstate, query, jstate);
 #else
@@ -153,8 +157,8 @@ void post_parse_analyze_hook_with_operator_check(ParseState *pstate, Query *quer
 
     // Now, traverse and print the AST using the 'query' node as a starting point
     List *oidList = get_operator_oids(pstate);
-    if (oidList != NIL) {
-        if (isOperatorUsedOutsideOrderBy((Node *) query, oidList)) {
+    if(oidList != NIL) {
+        if(isOperatorUsedOutsideOrderBy((Node *)query, oidList)) {
             elog(ERROR, "The '<->' operator is used outside the ORDER BY clause");
         }
     }
