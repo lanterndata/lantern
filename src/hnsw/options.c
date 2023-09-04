@@ -138,7 +138,7 @@ bytea *ldb_amoptions(Datum reloptions, bool validate)
 #endif
 }
 
-static bool isOperatorUsedOutsideOrderBy(Node *node, bool outsideOrderBy, Oid intOperator, Oid floatOperator) {
+static bool isOperatorUsedOutsideOrderBy(Node *node, Oid intOperator, Oid floatOperator) {
     if (node == NULL) return false;
 
     if (IsA(node, TargetEntry)) {
@@ -146,14 +146,14 @@ static bool isOperatorUsedOutsideOrderBy(Node *node, bool outsideOrderBy, Oid in
         if (te->resjunk) {
             return false;
         }
-        return isOperatorUsedOutsideOrderBy(te->expr, outsideOrderBy, intOperator, floatOperator);
+        return isOperatorUsedOutsideOrderBy(te->expr, intOperator, floatOperator);
     }
 
     if (IsA(node, FuncExpr)) {
         FuncExpr *funcExpr = (FuncExpr *) node;
         ListCell *lc;
         foreach(lc, funcExpr->args) {
-            if (isOperatorUsedOutsideOrderBy((Node *) lfirst(lc), outsideOrderBy, intOperator, floatOperator)) {
+            if (isOperatorUsedOutsideOrderBy((Node *) lfirst(lc), intOperator, floatOperator)) {
                 return true;
             }
         }
@@ -163,19 +163,7 @@ static bool isOperatorUsedOutsideOrderBy(Node *node, bool outsideOrderBy, Oid in
     if (IsA(node, Query)) {
         Query *query = (Query *) node;
 
-        // Checking if sortClause exists
-        if (query->sortClause != NIL) {
-            // Check if operator is used directly within ORDER BY
-            if (isOperatorUsedOutsideOrderBy((Node *) query->sortClause, false, intOperator, floatOperator)) {
-                return false;
-            }
-        }
-        
-        if (isOperatorUsedOutsideOrderBy((Node *) query->jointree, true, intOperator, floatOperator)) {
-            return true;
-        }
-
-        if (isOperatorUsedOutsideOrderBy((Node *) query->targetList, true, intOperator, floatOperator)) {
+        if (isOperatorUsedOutsideOrderBy((Node *) query->targetList, intOperator, floatOperator)) {
             return true;
         }
 
@@ -184,7 +172,7 @@ static bool isOperatorUsedOutsideOrderBy(Node *node, bool outsideOrderBy, Oid in
         foreach(lc, query->rtable) {
             RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc);
             if (rte->rtekind == RTE_SUBQUERY) {
-                if (isOperatorUsedOutsideOrderBy((Node *) rte->subquery, outsideOrderBy, intOperator, floatOperator)) {
+                if (isOperatorUsedOutsideOrderBy((Node *) rte->subquery, intOperator, floatOperator)) {
                     return true;
                 }
             }
@@ -192,7 +180,7 @@ static bool isOperatorUsedOutsideOrderBy(Node *node, bool outsideOrderBy, Oid in
 
         foreach(lc, query->cteList) {
             CommonTableExpr *cte = (CommonTableExpr *) lfirst(lc);
-            if (isOperatorUsedOutsideOrderBy(cte->ctequery, outsideOrderBy, intOperator, floatOperator)) {
+            if (isOperatorUsedOutsideOrderBy(cte->ctequery, intOperator, floatOperator)) {
                 return true;
             }
         }
@@ -202,7 +190,7 @@ static bool isOperatorUsedOutsideOrderBy(Node *node, bool outsideOrderBy, Oid in
     if (IsA(node, OpExpr)) {
         OpExpr *opExpr = (OpExpr *) node;
         if (opExpr->opno == intOperator || opExpr->opno == floatOperator) {
-            return outsideOrderBy;
+            return true;
         }
     }
     
@@ -212,7 +200,7 @@ static bool isOperatorUsedOutsideOrderBy(Node *node, bool outsideOrderBy, Oid in
 
         ListCell *lc;
         foreach(lc, list) {
-            if (isOperatorUsedOutsideOrderBy((Node *) lfirst(lc), outsideOrderBy, intOperator, floatOperator)) {
+            if (isOperatorUsedOutsideOrderBy((Node *) lfirst(lc), intOperator, floatOperator)) {
                 return true;
             }
         }
@@ -222,7 +210,7 @@ static bool isOperatorUsedOutsideOrderBy(Node *node, bool outsideOrderBy, Oid in
         ArrayExpr *arrayExpr = (ArrayExpr *) node;
         ListCell *lc;
         foreach(lc, arrayExpr->elements) {
-            if (isOperatorUsedOutsideOrderBy((Node *) lfirst(lc), outsideOrderBy, intOperator, floatOperator)) {
+            if (isOperatorUsedOutsideOrderBy((Node *) lfirst(lc), intOperator, floatOperator)) {
                 return true;
             }
         }
@@ -230,22 +218,20 @@ static bool isOperatorUsedOutsideOrderBy(Node *node, bool outsideOrderBy, Oid in
 
     if (IsA(node, SubLink)) {
         SubLink *sublink = (SubLink *) node;
-        if (isOperatorUsedOutsideOrderBy(sublink->subselect, true, intOperator, floatOperator)) {
+        if (isOperatorUsedOutsideOrderBy(sublink->subselect, intOperator, floatOperator)) {
             return true;
         }
-        return false;
     }
 
     if (IsA(node, CoalesceExpr)) {
         CoalesceExpr *coalesce = (CoalesceExpr *)node;
         ListCell *lc;
         foreach(lc, coalesce->args) {
-            if (isOperatorUsedOutsideOrderBy(lfirst(lc), true, intOperator, floatOperator)) {
+            if (isOperatorUsedOutsideOrderBy(lfirst(lc), intOperator, floatOperator)) {
                 return true;
             }
         }
     }
-
 
     return false;
 }
@@ -264,7 +250,7 @@ void post_parse_analyze_hook_with_operator_check(ParseState *pstate, Query *quer
     Oid intOperator = LookupOperName(pstate, nameList, intArrayOid, intArrayOid, true, -1);
     Oid floatOperator = LookupOperName(pstate, nameList, floatArrayOid, floatArrayOid, true, -1);
     if (OidIsValid(intOperator) && OidIsValid(floatOperator)) {
-        if (isOperatorUsedOutsideOrderBy((Node *) query, true, intOperator, floatOperator)) {
+        if (isOperatorUsedOutsideOrderBy((Node *) query, intOperator, floatOperator)) {
             elog(ERROR, "The '<->' operator is used outside the ORDER BY clause");
         }
     }
