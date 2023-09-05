@@ -5,12 +5,15 @@
 #include <access/htup_details.h>
 #include <access/reloptions.h>
 #include <catalog/pg_amproc.h>
-#include <executor/executor.h>
+#include <catalog/pg_type_d.h>
 #include <fmgr.h>
+#include <parser/analyze.h>
 #include <utils/catcache.h>
 #include <utils/guc.h>
 #include <utils/rel.h>  // RelationData
 #include <utils/syscache.h>
+
+#include "../parser/parse_op.h"
 
 #ifdef _WIN32
 #define access _access
@@ -28,7 +31,7 @@
 //                       ^^^^
 static relopt_kind ldb_hnsw_index_withopts;
 
-static ExecutorStart_hook_type original_executor_start_hook = NULL;
+static post_parse_analyze_hook_type original_post_parse_analyze_hook = NULL;
 
 int ldb_hnsw_init_k;
 
@@ -135,16 +138,31 @@ bytea *ldb_amoptions(Datum reloptions, bool validate)
 #endif
 }
 
-void executor_hook(QueryDesc *queryDesc, int eflags)
+void post_parse_analyze_hook_with_operator_check(ParseState *pstate,
+                                                 Query      *query
+#if PG_VERSION_NUM >= 140000
+                                                 ,
+                                                 JumbleState *jstate
+#endif
+)
 {
-    if(original_executor_start_hook) {
-        original_executor_start_hook(queryDesc, eflags);
+    // If there was a previous hook, call it
+    if(original_post_parse_analyze_hook) {
+#if PG_VERSION_NUM >= 140000
+        original_post_parse_analyze_hook(pstate, query, jstate);
+#else
+        original_post_parse_analyze_hook(pstate, query);
+#endif
     }
 
-    if(CheckOperatorUsage(queryDesc->sourceText)) {
-        elog(ERROR, "Operator <-> has no standalone meaning and is reserved for use in vector index lookups only");
+    // Now, traverse and print the AST using the 'query' node as a starting point
+    List *oidList = get_operator_oids(pstate);
+    if(oidList != NIL) {
+        if(isOperatorUsedOutsideOrderBy((Node *)query, oidList)) {
+            elog(ERROR, "Operator <-> has no standalone meaning and is reserved for use in vector index lookups only");
+        }
     }
-    standard_ExecutorStart(queryDesc, eflags);
+    list_free(oidList);
 }
 
 /*
@@ -152,8 +170,8 @@ void executor_hook(QueryDesc *queryDesc, int eflags)
  */
 void _PG_init(void)
 {
-    original_executor_start_hook = ExecutorStart_hook;
-    ExecutorStart_hook = executor_hook;
+    original_post_parse_analyze_hook = post_parse_analyze_hook;
+    post_parse_analyze_hook = post_parse_analyze_hook_with_operator_check;
     // todo:: cross-check with this`
     // https://github.com/zombodb/zombodb/blob/34c732a0b143b5e424ced64c96e8c4d567a14177/src/access_method/options.rs#L895
     ldb_hnsw_index_withopts = add_reloption_kind();
@@ -254,5 +272,5 @@ HnswGetElementLimit(Relation index)
 void _PG_fini(void)
 {
     // Return back the original hook value.
-    ExecutorStart_hook = original_executor_start_hook;
+    post_parse_analyze_hook = original_post_parse_analyze_hook;
 }

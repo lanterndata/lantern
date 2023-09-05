@@ -21,17 +21,6 @@ SET enable_seqscan = false;
 
 \set ON_ERROR_STOP off
 
--- this should throw error, as it is out of index usage (no index)
-SELECT 1 FROM small_world_l2 order by vector <-> '{1,0,0}' LIMIT 3;
-EXPLAIN (COSTS FALSE) SELECT 1 FROM small_world_l2 order by vector <-> '{1,0,0}' LIMIT 3;
-
--- this should throw error, as it is out of index usage (in select)
-SELECT * FROM (
-    SELECT id, ROUND((vector <-> array[0,1,0])::numeric, 2) as dist
-    FROM small_world_l2
-    ORDER BY vector <-> array[0,1,0] LIMIT 7
-) v ORDER BY v.dist, v.id;
-
 CREATE INDEX ON small_world_l2 USING hnsw (vector dist_l2sq_ops);
 
 -- this should be supported
@@ -52,6 +41,11 @@ INSERT INTO small_world_ham (v) VALUES ('{0,0}'), ('{1,1}'), ('{2,2}'), ('{3,3}'
 CREATE INDEX ON small_world_ham USING hnsw (v dist_hamming_ops) WITH (dims=2);
 SELECT ROUND(hamming_dist(v, '{0,0}')::numeric, 2) FROM small_world_ham ORDER BY v <-> '{0,0}';
 
+-- todo: operators: handle when index is not created
+-- todo: operators: throw errors here too
+CREATE TABLE test1 (id SERIAL, v REAL[]);
+CREATE TABLE test2 (id SERIAL, v REAL[]);
+SELECT 1 FROM test1 ORDER BY (('{1,2}'::real[] <-> '{3,4}'::real[]) - 0);
 
 --- Test scenarious ---
 -----------------------------------------
