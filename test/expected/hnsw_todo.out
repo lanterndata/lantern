@@ -59,6 +59,15 @@ INFO:  usearch index initialized
   2.00
 (4 rows)
 
+-- todo: operators: handle when index is not created
+-- todo: operators: throw errors here too
+CREATE TABLE test1 (id SERIAL, v REAL[]);
+CREATE TABLE test2 (id SERIAL, v REAL[]);
+SELECT 1 FROM test1 ORDER BY (('{1,2}'::real[] <-> '{3,4}'::real[]) - 0);
+ ?column? 
+----------
+(0 rows)
+
 --- Test scenarious ---
 -----------------------------------------
 -- Case:
