@@ -7,9 +7,9 @@
 #include <commands/vacuum.h>
 #include <float.h>
 #include <utils/guc.h>
+#include <utils/lsyscache.h>
 #include <utils/selfuncs.h>
 #include <utils/spccache.h>
-#include <utils/lsyscache.h>
 
 #include "hnsw/build.h"
 #include "hnsw/delete.h"
@@ -260,29 +260,29 @@ HnswColumnType GetIndexColumnType(Relation index)
  */
 float4 *DatumGetSizedFloatArray(Datum datum, HnswColumnType type, int dimensions)
 {
-    if (type == VECTOR) {
+    if(type == VECTOR) {
         Vector *vector = DatumGetVector(datum);
-        if (vector->dim != dimensions) {
+        if(vector->dim != dimensions) {
             elog(ERROR, "Expected vector with dimension %d, got %d", dimensions, vector->dim);
         }
         return vector->x;
-    } else if (type == REAL_ARRAY) {
+    } else if(type == REAL_ARRAY) {
         ArrayType *array = DatumGetArrayTypePCopy(datum);
-        int array_dim = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
-        if (array_dim != dimensions) {
+        int        array_dim = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
+        if(array_dim != dimensions) {
             elog(ERROR, "Expected real array with dimension %d, got %d", dimensions, array_dim);
         }
-        return (float4 *) ARR_DATA_PTR(array);
-    } else if (type == INT_ARRAY) {
+        return (float4 *)ARR_DATA_PTR(array);
+    } else if(type == INT_ARRAY) {
         ArrayType *array = DatumGetArrayTypePCopy(datum);
-        int array_dim = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
-        if (array_dim != dimensions) {
+        int        array_dim = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
+        if(array_dim != dimensions) {
             elog(ERROR, "Expected int array with dimension %d, got %d", dimensions, array_dim);
         }
-        int *intArray = (int *) ARR_DATA_PTR(array);
-        float4 *floatArray = (float4 *) palloc(sizeof(float) * array_dim);
-        for (int i = 0; i < array_dim; i++) {
-            floatArray[i] = (float) intArray[i];
+        int    *intArray = (int *)ARR_DATA_PTR(array);
+        float4 *floatArray = (float4 *)palloc(sizeof(float) * array_dim);
+        for(int i = 0; i < array_dim; i++) {
+            floatArray[ i ] = (float)intArray[ i ];
         }
         // todo:: free this array
         return floatArray;

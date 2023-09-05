@@ -139,13 +139,8 @@ bool ldb_aminsert(Relation         index,
     // Generic XLog supports up to 4 pages in a single commit, so we are good.
     new_tuple = PrepareIndexTuple(index, state, hdr, &meta, new_tuple_id, level, insertstate);
 
-    usearch_add_external(uidx,
-                         *(unsigned long *)heap_tid,
-                         vector,
-                         new_tuple->node,
-                         usearch_scalar_f32_k,
-                         level,
-                         &error);
+    usearch_add_external(
+        uidx, *(unsigned long *)heap_tid, vector, new_tuple->node, usearch_scalar_f32_k, level, &error);
     if(error != NULL) {
         elog(ERROR, "usearch insert error: %s", error);
     }
