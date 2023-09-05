@@ -59,6 +59,7 @@ INSERT INTO test2 (v) VALUES ('{5,4}');
 SELECT COALESCE(id, 0) FROM test1 ORDER BY v <-> '{1,2}';
 SELECT 0 + 1;
 SELECT 1 FROM test1 WHERE id = 0 + 1;
+SELECT 1 FROM test1 ORDER BY v <-> (SELECT '{1,3}'::real[]);
 
 -- Expect errors
 INSERT INTO test1 (v) VALUES (ARRAY['{1,2}'::REAL[] <-> '{4,2}'::REAL[], 0]);

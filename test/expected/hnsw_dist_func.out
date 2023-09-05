@@ -188,6 +188,12 @@ SELECT 1 FROM test1 WHERE id = 0 + 1;
         1
 (1 row)
 
+SELECT 1 FROM test1 ORDER BY v <-> (SELECT '{1,3}'::real[]);
+ ?column? 
+----------
+        1
+(1 row)
+
 -- Expect errors
 INSERT INTO test1 (v) VALUES (ARRAY['{1,2}'::REAL[] <-> '{4,2}'::REAL[], 0]);
 ERROR:  Operator <-> has no standalone meaning and is reserved for use in vector index lookups only
