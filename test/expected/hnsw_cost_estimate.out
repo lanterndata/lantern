@@ -80,9 +80,9 @@ EXPLAIN ANALYZE SELECT * FROM sift_base10k_2 order by v <-> :'v4444'
 LIMIT 10;
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 289.797500
+DEBUG:  LANTERN - Total cost: 349.730862
 DEBUG:  LANTERN - Selectivity: 1.000000
-DEBUG:  LANTERN - Num pages: 71.000000
+DEBUG:  LANTERN - Num pages: 86.000000
 DEBUG:  LANTERN - Num tuples: 773.000000
 DEBUG:  LANTERN - ---------------------
 INFO:  began scanning with 0 keys and 1 orderbys
@@ -91,8 +91,8 @@ INFO:  usearch index initialized
 DEBUG:  LANTERN querying index for 10 elements
                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                           
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Limit  (cost=0.00..3.27 rows=10 width=40) (actual rows=10 loops=1)
-   ->  Index Scan using hnsw_idx on sift_base10k_2  (cost=0.00..3274.80 rows=10000 width=40) (actual rows=10 loops=1)
+ Limit  (cost=0.00..3.33 rows=10 width=40) (actual rows=10 loops=1)
+   ->  Index Scan using hnsw_idx on sift_base10k_2  (cost=0.00..3334.73 rows=10000 width=40) (actual rows=10 loops=1)
          Order By: (v <-> '{55,61,11,4,5,2,13,24,65,49,13,9,23,37,94,38,54,11,14,14,40,31,50,44,53,4,0,0,27,17,8,34,12,10,4,4,22,52,68,53,9,2,0,0,2,116,119,64,119,2,0,0,2,30,119,119,116,5,0,8,47,9,5,60,7,7,10,23,56,50,23,5,28,68,6,18,24,65,50,9,119,75,3,0,1,8,12,85,119,11,4,6,8,9,5,74,25,11,8,20,18,12,2,21,11,90,25,32,33,15,2,9,84,67,8,4,22,31,11,33,119,30,3,6,0,0,0,26}'::real[])
 (5 rows)
 
@@ -113,9 +113,9 @@ EXPLAIN ANALYZE SELECT * FROM sift_base10k_3 order by v <-> :'v4444'
 LIMIT 10;
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 922.406057
+DEBUG:  LANTERN - Total cost: 1122.420758
 DEBUG:  LANTERN - Selectivity: 1.000000
-DEBUG:  LANTERN - Num pages: 226.000000
+DEBUG:  LANTERN - Num pages: 276.000000
 DEBUG:  LANTERN - Num tuples: 2465.000000
 DEBUG:  LANTERN - ---------------------
 INFO:  began scanning with 0 keys and 1 orderbys
@@ -124,8 +124,8 @@ INFO:  usearch index initialized
 DEBUG:  LANTERN querying index for 10 elements
                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                           
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Limit  (cost=0.00..3.91 rows=10 width=40) (actual rows=10 loops=1)
-   ->  Index Scan using hnsw_idx on sift_base10k_3  (cost=0.00..3907.41 rows=10000 width=40) (actual rows=10 loops=1)
+ Limit  (cost=0.00..4.11 rows=10 width=40) (actual rows=10 loops=1)
+   ->  Index Scan using hnsw_idx on sift_base10k_3  (cost=0.00..4107.42 rows=10000 width=40) (actual rows=10 loops=1)
          Order By: (v <-> '{55,61,11,4,5,2,13,24,65,49,13,9,23,37,94,38,54,11,14,14,40,31,50,44,53,4,0,0,27,17,8,34,12,10,4,4,22,52,68,53,9,2,0,0,2,116,119,64,119,2,0,0,2,30,119,119,116,5,0,8,47,9,5,60,7,7,10,23,56,50,23,5,28,68,6,18,24,65,50,9,119,75,3,0,1,8,12,85,119,11,4,6,8,9,5,74,25,11,8,20,18,12,2,21,11,90,25,32,33,15,2,9,84,67,8,4,22,31,11,33,119,30,3,6,0,0,0,26}'::real[])
 (5 rows)
 
