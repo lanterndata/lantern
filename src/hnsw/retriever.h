@@ -16,7 +16,7 @@ void ldb_wal_retriever_area_reset(RetrieverCtx* ctx, HnswIndexHeaderPage* header
 
 void ldb_wal_retriever_area_fini(RetrieverCtx* ctx);
 
-void* ldb_wal_index_node_retriever(void* ctx, int id);
-void* ldb_wal_index_node_retriever_mut(void* ctx, int id);
+void* ldb_wal_index_node_retriever(void* ctx, uint64 id);
+void* ldb_wal_index_node_retriever_mut(void* ctx, uint64 id);
 
 #endif  // LDB_HNSW_RETRIEVER_H

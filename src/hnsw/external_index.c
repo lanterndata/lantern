@@ -574,7 +574,7 @@ BlockNumber getDataBlockNumber(RetrieverCtx *ctx, int id, bool add_to_extra_dirt
     return blockno;
 }
 
-void *ldb_wal_index_node_retriever(void *ctxp, int id)
+void *ldb_wal_index_node_retriever(void *ctxp, uint64 id)
 {
     RetrieverCtx   *ctx = (RetrieverCtx *)ctxp;
     BlockNumber     data_block_no;
@@ -641,7 +641,7 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
     pg_unreachable();
 }
 
-void *ldb_wal_index_node_retriever_mut(void *ctxp, int id)
+void *ldb_wal_index_node_retriever_mut(void *ctxp, uint64 id)
 {
     RetrieverCtx   *ctx = (RetrieverCtx *)ctxp;
     BlockNumber     data_block_no = getDataBlockNumber(ctx, id, true);
