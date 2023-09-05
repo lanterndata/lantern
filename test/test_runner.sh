@@ -46,4 +46,4 @@ psql -U ${DB_USER} \
           grep -Gv '^ Planning Time:' | \
           grep -Gv '^ Execution Time:' | \
           # Only print debug messages followed by LANTERN
-          grep -vP 'DEBUG:(?!.*LANTERN)'
+          perl -nle'print if !m{DEBUG:(?!.*LANTERN)}'
