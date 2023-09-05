@@ -17,7 +17,9 @@ bool isOperatorUsedOutsideOrderBy(Node *node, List *oidList)
         if(te->resjunk) {
             return false;
         }
-        return isOperatorUsedOutsideOrderBy(te->expr, oidList);
+        if(isOperatorUsedOutsideOrderBy(te->expr, oidList)) {
+            return true;
+        }
     }
 
     if(IsA(node, FuncExpr)) {
@@ -98,6 +100,16 @@ bool isOperatorUsedOutsideOrderBy(Node *node, List *oidList)
         ListCell     *lc;
         foreach(lc, coalesce->args) {
             if(isOperatorUsedOutsideOrderBy(lfirst(lc), oidList)) {
+                return true;
+            }
+        }
+    }
+
+    if(IsA(node, Aggref)) {
+        Aggref   *aggref = (Aggref *)node;
+        ListCell *lc;
+        foreach(lc, aggref->args) {
+            if(isOperatorUsedOutsideOrderBy((Node *)lfirst(lc), oidList)) {
                 return true;
             }
         }
