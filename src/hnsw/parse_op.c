@@ -9,6 +9,17 @@
 #include <utils/guc.h>
 #include <utils/lsyscache.h>
 
+static bool checkNodeList(List *list, List *oidList)
+{
+    ListCell *lc;
+    foreach(lc, list) {
+        if(isOperatorUsedOutsideOrderBy((Node *)lfirst(lc), oidList)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool isOperatorUsedOutsideOrderBy(Node *node, List *oidList)
 {
     if(node == NULL) return false;
@@ -25,15 +36,11 @@ bool isOperatorUsedOutsideOrderBy(Node *node, List *oidList)
 
     if(IsA(node, FuncExpr)) {
         FuncExpr *funcExpr = (FuncExpr *)node;
-        ListCell *lc;
-        foreach(lc, funcExpr->args) {
-            if(isOperatorUsedOutsideOrderBy((Node *)lfirst(lc), oidList)) {
-                return true;
-            }
+        if(checkNodeList(funcExpr->args, oidList)) {
+            return true;
         }
     }
 
-    // If it's a Query node, handle its main parts and recurse into its subqueries
     if(IsA(node, Query)) {
         Query *query = (Query *)node;
 
@@ -45,7 +52,6 @@ bool isOperatorUsedOutsideOrderBy(Node *node, List *oidList)
             return true;
         }
 
-        // Recurse into RTEs that are subqueries
         ListCell *lc;
         foreach(lc, query->rtable) {
             RangeTblEntry *rte = (RangeTblEntry *)lfirst(lc);
@@ -56,10 +62,8 @@ bool isOperatorUsedOutsideOrderBy(Node *node, List *oidList)
             }
         }
 
-        foreach(lc, query->returningList) {
-            if(isOperatorUsedOutsideOrderBy((Node *)lfirst(lc), oidList)) {
-                return true;
-            }
+        if(checkNodeList(query->returningList, oidList)) {
+            return true;
         }
 
         foreach(lc, query->cteList) {
@@ -75,33 +79,22 @@ bool isOperatorUsedOutsideOrderBy(Node *node, List *oidList)
         if(list_member_oid(oidList, opExpr->opno)) {
             return true;
         }
-        ListCell *lc;
-        foreach(lc, opExpr->args) {
-            if(isOperatorUsedOutsideOrderBy((Node *)lfirst(lc), oidList)) {
-                return true;
-            }
+        if(checkNodeList(opExpr->args, oidList)) {
+            return true;
         }
     }
 
-    // If it's a list, recurse into its items
     if(IsA(node, List)) {
         List *list = (List *)node;
-
-        ListCell *lc;
-        foreach(lc, list) {
-            if(isOperatorUsedOutsideOrderBy((Node *)lfirst(lc), oidList)) {
-                return true;
-            }
+        if(checkNodeList(list, oidList)) {
+            return true;
         }
     }
 
     if(IsA(node, ArrayExpr)) {
         ArrayExpr *arrayExpr = (ArrayExpr *)node;
-        ListCell  *lc;
-        foreach(lc, arrayExpr->elements) {
-            if(isOperatorUsedOutsideOrderBy((Node *)lfirst(lc), oidList)) {
-                return true;
-            }
+        if(checkNodeList(arrayExpr->elements, oidList)) {
+            return true;
         }
     }
 
@@ -114,31 +107,22 @@ bool isOperatorUsedOutsideOrderBy(Node *node, List *oidList)
 
     if(IsA(node, CoalesceExpr)) {
         CoalesceExpr *coalesce = (CoalesceExpr *)node;
-        ListCell     *lc;
-        foreach(lc, coalesce->args) {
-            if(isOperatorUsedOutsideOrderBy(lfirst(lc), oidList)) {
-                return true;
-            }
+        if(checkNodeList(coalesce->args, oidList)) {
+            return true;
         }
     }
 
     if(IsA(node, Aggref)) {
-        Aggref   *aggref = (Aggref *)node;
-        ListCell *lc;
-        foreach(lc, aggref->args) {
-            if(isOperatorUsedOutsideOrderBy((Node *)lfirst(lc), oidList)) {
-                return true;
-            }
+        Aggref *aggref = (Aggref *)node;
+        if(checkNodeList(aggref->args, oidList)) {
+            return true;
         }
     }
 
     if(IsA(node, FromExpr)) {
         FromExpr *fromExpr = (FromExpr *)node;
-        ListCell *lc;
-        foreach(lc, fromExpr->fromlist) {
-            if(isOperatorUsedOutsideOrderBy((Node *)lfirst(lc), oidList)) {
-                return true;
-            }
+        if(checkNodeList(fromExpr->fromlist, oidList)) {
+            return true;
         }
         if(isOperatorUsedOutsideOrderBy((Node *)fromExpr->quals, oidList)) {
             return true;
