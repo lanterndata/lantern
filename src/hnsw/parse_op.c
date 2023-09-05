@@ -7,7 +7,6 @@
 #include <parser/parse_oper.h>
 #include <utils/catcache.h>
 #include <utils/guc.h>
-#include <utils/lsyscache.h>
 
 static bool checkNodeList(List *list, List *oidList)
 {
@@ -161,8 +160,8 @@ List *get_operator_oids(ParseState *pstate)
 {
     List *oidList = NIL;
 
-    Oid intArrayOid = get_array_type(INT4OID);
-    Oid floatArrayOid = get_array_type(FLOAT4OID);
+    Oid intArrayOid = INT4ARRAYOID;
+    Oid floatArrayOid = FLOAT4ARRAYOID;
 
     List *nameList = lappend(NIL, makeString("<->"));
 
