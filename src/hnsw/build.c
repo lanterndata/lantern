@@ -112,8 +112,7 @@ static void BuildCallback(
     // do proper type checking instead of this assumption and test int int arrays and others
     AddTupleToUsearchIndex(tid, values, buildstate);
 #else
-    ldb_aminsert(
-        index, values, isnull, tid, buildstate->heap, UNIQUE_CHECK_NO, false, buildstate->indexInfo);
+    ldb_aminsert(index, values, isnull, tid, buildstate->heap, UNIQUE_CHECK_NO, false, buildstate->indexInfo);
 #endif
 
     /* Reset memory context */
@@ -323,6 +322,7 @@ static void BuildIndex(
 {
     usearch_error_t        error = NULL;
     usearch_init_options_t opts;
+    size_t                 num_added_vectors = 0;
     MemSet(&opts, 0, sizeof(opts));
 
     InitBuildState(buildstate, heap, index, indexInfo);
@@ -354,9 +354,6 @@ static void BuildIndex(
 
         UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_IN_MEMORY_INSERT);
         LanternBench("build hnsw index", ScanTable(buildstate));
-
-        elog(INFO, "inserted %ld elements", usearch_size(buildstate->usearch_index, &error));
-        assert(error == NULL);
     }
 #endif
 
@@ -364,11 +361,12 @@ static void BuildIndex(
     usearch_save(buildstate->usearch_index, NULL, &result_buf, &error);
     assert(error == NULL && result_buf != NULL);
 
+#ifndef BUILD_VIA_INSERTS
     size_t num_added_vectors = usearch_size(buildstate->usearch_index, &error);
     assert(error == NULL);
-
-#ifndef BUILD_VIA_INSERTS
-    elog(INFO, "done saving %ld vectors", num_added_vectors);
+#else
+    // we need this to initialize an empty index header for insertions
+    num_added_vectors = 0;
 #endif
 
     //****************************** saving to WAL BEGIN ******************************//
@@ -385,9 +383,11 @@ static void BuildIndex(
 
 #ifdef BUILD_VIA_INSERTS
     LanternBench("build hnsw index - using inserts", ScanTable(buildstate));
-    elog(INFO, "done saving %ld vectors", num_added_vectors);
 #endif
 
+    // add these just to match with old test output. should be removed soon
+    elog(INFO, "inserted %ld elements", buildstate->tuples_indexed);
+    elog(INFO, "done saving %ld vectors", buildstate->tuples_indexed);
     FreeBuildState(buildstate);
 }
 
