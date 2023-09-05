@@ -22,8 +22,8 @@ typedef struct HnswBuildState
     char          *index_file_path;
 
     /* Statistics */
-    double tuples_indexed;
-    double reltuples;
+    size_t tuples_indexed;
+    size_t reltuples;
 
     /* hnsw */
     hnsw_t          hnsw;

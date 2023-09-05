@@ -14,7 +14,7 @@
 
 typedef struct
 {
-    int   keys[ FA_CACHE_SIZE ];
+    uint64   keys[ FA_CACHE_SIZE ];
     void* values[ FA_CACHE_SIZE ];
     int   next;
 } FullyAssociativeCache;
@@ -30,7 +30,7 @@ static inline void fa_cache_init(FullyAssociativeCache* cache)
 }
 
 // Insert the key value pair into an already initialized cache
-static inline void fa_cache_insert(FullyAssociativeCache* cache, int key, void* value)
+static inline void fa_cache_insert(FullyAssociativeCache* cache, uint64 key, void* value)
 {
     cache->keys[ cache->next ] = key;
     cache->values[ cache->next ] = value;
@@ -38,7 +38,7 @@ static inline void fa_cache_insert(FullyAssociativeCache* cache, int key, void* 
 }
 
 // Get the value associated with the key
-static inline void* fa_cache_get(FullyAssociativeCache* cache, int key)
+static inline void* fa_cache_get(FullyAssociativeCache* cache, uint64 key)
 {
     for(int i = 0; i < FA_CACHE_SIZE; i++) {
         if(cache->keys[ i ] == key) {

@@ -15,6 +15,7 @@
 #include "bench.h"
 #include "external_index.h"
 #include "hnsw.h"
+#include "insert.h"
 #include "options.h"
 #include "utils.h"
 #include "vector.h"
@@ -82,10 +83,6 @@ static void AddTupleToUsearchIndex(ItemPointer tid, Datum *values, HnswBuildStat
     if(buildstate->usearch_index != NULL) usearch_add(buildstate->usearch_index, label, vector, usearch_scalar, &error);
 #endif
     assert(error == NULL);
-    buildstate->tuples_indexed++;
-    buildstate->reltuples++;
-    UpdateProgress(PROGRESS_CREATEIDX_TUPLES_DONE, buildstate->tuples_indexed);
-    UpdateProgress(PROGRESS_CREATEIDX_TUPLES_TOTAL, buildstate->reltuples);
 }
 
 /*
@@ -110,14 +107,22 @@ static void BuildCallback(
 
     /* Use memory context since detoast can allocate */
     oldCtx = MemoryContextSwitchTo(buildstate->tmpCtx);
-
+#ifndef BUILD_VIA_INSERTS
     // todo:: the argument values is assumed to be a real[] or vector (they have the same layout)
     // do proper type checking instead of this assumption and test int int arrays and others
     AddTupleToUsearchIndex(tid, values, buildstate);
+#else
+    ldb_aminsert(index, values, isnull, tid, buildstate->heap, UNIQUE_CHECK_NO, false, buildstate->indexInfo);
+#endif
 
     /* Reset memory context */
     MemoryContextSwitchTo(oldCtx);
     MemoryContextReset(buildstate->tmpCtx);
+
+    buildstate->tuples_indexed++;
+    buildstate->reltuples++;
+    UpdateProgress(PROGRESS_CREATEIDX_TUPLES_DONE, buildstate->tuples_indexed);
+    UpdateProgress(PROGRESS_CREATEIDX_TUPLES_TOTAL, buildstate->reltuples);
 }
 
 static int GetArrayLengthFromHeap(Relation heap, int indexCol)
@@ -317,6 +322,7 @@ static void BuildIndex(
 {
     usearch_error_t        error = NULL;
     usearch_init_options_t opts;
+    size_t                 num_added_vectors = 0;
     MemSet(&opts, 0, sizeof(opts));
 
     InitBuildState(buildstate, heap, index, indexInfo);
@@ -340,25 +346,28 @@ static void BuildIndex(
         // opts->dims = usearch_dimensions(buildstate->usearch_index, &error);
         // assert(error == NULL);
         // todo determine how to get ef construction and ef search params
-    } else {
+    }
+#ifndef BUILD_VIA_INSERTS
+    else {
         usearch_reserve(buildstate->usearch_index, 1100000, &error);
         assert(error == NULL);
 
         UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_IN_MEMORY_INSERT);
         LanternBench("build hnsw index", ScanTable(buildstate));
-
-        elog(INFO, "inserted %ld elements", usearch_size(buildstate->usearch_index, &error));
-        assert(error == NULL);
     }
+#endif
 
     char *result_buf = NULL;
     usearch_save(buildstate->usearch_index, NULL, &result_buf, &error);
     assert(error == NULL && result_buf != NULL);
 
+#ifndef BUILD_VIA_INSERTS
     size_t num_added_vectors = usearch_size(buildstate->usearch_index, &error);
     assert(error == NULL);
-
-    elog(INFO, "done saving %ld vectors", num_added_vectors);
+#else
+    // we need this to initialize an empty index header for insertions
+    num_added_vectors = 0;
+#endif
 
     //****************************** saving to WAL BEGIN ******************************//
     UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_LOAD);
@@ -372,6 +381,13 @@ static void BuildIndex(
     assert(error == NULL);
     buildstate->usearch_index = NULL;
 
+#ifdef BUILD_VIA_INSERTS
+    LanternBench("build hnsw index - using inserts", ScanTable(buildstate));
+#endif
+
+    // add these just to match with old test output. should be removed soon
+    elog(INFO, "inserted %ld elements", buildstate->tuples_indexed);
+    elog(INFO, "done saving %ld vectors", buildstate->tuples_indexed);
     FreeBuildState(buildstate);
 }
 

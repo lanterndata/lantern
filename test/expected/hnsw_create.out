@@ -31,7 +31,7 @@ INFO:  done saving 1000 vectors
 SELECT * FROM ldb_get_indexes('sift_base1k');
      indexname     |  size  |                                           indexdef                                           | total_index_size 
 -------------------+--------+----------------------------------------------------------------------------------------------+------------------
- sift_base1k_v_idx | 632 kB | CREATE INDEX sift_base1k_v_idx ON public.sift_base1k USING hnsw (v) WITH (dims='128', m='4') | 632 kB
+ sift_base1k_v_idx | 688 kB | CREATE INDEX sift_base1k_v_idx ON public.sift_base1k USING hnsw (v) WITH (dims='128', m='4') | 688 kB
 (1 row)
 
 -- Validate that index creation works with a larger number of vectors
