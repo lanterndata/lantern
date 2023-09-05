@@ -223,3 +223,5 @@ SELECT CASE WHEN v <-> '{1,2}' > 1 THEN 'High' ELSE 'Low' END FROM test1;
 ERROR:  Operator <-> has no standalone meaning and is reserved for use in vector index lookups only
 INSERT INTO test1 (v) VALUES ('{2,3}') RETURNING v <-> '{1,2}';
 ERROR:  Operator <-> has no standalone meaning and is reserved for use in vector index lookups only
+SELECT 1 FROM test1 GROUP BY v <-> '{1,3}';
+ERROR:  Operator <-> has no standalone meaning and is reserved for use in vector index lookups only
