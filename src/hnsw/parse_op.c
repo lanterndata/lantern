@@ -7,6 +7,7 @@
 #include <parser/parse_oper.h>
 #include <utils/catcache.h>
 #include <utils/guc.h>
+#include <utils/lsyscache.h>
 
 bool isOperatorUsedOutsideOrderBy(Node *node, List *oidList)
 {
@@ -17,7 +18,7 @@ bool isOperatorUsedOutsideOrderBy(Node *node, List *oidList)
         if(te->resjunk) {
             return false;
         }
-        if(isOperatorUsedOutsideOrderBy(te->expr, oidList)) {
+        if(isOperatorUsedOutsideOrderBy((Node *)te->expr, oidList)) {
             return true;
         }
     }
@@ -37,6 +38,10 @@ bool isOperatorUsedOutsideOrderBy(Node *node, List *oidList)
         Query *query = (Query *)node;
 
         if(isOperatorUsedOutsideOrderBy((Node *)query->targetList, oidList)) {
+            return true;
+        }
+
+        if(isOperatorUsedOutsideOrderBy((Node *)query->jointree, oidList)) {
             return true;
         }
 
@@ -63,6 +68,12 @@ bool isOperatorUsedOutsideOrderBy(Node *node, List *oidList)
         OpExpr *opExpr = (OpExpr *)node;
         if(list_member_oid(oidList, opExpr->opno)) {
             return true;
+        }
+        ListCell *lc;
+        foreach(lc, opExpr->args) {
+            if(isOperatorUsedOutsideOrderBy((Node *)lfirst(lc), oidList)) {
+                return true;
+            }
         }
     }
 
@@ -112,6 +123,32 @@ bool isOperatorUsedOutsideOrderBy(Node *node, List *oidList)
             if(isOperatorUsedOutsideOrderBy((Node *)lfirst(lc), oidList)) {
                 return true;
             }
+        }
+    }
+
+    if(IsA(node, FromExpr)) {
+        FromExpr *fromExpr = (FromExpr *)node;
+        ListCell *lc;
+        foreach(lc, fromExpr->fromlist) {
+            if(isOperatorUsedOutsideOrderBy((Node *)lfirst(lc), oidList)) {
+                return true;
+            }
+        }
+        if(isOperatorUsedOutsideOrderBy((Node *)fromExpr->quals, oidList)) {
+            return true;
+        }
+    }
+
+    if(IsA(node, JoinExpr)) {
+        JoinExpr *joinExpr = (JoinExpr *)node;
+        if(isOperatorUsedOutsideOrderBy((Node *)joinExpr->larg, oidList)) {
+            return true;
+        }
+        if(isOperatorUsedOutsideOrderBy((Node *)joinExpr->rarg, oidList)) {
+            return true;
+        }
+        if(isOperatorUsedOutsideOrderBy((Node *)joinExpr->quals, oidList)) {
+            return true;
         }
     }
 

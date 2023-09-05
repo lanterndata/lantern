@@ -45,11 +45,8 @@ SELECT ROUND(hamming_dist(v, '{0,0}')::numeric, 2) FROM small_world_ham ORDER BY
 -- todo: operators: throw errors here too
 CREATE TABLE test1 (id SERIAL, v REAL[]);
 CREATE TABLE test2 (id SERIAL, v REAL[]);
-SELECT test1.v FROM test1 JOIN test2 ON test1.v <-> '{1,2}' = test2.v <-> '{1,3}';
 SELECT CASE WHEN v <-> '{1,2}' > 1 THEN 'High' ELSE 'Low' END FROM test1;
-SELECT (v <-> '{1,2}') + (v <-> '{1,3}') FROM test1;
 INSERT INTO test1 (v) VALUES ('{2,3}') RETURNING v <-> '{1,2}';
-SELECT * FROM test1 JOIN test2 ON test1.v <-> test2.v < 0.5;
 
 --- Test scenarious ---
 -----------------------------------------

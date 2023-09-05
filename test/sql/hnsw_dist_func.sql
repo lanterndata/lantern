@@ -73,3 +73,6 @@ SELECT test1.v <-> test2.v FROM test1 JOIN test2 USING (id);
 SELECT v <-> '{1,2}' FROM test1 UNION SELECT v <-> '{1,3}' FROM test1;
 (SELECT v <-> '{1,2}' FROM test1 WHERE id < 5) UNION (SELECT v <-> '{1,3}' FROM test1 WHERE id >= 5);
 SELECT MAX(v <-> '{1,2}') FROM test1;
+SELECT * FROM test1 JOIN test2 ON test1.v <-> test2.v < 0.5;
+SELECT test1.v FROM test1 JOIN test2 ON test1.v <-> '{1,2}' = test2.v <-> '{1,3}';
+SELECT (v <-> '{1,2}') + (v <-> '{1,3}') FROM test1;
