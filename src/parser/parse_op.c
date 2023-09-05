@@ -8,7 +8,7 @@
 #include <utils/catcache.h>
 #include <utils/guc.h>
 
-static bool isOperatorUsedOutsideOrderBy(Node *node, List *oidList, List *sortGroupRefs)
+static bool is_operator_used_correctly(Node *node, List *oidList, List *sortGroupRefs)
 {
     if(node == NULL) return false;
 
@@ -27,21 +27,21 @@ static bool isOperatorUsedOutsideOrderBy(Node *node, List *oidList, List *sortGr
                     } else if(!isVar1 && !isVar2) {
                         return true;
                     } else if(isVar1) {
-                        return isOperatorUsedOutsideOrderBy(arg2, oidList, sortGroupRefs);
+                        return is_operator_used_correctly(arg2, oidList, sortGroupRefs);
                     } else if(isVar2) {
-                        return isOperatorUsedOutsideOrderBy(arg1, oidList, sortGroupRefs);
+                        return is_operator_used_correctly(arg1, oidList, sortGroupRefs);
                     }
                 }
             }
         }
-        if(isOperatorUsedOutsideOrderBy((Node *)te->expr, oidList, sortGroupRefs)) {
+        if(is_operator_used_correctly((Node *)te->expr, oidList, sortGroupRefs)) {
             return true;
         }
     }
 
     if(IsA(node, FuncExpr)) {
         FuncExpr *funcExpr = (FuncExpr *)node;
-        if(isOperatorUsedOutsideOrderBy(funcExpr->args, oidList, sortGroupRefs)) {
+        if(is_operator_used_correctly(funcExpr->args, oidList, sortGroupRefs)) {
             return true;
         }
     }
@@ -49,18 +49,18 @@ static bool isOperatorUsedOutsideOrderBy(Node *node, List *oidList, List *sortGr
     if(IsA(node, Query)) {
         ListCell *lc;
         Query    *query = (Query *)node;
-        if(isOperatorUsedOutsideOrderBy(query->returningList, oidList, sortGroupRefs)
-           || isOperatorUsedOutsideOrderBy((Node *)query->targetList, oidList, sortGroupRefs)
-           || isOperatorUsedOutsideOrderBy((Node *)query->jointree, oidList, sortGroupRefs)
-           || isOperatorUsedOutsideOrderBy((Node *)query->rtable, oidList, sortGroupRefs)
-           || isOperatorUsedOutsideOrderBy((Node *)query->cteList, oidList, sortGroupRefs)) {
+        if(is_operator_used_correctly(query->returningList, oidList, sortGroupRefs)
+           || is_operator_used_correctly((Node *)query->targetList, oidList, sortGroupRefs)
+           || is_operator_used_correctly((Node *)query->jointree, oidList, sortGroupRefs)
+           || is_operator_used_correctly((Node *)query->rtable, oidList, sortGroupRefs)
+           || is_operator_used_correctly((Node *)query->cteList, oidList, sortGroupRefs)) {
             return true;
         }
     }
 
     if(IsA(node, CommonTableExpr)) {
         CommonTableExpr *cte = (CommonTableExpr *)node;
-        if(isOperatorUsedOutsideOrderBy(cte->ctequery, oidList, sortGroupRefs)) {
+        if(is_operator_used_correctly(cte->ctequery, oidList, sortGroupRefs)) {
             return true;
         }
     }
@@ -68,7 +68,7 @@ static bool isOperatorUsedOutsideOrderBy(Node *node, List *oidList, List *sortGr
     if(IsA(node, RangeTblEntry)) {
         RangeTblEntry *rte = (RangeTblEntry *)node;
         if(rte->rtekind == RTE_SUBQUERY) {
-            if(isOperatorUsedOutsideOrderBy((Node *)rte->subquery, oidList, sortGroupRefs)) {
+            if(is_operator_used_correctly((Node *)rte->subquery, oidList, sortGroupRefs)) {
                 return true;
             }
         }
@@ -76,8 +76,7 @@ static bool isOperatorUsedOutsideOrderBy(Node *node, List *oidList, List *sortGr
 
     if(IsA(node, OpExpr)) {
         OpExpr *opExpr = (OpExpr *)node;
-        if(list_member_oid(oidList, opExpr->opno)
-           || isOperatorUsedOutsideOrderBy(opExpr->args, oidList, sortGroupRefs)) {
+        if(list_member_oid(oidList, opExpr->opno) || is_operator_used_correctly(opExpr->args, oidList, sortGroupRefs)) {
             return true;
         }
     }
@@ -86,7 +85,7 @@ static bool isOperatorUsedOutsideOrderBy(Node *node, List *oidList, List *sortGr
         List     *list = (List *)node;
         ListCell *lc;
         foreach(lc, list) {
-            if(isOperatorUsedOutsideOrderBy((Node *)lfirst(lc), oidList, sortGroupRefs)) {
+            if(is_operator_used_correctly((Node *)lfirst(lc), oidList, sortGroupRefs)) {
                 return true;
             }
         }
@@ -95,76 +94,66 @@ static bool isOperatorUsedOutsideOrderBy(Node *node, List *oidList, List *sortGr
 
     if(IsA(node, ArrayExpr)) {
         ArrayExpr *arrayExpr = (ArrayExpr *)node;
-        if(isOperatorUsedOutsideOrderBy(arrayExpr->elements, oidList, sortGroupRefs)) {
+        if(is_operator_used_correctly(arrayExpr->elements, oidList, sortGroupRefs)) {
             return true;
         }
     }
 
     if(IsA(node, SubLink)) {
         SubLink *sublink = (SubLink *)node;
-        if(isOperatorUsedOutsideOrderBy(sublink->subselect, oidList, sortGroupRefs)) {
+        if(is_operator_used_correctly(sublink->subselect, oidList, sortGroupRefs)) {
             return true;
         }
     }
 
     if(IsA(node, CoalesceExpr)) {
         CoalesceExpr *coalesce = (CoalesceExpr *)node;
-        if(isOperatorUsedOutsideOrderBy(coalesce->args, oidList, sortGroupRefs)) {
+        if(is_operator_used_correctly(coalesce->args, oidList, sortGroupRefs)) {
             return true;
         }
     }
 
     if(IsA(node, Aggref)) {
         Aggref *aggref = (Aggref *)node;
-        if(isOperatorUsedOutsideOrderBy(aggref->args, oidList, sortGroupRefs)) {
+        if(is_operator_used_correctly(aggref->args, oidList, sortGroupRefs)) {
             return true;
         }
     }
 
     if(IsA(node, FromExpr)) {
         FromExpr *fromExpr = (FromExpr *)node;
-        if(isOperatorUsedOutsideOrderBy(fromExpr->fromlist, oidList, sortGroupRefs)
-           || isOperatorUsedOutsideOrderBy((Node *)fromExpr->quals, oidList, sortGroupRefs)) {
+        if(is_operator_used_correctly(fromExpr->fromlist, oidList, sortGroupRefs)
+           || is_operator_used_correctly((Node *)fromExpr->quals, oidList, sortGroupRefs)) {
             return true;
         }
     }
 
     if(IsA(node, JoinExpr)) {
         JoinExpr *joinExpr = (JoinExpr *)node;
-        if(isOperatorUsedOutsideOrderBy((Node *)joinExpr->larg, oidList, sortGroupRefs)
-           || isOperatorUsedOutsideOrderBy((Node *)joinExpr->rarg, oidList, sortGroupRefs)
-           || isOperatorUsedOutsideOrderBy((Node *)joinExpr->quals, oidList, sortGroupRefs)) {
+        if(is_operator_used_correctly((Node *)joinExpr->larg, oidList, sortGroupRefs)
+           || is_operator_used_correctly((Node *)joinExpr->rarg, oidList, sortGroupRefs)
+           || is_operator_used_correctly((Node *)joinExpr->quals, oidList, sortGroupRefs)) {
             return true;
         }
     }
 
     if(IsA(node, CaseExpr)) {
         CaseExpr *caseExpr = (CaseExpr *)node;
-        if(isOperatorUsedOutsideOrderBy(caseExpr->args, oidList, sortGroupRefs)
-           || isOperatorUsedOutsideOrderBy((Node *)caseExpr->defresult, oidList, sortGroupRefs)) {
+        if(is_operator_used_correctly(caseExpr->args, oidList, sortGroupRefs)
+           || is_operator_used_correctly((Node *)caseExpr->defresult, oidList, sortGroupRefs)) {
             return true;
         }
     }
 
     if(IsA(node, CaseWhen)) {
         CaseWhen *caseWhen = (CaseWhen *)node;
-        if(isOperatorUsedOutsideOrderBy((Node *)caseWhen->expr, oidList, sortGroupRefs)
-           || isOperatorUsedOutsideOrderBy((Node *)caseWhen->result, oidList, sortGroupRefs)) {
+        if(is_operator_used_correctly((Node *)caseWhen->expr, oidList, sortGroupRefs)
+           || is_operator_used_correctly((Node *)caseWhen->result, oidList, sortGroupRefs)) {
             return true;
         }
     }
 
     return false;
-}
-
-List *get_sort_group_refs_list(List *list, List *sort_group_refs)
-{
-    List     *new_sort_group_refs = sort_group_refs;
-    ListCell *lc;
-    foreach(lc, list) {
-        new_sort_group_refs = get_sort_group_refs((Node *)lfirst(lc), sort_group_refs);
-    }
-    return new_sort_group_refs;
 }
 
 List *get_sort_group_refs(Node *node, List *sort_group_refs)
@@ -180,7 +169,7 @@ List *get_sort_group_refs(Node *node, List *sort_group_refs)
 
     if(IsA(node, FuncExpr)) {
         FuncExpr *funcExpr = (FuncExpr *)node;
-        new_sort_group_refs = get_sort_group_refs_list(funcExpr->args, new_sort_group_refs);
+        new_sort_group_refs = get_sort_group_refs(funcExpr->args, new_sort_group_refs);
     }
 
     if(IsA(node, Query)) {
@@ -190,12 +179,12 @@ List *get_sort_group_refs(Node *node, List *sort_group_refs)
             SortGroupClause *sortGroupClause = (SortGroupClause *)lfirst(lc);
             new_sort_group_refs = lappend_int(new_sort_group_refs, sortGroupClause->tleSortGroupRef);
         }
-        new_sort_group_refs = get_sort_group_refs_list(query->returningList, new_sort_group_refs);
+        new_sort_group_refs = get_sort_group_refs(query->returningList, new_sort_group_refs);
         new_sort_group_refs = get_sort_group_refs(query->targetList, new_sort_group_refs);
         new_sort_group_refs = get_sort_group_refs(query->jointree, new_sort_group_refs);
-        new_sort_group_refs = get_sort_group_refs_list(query->rtable, new_sort_group_refs);
-        new_sort_group_refs = get_sort_group_refs_list(query->rtable, new_sort_group_refs);
-        new_sort_group_refs = get_sort_group_refs_list(query->cteList, new_sort_group_refs);
+        new_sort_group_refs = get_sort_group_refs(query->rtable, new_sort_group_refs);
+        new_sort_group_refs = get_sort_group_refs(query->rtable, new_sort_group_refs);
+        new_sort_group_refs = get_sort_group_refs(query->cteList, new_sort_group_refs);
     }
 
     if(IsA(node, RangeTblEntry)) {
@@ -212,17 +201,20 @@ List *get_sort_group_refs(Node *node, List *sort_group_refs)
 
     if(IsA(node, OpExpr)) {
         OpExpr *opExpr = (OpExpr *)node;
-        new_sort_group_refs = get_sort_group_refs_list(opExpr->args, new_sort_group_refs);
+        new_sort_group_refs = get_sort_group_refs(opExpr->args, new_sort_group_refs);
     }
 
     if(IsA(node, List)) {
-        List *list = (List *)node;
-        new_sort_group_refs = get_sort_group_refs_list(list, new_sort_group_refs);
+        List     *list = (List *)node;
+        ListCell *lc;
+        foreach(lc, list) {
+            new_sort_group_refs = get_sort_group_refs((Node *)lfirst(lc), sort_group_refs);
+        }
     }
 
     if(IsA(node, ArrayExpr)) {
         ArrayExpr *arrayExpr = (ArrayExpr *)node;
-        new_sort_group_refs = get_sort_group_refs_list(arrayExpr->elements, new_sort_group_refs);
+        new_sort_group_refs = get_sort_group_refs(arrayExpr->elements, new_sort_group_refs);
     }
 
     if(IsA(node, SubLink)) {
@@ -232,17 +224,17 @@ List *get_sort_group_refs(Node *node, List *sort_group_refs)
 
     if(IsA(node, CoalesceExpr)) {
         CoalesceExpr *coalesce = (CoalesceExpr *)node;
-        new_sort_group_refs = get_sort_group_refs_list(coalesce->args, new_sort_group_refs);
+        new_sort_group_refs = get_sort_group_refs(coalesce->args, new_sort_group_refs);
     }
 
     if(IsA(node, Aggref)) {
         Aggref *aggref = (Aggref *)node;
-        new_sort_group_refs = get_sort_group_refs_list(aggref->args, new_sort_group_refs);
+        new_sort_group_refs = get_sort_group_refs(aggref->args, new_sort_group_refs);
     }
 
     if(IsA(node, FromExpr)) {
         FromExpr *fromExpr = (FromExpr *)node;
-        new_sort_group_refs = get_sort_group_refs_list(fromExpr->fromlist, new_sort_group_refs);
+        new_sort_group_refs = get_sort_group_refs(fromExpr->fromlist, new_sort_group_refs);
         new_sort_group_refs = get_sort_group_refs(fromExpr->quals, new_sort_group_refs);
     }
 
@@ -261,7 +253,7 @@ List *get_sort_group_refs(Node *node, List *sort_group_refs)
 
     if(IsA(node, CaseExpr)) {
         CaseExpr *caseExpr = (CaseExpr *)node;
-        new_sort_group_refs = get_sort_group_refs_list(caseExpr->args, new_sort_group_refs);
+        new_sort_group_refs = get_sort_group_refs(caseExpr->args, new_sort_group_refs);
         new_sort_group_refs = get_sort_group_refs(caseExpr->defresult, new_sort_group_refs);
     }
 
@@ -273,7 +265,7 @@ bool validate_operator_usage(Node *node, List *oidList)
     List *sort_group_refs = get_sort_group_refs((Query *)node, NIL);
 
     // Check for invalid operator usage
-    return isOperatorUsedOutsideOrderBy(node, oidList, sort_group_refs);
+    return is_operator_used_correctly(node, oidList, sort_group_refs);
 
     // Check for sort by without index
 }
