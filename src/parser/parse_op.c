@@ -60,9 +60,6 @@ bool isOperatorUsedOutsideOrderBy(Node *node, List *oidList, List *sortGroupRefs
         if(checkNodeList(query->returningList, oidList, sortGroupRefs)) {
             return true;
         }
-        if(checkNodeList(query->returningList, oidList, sortGroupRefs)) {
-            return true;
-        }
         if(isOperatorUsedOutsideOrderBy((Node *)query->targetList, oidList, localSortGroupRefs)) {
             return true;
         }
