@@ -159,7 +159,7 @@ void post_parse_analyze_hook_with_operator_check(ParseState *pstate,
     List *oidList = get_operator_oids(pstate);
     if(oidList != NIL) {
         if(isOperatorUsedOutsideOrderBy((Node *)query, oidList)) {
-            elog(ERROR, "The '<->' operator is used outside the ORDER BY clause");
+            elog(ERROR, "Operator <-> has no standalone meaning and is reserved for use in vector index lookups only");
         }
     }
     list_free(oidList);
