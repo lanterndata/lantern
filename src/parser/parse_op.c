@@ -26,7 +26,16 @@ bool isOperatorUsedOutsideOrderBy(Node *node, List *oidList, List *sortGroupRefs
     if(IsA(node, TargetEntry)) {
         TargetEntry *te = (TargetEntry *)node;
         if(te->resjunk && list_member_int(sortGroupRefs, te->ressortgroupref)) {
-            return false;
+            if(IsA(te->expr, OpExpr)) {
+                OpExpr *opExpr = (OpExpr *)te->expr;
+                if(list_member_oid(oidList, opExpr->opno)) {
+                    Node *firstArg = (Node *)linitial(opExpr->args);
+                    Node *secondArg = (Node *)lsecond(opExpr->args);
+                    if(IsA(firstArg, Var) || IsA(secondArg, Var)) {
+                        return false;
+                    }
+                }
+            }
         }
         if(isOperatorUsedOutsideOrderBy((Node *)te->expr, oidList, sortGroupRefs)) {
             return true;
