@@ -41,12 +41,6 @@ INSERT INTO small_world_ham (v) VALUES ('{0,0}'), ('{1,1}'), ('{2,2}'), ('{3,3}'
 CREATE INDEX ON small_world_ham USING hnsw (v dist_hamming_ops) WITH (dims=2);
 SELECT ROUND(hamming_dist(v, '{0,0}')::numeric, 2) FROM small_world_ham ORDER BY v <-> '{0,0}';
 
--- todo: operators: handle when index is not created
--- todo: operators: throw errors here too
-CREATE TABLE test1 (id SERIAL, v REAL[]);
-CREATE TABLE test2 (id SERIAL, v REAL[]);
-INSERT INTO test1 (v) VALUES ('{2,3}') RETURNING v <-> '{1,2}';
-
 --- Test scenarious ---
 -----------------------------------------
 -- Case:

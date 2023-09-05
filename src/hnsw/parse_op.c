@@ -56,6 +56,12 @@ bool isOperatorUsedOutsideOrderBy(Node *node, List *oidList)
             }
         }
 
+        foreach(lc, query->returningList) {
+            if(isOperatorUsedOutsideOrderBy((Node *)lfirst(lc), oidList)) {
+                return true;
+            }
+        }
+
         foreach(lc, query->cteList) {
             CommonTableExpr *cte = (CommonTableExpr *)lfirst(lc);
             if(isOperatorUsedOutsideOrderBy(cte->ctequery, oidList)) {
