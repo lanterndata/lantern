@@ -46,6 +46,7 @@ SELECT ROUND(hamming_dist(v, '{0,0}')::numeric, 2) FROM small_world_ham ORDER BY
 CREATE TABLE test1 (id SERIAL, v REAL[]);
 CREATE TABLE test2 (id SERIAL, v REAL[]);
 SELECT 1 FROM test1 ORDER BY (('{1,2}'::real[] <-> '{3,4}'::real[]) - 0);
+SELECT 1 FROM test1 GROUP BY v <-> '{1,3}';
 
 --- Test scenarious ---
 -----------------------------------------
