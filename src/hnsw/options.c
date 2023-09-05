@@ -13,7 +13,7 @@
 #include <utils/rel.h>  // RelationData
 #include <utils/syscache.h>
 
-#include "parse_op.h"
+#include "../parser/parse_op.h"
 
 #ifdef _WIN32
 #define access _access
