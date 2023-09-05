@@ -56,6 +56,10 @@ typedef struct HnswIndexTuple
 {
     uint32 id;
     uint32 level;
+    // this stores the BlockNumber+OffsetNumer of this HnswIndexTuple on the index storage
+    // It is here solely for debugging, so in the WAL retriever I can do an assert
+    // and make sure that I am attempting to retrieve the page I am supposed to retrieve
+    ItemPointerData self;
     // stores size of the flexible array member
     uint32 size;
     char   node[ FLEXIBLE_ARRAY_MEMBER ];

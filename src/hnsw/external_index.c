@@ -303,16 +303,34 @@ void StoreExternalIndex(Relation        index,
 
 // adds a an item to hnsw index relation page. assumes the page has enough space for the item
 // the function also takes care of setting the special block
-static OffsetNumber HnswIndexPageAddVector(Page page, HnswIndexTuple *new_vector_data, int new_vector_size)
+// populates field in the HnswIndexTuple that stores location of the tuple on postgres WAL
+
+// @param data_block the data block that we are modifying
+// @param page the page opened on the data block
+// @param new_vector_data the vector data object we are inserting into the page
+// @param new_vector_size
+// @return offset in the block where the data was insered
+static OffsetNumber HnswIndexPageAddVector(BlockNumber     data_block,
+                                           Page            page,
+                                           HnswIndexTuple *new_vector_data,
+                                           int             new_vector_size)
 {
     HnswIndexPageSpecialBlock *special_block;
-    OffsetNumber               inserted_at;
+    OffsetNumber               inserted_at_calc, inserted_at;
+
+    // add additional data on the newly added vector, before inserting into the page
+    BlockIdSet(&new_vector_data->self.ip_blkid, data_block);
+    // we assume max offset will be given as next offset, and then assert it
+    inserted_at_calc = OffsetNumberNext(PageGetMaxOffsetNumber(page));
+    new_vector_data->self.ip_posid = inserted_at_calc;
 
     inserted_at = PageAddItem(
         page, (Item)new_vector_data, sizeof(HnswIndexTuple) + new_vector_size, InvalidOffsetNumber, false, false);
     if(inserted_at == InvalidOffsetNumber) {
         elog(ERROR, "unexpectedly could not add item to the last existing page");
     }
+    assert(inserted_at == inserted_at_calc);
+
     special_block = (HnswIndexPageSpecialBlock *)PageGetSpecialPointer(page);
 
     if(PageGetMaxOffsetNumber(page) == 1) {
@@ -368,6 +386,8 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
     alloced_tuple->id = new_tuple_id;
     alloced_tuple->level = new_tuple_level;
     alloced_tuple->size = new_tuple_size;
+    BlockIdSet(&alloced_tuple->self.ip_blkid, InvalidBlockNumber);
+    alloced_tuple->self.ip_posid = InvalidOffsetNumber;
 
     /*** Add a new tuple corresponding to the added vector to the list of tuples in the index
      *  (create new page if necessary) ***/
@@ -386,7 +406,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
         PageInit(page, BufferGetPageSize(new_dblock), sizeof(HnswIndexPageSpecialBlock));
         extra_dirtied_add(insertstate->retriever_ctx->extra_dirted, new_vector_blockno, new_dblock, page);
 
-        new_tup_at = HnswIndexPageAddVector(page, alloced_tuple, alloced_tuple->size);
+        new_tup_at = HnswIndexPageAddVector(hdr->last_data_block, page, alloced_tuple, alloced_tuple->size);
 
         MarkBufferDirty(new_dblock);
     } else {
@@ -407,7 +427,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
             // there is enough space in the last page to fit the new vector
             // so we just append it to the page
             elog(DEBUG5, "InsertBranching: we adding element to existing page");
-            new_tup_at = HnswIndexPageAddVector(page, alloced_tuple, alloced_tuple->size);
+            new_tup_at = HnswIndexPageAddVector(hdr->last_data_block, page, alloced_tuple, alloced_tuple->size);
             new_vector_blockno = BufferGetBlockNumber(last_dblock);
             assert(new_vector_blockno == hdr->last_data_block);
 
@@ -453,7 +473,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
             PageInit(page, BufferGetPageSize(new_dblock), sizeof(HnswIndexPageSpecialBlock));
             extra_dirtied_add(insertstate->retriever_ctx->extra_dirted, new_vector_blockno, new_dblock, page);
 
-            new_tup_at = HnswIndexPageAddVector(page, alloced_tuple, alloced_tuple->size);
+            new_tup_at = HnswIndexPageAddVector(hdr->last_data_block, page, alloced_tuple, alloced_tuple->size);
 
             MarkBufferDirty(new_dblock);
         }
@@ -464,6 +484,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
     assert(new_tup_ref->id == new_tuple_id);
     assert(new_tup_ref->level == new_tuple_level);
     assert(new_tup_ref->size == new_tuple_size);
+    assert(new_tup_ref->self.ip_posid == new_tup_at);
     page = NULL;  // to avoid its accidental use
     /*** Update pagemap with the information of the added page ***/
     {
