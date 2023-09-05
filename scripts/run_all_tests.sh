@@ -60,7 +60,7 @@ then
 fi
 
 # Check if pgvector is available
-pgvector_installed=$($PSQL -U $DB_USER -c "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'" -tA)
+pgvector_installed=$($PSQL -U $DB_USER -d postgres -c "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'" -tA)
 
 # Generate schedule.txt
 rm -rf $TMP_OUTDIR/schedule.txt
