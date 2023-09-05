@@ -4,20 +4,81 @@
 
 #include <catalog/pg_type_d.h>
 #include <nodes/makefuncs.h>
+#include <nodes/nodeFuncs.h>
 #include <parser/parse_oper.h>
 #include <utils/catcache.h>
 #include <utils/guc.h>
 
-static bool is_operator_used_correctly(Node *node, List *oidList, List *sortGroupRefs)
+typedef struct
+{
+    List *oidList;
+} OperatorUsedContext;
+
+static bool operator_used_walker(Node *node, OperatorUsedContext *context)
 {
     if(node == NULL) return false;
+    if(IsA(node, Query)) return query_tree_walker((Query *)node, operator_used_walker, (void *)context, 0);
+    if(IsA(node, OpExpr)) {
+        OpExpr *opExpr = (OpExpr *)node;
+        if(list_member_oid(context->oidList, opExpr->opno)) {
+            return true;
+        }
+    }
+    return expression_tree_walker(node, operator_used_walker, (void *)context);
+}
 
+static bool is_operator_used(Node *node, List *oidList)
+{
+    OperatorUsedContext context;
+    context.oidList = oidList;
+    return operator_used_walker(node, &context);
+}
+
+typedef struct
+{
+    List *sortGroupRefs;
+} SortGroupRefContext;
+
+static bool sort_group_ref_walker(Node *node, SortGroupRefContext *context)
+{
+    if(node == NULL) return false;
+    if(IsA(node, Query)) {
+        Query    *query = (Query *)node;
+        ListCell *lc;
+        foreach(lc, query->sortClause) {
+            SortGroupClause *sortGroupClause = (SortGroupClause *)lfirst(lc);
+            context->sortGroupRefs = lappend_int(context->sortGroupRefs, sortGroupClause->tleSortGroupRef);
+        }
+        return query_tree_walker((Query *)node, sort_group_ref_walker, (void *)context, 0);
+    }
+    return expression_tree_walker(node, sort_group_ref_walker, (void *)context);
+}
+
+static List *get_sort_group_refs(Node *node)
+{
+    SortGroupRefContext context;
+    context.sortGroupRefs = NIL;
+    sort_group_ref_walker(node, &context);
+    return context.sortGroupRefs;
+}
+
+typedef struct
+{
+    List *oidList;
+    List *sortGroupRefs;
+    bool  usedCorrectly;
+} OperatorUsedCorrectlyContext;
+
+static bool operator_used_correctly_walker(Node *node, OperatorUsedCorrectlyContext *context)
+{
+    if(node == NULL) return false;
+    if(IsA(node, Query)) return query_tree_walker((Query *)node, operator_used_correctly_walker, (void *)context, 0);
     if(IsA(node, TargetEntry)) {
         TargetEntry *te = (TargetEntry *)node;
-        if(te->resjunk && list_member_int(sortGroupRefs, te->ressortgroupref)) {
+        if(te->resjunk && list_member_int(context->sortGroupRefs, te->ressortgroupref)) {
             if(IsA(te->expr, OpExpr)) {
                 OpExpr *opExpr = (OpExpr *)te->expr;
-                if(list_member_oid(oidList, opExpr->opno)) {
+                if(list_member_oid(context->oidList, opExpr->opno)) {
                     Node *arg1 = (Node *)linitial(opExpr->args);
                     Node *arg2 = (Node *)lsecond(opExpr->args);
                     bool  isVar1 = IsA(arg1, Var);
@@ -27,247 +88,44 @@ static bool is_operator_used_correctly(Node *node, List *oidList, List *sortGrou
                     } else if(!isVar1 && !isVar2) {
                         return true;
                     } else if(isVar1) {
-                        return is_operator_used_correctly(arg2, oidList, sortGroupRefs);
+                        return operator_used_correctly_walker(arg2, context);
                     } else if(isVar2) {
-                        return is_operator_used_correctly(arg1, oidList, sortGroupRefs);
+                        return operator_used_correctly_walker(arg1, context);
                     }
                 }
             }
         }
-        if(is_operator_used_correctly((Node *)te->expr, oidList, sortGroupRefs)) {
-            return true;
-        }
-    }
-
-    if(IsA(node, FuncExpr)) {
-        FuncExpr *funcExpr = (FuncExpr *)node;
-        if(is_operator_used_correctly(funcExpr->args, oidList, sortGroupRefs)) {
-            return true;
-        }
-    }
-
-    if(IsA(node, Query)) {
-        ListCell *lc;
-        Query    *query = (Query *)node;
-        if(is_operator_used_correctly(query->returningList, oidList, sortGroupRefs)
-           || is_operator_used_correctly((Node *)query->targetList, oidList, sortGroupRefs)
-           || is_operator_used_correctly((Node *)query->jointree, oidList, sortGroupRefs)
-           || is_operator_used_correctly((Node *)query->rtable, oidList, sortGroupRefs)
-           || is_operator_used_correctly((Node *)query->cteList, oidList, sortGroupRefs)) {
-            return true;
-        }
-    }
-
-    if(IsA(node, CommonTableExpr)) {
-        CommonTableExpr *cte = (CommonTableExpr *)node;
-        if(is_operator_used_correctly(cte->ctequery, oidList, sortGroupRefs)) {
-            return true;
-        }
-    }
-
-    if(IsA(node, RangeTblEntry)) {
-        RangeTblEntry *rte = (RangeTblEntry *)node;
-        if(rte->rtekind == RTE_SUBQUERY) {
-            if(is_operator_used_correctly((Node *)rte->subquery, oidList, sortGroupRefs)) {
-                return true;
-            }
-        }
     }
 
     if(IsA(node, OpExpr)) {
         OpExpr *opExpr = (OpExpr *)node;
-        if(list_member_oid(oidList, opExpr->opno) || is_operator_used_correctly(opExpr->args, oidList, sortGroupRefs)) {
+        if(list_member_oid(context->oidList, opExpr->opno)) {
             return true;
         }
     }
 
-    if(IsA(node, List)) {
-        List     *list = (List *)node;
-        ListCell *lc;
-        foreach(lc, list) {
-            if(is_operator_used_correctly((Node *)lfirst(lc), oidList, sortGroupRefs)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    if(IsA(node, ArrayExpr)) {
-        ArrayExpr *arrayExpr = (ArrayExpr *)node;
-        if(is_operator_used_correctly(arrayExpr->elements, oidList, sortGroupRefs)) {
-            return true;
-        }
-    }
-
-    if(IsA(node, SubLink)) {
-        SubLink *sublink = (SubLink *)node;
-        if(is_operator_used_correctly(sublink->subselect, oidList, sortGroupRefs)) {
-            return true;
-        }
-    }
-
-    if(IsA(node, CoalesceExpr)) {
-        CoalesceExpr *coalesce = (CoalesceExpr *)node;
-        if(is_operator_used_correctly(coalesce->args, oidList, sortGroupRefs)) {
-            return true;
-        }
-    }
-
-    if(IsA(node, Aggref)) {
-        Aggref *aggref = (Aggref *)node;
-        if(is_operator_used_correctly(aggref->args, oidList, sortGroupRefs)) {
-            return true;
-        }
-    }
-
-    if(IsA(node, FromExpr)) {
-        FromExpr *fromExpr = (FromExpr *)node;
-        if(is_operator_used_correctly(fromExpr->fromlist, oidList, sortGroupRefs)
-           || is_operator_used_correctly((Node *)fromExpr->quals, oidList, sortGroupRefs)) {
-            return true;
-        }
-    }
-
-    if(IsA(node, JoinExpr)) {
-        JoinExpr *joinExpr = (JoinExpr *)node;
-        if(is_operator_used_correctly((Node *)joinExpr->larg, oidList, sortGroupRefs)
-           || is_operator_used_correctly((Node *)joinExpr->rarg, oidList, sortGroupRefs)
-           || is_operator_used_correctly((Node *)joinExpr->quals, oidList, sortGroupRefs)) {
-            return true;
-        }
-    }
-
-    if(IsA(node, CaseExpr)) {
-        CaseExpr *caseExpr = (CaseExpr *)node;
-        if(is_operator_used_correctly(caseExpr->args, oidList, sortGroupRefs)
-           || is_operator_used_correctly((Node *)caseExpr->defresult, oidList, sortGroupRefs)) {
-            return true;
-        }
-    }
-
-    if(IsA(node, CaseWhen)) {
-        CaseWhen *caseWhen = (CaseWhen *)node;
-        if(is_operator_used_correctly((Node *)caseWhen->expr, oidList, sortGroupRefs)
-           || is_operator_used_correctly((Node *)caseWhen->result, oidList, sortGroupRefs)) {
-            return true;
-        }
-    }
-
-    return false;
+    return expression_tree_walker(node, operator_used_correctly_walker, (void *)context);
 }
 
-List *get_sort_group_refs(Node *node, List *sort_group_refs)
+static bool is_operator_used_correctly(Node *node, List *oidList, List *sortGroupRefs)
 {
-    List *new_sort_group_refs = sort_group_refs;
-
-    if(node == NULL) return new_sort_group_refs;
-
-    if(IsA(node, TargetEntry)) {
-        TargetEntry *te = (TargetEntry *)node;
-        new_sort_group_refs = get_sort_group_refs(te->expr, new_sort_group_refs);
-    }
-
-    if(IsA(node, FuncExpr)) {
-        FuncExpr *funcExpr = (FuncExpr *)node;
-        new_sort_group_refs = get_sort_group_refs(funcExpr->args, new_sort_group_refs);
-    }
-
-    if(IsA(node, Query)) {
-        Query    *query = (Query *)node;
-        ListCell *lc;
-        foreach(lc, query->sortClause) {
-            SortGroupClause *sortGroupClause = (SortGroupClause *)lfirst(lc);
-            new_sort_group_refs = lappend_int(new_sort_group_refs, sortGroupClause->tleSortGroupRef);
-        }
-        new_sort_group_refs = get_sort_group_refs(query->returningList, new_sort_group_refs);
-        new_sort_group_refs = get_sort_group_refs(query->targetList, new_sort_group_refs);
-        new_sort_group_refs = get_sort_group_refs(query->jointree, new_sort_group_refs);
-        new_sort_group_refs = get_sort_group_refs(query->rtable, new_sort_group_refs);
-        new_sort_group_refs = get_sort_group_refs(query->rtable, new_sort_group_refs);
-        new_sort_group_refs = get_sort_group_refs(query->cteList, new_sort_group_refs);
-    }
-
-    if(IsA(node, RangeTblEntry)) {
-        RangeTblEntry *rte = (RangeTblEntry *)node;
-        if(rte->rtekind == RTE_SUBQUERY) {
-            new_sort_group_refs = get_sort_group_refs(rte->subquery, new_sort_group_refs);
-        }
-    }
-
-    if(IsA(node, CommonTableExpr)) {
-        CommonTableExpr *cte = (CommonTableExpr *)node;
-        new_sort_group_refs = get_sort_group_refs(cte->ctequery, new_sort_group_refs);
-    }
-
-    if(IsA(node, OpExpr)) {
-        OpExpr *opExpr = (OpExpr *)node;
-        new_sort_group_refs = get_sort_group_refs(opExpr->args, new_sort_group_refs);
-    }
-
-    if(IsA(node, List)) {
-        List     *list = (List *)node;
-        ListCell *lc;
-        foreach(lc, list) {
-            new_sort_group_refs = get_sort_group_refs((Node *)lfirst(lc), sort_group_refs);
-        }
-    }
-
-    if(IsA(node, ArrayExpr)) {
-        ArrayExpr *arrayExpr = (ArrayExpr *)node;
-        new_sort_group_refs = get_sort_group_refs(arrayExpr->elements, new_sort_group_refs);
-    }
-
-    if(IsA(node, SubLink)) {
-        SubLink *sublink = (SubLink *)node;
-        new_sort_group_refs = get_sort_group_refs(sublink->subselect, new_sort_group_refs);
-    }
-
-    if(IsA(node, CoalesceExpr)) {
-        CoalesceExpr *coalesce = (CoalesceExpr *)node;
-        new_sort_group_refs = get_sort_group_refs(coalesce->args, new_sort_group_refs);
-    }
-
-    if(IsA(node, Aggref)) {
-        Aggref *aggref = (Aggref *)node;
-        new_sort_group_refs = get_sort_group_refs(aggref->args, new_sort_group_refs);
-    }
-
-    if(IsA(node, FromExpr)) {
-        FromExpr *fromExpr = (FromExpr *)node;
-        new_sort_group_refs = get_sort_group_refs(fromExpr->fromlist, new_sort_group_refs);
-        new_sort_group_refs = get_sort_group_refs(fromExpr->quals, new_sort_group_refs);
-    }
-
-    if(IsA(node, JoinExpr)) {
-        JoinExpr *joinExpr = (JoinExpr *)node;
-        new_sort_group_refs = get_sort_group_refs(joinExpr->larg, new_sort_group_refs);
-        new_sort_group_refs = get_sort_group_refs(joinExpr->rarg, new_sort_group_refs);
-        new_sort_group_refs = get_sort_group_refs(joinExpr->quals, new_sort_group_refs);
-    }
-
-    if(IsA(node, CaseWhen)) {
-        CaseWhen *caseWhen = (CaseWhen *)node;
-        new_sort_group_refs = get_sort_group_refs(caseWhen->expr, new_sort_group_refs);
-        new_sort_group_refs = get_sort_group_refs(caseWhen->result, new_sort_group_refs);
-    }
-
-    if(IsA(node, CaseExpr)) {
-        CaseExpr *caseExpr = (CaseExpr *)node;
-        new_sort_group_refs = get_sort_group_refs(caseExpr->args, new_sort_group_refs);
-        new_sort_group_refs = get_sort_group_refs(caseExpr->defresult, new_sort_group_refs);
-    }
-
-    return new_sort_group_refs;
+    OperatorUsedCorrectlyContext context;
+    context.oidList = oidList;
+    context.sortGroupRefs = sortGroupRefs;
+    return !operator_used_correctly_walker(node, &context);
 }
 
 bool validate_operator_usage(Node *node, List *oidList)
 {
-    List *sort_group_refs = get_sort_group_refs((Query *)node, NIL);
+    if(!is_operator_used(node, oidList)) {
+        return true;
+    }
 
-    // Check for invalid operator usage
+    List *sort_group_refs = get_sort_group_refs((Query *)node);
+
     return is_operator_used_correctly(node, oidList, sort_group_refs);
 
-    // Check for sort by without index
+    // TODO: Check for sort by without index
 }
 
 List *get_operator_oids(ParseState *pstate)
