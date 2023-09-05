@@ -260,14 +260,3 @@ set(CPACK_GENERATOR "DEB")
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "postgresql-${CMAKE_MATCH_1}, postgresql-${CMAKE_MATCH_1}-pgvector")
 set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Lantern Data")
 include(CPack)
-
-# Automatically include PostgreSQL server header files if available
-find_program(PG_CONFIG_EXECUTABLE pg_config)
-if(PG_CONFIG_EXECUTABLE)
-    execute_process(COMMAND ${PG_CONFIG_EXECUTABLE} --includedir-server
-                    OUTPUT_VARIABLE PG_INCLUDEDIR
-                    OUTPUT_STRIP_TRAILING_WHITESPACE)
-    if(PG_INCLUDEDIR)
-        include_directories(${PG_INCLUDEDIR})
-    endif()
-endif()
