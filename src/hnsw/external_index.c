@@ -605,11 +605,17 @@ void *ldb_wal_index_node_retriever(void *ctxp, uint64 id)
     Buffer          buf = InvalidBuffer;
     bool            idx_page_prelocked = false;
     void           *cached_node = fa_cache_get(&ctx->fa_cache, id);
+
     if(cached_node != NULL) {
         return cached_node;
     }
 
+#ifdef BUILD_VIA_INSERTS
+    ItemPointerData *index_tid = (ItemPointerData *)&id;
+    data_block_no = BlockIdGetBlockNumber(&index_tid->ip_blkid);
+#else
     data_block_no = getDataBlockNumber(ctx, id, false);
+#endif
 
     page = extra_dirtied_get(ctx->extra_dirted, data_block_no, NULL);
     if(page == NULL) {
@@ -621,6 +627,26 @@ void *ldb_wal_index_node_retriever(void *ctxp, uint64 id)
     }
 
     max_offset = PageGetMaxOffsetNumber(page);
+#ifdef BUILD_VIA_INSERTS
+    assert(index_tid->ip_posid <= max_offset);
+    nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, index_tid->ip_posid));
+    assert(nodepage->self.ip_posid == index_tid->ip_posid);
+    assert(BlockIdGetBlockNumber(&nodepage->self.ip_blkid) == data_block_no);
+
+    if(!idx_page_prelocked) {
+        // Wrap buf in a linked list node
+        BufferNode *buffNode;
+        buffNode = (BufferNode *)palloc(sizeof(BufferNode));
+        buffNode->buf = buf;
+
+        // Add buffNode to list of pinned buffers
+        dlist_push_tail(&ctx->takenbuffers, &buffNode->node);
+        LockBuffer(buf, BUFFER_LOCK_UNLOCK);
+    }
+
+    fa_cache_insert(&ctx->fa_cache, id, nodepage->node);
+    return nodepage->node;
+#else
     for(offset = FirstOffsetNumber; offset <= max_offset; offset = OffsetNumberNext(offset)) {
         nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
         if(nodepage->id == id) {
@@ -655,6 +681,7 @@ void *ldb_wal_index_node_retriever(void *ctxp, uint64 id)
 #endif
         }
     }
+#endif
     if(!idx_page_prelocked) {
         assert(BufferIsValid(buf));
         UnlockReleaseBuffer(buf);
@@ -665,7 +692,6 @@ void *ldb_wal_index_node_retriever(void *ctxp, uint64 id)
 void *ldb_wal_index_node_retriever_mut(void *ctxp, uint64 id)
 {
     RetrieverCtx   *ctx = (RetrieverCtx *)ctxp;
-    BlockNumber     data_block_no = getDataBlockNumber(ctx, id, true);
     HnswIndexTuple *nodepage;
     Page            page;
     OffsetNumber    offset, max_offset;
@@ -674,6 +700,13 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, uint64 id)
 
     // here, we don't bother looking up the fully associative cache because
     // given the current usage of _mut, it is never going to be in the chache
+
+#ifdef BUILD_VIA_INSERTS
+    ItemPointerData *index_tid = (ItemPointerData *)&id;
+    BlockNumber      data_block_no = BlockIdGetBlockNumber(&index_tid->ip_blkid);
+#else
+    BlockNumber     data_block_no = getDataBlockNumber(ctx, id, true);
+#endif
 
     page = extra_dirtied_get(ctx->extra_dirted, data_block_no, NULL);
     if(page == NULL) {
@@ -687,6 +720,16 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, uint64 id)
     }
 
     max_offset = PageGetMaxOffsetNumber(page);
+#ifdef BUILD_VIA_INSERTS
+    assert(index_tid->ip_posid <= max_offset);
+    nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, index_tid->ip_posid));
+    assert(nodepage->self.ip_posid == index_tid->ip_posid);
+    assert(BlockIdGetBlockNumber(&nodepage->self.ip_blkid) == data_block_no);
+
+    fa_cache_insert(&ctx->fa_cache, id, nodepage->node);
+
+    return nodepage->node;
+#else
     for(offset = FirstOffsetNumber; offset <= max_offset; offset = OffsetNumberNext(offset)) {
         nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
         if(nodepage->id == id) {
@@ -695,6 +738,7 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, uint64 id)
             return nodepage->node;
         }
     }
+#endif
 
     if(!idx_page_prelocked) {
         assert(BufferIsValid(buf));

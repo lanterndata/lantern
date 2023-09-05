@@ -138,11 +138,14 @@ bool ldb_aminsert(Relation         index,
     // 4) The blockmap page for the block in which the vector was added
     // Generic XLog supports up to 4 pages in a single commit, so we are good.
     new_tuple = PrepareIndexTuple(index, state, hdr, &meta, new_tuple_id, level, insertstate);
+    uint64 index_tid = 0;
+    memcpy(&index_tid, &new_tuple->self, sizeof(new_tuple->self));
 
     usearch_add_external(uidx,
                          *(unsigned long *)heap_tid,
                          vector,
                          new_tuple->node,
+                         (void const *)&index_tid,
                          usearch_scalar_f32_k,
                          level,
                          &error);
