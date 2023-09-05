@@ -42,17 +42,17 @@ bool isOperatorUsedOutsideOrderBy(Node *node, List *oidList)
     }
 
     if(IsA(node, Query)) {
-        Query *query = (Query *)node;
-
+        ListCell *lc;
+        Query    *query = (Query *)node;
+        if(checkNodeList(query->returningList, oidList)) {
+            return true;
+        }
         if(isOperatorUsedOutsideOrderBy((Node *)query->targetList, oidList)) {
             return true;
         }
-
         if(isOperatorUsedOutsideOrderBy((Node *)query->jointree, oidList)) {
             return true;
         }
-
-        ListCell *lc;
         foreach(lc, query->rtable) {
             RangeTblEntry *rte = (RangeTblEntry *)lfirst(lc);
             if(rte->rtekind == RTE_SUBQUERY) {
@@ -61,11 +61,6 @@ bool isOperatorUsedOutsideOrderBy(Node *node, List *oidList)
                 }
             }
         }
-
-        if(checkNodeList(query->returningList, oidList)) {
-            return true;
-        }
-
         foreach(lc, query->cteList) {
             CommonTableExpr *cte = (CommonTableExpr *)lfirst(lc);
             if(isOperatorUsedOutsideOrderBy(cte->ctequery, oidList)) {
