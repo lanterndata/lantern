@@ -7,7 +7,7 @@
 #include <parser/parse_node.h>
 
 // Function to check if an operator is used outside of the ORDER BY clause
-bool isOperatorUsedOutsideOrderBy(Node *node, List *oidList);
+bool isOperatorUsedOutsideOrderBy(Node *node, List *oidList, List *sortGroupRefs);
 
 // Function to retrieve operator OIDs for specific operators
 List *get_operator_oids(ParseState *pstate);

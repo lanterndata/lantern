@@ -59,6 +59,7 @@ INSERT INTO test2 (v) VALUES ('{5,4}');
 SELECT COALESCE(id, 0) FROM test1 ORDER BY v <-> '{1,2}';
 SELECT 0 + 1;
 SELECT 1 FROM test1 WHERE id = 0 + 1;
+SELECT 1 FROM test1 ORDER BY v <-> (SELECT '{1,3}'::real[]);
 
 -- Expect errors
 INSERT INTO test1 (v) VALUES (ARRAY['{1,2}'::REAL[] <-> '{4,2}'::REAL[], 0]);
@@ -78,3 +79,6 @@ SELECT test1.v FROM test1 JOIN test2 ON test1.v <-> '{1,2}' = test2.v <-> '{1,3}
 SELECT (v <-> '{1,2}') + (v <-> '{1,3}') FROM test1;
 SELECT CASE WHEN v <-> '{1,2}' > 1 THEN 'High' ELSE 'Low' END FROM test1;
 INSERT INTO test1 (v) VALUES ('{2,3}') RETURNING v <-> '{1,2}';
+SELECT 1 FROM test1 GROUP BY v <-> '{1,3}';
+SELECT 1 FROM test1 ORDER BY (('{1,2}'::real[] <-> '{3,4}'::real[]) - 0);
+SELECT 1 FROM test1 ORDER BY '{1,2}'::REAL[] <-> '{3,4}'::REAL[];
