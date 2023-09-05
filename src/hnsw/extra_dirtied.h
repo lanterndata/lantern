@@ -14,14 +14,13 @@
 
 typedef struct
 {
-    Relation     index_rel;
-    BlockNumber* EXTRA_DIRTIED_BLOCKNO;
-    Buffer*      EXTRA_DIRTIED_BUF;
-    Page*        EXTRA_DIRTIED_PAGE;
-    int          EXTRA_DIRTIED_SIZE;
+    BlockNumber* extra_dirtied_blockno;
+    Buffer*      extra_dirtied_buf;
+    Page*        extra_dirtied_page;
+    int          extra_dirtied_size;
 } ExtraDirtiedBufs;
 
-ExtraDirtiedBufs* extra_dirtied_new(Relation index_rel);
+ExtraDirtiedBufs* extra_dirtied_new();
 // Page extra_dirtied_add(ExtraDirtiedBufs *ed, BlockNumber blockno);
 void extra_dirtied_add(ExtraDirtiedBufs* ed, BlockNumber blockno, Buffer buf, Page page);
 Page extra_dirtied_get(ExtraDirtiedBufs* ed, BlockNumber blockno, Buffer* out_buf);

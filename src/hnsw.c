@@ -3,9 +3,11 @@
 #include "hnsw.h"
 
 #include <access/amapi.h>
+#include <access/heapam.h>
 #include <catalog/namespace.h>
 #include <commands/vacuum.h>
 #include <float.h>
+#include <math.h>
 #include <utils/guc.h>
 #include <utils/lsyscache.h>
 #include <utils/selfuncs.h>
@@ -45,6 +47,98 @@ static char *hnswbuildphasename(int64 phasenum)
 #endif
 
 /*
+ * Helper to compute number of levels we expect to see in our index with N vectors.
+ * We could just pull this out of the hnsw header and get rid of this function.
+ * However, before doing so, we should benchmark that implementation and compare with
+ * this implementation first that computes an expectation.
+ *
+ * An element will be in level given by random variable`floor(-ln(unif(0, 1)) * mL)`, based on the paper.
+ * Every time an element is inserted into the index, we "draw" from this random variable.
+ *
+ * The Expected Value of this distribtion is mL, as the author says in 4.2.2.
+ * I.e. when we "draw" a number, we expect it to be mL.
+ *
+ * However, this is not what we care about. We care about what happens when we do
+ * `num_tuples_in_index` "draw"s from this distribution--the expected maximum of
+ * all the draws. This is an order statistic.
+ * https://en.wikipedia.org/wiki/Order_statistic
+ *
+ * In particular, let D be a random variable given by `-ln(unif(0, 1)) * mL`.
+ * We care about E[Max_N{D}], where Max_N{D} means Maximum out of N draws from D.
+ *
+ * Let's strip out the constants and irrelevant transformations.
+ * E[Max_N{D}] = -ln(E[Min_N{unif(0,1)}]) * mL
+ *
+ * So we need to compute E[Min_N{unif(0,1)}]. This is well understood, and based on wiki above
+ * is 1/(1+n).
+ *
+ * -ln(1/(1+n)) * mL = ln(1+n)*mL
+ *
+ * This is O(log(N)), which is what the author claims the scaling with dateset is in 4.2.1 and 4.2.2.
+ */
+static uint64 expected_numer_of_levels(double num_tuples_in_index, double mL)
+{
+    return ceil(log(1.0 + num_tuples_in_index) * mL);
+}
+
+/*
+ * Bound on the expected number of tuples we expect hnsw to visit on a search query.
+ */
+static uint64 estimate_number_tuples_accessed(Oid index_relation, double num_tuples_in_index)
+{
+    int M, ef;
+    {  // index_rel scope
+        Relation index_rel = relation_open(index_relation, AccessShareLock);
+        M = HnswGetM(index_rel);
+        ef = HnswGetEf(index_rel);
+        relation_close(index_rel, AccessShareLock);
+    }
+
+    // mL, the level normalization factor, from the paper, Algorithm 1.
+    // Section 4.1 on the paper says optimal choice for this value
+    // is 1/ln(M). Usearch also follows this.
+    const double mL = 1.0 / log(M);
+    // S, the expected number of steps in a layer, from the paper.
+    const double S = 1.0 / (1.0 - exp(-1.0 * mL));
+
+    const uint64 tuples_visited_per_non_base_level = S * M;
+    // the base level has M * 2 neighbors, and we do ef searches,
+    // so need to account for both of that here
+    const uint64 tuples_visited_for_base_level = ef * S * M * 2;
+
+    // this scales logarithmically based on the number of elements in the index
+    const uint64 expected_number_of_levels = expected_numer_of_levels(num_tuples_in_index, mL);
+
+    uint64 total_tuple_visits = tuples_visited_per_non_base_level * (expected_number_of_levels - 1);
+    total_tuple_visits += expected_number_of_levels > 0 ? tuples_visited_for_base_level : 0;
+
+    // `total_tuple_visits` can be larger than the number of tuples in the index
+    // if the database doesn't have a lot of tuples in it.
+    // in this case, we should still prefer to use the hnsw index over a sequential scan.
+    // The "3.0" is arbitrary here.
+    return Min(total_tuple_visits, num_tuples_in_index / 3.0);
+}
+
+static uint64 estimate_number_blocks_accessed(uint64 num_tuples_in_index, uint64 num_pages, uint64 num_tuples_accessed)
+{
+    if(num_tuples_in_index == 0 || num_pages == 0 || num_tuples_accessed == 0) {
+        return 0;
+    }
+    const uint64 num_header_pages = 1;
+    // TODO: remove blockmap from cost estimation once
+    // we switch away from blockmaps.
+    const uint64 num_blockmaps_used = ceil(num_tuples_in_index / HNSW_BLOCKMAP_BLOCKS_PER_PAGE);
+    const uint64 num_blockmap_allocated = pow(2, floor(log2(num_blockmaps_used)) + 1);
+    const uint64 num_datablocks = Max(num_pages - 1 - num_blockmap_allocated, 1);
+
+    const uint64 num_datablocks_accessed = ((double)num_tuples_accessed / (double)num_tuples_in_index) * num_datablocks;
+    const uint64 num_blockmaps_accessed
+        = ((double)num_datablocks_accessed / (double)num_datablocks) * num_blockmaps_used;
+    const uint64 num_block_accesses = num_header_pages + num_datablocks_accessed + num_blockmaps_accessed;
+    return num_block_accesses;
+}
+
+/*
  * Estimate the cost of an index scan
  */
 static void hnswcostestimate(PlannerInfo *root,
@@ -73,8 +167,10 @@ static void hnswcostestimate(PlannerInfo *root,
     /* ALWAYS use index when asked*/
     MemSet(&costs, 0, sizeof(costs));
 
-    // todo:: estimate number of leaf tuples visited
-    costs.numIndexTuples = 0;
+    double num_tuples_in_index = path->indexinfo->rel->tuples;
+    costs.numIndexTuples = estimate_number_tuples_accessed(path->indexinfo->indexoid, num_tuples_in_index);
+    uint64 num_blocks_accessed
+        = estimate_number_blocks_accessed(num_tuples_in_index, path->indexinfo->pages, costs.numIndexTuples);
 
 #if PG_VERSION_NUM >= 120000
     genericcostestimate(root, path, loop_count, &costs);
@@ -84,10 +180,20 @@ static void hnswcostestimate(PlannerInfo *root,
 #endif
 
     *indexStartupCost = 0;
-    *indexTotalCost = costs.indexTotalCost;
-    *indexSelectivity = costs.indexSelectivity;
+    *indexTotalCost = costs.numIndexPages ? costs.indexTotalCost * (num_blocks_accessed / costs.numIndexPages) : 0;
+    *indexSelectivity = 1.0;
+    // since we try to insert index tuples at the last datablock,
+    // there is no "order" at all that can be assumed.
     *indexCorrelation = 0;
-    *indexPages = costs.numIndexPages;
+    *indexPages = num_blocks_accessed;
+
+    elog(DEBUG5, "LANTERN - Query cost estimator");
+    elog(DEBUG5, "LANTERN - ---------------------");
+    elog(DEBUG5, "LANTERN - Total cost: %lf", *indexTotalCost);
+    elog(DEBUG5, "LANTERN - Selectivity: %lf", *indexSelectivity);
+    elog(DEBUG5, "LANTERN - Num pages: %lf", *indexPages);
+    elog(DEBUG5, "LANTERN - Num tuples: %lf", costs.numIndexTuples);
+    elog(DEBUG5, "LANTERN - ---------------------");
 }
 
 /*

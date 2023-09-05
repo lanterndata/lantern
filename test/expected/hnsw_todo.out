@@ -114,7 +114,7 @@ INFO:  starting scan with dimensions=128 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized
    round   
 -----------
-0.00
+ 249285.00
 (1 row)
 
 -- Case:
@@ -142,6 +142,6 @@ INFO:  starting scan with dimensions=128 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized
    round   
 -----------
-0.00
+ 249285.00
 (1 row)
 
