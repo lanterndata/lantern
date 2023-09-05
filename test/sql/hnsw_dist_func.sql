@@ -76,3 +76,4 @@ SELECT MAX(v <-> '{1,2}') FROM test1;
 SELECT * FROM test1 JOIN test2 ON test1.v <-> test2.v < 0.5;
 SELECT test1.v FROM test1 JOIN test2 ON test1.v <-> '{1,2}' = test2.v <-> '{1,3}';
 SELECT (v <-> '{1,2}') + (v <-> '{1,3}') FROM test1;
+SELECT CASE WHEN v <-> '{1,2}' > 1 THEN 'High' ELSE 'Low' END FROM test1;

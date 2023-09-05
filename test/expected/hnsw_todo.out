@@ -63,11 +63,6 @@ INFO:  usearch index initialized
 -- todo: operators: throw errors here too
 CREATE TABLE test1 (id SERIAL, v REAL[]);
 CREATE TABLE test2 (id SERIAL, v REAL[]);
-SELECT CASE WHEN v <-> '{1,2}' > 1 THEN 'High' ELSE 'Low' END FROM test1;
- case 
-------
-(0 rows)
-
 INSERT INTO test1 (v) VALUES ('{2,3}') RETURNING v <-> '{1,2}';
  ?column? 
 ----------

@@ -152,6 +152,23 @@ bool isOperatorUsedOutsideOrderBy(Node *node, List *oidList)
         }
     }
 
+    if(IsA(node, CaseExpr)) {
+        CaseExpr *caseExpr = (CaseExpr *)node;
+        ListCell *lc;
+        foreach(lc, caseExpr->args) {
+            CaseWhen *when = (CaseWhen *)lfirst(lc);
+            if(isOperatorUsedOutsideOrderBy((Node *)when->expr, oidList)) {
+                return true;
+            }
+            if(isOperatorUsedOutsideOrderBy((Node *)when->result, oidList)) {
+                return true;
+            }
+        }
+        if(isOperatorUsedOutsideOrderBy((Node *)caseExpr->defresult, oidList)) {
+            return true;
+        }
+    }
+
     return false;
 }
 
