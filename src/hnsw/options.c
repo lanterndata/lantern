@@ -158,7 +158,7 @@ void post_parse_analyze_hook_with_operator_check(ParseState *pstate,
     // Now, traverse and print the AST using the 'query' node as a starting point
     List *oidList = get_operator_oids(pstate);
     if(oidList != NIL) {
-        if(isOperatorUsedOutsideOrderBy((Node *)query, oidList, NIL)) {
+        if(validate_operator_usage((Node *)query, oidList)) {
             elog(ERROR, "Operator <-> has no standalone meaning and is reserved for use in vector index lookups only");
         }
     }

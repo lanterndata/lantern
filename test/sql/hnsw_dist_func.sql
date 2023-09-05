@@ -82,3 +82,4 @@ INSERT INTO test1 (v) VALUES ('{2,3}') RETURNING v <-> '{1,2}';
 SELECT 1 FROM test1 GROUP BY v <-> '{1,3}';
 SELECT 1 FROM test1 ORDER BY (('{1,2}'::real[] <-> '{3,4}'::real[]) - 0);
 SELECT 1 FROM test1 ORDER BY '{1,2}'::REAL[] <-> '{3,4}'::REAL[];
+SELECT 1 FROM test1 ORDER BY v <-> ARRAY[(SELECT '{1,4}'::REAL[] <-> '{4,2}'::REAL[]), 3];
