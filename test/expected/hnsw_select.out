@@ -88,10 +88,6 @@ DEBUG:  LANTERN - Selectivity: 1.000000
 DEBUG:  LANTERN - Num pages: 1.000000
 DEBUG:  LANTERN - Num tuples: 2.000000
 DEBUG:  LANTERN - ---------------------
-INFO:  began scanning with 0 keys and 1 orderbys
-INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
-INFO:  usearch index initialized
-DEBUG:  LANTERN querying index for 10 elements
  count 
 -------
      3
@@ -107,10 +103,6 @@ DEBUG:  LANTERN - Selectivity: 1.000000
 DEBUG:  LANTERN - Num pages: 1.000000
 DEBUG:  LANTERN - Num tuples: 2.000000
 DEBUG:  LANTERN - ---------------------
-INFO:  began scanning with 0 keys and 1 orderbys
-INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
-INFO:  usearch index initialized
-DEBUG:  LANTERN querying index for 10 elements
  count 
 -------
      8
@@ -128,10 +120,6 @@ DEBUG:  LANTERN - Selectivity: 1.000000
 DEBUG:  LANTERN - Num pages: 1.000000
 DEBUG:  LANTERN - Num tuples: 2.000000
 DEBUG:  LANTERN - ---------------------
-INFO:  began scanning with 0 keys and 1 orderbys
-INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
-INFO:  usearch index initialized
-DEBUG:  LANTERN querying index for 4 elements
  count 
 -------
      3
@@ -147,11 +135,6 @@ DEBUG:  LANTERN - Selectivity: 1.000000
 DEBUG:  LANTERN - Num pages: 1.000000
 DEBUG:  LANTERN - Num tuples: 2.000000
 DEBUG:  LANTERN - ---------------------
-INFO:  began scanning with 0 keys and 1 orderbys
-INFO:  starting scan with dimensions=3 M=5 efConstruction=20 ef=20
-INFO:  usearch index initialized
-DEBUG:  LANTERN querying index for 4 elements
-DEBUG:  LANTERN - querying index for 8 elements
  count 
 -------
      8

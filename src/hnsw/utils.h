@@ -23,5 +23,19 @@ static inline void ldb_invariant(bool condition, const char *msg, ...)
     elog(ERROR, "LanternDB invariant violation: %s. Please restart your DB session and report this error", msg);
 }
 
-#define UTILS_H
+// When calling elog(LEVEL, ...), even if the logs at LEVEL are disabled and nothing is
+// printed, it seems elog always does string interpolation and prepares the argument for printing
+// which adds ~10us overhead per call. This becomes significant at high throughput
+// search operations.
+// For this reason on hot codepaths we should avoid elog all together.
+// To print debug or test output on these hot codepaths, use ldb_dlog.
+// ldb_dlog has assert() semantics - it will be removed completely on release builds
+// so has no performance impact
+#ifdef LANTERNDB_DEBUG_LOGS
+#define ldb_dlog(elevel, ...) elog(elevel, errmsg_internal(__VA_ARGS__))
+#else
+#define ldb_dlog(elevel, ...) /*empty*/
+
+#endif  // LANTERNDB_DEBUG_LOGS
+
 #endif  // LDB_HNSW_UTILS_H
