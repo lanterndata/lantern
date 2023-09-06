@@ -46,9 +46,6 @@ EXPLAIN (COSTS FALSE) SELECT ROUND(l2sq_dist(v, :'v777')::numeric, 2) FROM sift_
 (3 rows)
 
 SELECT ROUND(l2sq_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <-> :'v777' LIMIT 10;
-INFO:  began scanning with 0 keys and 1 orderbys
-INFO:  starting scan with dimensions=128 M=16 efConstruction=64 ef=32
-INFO:  usearch index initialized
    round   
 -----------
       0.00
@@ -69,9 +66,6 @@ INSERT INTO sift_base1k (id, v) VALUES
 (1002, array_fill(2, ARRAY[128]));
 SELECT v AS v1001 FROM sift_base1k WHERE id = 1001 \gset
 SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <-> :'v1001' LIMIT 10;
-INFO:  began scanning with 0 keys and 1 orderbys
-INFO:  starting scan with dimensions=128 M=16 efConstruction=64 ef=32
-INFO:  usearch index initialized
    round   
 -----------
       0.00
@@ -115,9 +109,6 @@ EXPLAIN (COSTS FALSE) SELECT ROUND(cos_dist(v, :'v777')::numeric, 2) FROM sift_b
 (3 rows)
 
 SELECT ROUND(cos_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <-> :'v777' LIMIT 10;
-INFO:  began scanning with 0 keys and 1 orderbys
-INFO:  starting scan with dimensions=128 M=16 efConstruction=64 ef=32
-INFO:  usearch index initialized
  round 
 -------
   0.00
@@ -152,9 +143,6 @@ INFO:  done loading usearch index
 INFO:  done saving 1000 vectors
 -- This should not throw error, but the first result will not be 0 as vector 777 is deleted from the table
 SELECT ROUND(l2sq_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <-> :'v777' LIMIT 10;
-INFO:  began scanning with 0 keys and 1 orderbys
-INFO:  starting scan with dimensions=128 M=16 efConstruction=64 ef=32
-INFO:  usearch index initialized
    round   
 -----------
   98486.00

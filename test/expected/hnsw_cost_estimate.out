@@ -19,10 +19,6 @@ DEBUG:  LANTERN - Selectivity: 1.000000
 DEBUG:  LANTERN - Num pages: 1.000000
 DEBUG:  LANTERN - Num tuples: 30.000000
 DEBUG:  LANTERN - ---------------------
-INFO:  began scanning with 0 keys and 1 orderbys
-INFO:  starting scan with dimensions=2 M=2 efConstruction=10 ef=2
-INFO:  usearch index initialized
-DEBUG:  LANTERN querying index for 10 elements
                                                     QUERY PLAN                                                    
 ------------------------------------------------------------------------------------------------------------------
  Limit  (cost=0.00..0.47 rows=10 width=40) (actual rows=0 loops=1)
@@ -52,10 +48,6 @@ DEBUG:  LANTERN - Selectivity: 1.000000
 DEBUG:  LANTERN - Num pages: 4.000000
 DEBUG:  LANTERN - Num tuples: 46.000000
 DEBUG:  LANTERN - ---------------------
-INFO:  began scanning with 0 keys and 1 orderbys
-INFO:  starting scan with dimensions=128 M=2 efConstruction=10 ef=4
-INFO:  usearch index initialized
-DEBUG:  LANTERN querying index for 10 elements
                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                           
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit  (cost=0.00..3.00 rows=10 width=40) (actual rows=10 loops=1)
@@ -85,10 +77,6 @@ DEBUG:  LANTERN - Selectivity: 1.000000
 DEBUG:  LANTERN - Num pages: 71.000000
 DEBUG:  LANTERN - Num tuples: 773.000000
 DEBUG:  LANTERN - ---------------------
-INFO:  began scanning with 0 keys and 1 orderbys
-INFO:  starting scan with dimensions=128 M=20 efConstruction=10 ef=4
-INFO:  usearch index initialized
-DEBUG:  LANTERN querying index for 10 elements
                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                           
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit  (cost=0.00..3.27 rows=10 width=40) (actual rows=10 loops=1)
@@ -118,10 +106,6 @@ DEBUG:  LANTERN - Selectivity: 1.000000
 DEBUG:  LANTERN - Num pages: 226.000000
 DEBUG:  LANTERN - Num tuples: 2465.000000
 DEBUG:  LANTERN - ---------------------
-INFO:  began scanning with 0 keys and 1 orderbys
-INFO:  starting scan with dimensions=128 M=20 efConstruction=10 ef=16
-INFO:  usearch index initialized
-DEBUG:  LANTERN querying index for 10 elements
                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                           
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit  (cost=0.00..3.91 rows=10 width=40) (actual rows=10 loops=1)

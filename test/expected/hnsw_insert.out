@@ -56,9 +56,6 @@ FROM
     small_world
 ORDER BY
     v <-> '{0,0,0}';
-INFO:  began scanning with 0 keys and 1 orderbys
-INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
-INFO:  usearch index initialized
  round 
 -------
   0.00
