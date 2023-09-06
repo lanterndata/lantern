@@ -29,7 +29,14 @@ function setup_postgres() {
   apt update
   apt install -y postgresql-$PG_VERSION postgresql-server-dev-$PG_VERSION
   # Install pgvector
-  apt install -y postgresql-$PG_VERSION-pgvector
+  pushd /tmp
+    PGVECTOR_VERSION=0.4.4
+    wget -O pgvector.tar.gz https://github.com/pgvector/pgvector/archive/refs/tags/v${PGVECTOR_VERSION}.tar.gz
+    tar xzf pgvector.tar.gz
+    pushd pgvector-${PGVECTOR_VERSION}
+      make && make install
+    popd
+  popd
   # Fix pg_config (sometimes it points to wrong version)
   rm -f /usr/bin/pg_config && ln -s /usr/lib/postgresql/$PG_VERSION/bin/pg_config /usr/bin/pg_config
 }
