@@ -122,8 +122,9 @@ bool validate_operator_usage(Node *node, List *oidList)
     }
 
     List *sort_group_refs = get_sort_group_refs((Query *)node);
-
-    return is_operator_used_correctly(node, oidList, sort_group_refs);
+    bool  used_correctly = is_operator_used_correctly(node, oidList, sort_group_refs);
+    list_free(sort_group_refs);
+    return used_correctly;
 
     // TODO: Check for sort by without index
 }
