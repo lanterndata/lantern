@@ -1,5 +1,5 @@
-#ifndef LDB_HNSW_POST_PARSE_H
-#define LDB_HNSW_POST_PARSE_H
+#ifndef LDB_HOOKS_POST_PARSE_H
+#define LDB_HOOKS_POST_PARSE_H
 
 #include <postgres.h>
 
@@ -16,4 +16,4 @@ void                                post_parse_analyze_hook_with_operator_check(
 #endif
 );
 
-#endif  // LDB_HNSW_POST_PARSE_H
+#endif  // LDB_HOOKS_POST_PARSE_H

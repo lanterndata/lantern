@@ -10,6 +10,8 @@
 #include <utils/catcache.h>
 #include <utils/guc.h>
 
+#include "utils.h"
+
 typedef struct
 {
     List *oidList;
@@ -18,14 +20,13 @@ typedef struct
 static bool operator_used_walker(Node *node, OperatorUsedContext *context)
 {
     if(node == NULL) return false;
-    if(IsA(node, Query)) return query_tree_walker((Query *)node, operator_used_walker, (void *)context, 0);
     if(IsA(node, OpExpr)) {
         OpExpr *opExpr = (OpExpr *)node;
         if(list_member_oid(context->oidList, opExpr->opno)) {
             return true;
         }
     }
-    return expression_tree_walker(node, operator_used_walker, (void *)context);
+    return query_or_expression_tree_walker(node, operator_used_walker, (void *)context, 0);
 }
 
 static bool is_operator_used(Node *node, List *oidList)
@@ -50,9 +51,8 @@ static bool sort_group_ref_walker(Node *node, SortGroupRefContext *context)
             SortGroupClause *sortGroupClause = (SortGroupClause *)lfirst(lc);
             context->sortGroupRefs = lappend_int(context->sortGroupRefs, sortGroupClause->tleSortGroupRef);
         }
-        return query_tree_walker((Query *)node, sort_group_ref_walker, (void *)context, 0);
     }
-    return expression_tree_walker(node, sort_group_ref_walker, (void *)context);
+    return query_or_expression_tree_walker(node, sort_group_ref_walker, (void *)context, 0);
 }
 
 static List *get_sort_group_refs(Node *node)
@@ -73,7 +73,6 @@ typedef struct
 static bool operator_used_correctly_walker(Node *node, OperatorUsedCorrectlyContext *context)
 {
     if(node == NULL) return false;
-    if(IsA(node, Query)) return query_tree_walker((Query *)node, operator_used_correctly_walker, (void *)context, 0);
     if(IsA(node, TargetEntry)) {
         TargetEntry *te = (TargetEntry *)node;
         if(te->resjunk && list_member_int(context->sortGroupRefs, te->ressortgroupref)) {
@@ -97,7 +96,6 @@ static bool operator_used_correctly_walker(Node *node, OperatorUsedCorrectlyCont
             }
         }
     }
-
     if(IsA(node, OpExpr)) {
         OpExpr *opExpr = (OpExpr *)node;
         if(list_member_oid(context->oidList, opExpr->opno)) {
@@ -105,7 +103,7 @@ static bool operator_used_correctly_walker(Node *node, OperatorUsedCorrectlyCont
         }
     }
 
-    return expression_tree_walker(node, operator_used_correctly_walker, (void *)context);
+    return query_or_expression_tree_walker(node, operator_used_correctly_walker, (void *)context, 0);
 }
 
 static bool is_operator_used_correctly(Node *node, List *oidList, List *sortGroupRefs)
@@ -128,30 +126,6 @@ bool validate_operator_usage(Node *node, List *oidList)
     return used_correctly;
 }
 
-static List *get_operator_oids(ParseState *pstate)
-{
-    List *oidList = NIL;
-
-    Oid intArrayOid = INT4ARRAYOID;
-    Oid floatArrayOid = FLOAT4ARRAYOID;
-
-    List *nameList = lappend(NIL, makeString("<->"));
-
-    Oid intOperator = LookupOperName(pstate, nameList, intArrayOid, intArrayOid, true, -1);
-    Oid floatOperator = LookupOperName(pstate, nameList, floatArrayOid, floatArrayOid, true, -1);
-
-    if(OidIsValid(intOperator)) {
-        oidList = lappend_oid(oidList, intOperator);
-    }
-    if(OidIsValid(floatOperator)) {
-        oidList = lappend_oid(oidList, floatOperator);
-    }
-
-    list_free(nameList);
-
-    return oidList;
-}
-
 post_parse_analyze_hook_type original_post_parse_analyze_hook = NULL;
 void                         post_parse_analyze_hook_with_operator_check(ParseState *pstate,
                                                                          Query      *query
@@ -169,9 +143,11 @@ void                         post_parse_analyze_hook_with_operator_check(ParseSt
 #endif
     }
 
-    List *oidList = get_operator_oids(pstate);
-    if(oidList != NIL && !validate_operator_usage((Node *)query, oidList)) {
-        elog(ERROR, "Operator <-> has no standalone meaning and is reserved for use in vector index lookups only");
+    List *oidList = get_operator_oids();
+    if(oidList != NIL) {
+        if(!validate_operator_usage((Node *)query, oidList)) {
+            elog(ERROR, "Operator <-> has no standalone meaning and is reserved for use in vector index lookups only");
+        }
+        list_free(oidList);
     }
-    list_free(oidList);
 }
