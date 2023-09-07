@@ -351,7 +351,29 @@ static void BuildIndex(
         opts.expansion_search = metadata.expansion_search;
         opts.metric_kind = metadata.metric_kind;
     } else {
-        usearch_reserve(buildstate->usearch_index, HNSW_DEFAULT_CAPACITY, &error);
+        BlockNumber numBlocks = RelationGetNumberOfBlocks(heap);
+        uint32_t    estimated_row_count = 0;
+        if(numBlocks > 0) {
+            // Read the first block
+            Buffer buffer = ReadBufferExtended(heap, MAIN_FORKNUM, 0, RBM_NORMAL, NULL);
+            // Lock buffer so there won't be any new writes during this operation
+            LockBuffer(buffer, BUFFER_LOCK_SHARE);
+            // This is like converting block buffer to Page struct
+            Page page = BufferGetPage(buffer);
+            // Getting the maximum tuple index on the page
+            OffsetNumber offset = PageGetMaxOffsetNumber(page);
+            // Estimating the row count in the table
+            // There can be 3 cases
+            // 1 - new data is added and numBlocks gets increased. In this case the estimation will be lower than actual
+            // number (we need to check and increase index size) 2 - the last page is not fully associated (this is most
+            // likely to happen). In this case we will have a bit higher estimated number 3 - the last page is fully
+            // associated and we get exactly the number of rows that the table has (this is very rare case I think)
+            estimated_row_count = offset * numBlocks;
+            // Unlock and release buffer
+            LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
+            ReleaseBuffer(buffer);
+        }
+        usearch_reserve(buildstate->usearch_index, estimated_row_count, &error);
         assert(error == NULL);
 
         UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_IN_MEMORY_INSERT);
