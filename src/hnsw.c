@@ -350,11 +350,11 @@ HnswColumnType GetIndexColumnType(Relation index)
     Form_pg_attribute attr = TupleDescAttr(indexTupDesc, 0);
     Oid               columnType = attr->atttypid;
 
-    if(columnType == get_array_type(FLOAT4OID)) {
+    if(columnType == FLOAT4ARRAYOID) {
         return REAL_ARRAY;
     } else if(columnType == TypenameGetTypid("vector")) {
         return VECTOR;
-    } else if(columnType == get_array_type(INT4OID)) {
+    } else if(columnType == INT4ARRAYOID) {
         return INT_ARRAY;
     } else {
         return UNKNOWN;

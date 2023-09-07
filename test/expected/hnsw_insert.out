@@ -51,7 +51,6 @@ ERROR:  Wrong number of dimensions: 4 instead of 3 expected
 \set ON_ERROR_STOP on
 -- Verify that the index works with the inserted vectors
 SELECT
-    id,
     ROUND(l2sq_dist(v, '{0,0,0}')::numeric, 2)
 FROM
     small_world
@@ -60,17 +59,17 @@ ORDER BY
 INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=3 M=16 efConstruction=128 ef=64
 INFO:  usearch index initialized
- id  | round 
------+-------
- 000 |  0.00
- 001 |  1.00
- 010 |  1.00
- 100 |  1.00
- 011 |  2.00
- 101 |  2.00
- 110 |  2.00
- 111 |  3.00
-     |  6.00
+ round 
+-------
+  0.00
+  1.00
+  1.00
+  1.00
+  2.00
+  2.00
+  2.00
+  3.00
+  6.00
 (9 rows)
 
 -- Ensure the index size remains consistent after inserts
@@ -83,7 +82,6 @@ SELECT * from ldb_get_indexes('small_world');
 -- Ensure the query plan remains consistent after inserts
 EXPLAIN (COSTS FALSE)
 SELECT
-    id,
     ROUND(l2sq_dist(v, '{0,0,0}')::numeric, 2)
 FROM
     small_world

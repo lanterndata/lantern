@@ -4,7 +4,7 @@
 
 #include <utils/relcache.h>  // Relation
 
-#include "external_index.h"
+#include "usearch.h"
 
 // todo:: add hnsw dynamic vector dimension constraints
 // based on vector element size
