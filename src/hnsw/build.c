@@ -79,7 +79,15 @@ static void AddTupleToUsearchIndex(ItemPointer tid, Datum *values, HnswBuildStat
     if(buildstate->hnsw != NULL) hnsw_add(buildstate->hnsw, vector, label);
 #endif
 #ifdef LANTERN_USE_USEARCH
-    if(buildstate->usearch_index != NULL) usearch_add(buildstate->usearch_index, label, vector, usearch_scalar, &error);
+    if(buildstate->usearch_index != NULL) {
+        size_t capacity;
+        capacity = usearch_capacity(buildstate->usearch_index, &error);
+        if (capacity == usearch_size(buildstate->usearch_index, &error)) {
+            usearch_reserve(buildstate->usearch_index, 2 * capacity, &error);
+            assert(error == NULL);
+        }
+        usearch_add(buildstate->usearch_index, label, vector, usearch_scalar, &error);
+    }
 #endif
     assert(error == NULL);
     buildstate->tuples_indexed++;
@@ -343,7 +351,7 @@ static void BuildIndex(
         opts.expansion_search = metadata.expansion_search;
         opts.metric_kind = metadata.metric_kind;
     } else {
-        usearch_reserve(buildstate->usearch_index, 1100000, &error);
+        usearch_reserve(buildstate->usearch_index, HNSW_DEFAULT_CAPACITY, &error);
         assert(error == NULL);
 
         UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_IN_MEMORY_INSERT);
