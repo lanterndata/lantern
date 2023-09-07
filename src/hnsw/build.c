@@ -82,7 +82,7 @@ static void AddTupleToUsearchIndex(ItemPointer tid, Datum *values, HnswBuildStat
     if(buildstate->usearch_index != NULL) {
         size_t capacity;
         capacity = usearch_capacity(buildstate->usearch_index, &error);
-        if (capacity == usearch_size(buildstate->usearch_index, &error)) {
+        if(capacity == usearch_size(buildstate->usearch_index, &error)) {
             usearch_reserve(buildstate->usearch_index, 2 * capacity, &error);
             assert(error == NULL);
         }
