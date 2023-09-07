@@ -1,10 +1,11 @@
 #include <postgres.h>
 
-#include "parse_op.h"
+#include "post_parse.h"
 
 #include <catalog/pg_type_d.h>
 #include <nodes/makefuncs.h>
 #include <nodes/nodeFuncs.h>
+#include <parser/analyze.h>
 #include <parser/parse_oper.h>
 #include <utils/catcache.h>
 #include <utils/guc.h>
@@ -125,11 +126,9 @@ bool validate_operator_usage(Node *node, List *oidList)
     bool  used_correctly = is_operator_used_correctly(node, oidList, sort_group_refs);
     list_free(sort_group_refs);
     return used_correctly;
-
-    // TODO: Check for sort by without index
 }
 
-List *get_operator_oids(ParseState *pstate)
+static List *get_operator_oids(ParseState *pstate)
 {
     List *oidList = NIL;
 
@@ -151,4 +150,28 @@ List *get_operator_oids(ParseState *pstate)
     list_free(nameList);
 
     return oidList;
+}
+
+post_parse_analyze_hook_type original_post_parse_analyze_hook = NULL;
+void                         post_parse_analyze_hook_with_operator_check(ParseState *pstate,
+                                                                         Query      *query
+#if PG_VERSION_NUM >= 140000
+                                                 ,
+                                                 JumbleState *jstate
+#endif
+)
+{
+    if(original_post_parse_analyze_hook) {
+#if PG_VERSION_NUM >= 140000
+        original_post_parse_analyze_hook(pstate, query, jstate);
+#else
+        original_post_parse_analyze_hook(pstate, query);
+#endif
+    }
+
+    List *oidList = get_operator_oids(pstate);
+    if(oidList != NIL && !validate_operator_usage((Node *)query, oidList)) {
+        elog(ERROR, "Operator <-> has no standalone meaning and is reserved for use in vector index lookups only");
+    }
+    list_free(oidList);
 }

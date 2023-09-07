@@ -6,6 +6,7 @@
 #include <access/reloptions.h>
 #include <catalog/pg_amproc.h>
 #include <catalog/pg_type_d.h>
+#include <executor/executor.h>
 #include <fmgr.h>
 #include <parser/analyze.h>
 #include <utils/catcache.h>
@@ -13,7 +14,8 @@
 #include <utils/rel.h>  // RelationData
 #include <utils/syscache.h>
 
-#include "../parser/parse_op.h"
+#include "../hooks/executor_start.h"
+#include "../hooks/post_parse.h"
 
 #ifdef _WIN32
 #define access _access
@@ -30,8 +32,6 @@
 // CREATE INDEX ... WITH (...)
 //                       ^^^^
 static relopt_kind ldb_hnsw_index_withopts;
-
-static post_parse_analyze_hook_type original_post_parse_analyze_hook = NULL;
 
 int ldb_hnsw_init_k;
 
@@ -138,38 +138,16 @@ bytea *ldb_amoptions(Datum reloptions, bool validate)
 #endif
 }
 
-void post_parse_analyze_hook_with_operator_check(ParseState *pstate,
-                                                 Query      *query
-#if PG_VERSION_NUM >= 140000
-                                                 ,
-                                                 JumbleState *jstate
-#endif
-)
-{
-    // If there was a previous hook, call it
-    if(original_post_parse_analyze_hook) {
-#if PG_VERSION_NUM >= 140000
-        original_post_parse_analyze_hook(pstate, query, jstate);
-#else
-        original_post_parse_analyze_hook(pstate, query);
-#endif
-    }
-
-    // Now, traverse and print the AST using the 'query' node as a starting point
-    List *oidList = get_operator_oids(pstate);
-    if(oidList != NIL && !validate_operator_usage((Node *)query, oidList)) {
-        elog(ERROR, "Operator <-> has no standalone meaning and is reserved for use in vector index lookups only");
-    }
-    list_free(oidList);
-}
-
 /*
  * Initialize index options and variables
  */
 void _PG_init(void)
 {
     original_post_parse_analyze_hook = post_parse_analyze_hook;
+    original_ExecutorStart_hook = ExecutorStart_hook;
+
     post_parse_analyze_hook = post_parse_analyze_hook_with_operator_check;
+    ExecutorStart_hook = ExecutorStart_hook_with_operator_check;
     // todo:: cross-check with this`
     // https://github.com/zombodb/zombodb/blob/34c732a0b143b5e424ced64c96e8c4d567a14177/src/access_method/options.rs#L895
     ldb_hnsw_index_withopts = add_reloption_kind();
@@ -271,4 +249,5 @@ void _PG_fini(void)
 {
     // Return back the original hook value.
     post_parse_analyze_hook = original_post_parse_analyze_hook;
+    ExecutorStart_hook = original_ExecutorStart_hook;
 }
