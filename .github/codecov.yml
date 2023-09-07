@@ -6,4 +6,7 @@ comment: # this is a top-level key
   require_head: true # [true :: must have a head report to post]
 coverage:
   status:
+    project:
+      default:
+        only_pulls: true
     patch: off
