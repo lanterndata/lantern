@@ -62,6 +62,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(SOURCES_DIR "src")
 # todo:: list out all the files instead of glob
 file(GLOB SOURCES "${SOURCES_DIR}/**/*.c" "${SOURCES_DIR}/*.c")
+file(GLOB HEADER_FILES "${SOURCES_DIR}/**/*.h" "${SOURCES_DIR}/*.h")
 
 set(USEARCH_USE_SIMSIMD OFF)
 set(USEARCH_LOOKUP_LABEL OFF)
@@ -225,7 +226,8 @@ if(DEV AND NOT CLANG_FORMAT)
 endif()
 
 if (CLANG_FORMAT)
-  file(GLOB CLANG_FORMATTABLE_FILES "${SOURCES}" "${SOURCES_DIR}/**/*.h" "${SOURCES_DIR}/*.h")
+  set(CLANG_FORMATTABLE_FILES ${SOURCES})
+  list(APPEND CLANG_FORMATTABLE_FILES ${HEADER_FILES})
 
   # Add format target
   add_custom_target(

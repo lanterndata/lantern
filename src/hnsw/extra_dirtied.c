@@ -22,7 +22,7 @@ void extra_dirtied_add(ExtraDirtiedBufs *ed, BlockNumber blockno, Buffer buf, Pa
     assert(BufferIsValid(buf));
     // todo:: check as invariant that the page is locked at and is under WAL
     // currently, it may not always be under WAL which should be fixed
-    
+
     assert(ed->extra_dirtied_size + 1 < LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS);
     ed->extra_dirtied_page[ ed->extra_dirtied_size++ ] = page;
     ed->extra_dirtied_buf[ ed->extra_dirtied_size - 1 ] = buf;

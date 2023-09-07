@@ -5,13 +5,13 @@
 #include <access/amapi.h>
 #include <access/heapam.h>
 #include <catalog/namespace.h>
-#include <math.h>
 #include <commands/vacuum.h>
 #include <float.h>
+#include <math.h>
 #include <utils/guc.h>
+#include <utils/lsyscache.h>
 #include <utils/selfuncs.h>
 #include <utils/spccache.h>
-#include <utils/lsyscache.h>
 
 #include "hnsw/build.h"
 #include "hnsw/delete.h"
@@ -57,33 +57,35 @@ static char *hnswbuildphasename(int64 phasenum)
  *
  * The Expected Value of this distribtion is mL, as the author says in 4.2.2.
  * I.e. when we "draw" a number, we expect it to be mL.
- * 
+ *
  * However, this is not what we care about. We care about what happens when we do
  * `num_tuples_in_index` "draw"s from this distribution--the expected maximum of
  * all the draws. This is an order statistic.
  * https://en.wikipedia.org/wiki/Order_statistic
- * 
+ *
  * In particular, let D be a random variable given by `-ln(unif(0, 1)) * mL`.
  * We care about E[Max_N{D}], where Max_N{D} means Maximum out of N draws from D.
  *
  * Let's strip out the constants and irrelevant transformations.
  * E[Max_N{D}] = -ln(E[Min_N{unif(0,1)}]) * mL
- * 
+ *
  * So we need to compute E[Min_N{unif(0,1)}]. This is well understood, and based on wiki above
  * is 1/(1+n).
- * 
+ *
  * -ln(1/(1+n)) * mL = ln(1+n)*mL
  *
  * This is O(log(N)), which is what the author claims the scaling with dateset is in 4.2.1 and 4.2.2.
  */
-static uint64 expected_numer_of_levels(double num_tuples_in_index, double mL) {
+static uint64 expected_numer_of_levels(double num_tuples_in_index, double mL)
+{
     return ceil(log(1.0 + num_tuples_in_index) * mL);
 }
 
 /*
  * Bound on the expected number of tuples we expect hnsw to visit on a search query.
  */
-static uint64 estimate_number_tuples_accessed(Oid index_relation, double num_tuples_in_index) {
+static uint64 estimate_number_tuples_accessed(Oid index_relation, double num_tuples_in_index)
+{
     int M, ef;
     {  // index_rel scope
         Relation index_rel = relation_open(index_relation, AccessShareLock);
@@ -100,7 +102,7 @@ static uint64 estimate_number_tuples_accessed(Oid index_relation, double num_tup
     const double S = 1.0 / (1.0 - exp(-1.0 * mL));
 
     const uint64 tuples_visited_per_non_base_level = S * M;
-    // the base level has M * 2 neighbors, and we do ef searches, 
+    // the base level has M * 2 neighbors, and we do ef searches,
     // so need to account for both of that here
     const uint64 tuples_visited_for_base_level = ef * S * M * 2;
 
@@ -117,8 +119,9 @@ static uint64 estimate_number_tuples_accessed(Oid index_relation, double num_tup
     return Min(total_tuple_visits, num_tuples_in_index / 3.0);
 }
 
-static uint64 estimate_number_blocks_accessed(uint64 num_tuples_in_index, uint64 num_pages, uint64 num_tuples_accessed) {
-    if (num_tuples_in_index == 0 || num_pages == 0 || num_tuples_accessed == 0) {
+static uint64 estimate_number_blocks_accessed(uint64 num_tuples_in_index, uint64 num_pages, uint64 num_tuples_accessed)
+{
+    if(num_tuples_in_index == 0 || num_pages == 0 || num_tuples_accessed == 0) {
         return 0;
     }
     const uint64 num_header_pages = 1;
@@ -129,7 +132,8 @@ static uint64 estimate_number_blocks_accessed(uint64 num_tuples_in_index, uint64
     const uint64 num_datablocks = Max(num_pages - 1 - num_blockmap_allocated, 1);
 
     const uint64 num_datablocks_accessed = ((double)num_tuples_accessed / (double)num_tuples_in_index) * num_datablocks;
-    const uint64 num_blockmaps_accessed = ((double)num_datablocks_accessed / (double)num_datablocks) * num_blockmaps_used;
+    const uint64 num_blockmaps_accessed
+        = ((double)num_datablocks_accessed / (double)num_datablocks) * num_blockmaps_used;
     const uint64 num_block_accesses = num_header_pages + num_datablocks_accessed + num_blockmaps_accessed;
     return num_block_accesses;
 }
@@ -165,8 +169,8 @@ static void hnswcostestimate(PlannerInfo *root,
 
     double num_tuples_in_index = path->indexinfo->rel->tuples;
     costs.numIndexTuples = estimate_number_tuples_accessed(path->indexinfo->indexoid, num_tuples_in_index);
-    uint64 num_blocks_accessed = estimate_number_blocks_accessed(
-        num_tuples_in_index, path->indexinfo->pages, costs.numIndexTuples);
+    uint64 num_blocks_accessed
+        = estimate_number_blocks_accessed(num_tuples_in_index, path->indexinfo->pages, costs.numIndexTuples);
 
 #if PG_VERSION_NUM >= 120000
     genericcostestimate(root, path, loop_count, &costs);
@@ -362,29 +366,29 @@ HnswColumnType GetIndexColumnType(Relation index)
  */
 float4 *DatumGetSizedFloatArray(Datum datum, HnswColumnType type, int dimensions)
 {
-    if (type == VECTOR) {
+    if(type == VECTOR) {
         Vector *vector = DatumGetVector(datum);
-        if (vector->dim != dimensions) {
+        if(vector->dim != dimensions) {
             elog(ERROR, "Expected vector with dimension %d, got %d", dimensions, vector->dim);
         }
         return vector->x;
-    } else if (type == REAL_ARRAY) {
+    } else if(type == REAL_ARRAY) {
         ArrayType *array = DatumGetArrayTypePCopy(datum);
-        int array_dim = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
-        if (array_dim != dimensions) {
+        int        array_dim = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
+        if(array_dim != dimensions) {
             elog(ERROR, "Expected real array with dimension %d, got %d", dimensions, array_dim);
         }
-        return (float4 *) ARR_DATA_PTR(array);
-    } else if (type == INT_ARRAY) {
+        return (float4 *)ARR_DATA_PTR(array);
+    } else if(type == INT_ARRAY) {
         ArrayType *array = DatumGetArrayTypePCopy(datum);
-        int array_dim = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
-        if (array_dim != dimensions) {
+        int        array_dim = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
+        if(array_dim != dimensions) {
             elog(ERROR, "Expected int array with dimension %d, got %d", dimensions, array_dim);
         }
-        int *intArray = (int *) ARR_DATA_PTR(array);
-        float4 *floatArray = (float4 *) palloc(sizeof(float) * array_dim);
-        for (int i = 0; i < array_dim; i++) {
-            floatArray[i] = (float) intArray[i];
+        int    *intArray = (int *)ARR_DATA_PTR(array);
+        float4 *floatArray = (float4 *)palloc(sizeof(float) * array_dim);
+        for(int i = 0; i < array_dim; i++) {
+            floatArray[ i ] = (float)intArray[ i ];
         }
         // todo:: free this array
         return floatArray;
