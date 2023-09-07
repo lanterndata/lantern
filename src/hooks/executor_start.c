@@ -6,17 +6,43 @@
 #include <nodes/pg_list.h>
 #include <nodes/plannodes.h>
 
+#include "plan_tree_walker.h"
 #include "utils.h"
+
+typedef struct
+{
+    List *oidList;
+    bool  isIndexScan;
+} OperatorUsedCorrectlyContext;
+
+static bool operator_used_correctly_walker(Node *node, OperatorUsedCorrectlyContext *context)
+{
+    if(node == NULL) return false;
+    if(IsA(node, IndexScan)) {
+        context->isIndexScan = true;
+    }
+    if(IsA(node, OpExpr)) {
+        if(!context->isIndexScan) {
+            return true;
+        }
+    }
+
+    bool status = plan_tree_walker(node, operator_used_correctly_walker, (void *)context);
+
+    if(IsA(node, IndexScan)) {
+        context->isIndexScan = false;
+    }
+    return status;
+}
 
 static bool validate_operator_usage(Plan *plan, List *oidList)
 {
-    elog(WARNING, "plan state: %s", nodeToString(plan));
-    if(IsA(plan, Limit)) {
-        elog(WARNING, "I'm a limit");
-    } else {
-        elog(WARNING, "I'm not a limit");
+    OperatorUsedCorrectlyContext context;
+    context.oidList = oidList;
+    context.isIndexScan = false;
+    if(operator_used_correctly_walker(plan, &context)) {
+        elog(ERROR, "Operator <-> has no standalone meaning and is reserved for use in vector index lookups only");
     }
-    return true;
 }
 
 ExecutorStart_hook_type original_ExecutorStart_hook = NULL;
@@ -28,8 +54,11 @@ void                    ExecutorStart_hook_with_operator_check(QueryDesc *queryD
 
     List *oidList = get_operator_oids();
     if(oidList != NIL) {
-        if(!validate_operator_usage(queryDesc->plannedstmt->planTree, oidList)) {
-            elog(ERROR, "Operator <-> has no standalone meaning and is reserved for use in vector index lookups only");
+        validate_operator_usage(queryDesc->plannedstmt->planTree, oidList);
+        ListCell *lc;
+        foreach(lc, queryDesc->plannedstmt->subplans) {
+            SubPlan *subplan = (SubPlan *)lfirst(lc);
+            validate_operator_usage(subplan, oidList);
         }
         list_free(oidList);
     }
