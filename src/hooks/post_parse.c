@@ -20,13 +20,14 @@ typedef struct
 static bool operator_used_walker(Node *node, OperatorUsedContext *context)
 {
     if(node == NULL) return false;
+    if(IsA(node, Query)) return query_tree_walker((Query *)node, operator_used_walker, (void *)context, 0);
     if(IsA(node, OpExpr)) {
         OpExpr *opExpr = (OpExpr *)node;
         if(list_member_oid(context->oidList, opExpr->opno)) {
             return true;
         }
     }
-    return query_or_expression_tree_walker(node, operator_used_walker, (void *)context, 0);
+    return expression_tree_walker(node, operator_used_walker, (void *)context);
 }
 
 static bool is_operator_used(Node *node, List *oidList)
@@ -51,8 +52,9 @@ static bool sort_group_ref_walker(Node *node, SortGroupRefContext *context)
             SortGroupClause *sortGroupClause = (SortGroupClause *)lfirst(lc);
             context->sortGroupRefs = lappend_int(context->sortGroupRefs, sortGroupClause->tleSortGroupRef);
         }
+        return query_tree_walker((Query *)node, sort_group_ref_walker, (void *)context, 0);
     }
-    return query_or_expression_tree_walker(node, sort_group_ref_walker, (void *)context, 0);
+    return expression_tree_walker(node, sort_group_ref_walker, (void *)context);
 }
 
 static List *get_sort_group_refs(Node *node)
@@ -73,6 +75,7 @@ typedef struct
 static bool operator_used_correctly_walker(Node *node, OperatorUsedCorrectlyContext *context)
 {
     if(node == NULL) return false;
+    if(IsA(node, Query)) return query_tree_walker((Query *)node, operator_used_correctly_walker, (void *)context, 0);
     if(IsA(node, TargetEntry)) {
         TargetEntry *te = (TargetEntry *)node;
         if(te->resjunk && list_member_int(context->sortGroupRefs, te->ressortgroupref)) {
@@ -103,7 +106,7 @@ static bool operator_used_correctly_walker(Node *node, OperatorUsedCorrectlyCont
         }
     }
 
-    return query_or_expression_tree_walker(node, operator_used_correctly_walker, (void *)context, 0);
+    return expression_tree_walker(node, operator_used_correctly_walker, (void *)context);
 }
 
 static bool is_operator_used_correctly(Node *node, List *oidList, List *sortGroupRefs)
