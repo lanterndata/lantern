@@ -117,18 +117,6 @@ static bool is_operator_used_correctly(Node *node, List *oidList, List *sortGrou
     return !operator_used_correctly_walker(node, &context);
 }
 
-bool validate_operator_usage(Node *node, List *oidList)
-{
-    if(!is_operator_used(node, oidList)) {
-        return true;
-    }
-
-    List *sort_group_refs = get_sort_group_refs((Query *)node);
-    bool  used_correctly = is_operator_used_correctly(node, oidList, sort_group_refs);
-    list_free(sort_group_refs);
-    return used_correctly;
-}
-
 post_parse_analyze_hook_type original_post_parse_analyze_hook = NULL;
 void                         post_parse_analyze_hook_with_operator_check(ParseState *pstate,
                                                                          Query      *query
@@ -148,8 +136,13 @@ void                         post_parse_analyze_hook_with_operator_check(ParseSt
 
     List *oidList = get_operator_oids();
     if(oidList != NIL) {
-        if(!validate_operator_usage((Node *)query, oidList)) {
-            elog(ERROR, "Operator <-> has no standalone meaning and is reserved for use in vector index lookups only");
+        if(is_operator_used((Node *)query, oidList)) {
+            List *sort_group_refs = get_sort_group_refs(query);
+            if(!is_operator_used_correctly(query, oidList, sort_group_refs)) {
+                elog(ERROR,
+                     "Operator <-> has no standalone meaning and is reserved for use in vector index lookups only");
+            }
+            list_free(sort_group_refs);
         }
         list_free(oidList);
     }
