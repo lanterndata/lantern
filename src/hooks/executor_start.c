@@ -21,9 +21,7 @@ static bool operator_used_correctly_walker(Node *node, OperatorUsedCorrectlyCont
     if(IsA(node, IndexScan)) {
         context->isIndexScan = true;
         bool status = plan_tree_walker(node, operator_used_correctly_walker, (void *)context);
-        if(IsA(node, IndexScan)) {
-            context->isIndexScan = false;
-        }
+        context->isIndexScan = false;
         return status;
     }
     if(IsA(node, OpExpr)) {
