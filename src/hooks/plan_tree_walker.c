@@ -17,8 +17,6 @@ bool plan_tree_walker_util(Plan *plan, bool (*walker_func)(Plan *plan, void *con
 
 bool plan_tree_walker(Plan *plan, bool (*walker_func)(Plan *plan, void *context), void *context)
 {
-    if(plan == NULL) return false;
-
     check_stack_depth();
 
     switch(nodeTag(plan)) {
