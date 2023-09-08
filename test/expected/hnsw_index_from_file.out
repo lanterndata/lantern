@@ -11,20 +11,28 @@ CREATE TABLE IF NOT EXISTS sift_base1k (
     v REAL[]
 );
 COPY sift_base1k (v) FROM '/tmp/lanterndb/vector_datasets/sift_base1k_arrays.csv' WITH csv;
--- Validate error on invalid path
 \set ON_ERROR_STOP off
-CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v dist_l2sq_ops) WITH (dims=128, M=16, ef=64, ef_construction=128, _experimental_index_path='/tmp/lanterndb/files/invalid-path');
+-- Validate error on invalid path
+CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lanterndb/files/invalid-path');
 ERROR:  Invalid index file path 
+-- Validate error on incompatible version
+CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lanterndb/files/index-sift1k-l2-0.0.0.usearch');
+INFO:  done init usearch index
+ERROR:  Incompatible version of index file
+-- Validate error on invalid file
+CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lanterndb/files/index-sift1k-l2-corrupted.usearch');
+INFO:  done init usearch index
+ERROR:  Wrong MIME type!
 \set ON_ERROR_STOP on
 -- Validate that creating an index from file works
-CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v dist_l2sq_ops) WITH (dims=128, M=16, ef=64, ef_construction=128, _experimental_index_path='/tmp/lanterndb/files/index-sift1k-l2.usearch');
+CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lanterndb/files/index-sift1k-l2.usearch');
 INFO:  done init usearch index
 INFO:  done loading usearch index
 INFO:  done saving 1000 vectors
 SELECT * FROM ldb_get_indexes('sift_base1k');
-   indexname   |  size  |                                                                                              indexdef                                                                                              | total_index_size 
----------------+--------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+------------------
- hnsw_l2_index | 720 kB | CREATE INDEX hnsw_l2_index ON public.sift_base1k USING hnsw (v) WITH (dims='128', m='16', ef='64', ef_construction='128', _experimental_index_path='/tmp/lanterndb/files/index-sift1k-l2.usearch') | 720 kB
+   indexname   |  size  |                                                                    indexdef                                                                    | total_index_size 
+---------------+--------+------------------------------------------------------------------------------------------------------------------------------------------------+------------------
+ hnsw_l2_index | 720 kB | CREATE INDEX hnsw_l2_index ON public.sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lanterndb/files/index-sift1k-l2.usearch') | 720 kB
 (1 row)
 
 SET enable_seqscan = false;
@@ -39,7 +47,7 @@ EXPLAIN (COSTS FALSE) SELECT ROUND(l2sq_dist(v, :'v777')::numeric, 2) FROM sift_
 
 SELECT ROUND(l2sq_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <-> :'v777' LIMIT 10;
 INFO:  began scanning with 0 keys and 1 orderbys
-INFO:  starting scan with dimensions=128 M=16 efConstruction=128 ef=64
+INFO:  starting scan with dimensions=128 M=16 efConstruction=64 ef=32
 INFO:  usearch index initialized
    round   
 -----------
@@ -62,7 +70,7 @@ INSERT INTO sift_base1k (id, v) VALUES
 SELECT v AS v1001 FROM sift_base1k WHERE id = 1001 \gset
 SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <-> :'v1001' LIMIT 10;
 INFO:  began scanning with 0 keys and 1 orderbys
-INFO:  starting scan with dimensions=128 M=16 efConstruction=128 ef=64
+INFO:  starting scan with dimensions=128 M=16 efConstruction=64 ef=32
 INFO:  usearch index initialized
    round   
 -----------
@@ -87,14 +95,14 @@ CREATE TABLE IF NOT EXISTS sift_base1k (
 );
 COPY sift_base1k (v) FROM '/tmp/lanterndb/vector_datasets/sift_base1k_arrays.csv' WITH csv;
 -- Validate that creating an index from file works with cosine distance function
-CREATE INDEX hnsw_cos_index ON sift_base1k USING hnsw (v dist_cos_ops) WITH (dims=128, M=16, ef=64, ef_construction=128, _experimental_index_path='/tmp/lanterndb/files/index-sift1k-cos.usearch');
+CREATE INDEX hnsw_cos_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lanterndb/files/index-sift1k-cos.usearch');
 INFO:  done init usearch index
 INFO:  done loading usearch index
 INFO:  done saving 1000 vectors
 SELECT * FROM ldb_get_indexes('sift_base1k');
-   indexname    |  size  |                                                                                                     indexdef                                                                                                      | total_index_size 
-----------------+--------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+------------------
- hnsw_cos_index | 720 kB | CREATE INDEX hnsw_cos_index ON public.sift_base1k USING hnsw (v dist_cos_ops) WITH (dims='128', m='16', ef='64', ef_construction='128', _experimental_index_path='/tmp/lanterndb/files/index-sift1k-cos.usearch') | 720 kB
+   indexname    |  size  |                                                                     indexdef                                                                     | total_index_size 
+----------------+--------+--------------------------------------------------------------------------------------------------------------------------------------------------+------------------
+ hnsw_cos_index | 720 kB | CREATE INDEX hnsw_cos_index ON public.sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lanterndb/files/index-sift1k-cos.usearch') | 720 kB
 (1 row)
 
 SELECT v AS v777 FROM sift_base1k WHERE id = 777 \gset
@@ -108,7 +116,7 @@ EXPLAIN (COSTS FALSE) SELECT ROUND(cos_dist(v, :'v777')::numeric, 2) FROM sift_b
 
 SELECT ROUND(cos_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <-> :'v777' LIMIT 10;
 INFO:  began scanning with 0 keys and 1 orderbys
-INFO:  starting scan with dimensions=128 M=16 efConstruction=128 ef=64
+INFO:  starting scan with dimensions=128 M=16 efConstruction=64 ef=32
 INFO:  usearch index initialized
  round 
 -------
@@ -138,14 +146,14 @@ CREATE TABLE IF NOT EXISTS sift_base1k (
 );
 COPY sift_base1k (v) FROM '/tmp/lanterndb/vector_datasets/sift_base1k_arrays.csv' WITH csv;
 DELETE FROM sift_base1k WHERE id=777;
-CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v dist_l2sq_ops) WITH (dims=128, M=16, ef=64, ef_construction=128, _experimental_index_path='/tmp/lanterndb/files/index-sift1k-l2.usearch');
+CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lanterndb/files/index-sift1k-l2.usearch');
 INFO:  done init usearch index
 INFO:  done loading usearch index
 INFO:  done saving 1000 vectors
 -- This should not throw error, but the first result will not be 0 as vector 777 is deleted from the table
 SELECT ROUND(l2sq_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <-> :'v777' LIMIT 10;
 INFO:  began scanning with 0 keys and 1 orderbys
-INFO:  starting scan with dimensions=128 M=16 efConstruction=128 ef=64
+INFO:  starting scan with dimensions=128 M=16 efConstruction=64 ef=32
 INFO:  usearch index initialized
    round   
 -----------

@@ -1,8 +1,10 @@
 ARG VERSION=15
+ARG PGVECTOR_VERSION=0.4.4
 ARG IMAGE_TAG=$VERSION-bookworm
 
 FROM postgres:$IMAGE_TAG
 ARG VERSION
+ARG PGVECTOR_VERSION
 
 WORKDIR /lanterndb
 
@@ -22,8 +24,12 @@ RUN apt update \
        git-all \
        tmux \
        clang-format \
-    && pip install libtmux --break-system-packages \
-    && cd /tmp && git clone --branch v0.4.4 https://github.com/pgvector/pgvector.git && cd pgvector && make && make install
+    && pip install libtmux --break-system-packages && \
+    # Install pgvector 0.4.4 (latest compatible version with LanternDB)
+    wget -O pgvector.tar.gz https://github.com/pgvector/pgvector/archive/refs/tags/v${PGVECTOR_VERSION}.tar.gz && \
+    tar xzf pgvector.tar.gz && \
+    cd pgvector-${PGVECTOR_VERSION} && \
+    make && make install
 
 COPY . .
 

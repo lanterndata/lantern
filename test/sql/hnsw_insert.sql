@@ -40,7 +40,6 @@ INSERT INTO small_world (v) VALUES ('{4,4,4,4}');
 
 -- Verify that the index works with the inserted vectors
 SELECT
-    id,
     ROUND(l2sq_dist(v, '{0,0,0}')::numeric, 2)
 FROM
     small_world
@@ -53,7 +52,6 @@ SELECT * from ldb_get_indexes('small_world');
 -- Ensure the query plan remains consistent after inserts
 EXPLAIN (COSTS FALSE)
 SELECT
-    id,
     ROUND(l2sq_dist(v, '{0,0,0}')::numeric, 2)
 FROM
     small_world

@@ -53,14 +53,19 @@ then
     mkdir -p $TMP_ROOT/files
     echo "Downloading necessary files for tests..."
     pushd $TMP_ROOT/files
-       curl -sSo index-sift1k-cos.usearch https://storage.googleapis.com/lanterndata/lanterndb_binary_indexes/index-sift1k-cos.usearch
-       curl -sSo index-sift1k-l2.usearch https://storage.googleapis.com/lanterndata/lanterndb_binary_indexes/index-sift1k-l2.usearch
+       # Index file to test version compatibility
+       curl -sSo index-sift1k-l2-0.0.0.usearch https://storage.googleapis.com/lanterndata/lanterndb_binary_indexes/index-sift1k-l2-v2.usearch
+       # Actual index files
+       curl -sSo index-sift1k-cos.usearch https://storage.googleapis.com/lanterndata/lanterndb_binary_indexes/index-sift1k-cos-v3.usearch
+       curl -sSo index-sift1k-l2.usearch https://storage.googleapis.com/lanterndata/lanterndb_binary_indexes/index-sift1k-l2-v3.usearch
+       # Corrupted index file for test
+       tail -c +100 index-sift1k-l2.usearch > index-sift1k-l2-corrupted.usearch
     popd
     echo "Successfully downloaded all necessary test files"
 fi
 
 # Check if pgvector is available
-pgvector_installed=$($PSQL -U $DB_USER -c "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'" -tA)
+pgvector_installed=$($PSQL -U $DB_USER -d postgres -c "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'" -tA)
 
 # Generate schedule.txt
 rm -rf $TMP_OUTDIR/schedule.txt

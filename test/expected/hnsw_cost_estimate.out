@@ -10,7 +10,7 @@ CREATE INDEX hnsw_idx ON sift_base10k_0 USING hnsw (v dist_l2sq_ops) WITH (M=2, 
 INFO:  done init usearch index
 INFO:  inserted 0 elements
 INFO:  done saving 0 vectors
-EXPLAIN ANALYZE SELECT * FROM sift_base10k_0 order by v <-> '{1, 2}'
+EXPLAIN (ANALYZE,TIMING FALSE) SELECT * FROM sift_base10k_0 order by v <-> '{1, 2}'
 LIMIT 10;
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
@@ -23,8 +23,8 @@ INFO:  began scanning with 0 keys and 1 orderbys
 INFO:  starting scan with dimensions=2 M=2 efConstruction=10 ef=2
 INFO:  usearch index initialized
 DEBUG:  LANTERN querying index for 10 elements
-                                                             QUERY PLAN                                                             
-------------------------------------------------------------------------------------------------------------------------------------
+                                                    QUERY PLAN                                                    
+------------------------------------------------------------------------------------------------------------------
  Limit  (cost=0.00..0.47 rows=10 width=40) (actual rows=0 loops=1)
    ->  Index Scan using hnsw_idx on sift_base10k_0  (cost=0.00..60.10 rows=1270 width=40) (actual rows=0 loops=1)
          Order By: (v <-> '{1,2}'::real[])
@@ -43,7 +43,7 @@ INFO:  done init usearch index
 INFO:  inserted 10000 elements
 INFO:  done saving 10000 vectors
 SELECT V AS v4444  FROM sift_base10k_1 WHERE id = 4444 \gset
-EXPLAIN ANALYZE SELECT * FROM sift_base10k_1 order by v <-> :'v4444'
+EXPLAIN (ANALYZE,TIMING FALSE) SELECT * FROM sift_base10k_1 order by v <-> :'v4444'
 LIMIT 10;
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
@@ -76,7 +76,7 @@ INFO:  done init usearch index
 INFO:  inserted 10000 elements
 INFO:  done saving 10000 vectors
 SELECT V AS v4444  FROM sift_base10k_2 WHERE id = 4444 \gset
-EXPLAIN ANALYZE SELECT * FROM sift_base10k_2 order by v <-> :'v4444'
+EXPLAIN (ANALYZE,TIMING FALSE) SELECT * FROM sift_base10k_2 order by v <-> :'v4444'
 LIMIT 10;
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
@@ -109,7 +109,7 @@ INFO:  done init usearch index
 INFO:  inserted 10000 elements
 INFO:  done saving 10000 vectors
 SELECT V AS v4444  FROM sift_base10k_3 WHERE id = 4444 \gset
-EXPLAIN ANALYZE SELECT * FROM sift_base10k_3 order by v <-> :'v4444'
+EXPLAIN (ANALYZE,TIMING FALSE) SELECT * FROM sift_base10k_3 order by v <-> :'v4444'
 LIMIT 10;
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------

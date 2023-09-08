@@ -330,16 +330,18 @@ static void BuildIndex(
     buildstate->hnsw = NULL;
     if(buildstate->index_file_path) {
         usearch_load(buildstate->usearch_index, buildstate->index_file_path, &error);
-        assert(error == NULL);
+        if(error != NULL) {
+            elog(ERROR, "%s", error);
+        }
         elog(INFO, "done loading usearch index");
 
-        // todo determine how we can set index rd_options
-        // HnswOptions *opts = (HnswOptions *)index->rd_options;
-        // opts->m = usearch_connectivity(buildstate->usearch_index, &error);
-        // assert(error == NULL);
-        // opts->dims = usearch_dimensions(buildstate->usearch_index, &error);
-        // assert(error == NULL);
-        // todo determine how to get ef construction and ef search params
+        usearch_metadata_t metadata = usearch_metadata(buildstate->usearch_index, &error);
+        assert(error == NULL);
+        opts.connectivity = metadata.connectivity;
+        opts.dimensions = metadata.dimensions;
+        opts.expansion_add = metadata.expansion_add;
+        opts.expansion_search = metadata.expansion_search;
+        opts.metric_kind = metadata.metric_kind;
     } else {
         usearch_reserve(buildstate->usearch_index, 1100000, &error);
         assert(error == NULL);
@@ -362,8 +364,7 @@ static void BuildIndex(
 
     //****************************** saving to WAL BEGIN ******************************//
     UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_LOAD);
-    StoreExternalIndex(
-        index, buildstate->usearch_index, forkNum, result_buf, buildstate->dimensions, num_added_vectors);
+    StoreExternalIndex(index, buildstate->usearch_index, forkNum, result_buf, &opts, num_added_vectors);
 
     //****************************** saving to WAL END ******************************//
 

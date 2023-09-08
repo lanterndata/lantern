@@ -14,6 +14,7 @@
 #include "cache.h"
 #include "extra_dirtied.h"
 #include "insert.h"
+#include "options.h"
 #include "retriever.h"
 #include "usearch.h"
 
@@ -240,12 +241,12 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
     }
 }
 
-void StoreExternalIndex(Relation        index,
-                        usearch_index_t external_index,
-                        ForkNumber      forkNum,
-                        char           *data,
-                        int             dimension,
-                        size_t          num_added_vectors)
+void StoreExternalIndex(Relation                index,
+                        usearch_index_t         external_index,
+                        ForkNumber              forkNum,
+                        char                   *data,
+                        usearch_init_options_t *opts,
+                        size_t                  num_added_vectors)
 {
     Buffer header_buf = ReadBufferExtended(index, forkNum, P_NEW, RBM_NORMAL, NULL);
 
@@ -262,7 +263,11 @@ void StoreExternalIndex(Relation        index,
 
     headerp->magicNumber = LDB_WAL_MAGIC_NUMBER;
     headerp->version = LDB_WAL_VERSION_NUMBER;
-    headerp->vector_dim = dimension;
+    headerp->vector_dim = opts->dimensions;
+    headerp->m = opts->connectivity;
+    headerp->ef_construction = opts->expansion_add;
+    headerp->ef = opts->expansion_search;
+    headerp->metric_kind = opts->metric_kind;
 
     headerp->num_vectors = num_added_vectors;
     headerp->blockmap_page_groups = 0;
@@ -271,10 +276,10 @@ void StoreExternalIndex(Relation        index,
     // updated in a separate wal entry
     headerp->last_data_block = -1;
 
-    memcpy(headerp->usearch_header, data, 64);
+    memcpy(headerp->usearch_header, data, USEARCH_HEADER_SIZE);
     ((PageHeader)header_page)->pd_lower = ((char *)headerp + sizeof(HnswIndexHeaderPage)) - (char *)header_page;
 
-    int progress = 64;  // usearch header size
+    int progress = USEARCH_HEADER_SIZE;  // usearch header size
     int blockmap_groupno = 0;
     int group_node_first_index = 0;
     int num_added_vectors_remaining = (int)num_added_vectors;
@@ -286,7 +291,7 @@ void StoreExternalIndex(Relation        index,
                                         forkNum,
                                         data,
                                         &progress,
-                                        dimension,
+                                        opts->dimensions,
                                         group_node_first_index,
                                         Min(num_added_vectors_remaining, batch_size),
                                         blockmap_groupno);

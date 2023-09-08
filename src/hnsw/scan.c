@@ -30,34 +30,6 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     elog(INFO, "began scanning with %d keys and %d orderbys", nkeys, norderbys);
     scan = RelationGetIndexScan(index, nkeys, norderbys);
 
-    dimensions = GetHnswIndexDimensions(index);
-    scanstate = (HnswScanState *)palloc0(sizeof(HnswScanState));
-    scanstate->first = true;
-
-    opts.connectivity = HnswGetM(index);
-    opts.expansion_add = HnswGetEfConstruction(index);
-    opts.expansion_search = HnswGetEf(index);
-    opts.metric_kind = HnswGetMetricKind(index);
-    opts.metric = NULL;
-    opts.quantization = usearch_scalar_f32_k;
-
-    scanstate->retriever_ctx = opts.retriever_ctx = retriever_ctx;
-    scanstate->columnType = GetIndexColumnType(index);
-    scanstate->dimensions = opts.dimensions = dimensions;
-    opts.retriever = ldb_wal_index_node_retriever;
-    opts.retriever_mut = ldb_wal_index_node_retriever_mut;
-
-    elog(INFO,
-         "starting scan with dimensions=%d M=%ld efConstruction=%ld ef=%ld",
-         dimensions,
-         opts.connectivity,
-         opts.expansion_add,
-         opts.expansion_search);
-
-    scanstate->usearch_index = usearch_init(&opts, &error);
-    if(error != NULL) elog(ERROR, "error loading index: %s", error);
-    assert(error == NULL);
-
     // ** initialize usearch data structures and set up external retriever
     Buffer               buf;
     Page                 page;
@@ -78,6 +50,35 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     page = BufferGetPage(buf);
     headerp = (HnswIndexHeaderPage *)PageGetContents(page);
     assert(headerp->magicNumber == LDB_WAL_MAGIC_NUMBER);
+
+    // Initialize usearch index options based on params stored in our index header
+    dimensions = headerp->vector_dim;
+
+    opts.connectivity = headerp->m;
+    opts.expansion_add = headerp->ef_construction;
+    opts.expansion_search = headerp->ef;
+    opts.metric_kind = headerp->metric_kind;
+    opts.metric = NULL;
+    opts.quantization = usearch_scalar_f32_k;
+
+    scanstate = (HnswScanState *)palloc0(sizeof(HnswScanState));
+    scanstate->first = true;
+    scanstate->retriever_ctx = opts.retriever_ctx = retriever_ctx;
+    scanstate->columnType = GetIndexColumnType(index);
+    scanstate->dimensions = opts.dimensions = dimensions;
+    opts.retriever = ldb_wal_index_node_retriever;
+    opts.retriever_mut = ldb_wal_index_node_retriever_mut;
+
+    elog(INFO,
+         "starting scan with dimensions=%d M=%ld efConstruction=%ld ef=%ld",
+         dimensions,
+         opts.connectivity,
+         opts.expansion_add,
+         opts.expansion_search);
+
+    scanstate->usearch_index = usearch_init(&opts, &error);
+    if(error != NULL) elog(ERROR, "error loading index: %s", error);
+    assert(error == NULL);
 
     memcpy(retriever_ctx->blockmap_page_group_index_cache,
            headerp->blockmap_page_group_index,
