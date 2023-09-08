@@ -66,5 +66,8 @@ SELECT has_index_scan('SELECT t1_results.id FROM test2 t2 JOIN LATERAL (SELECT t
 -- Validate union works and uses index
 SELECT has_index_scan('(SELECT id FROM test1 ORDER BY v <-> ''{1,4}'') UNION (SELECT id FROM test1 ORDER BY v IS NOT NULL LIMIT 1)');
 
+-- Validate CTEs work and still use index
+SELECT has_index_scan('WITH t AS (SELECT id FROM test1 ORDER BY v <-> ''{1,4}'') SELECT id FROM t UNION SELECT id FROM t');
+
 -- todo:: Verify joins work and still use index
 -- todo:: Verify incremental sorts work

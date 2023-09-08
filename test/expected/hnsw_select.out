@@ -207,5 +207,12 @@ SELECT has_index_scan('(SELECT id FROM test1 ORDER BY v <-> ''{1,4}'') UNION (SE
  t
 (1 row)
 
+-- Validate CTEs work and still use index
+SELECT has_index_scan('WITH t AS (SELECT id FROM test1 ORDER BY v <-> ''{1,4}'') SELECT id FROM t UNION SELECT id FROM t');
+ has_index_scan 
+----------------
+ t
+(1 row)
+
 -- todo:: Verify joins work and still use index
 -- todo:: Verify incremental sorts work

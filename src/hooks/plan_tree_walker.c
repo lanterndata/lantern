@@ -47,6 +47,10 @@ bool plan_tree_walker(Plan *plan, bool (*walker_func)(Plan *plan, void *context)
             if(plan_tree_walker_util(&(subqueryscan->scan.plan), walker_func, context)) return true;
             if(walker_func(subqueryscan->subplan, context)) return true;
             break;
+        case T_CteScan:
+            CteScan *ctescan = (CteScan *)plan;
+            if(plan_tree_walker_util(&(ctescan->scan.plan), walker_func, context)) return true;
+            break;
 
         // Join nodes
         case T_Join:
@@ -88,6 +92,11 @@ bool plan_tree_walker(Plan *plan, bool (*walker_func)(Plan *plan, void *context)
             if(plan_tree_walker_util(&(limit->plan), walker_func, context)) return true;
             if(walker_func(limit->limitOffset, context)) return true;
             if(walker_func(limit->limitCount, context)) return true;
+            break;
+        case T_Append:
+            Append *append = (Append *)plan;
+            if(plan_tree_walker_util(&(append->plan), walker_func, context)) return true;
+            if(walker_func(append->appendplans, context)) return true;
             break;
 
         default:
