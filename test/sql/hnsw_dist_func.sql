@@ -86,8 +86,4 @@ SELECT 1 FROM test1 ORDER BY v <-> ARRAY[(SELECT '{1,4}'::REAL[] <-> '{4,2}'::RE
 SELECT id FROM test1 ORDER BY v <-> '{1,2}';
 SELECT 1 FROM test1 ORDER BY v <-> (SELECT '{1,3}'::real[]);
 SELECT t2_results.id FROM test1 t1 JOIN LATERAL (SELECT t2.id FROM test2 t2 ORDER BY t1.v <-> t2.v LIMIT 1) t2_results ON TRUE;
-
--- Expect success
-\set ON_ERROR_STOP on
-CREATE INDEX ON test1 USING hnsw (v dist_l2sq_ops);
-SELECT id FROM test1 ORDER BY v <-> '{1,2}';
+WITH t AS (SELECT id FROM test1 ORDER BY '{1,2}'::REAL[] <-> v LIMIT 1) SELECT DISTINCT id FROM t

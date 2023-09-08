@@ -232,18 +232,5 @@ SELECT 1 FROM test1 ORDER BY v <-> (SELECT '{1,3}'::real[]);
 ERROR:  Operator <-> has no standalone meaning and is reserved for use in vector index lookups only
 SELECT t2_results.id FROM test1 t1 JOIN LATERAL (SELECT t2.id FROM test2 t2 ORDER BY t1.v <-> t2.v LIMIT 1) t2_results ON TRUE;
 ERROR:  Operator <-> has no standalone meaning and is reserved for use in vector index lookups only
--- Expect success
-\set ON_ERROR_STOP on
-CREATE INDEX ON test1 USING hnsw (v dist_l2sq_ops);
-INFO:  done init usearch index
-INFO:  inserted 1 elements
-INFO:  done saving 1 vectors
-SELECT id FROM test1 ORDER BY v <-> '{1,2}';
-INFO:  began scanning with 0 keys and 1 orderbys
-INFO:  starting scan with dimensions=2 M=16 efConstruction=128 ef=64
-INFO:  usearch index initialized
- id 
-----
-  1
-(1 row)
-
+WITH t AS (SELECT id FROM test1 ORDER BY '{1,2}'::REAL[] <-> v LIMIT 1) SELECT DISTINCT id FROM t
+ERROR:  Operator <-> has no standalone meaning and is reserved for use in vector index lookups only
