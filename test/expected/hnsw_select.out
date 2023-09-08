@@ -209,18 +209,15 @@ EXPLAIN (COSTS FALSE) WITH t AS (SELECT id FROM test1 ORDER BY '{1,2}'::REAL[] <
                            Order By: (v <-> '{1,2}'::real[])
 (8 rows)
 
--- Validate distinct works and uses index
-EXPLAIN (COSTS FALSE) WITH t AS (SELECT id FROM test1 ORDER BY '{1,2}'::REAL[] <-> v LIMIT 1) SELECT DISTINCT id FROM t;
-                          QUERY PLAN                           
----------------------------------------------------------------
- Unique
-   ->  Sort
-         Sort Key: t.id
-         ->  Subquery Scan on t
-               ->  Limit
-                     ->  Index Scan using test1_v_idx on test1
-                           Order By: (v <-> '{1,2}'::real[])
-(7 rows)
+-- Validate distinct works and uses index (todo:: Can't use EXPLAIN due to small differences in Postgres 11 query plan)
+WITH t AS (SELECT id FROM test1 ORDER BY '{1,2}'::REAL[] <-> v LIMIT 1) SELECT DISTINCT id FROM t;
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=2 M=16 efConstruction=128 ef=64
+INFO:  usearch index initialized
+ id 
+----
+  1
+(1 row)
 
 -- Validate join lateral works and uses index
 EXPLAIN (COSTS FALSE) SELECT t1_results.id FROM test2 t2 JOIN LATERAL (SELECT t1.id FROM test1 t1 ORDER BY t2.v <-> t1.v LIMIT 1) t1_results ON TRUE;
