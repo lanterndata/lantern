@@ -222,5 +222,16 @@ EXPLAIN (COSTS FALSE) WITH t AS (SELECT id FROM test1 ORDER BY '{1,2}'::REAL[] <
                            Order By: (v <-> '{1,2}'::real[])
 (7 rows)
 
+-- Validate join lateral works and uses index
+EXPLAIN (COSTS FALSE) SELECT t1_results.id FROM test2 t2 JOIN LATERAL (SELECT t1.id FROM test1 t1 ORDER BY t2.v <-> t1.v LIMIT 1) t1_results ON TRUE;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on test2 t2
+   ->  Limit
+         ->  Index Scan using test1_v_idx on test1 t1
+               Order By: (v <-> t2.v)
+(5 rows)
+
 -- todo:: Verify joins work and still use index
 -- todo:: Verify incremental sorts work

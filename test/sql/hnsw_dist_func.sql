@@ -85,6 +85,7 @@ SELECT 1 FROM test1 ORDER BY v <-> ARRAY[(SELECT '{1,4}'::REAL[] <-> '{4,2}'::RE
 -- Expect errors due to index not existing
 SELECT id FROM test1 ORDER BY v <-> '{1,2}';
 SELECT 1 FROM test1 ORDER BY v <-> (SELECT '{1,3}'::real[]);
+SELECT t2_results.id FROM test1 t1 JOIN LATERAL (SELECT t2.id FROM test2 t2 ORDER BY t1.v <-> t2.v LIMIT 1) t2_results ON TRUE;
 
 -- Expect success
 \set ON_ERROR_STOP on

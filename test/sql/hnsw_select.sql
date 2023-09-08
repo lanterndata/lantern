@@ -61,5 +61,8 @@ EXPLAIN (COSTS FALSE) WITH t AS (SELECT id FROM test1 ORDER BY '{1,2}'::REAL[] <
 -- Validate distinct works and uses index
 EXPLAIN (COSTS FALSE) WITH t AS (SELECT id FROM test1 ORDER BY '{1,2}'::REAL[] <-> v LIMIT 1) SELECT DISTINCT id FROM t;
 
+-- Validate join lateral works and uses index
+EXPLAIN (COSTS FALSE) SELECT t1_results.id FROM test2 t2 JOIN LATERAL (SELECT t1.id FROM test1 t1 ORDER BY t2.v <-> t1.v LIMIT 1) t1_results ON TRUE;
+
 -- todo:: Verify joins work and still use index
 -- todo:: Verify incremental sorts work

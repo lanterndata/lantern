@@ -22,14 +22,6 @@ bool plan_tree_walker(Plan *plan, bool (*walker_func)(Plan *plan, void *context)
     check_stack_depth();
 
     switch(nodeTag(plan)) {
-        case T_List:
-            List     *list = (List *)plan;
-            ListCell *lc;
-            foreach(lc, list) {
-                if(plan_tree_walker(lfirst(lc), walker_func, context)) return true;
-            }
-            break;
-
         // Scan nodes
         case T_SeqScan:
             SeqScan *seqscan = (SeqScan *)plan;
@@ -81,6 +73,10 @@ bool plan_tree_walker(Plan *plan, bool (*walker_func)(Plan *plan, void *context)
         case T_Unique:
             Unique *unique = (Unique *)plan;
             if(plan_tree_walker_util(&(unique->plan), walker_func, context)) return true;
+            break;
+        case T_NestLoop:
+            NestLoop *nestloop = (NestLoop *)plan;
+            if(plan_tree_walker_util(&(nestloop->join), walker_func, context)) return true;
             break;
 
         // Singleton Nodes
