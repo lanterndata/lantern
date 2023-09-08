@@ -58,7 +58,7 @@ SELECT has_index_scan('SELECT id FROM test1 ORDER BY ''{1,2}''::REAL[] <-> v');
 SELECT has_index_scan('WITH t AS (SELECT id FROM test1 ORDER BY ''{1,2}''::REAL[] <-> v LIMIT 1) SELECT id, COUNT(*) FROM t GROUP BY 1');
 
 -- Validate distinct works and uses index
-SELECT has_index_scan('WITH t AS (SELECT id FROM test1 ORDER BY ''{1,2}''::REAL[] <-> v LIMIT 1) SELECT DISTINCT id FROM t');
+SELECT has_index_scan('WITH t AS (SELECT id FROM test1 ORDER BY v <-> ''{1,2}'' LIMIT 1) SELECT DISTINCT id FROM t');
 
 -- Validate join lateral works and uses index
 SELECT has_index_scan('SELECT t1_results.id FROM test2 t2 JOIN LATERAL (SELECT t1.id FROM test1 t1 ORDER BY t2.v <-> t1.v LIMIT 1) t1_results ON TRUE');
