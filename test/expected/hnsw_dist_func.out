@@ -257,3 +257,18 @@ SELECT 1 FROM test1 WHERE id = 0 + 1;
         1
 (1 row)
 
+SELECT id FROM test1 ORDER BY '{1,2}'::REAL[] <-> v;
+INFO:  began scanning with 0 keys and 1 orderbys
+INFO:  starting scan with dimensions=2 M=16 efConstruction=128 ef=64
+INFO:  usearch index initialized
+ id 
+----
+  1
+(1 row)
+
+SELECT test1.id FROM test1 JOIN test2 USING (id) ORDER BY test1.v <-> test2.v LIMIT 1;
+ id 
+----
+  1
+(1 row)
+
