@@ -20,19 +20,32 @@ static bool operator_used_correctly_walker(Node *node, OperatorUsedCorrectlyCont
     if(node == NULL) return false;
     if(IsA(node, IndexScan)) {
         context->isIndexScan = true;
+        bool status = plan_tree_walker(node, operator_used_correctly_walker, (void *)context);
+        if(IsA(node, IndexScan)) {
+            context->isIndexScan = false;
+        }
+        return status;
     }
     if(IsA(node, OpExpr)) {
-        if(!context->isIndexScan) {
+        OpExpr *opExpr = (OpExpr *)node;
+        if(list_member_oid(context->oidList, opExpr->opno) && !context->isIndexScan) {
             return true;
         }
     }
-
-    bool status = plan_tree_walker(node, operator_used_correctly_walker, (void *)context);
-
-    if(IsA(node, IndexScan)) {
-        context->isIndexScan = false;
+    if(IsA(node, List)) {
+        List     *list = (List *)node;
+        ListCell *lc;
+        foreach(lc, list) {
+            if(operator_used_correctly_walker(lfirst(lc), context)) return true;
+        }
+        return false;
     }
-    return status;
+
+    if(nodeTag(node) >= T_Plan && nodeTag(node) < T_PlanState) {
+        return plan_tree_walker(node, operator_used_correctly_walker, (void *)context);
+    } else {
+        return expression_tree_walker(node, operator_used_correctly_walker, (void *)context);
+    }
 }
 
 static bool validate_operator_usage(Plan *plan, List *oidList)
