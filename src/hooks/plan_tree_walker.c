@@ -9,6 +9,9 @@ bool plan_tree_walker_util(Plan *plan, bool (*walker_func)(Plan *plan, void *con
 {
     if(walker_func(plan->targetlist, context)) return true;
     if(walker_func(plan->qual, context)) return true;
+    if(walker_func(plan->lefttree, context)) return true;
+    if(walker_func(plan->righttree, context)) return true;
+    if(walker_func(plan->initPlan, context)) return true;
     return false;
 }
 

@@ -28,15 +28,7 @@ EXPLAIN (COSTS FALSE)
 SELECT id, ROUND(l2sq_dist(vector_int, array[0,1,0])::numeric, 2) as dist
 FROM small_world_l2
 ORDER BY vector_int <-> array[0,1,0] LIMIT 7;
-                           QUERY PLAN                            
------------------------------------------------------------------
- Limit
-   ->  Result
-         ->  Sort
-               Sort Key: ((vector_int <-> '{0,1,0}'::integer[]))
-               ->  Seq Scan on small_world_l2
-(5 rows)
-
+ERROR:  Operator <-> has no standalone meaning and is reserved for use in vector index lookups only
 -- this result is not sorted correctly
 CREATE TABLE small_world_ham (
     id SERIAL PRIMARY KEY,

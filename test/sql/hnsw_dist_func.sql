@@ -56,12 +56,10 @@ INSERT INTO test1 (v) VALUES ('{5,3}');
 INSERT INTO test2 (v) VALUES ('{5,4}');
 
 -- Expect success
-SELECT COALESCE(id, 0) FROM test1 ORDER BY v <-> '{1,2}';
 SELECT 0 + 1;
 SELECT 1 FROM test1 WHERE id = 0 + 1;
-SELECT 1 FROM test1 ORDER BY v <-> (SELECT '{1,3}'::real[]);
 
--- Expect errors
+-- Expect errors due to incorrect usage
 INSERT INTO test1 (v) VALUES (ARRAY['{1,2}'::REAL[] <-> '{4,2}'::REAL[], 0]);
 SELECT v <-> '{1,2}' FROM test1 ORDER BY v <-> '{1,3}';
 SELECT v <-> '{1,2}' FROM test1;
@@ -83,3 +81,14 @@ SELECT 1 FROM test1 GROUP BY v <-> '{1,3}';
 SELECT 1 FROM test1 ORDER BY (('{1,2}'::real[] <-> '{3,4}'::real[]) - 0);
 SELECT 1 FROM test1 ORDER BY '{1,2}'::REAL[] <-> '{3,4}'::REAL[];
 SELECT 1 FROM test1 ORDER BY v <-> ARRAY[(SELECT '{1,4}'::REAL[] <-> '{4,2}'::REAL[]), 3];
+
+-- Expect errors due to index not existing
+SELECT id FROM test1 ORDER BY v <-> '{1,2}';
+SELECT 1 FROM test1 ORDER BY v <-> (SELECT '{1,3}'::real[]);
+
+-- Expect success
+\set ON_ERROR_STOP on
+CREATE INDEX ON test1 USING hnsw (v dist_l2sq_ops);
+SELECT COALESCE(id, 0) FROM test1 ORDER BY v <-> '{1,2}';
+SELECT 0 + 1;
+SELECT 1 FROM test1 WHERE id = 0 + 1;
