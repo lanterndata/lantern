@@ -135,15 +135,12 @@ void                         post_parse_analyze_hook_with_operator_check(ParseSt
     }
 
     List *oidList = get_operator_oids();
-    if(oidList != NIL) {
-        if(is_operator_used((Node *)query, oidList)) {
-            List *sort_group_refs = get_sort_group_refs(query);
-            if(!is_operator_used_correctly(query, oidList, sort_group_refs)) {
-                elog(ERROR,
-                     "Operator <-> has no standalone meaning and is reserved for use in vector index lookups only");
-            }
-            list_free(sort_group_refs);
+    if(is_operator_used((Node *)query, oidList)) {
+        List *sort_group_refs = get_sort_group_refs(query);
+        if(!is_operator_used_correctly(query, oidList, sort_group_refs)) {
+            elog(ERROR, "Operator <-> has no standalone meaning and is reserved for use in vector index lookups only");
         }
-        list_free(oidList);
+        list_free(sort_group_refs);
     }
+    list_free(oidList);
 }

@@ -64,15 +64,13 @@ void                    ExecutorStart_hook_with_operator_check(QueryDesc *queryD
     }
 
     List *oidList = get_operator_oids();
-    if(oidList != NIL) {
-        validate_operator_usage(queryDesc->plannedstmt->planTree, oidList);
-        ListCell *lc;
-        foreach(lc, queryDesc->plannedstmt->subplans) {
-            SubPlan *subplan = (SubPlan *)lfirst(lc);
-            validate_operator_usage(subplan, oidList);
-        }
-        list_free(oidList);
+    validate_operator_usage(queryDesc->plannedstmt->planTree, oidList);
+    ListCell *lc;
+    foreach(lc, queryDesc->plannedstmt->subplans) {
+        SubPlan *subplan = (SubPlan *)lfirst(lc);
+        validate_operator_usage(subplan, oidList);
     }
+    list_free(oidList);
 
     standard_ExecutorStart(queryDesc, eflags);
 }
