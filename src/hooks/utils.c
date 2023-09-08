@@ -1,5 +1,6 @@
 #include <postgres.h>
 
+#include <catalog/pg_type_d.h>
 #include <nodes/makefuncs.h>
 #include <nodes/pg_list.h>
 
