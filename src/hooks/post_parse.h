@@ -5,7 +5,6 @@
 
 #include <nodes/pg_list.h>
 #include <parser/analyze.h>
-#include <utils/queryjumble.h>
 
 extern post_parse_analyze_hook_type original_post_parse_analyze_hook;
 void                                post_parse_analyze_hook_with_operator_check(ParseState *pstate,
