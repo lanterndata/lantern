@@ -80,8 +80,7 @@ static void AddTupleToUsearchIndex(ItemPointer tid, Datum *values, HnswBuildStat
 #endif
 #ifdef LANTERN_USE_USEARCH
     if(buildstate->usearch_index != NULL) {
-        size_t capacity;
-        capacity = usearch_capacity(buildstate->usearch_index, &error);
+        size_t capacity = usearch_capacity(buildstate->usearch_index, &error);
         if(capacity == usearch_size(buildstate->usearch_index, &error)) {
             usearch_reserve(buildstate->usearch_index, 2 * capacity, &error);
             assert(error == NULL);
@@ -362,19 +361,21 @@ static void BuildIndex(
             Page page = BufferGetPage(buffer);
             // Getting the maximum tuple index on the page
             OffsetNumber offset = PageGetMaxOffsetNumber(page);
-            // Estimating the row count in the table
-            // There can be 3 cases
-            // 1 - new data is added and numBlocks gets increased. In this case the estimation will be lower than actual
-            // number (we need to check and increase index size) 2 - the last page is not fully associated (this is most
-            // likely to happen). In this case we will have a bit higher estimated number 3 - the last page is fully
-            // associated and we get exactly the number of rows that the table has (this is very rare case I think)
+
+            // Reasonably accurate first guess, assuming tuples are fixed length it will err towards over allocating.
+            // In the case of under allocation the logic in AddTupleToUsearchIndex should expand it as needed
             estimated_row_count = offset * numBlocks;
             // Unlock and release buffer
-            LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
-            ReleaseBuffer(buffer);
+            UnlockReleaseBuffer(buffer);
         }
         usearch_reserve(buildstate->usearch_index, estimated_row_count, &error);
-        assert(error == NULL);
+        if(error != NULL) {
+            // There's not much we can do if free throws an error, but we want to preserve the contents of the first one
+            // in case it does
+            usearch_error_t local_error = NULL;
+            usearch_free(buildstate->usearch_index, &local_error);
+            elog(ERROR, "Error reserving space for index: %s", error);
+        }
 
         UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_IN_MEMORY_INSERT);
         LanternBench("build hnsw index", ScanTable(buildstate));
