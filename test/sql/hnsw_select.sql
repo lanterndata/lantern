@@ -46,23 +46,22 @@ WITH neighbors AS (
 RESET client_min_messages;
 
 -- Verify where condition works properly and still uses index
-SELECT * FROM small_world WHERE b IS TRUE ORDER BY v <-> '{0,0,0}';
-EXPLAIN (COSTS FALSE) SELECT * FROM small_world WHERE b IS TRUE ORDER BY v <-> '{0,0,0}';
+SELECT has_index_scan('SELECT * FROM small_world WHERE b IS TRUE ORDER BY v <-> ''{0,0,0}''');
 
 -- Verify that the index is not being used when there is no order by
-EXPLAIN (COSTS FALSE) SELECT COUNT(*) FROM small_world;
+SELECT NOT has_index_scan('SELECT COUNT(*) FROM small_world');
 
 -- Verify swapping order doesn't change anything and still uses index
-EXPLAIN (COSTS FALSE) SELECT id FROM test1 ORDER BY '{1,2}'::REAL[] <-> v;
+SELECT has_index_scan('SELECT id FROM test1 ORDER BY ''{1,2}''::REAL[] <-> v');
 
 -- Verify group by works and uses index
-EXPLAIN (COSTS FALSE) WITH t AS (SELECT id FROM test1 ORDER BY '{1,2}'::REAL[] <-> v LIMIT 1) SELECT id, COUNT(*) FROM t GROUP BY 1;
+SELECT has_index_scan('WITH t AS (SELECT id FROM test1 ORDER BY ''{1,2}''::REAL[] <-> v LIMIT 1) SELECT id, COUNT(*) FROM t GROUP BY 1');
 
--- Validate distinct works and uses index (todo:: Can't use EXPLAIN due to small differences in Postgres 11 query plan)
-WITH t AS (SELECT id FROM test1 ORDER BY '{1,2}'::REAL[] <-> v LIMIT 1) SELECT DISTINCT id FROM t;
+-- Validate distinct works and uses index
+SELECT has_index_scan('WITH t AS (SELECT id FROM test1 ORDER BY ''{1,2}''::REAL[] <-> v LIMIT 1) SELECT DISTINCT id FROM t');
 
 -- Validate join lateral works and uses index
-EXPLAIN (COSTS FALSE) SELECT t1_results.id FROM test2 t2 JOIN LATERAL (SELECT t1.id FROM test1 t1 ORDER BY t2.v <-> t1.v LIMIT 1) t1_results ON TRUE;
+SELECT has_index_scan('SELECT t1_results.id FROM test2 t2 JOIN LATERAL (SELECT t1.id FROM test1 t1 ORDER BY t2.v <-> t1.v LIMIT 1) t1_results ON TRUE');
 
 -- todo:: Verify joins work and still use index
 -- todo:: Verify incremental sorts work
