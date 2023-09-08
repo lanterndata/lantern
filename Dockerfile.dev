@@ -13,7 +13,6 @@ RUN apt update \
        build-essential \
        cmake \
        postgresql-server-dev-$VERSION \
-       postgresql-$VERSION-pgvector \
        gdb \
        wget \
        python3-pip \
@@ -23,7 +22,8 @@ RUN apt update \
        git-all \
        tmux \
        clang-format \
-    && pip install libtmux --break-system-packages
+    && pip install libtmux --break-system-packages \
+    && cd /tmp && git clone --branch v0.4.4 https://github.com/pgvector/pgvector.git && cd pgvector && make && make install
 
 COPY . .
 
