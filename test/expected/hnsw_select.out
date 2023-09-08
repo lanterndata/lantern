@@ -195,7 +195,7 @@ EXPLAIN (COSTS FALSE) SELECT id FROM test1 ORDER BY '{1,2}'::REAL[] <-> v;
    Order By: (v <-> '{1,2}'::real[])
 (2 rows)
 
--- Verify group by works
+-- Verify group by works and uses index
 EXPLAIN (COSTS FALSE) WITH t AS (SELECT id FROM test1 ORDER BY '{1,2}'::REAL[] <-> v LIMIT 1) SELECT id, COUNT(*) FROM t GROUP BY 1;
                           QUERY PLAN                           
 ---------------------------------------------------------------
@@ -208,6 +208,19 @@ EXPLAIN (COSTS FALSE) WITH t AS (SELECT id FROM test1 ORDER BY '{1,2}'::REAL[] <
                      ->  Index Scan using test1_v_idx on test1
                            Order By: (v <-> '{1,2}'::real[])
 (8 rows)
+
+-- Validate distinct works and uses index
+EXPLAIN (COSTS FALSE) WITH t AS (SELECT id FROM test1 ORDER BY '{1,2}'::REAL[] <-> v LIMIT 1) SELECT DISTINCT id FROM t;
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Unique
+   ->  Sort
+         Sort Key: t.id
+         ->  Subquery Scan on t
+               ->  Limit
+                     ->  Index Scan using test1_v_idx on test1
+                           Order By: (v <-> '{1,2}'::real[])
+(7 rows)
 
 -- todo:: Verify joins work and still use index
 -- todo:: Verify incremental sorts work

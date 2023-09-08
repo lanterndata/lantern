@@ -55,8 +55,11 @@ EXPLAIN (COSTS FALSE) SELECT COUNT(*) FROM small_world;
 -- Verify swapping order doesn't change anything and still uses index
 EXPLAIN (COSTS FALSE) SELECT id FROM test1 ORDER BY '{1,2}'::REAL[] <-> v;
 
--- Verify group by works
+-- Verify group by works and uses index
 EXPLAIN (COSTS FALSE) WITH t AS (SELECT id FROM test1 ORDER BY '{1,2}'::REAL[] <-> v LIMIT 1) SELECT id, COUNT(*) FROM t GROUP BY 1;
+
+-- Validate distinct works and uses index
+EXPLAIN (COSTS FALSE) WITH t AS (SELECT id FROM test1 ORDER BY '{1,2}'::REAL[] <-> v LIMIT 1) SELECT DISTINCT id FROM t;
 
 -- todo:: Verify joins work and still use index
 -- todo:: Verify incremental sorts work

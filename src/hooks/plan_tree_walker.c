@@ -78,6 +78,10 @@ bool plan_tree_walker(Plan *plan, bool (*walker_func)(Plan *plan, void *context)
             Sort *sort = (Sort *)plan;
             if(plan_tree_walker_util(&(sort->plan), walker_func, context)) return true;
             break;
+        case T_Unique:
+            Unique *unique = (Unique *)plan;
+            if(plan_tree_walker_util(&(unique->plan), walker_func, context)) return true;
+            break;
 
         // Singleton Nodes
         case T_Result:
