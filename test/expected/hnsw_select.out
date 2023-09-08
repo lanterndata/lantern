@@ -188,21 +188,26 @@ EXPLAIN (COSTS FALSE) SELECT COUNT(*) FROM small_world;
 (2 rows)
 
 -- Verify swapping order doesn't change anything and still uses index
-SELECT id FROM test1 ORDER BY '{1,2}'::REAL[] <-> v;
-INFO:  began scanning with 0 keys and 1 orderbys
-INFO:  starting scan with dimensions=2 M=16 efConstruction=128 ef=64
-INFO:  usearch index initialized
- id 
-----
-  1
-(1 row)
-
 EXPLAIN (COSTS FALSE) SELECT id FROM test1 ORDER BY '{1,2}'::REAL[] <-> v;
               QUERY PLAN               
 ---------------------------------------
  Index Scan using test1_v_idx on test1
    Order By: (v <-> '{1,2}'::real[])
 (2 rows)
+
+-- Verify group by works
+EXPLAIN (COSTS FALSE) WITH t AS (SELECT id FROM test1 ORDER BY '{1,2}'::REAL[] <-> v LIMIT 1) SELECT id, COUNT(*) FROM t GROUP BY 1;
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ GroupAggregate
+   Group Key: t.id
+   ->  Sort
+         Sort Key: t.id
+         ->  Subquery Scan on t
+               ->  Limit
+                     ->  Index Scan using test1_v_idx on test1
+                           Order By: (v <-> '{1,2}'::real[])
+(8 rows)
 
 -- todo:: Verify joins work and still use index
 -- todo:: Verify incremental sorts work

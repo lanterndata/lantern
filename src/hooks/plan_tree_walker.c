@@ -52,6 +52,11 @@ bool plan_tree_walker(Plan *plan, bool (*walker_func)(Plan *plan, void *context)
             if(walker_func(indexonlyscan->indexqual, context)) return true;
             if(walker_func(indexonlyscan->indexorderby, context)) return true;
             break;
+        case T_SubqueryScan:
+            SubqueryScan *subqueryscan = (SubqueryScan *)plan;
+            if(plan_tree_walker_util(&(subqueryscan->scan.plan), walker_func, context)) return true;
+            if(walker_func(subqueryscan->subplan, context)) return true;
+            break;
 
         // Join nodes
         case T_Join:
@@ -61,6 +66,10 @@ bool plan_tree_walker(Plan *plan, bool (*walker_func)(Plan *plan, void *context)
             break;
 
         // Nodes dealing with aggregation / grouping / sorting
+        case T_Agg:
+            Agg *agg = (Agg *)plan;
+            if(plan_tree_walker_util(&(agg->plan), walker_func, context)) return true;
+            break;
         case T_Group:
             Group *group = (Group *)plan;
             if(plan_tree_walker_util(&(group->plan), walker_func, context)) return true;
