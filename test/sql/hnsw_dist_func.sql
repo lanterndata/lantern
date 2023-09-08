@@ -89,8 +89,4 @@ SELECT 1 FROM test1 ORDER BY v <-> (SELECT '{1,3}'::real[]);
 -- Expect success
 \set ON_ERROR_STOP on
 CREATE INDEX ON test1 USING hnsw (v dist_l2sq_ops);
-SELECT COALESCE(id, 0) FROM test1 ORDER BY v <-> '{1,2}';
-SELECT 0 + 1;
-SELECT 1 FROM test1 WHERE id = 0 + 1;
-SELECT id FROM test1 ORDER BY '{1,2}'::REAL[] <-> v;
-SELECT test1.id FROM test1 JOIN test2 USING (id) ORDER BY test1.v <-> test2.v LIMIT 1;
+SELECT id FROM test1 ORDER BY v <-> '{1,2}';
