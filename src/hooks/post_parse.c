@@ -92,7 +92,7 @@ static bool operator_used_correctly_walker(Node *node, OperatorUsedCorrectlyCont
                         return true;
                     } else if(isVar1) {
                         return operator_used_correctly_walker(arg2, context);
-                    } else if(isVar2) {
+                    } else {
                         return operator_used_correctly_walker(arg1, context);
                     }
                 }
