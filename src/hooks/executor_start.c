@@ -39,7 +39,7 @@ static bool operator_used_correctly_walker(Node *node, OperatorUsedCorrectlyCont
         return false;
     }
 
-    if(nodeTag(node) >= T_Plan && nodeTag(node) < T_PlanState) {
+    if(nodeTag(node) < T_PlanState) {
         return plan_tree_walker(node, operator_used_correctly_walker, (void *)context);
     } else {
         return expression_tree_walker(node, operator_used_correctly_walker, (void *)context);
