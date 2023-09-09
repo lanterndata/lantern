@@ -38,3 +38,4 @@ fi
 python3 -m external.show_benchmarks $PARAMS
 python3 -m external.validate_benchmarks $PARAMS
 python3 -m external.get_benchmarks_json $PARAMS > /tmp/benchmarks-out.json
+python3 -m external.show_benchmarks $PARAMS --markdown > /tmp/benchmarks-out.md
