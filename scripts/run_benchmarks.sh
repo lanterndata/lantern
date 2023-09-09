@@ -35,7 +35,7 @@ if [ "$PRINT_ONLY" -ne 1 ]; then
 fi
 
 # Render benchmarks
-python3 -m external.show_benchmarks $PARAMS
+python3 -m external.show_benchmarks $PARAMS --loginfo
 python3 -m external.show_benchmarks $PARAMS --markdown > /tmp/benchmarks-out.md
 python3 -m external.validate_benchmarks $PARAMS
 python3 -m external.get_benchmarks_json $PARAMS > /tmp/benchmarks-out.json
