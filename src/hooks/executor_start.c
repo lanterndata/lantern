@@ -63,7 +63,7 @@ void                    ExecutorStart_hook_with_operator_check(QueryDesc *queryD
         original_ExecutorStart_hook(queryDesc, eflags);
     }
 
-    List *oidList = get_operator_oids();
+    List *oidList = ldb_get_operator_oids();
     validate_operator_usage(queryDesc->plannedstmt->planTree, oidList);
     ListCell *lc;
     foreach(lc, queryDesc->plannedstmt->subplans) {

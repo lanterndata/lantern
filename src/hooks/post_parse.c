@@ -134,7 +134,7 @@ void                         post_parse_analyze_hook_with_operator_check(ParseSt
 #endif
     }
 
-    List *oidList = get_operator_oids();
+    List *oidList = ldb_get_operator_oids();
     if(is_operator_used((Node *)query, oidList)) {
         List *sort_group_refs = get_sort_group_refs(query);
         if(!is_operator_used_correctly(query, oidList, sort_group_refs)) {

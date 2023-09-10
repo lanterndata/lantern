@@ -4,7 +4,7 @@
 #include <nodes/makefuncs.h>
 #include <nodes/pg_list.h>
 
-List *get_operator_oids()
+List *ldb_get_operator_oids()
 {
     List *oidList = NIL;
 
