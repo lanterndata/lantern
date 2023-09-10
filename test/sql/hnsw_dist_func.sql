@@ -56,12 +56,10 @@ INSERT INTO test1 (v) VALUES ('{5,3}');
 INSERT INTO test2 (v) VALUES ('{5,4}');
 
 -- Expect success
-SELECT COALESCE(id, 0) FROM test1 ORDER BY v <-> '{1,2}';
 SELECT 0 + 1;
 SELECT 1 FROM test1 WHERE id = 0 + 1;
-SELECT 1 FROM test1 ORDER BY v <-> (SELECT '{1,3}'::real[]);
 
--- Expect errors
+-- Expect errors due to incorrect usage
 INSERT INTO test1 (v) VALUES (ARRAY['{1,2}'::REAL[] <-> '{4,2}'::REAL[], 0]);
 SELECT v <-> '{1,2}' FROM test1 ORDER BY v <-> '{1,3}';
 SELECT v <-> '{1,2}' FROM test1;
@@ -82,3 +80,12 @@ INSERT INTO test1 (v) VALUES ('{2,3}') RETURNING v <-> '{1,2}';
 SELECT 1 FROM test1 GROUP BY v <-> '{1,3}';
 SELECT 1 FROM test1 ORDER BY (('{1,2}'::real[] <-> '{3,4}'::real[]) - 0);
 SELECT 1 FROM test1 ORDER BY '{1,2}'::REAL[] <-> '{3,4}'::REAL[];
+SELECT 1 FROM test1 ORDER BY v <-> ARRAY[(SELECT '{1,4}'::REAL[] <-> '{4,2}'::REAL[]), 3];
+
+-- Expect errors due to index not existing
+SELECT id FROM test1 ORDER BY v <-> '{1,2}';
+SELECT 1 FROM test1 ORDER BY v <-> (SELECT '{1,3}'::real[]);
+SELECT t2_results.id FROM test1 t1 JOIN LATERAL (SELECT t2.id FROM test2 t2 ORDER BY t1.v <-> t2.v LIMIT 1) t2_results ON TRUE;
+WITH t AS (SELECT id FROM test1 ORDER BY v <-> '{1,2}' LIMIT 1) SELECT DISTINCT id FROM t;
+WITH t AS (SELECT id FROM test1 ORDER BY v <-> '{1,2}' LIMIT 1) SELECT id, COUNT(*) FROM t GROUP BY 1;
+WITH t AS (SELECT id FROM test1 ORDER BY v <-> '{1,2}') SELECT id FROM t UNION SELECT id FROM t;

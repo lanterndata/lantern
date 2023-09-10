@@ -8,7 +8,7 @@ CREATE EXTENSION pageinspect;
 
 -- retrieves details for all indices associated with a given table, similar to \di+
 -- the output of \di+ is not consistent across postgres versions
--- todo:: add a columns to this function which returning number of used DB pages and total index size
+-- todo:: add a columns to this function which returning number of used DB pages
 CREATE OR REPLACE FUNCTION ldb_get_indexes(tblname text)
 RETURNS TABLE(
     indexname name,
@@ -41,3 +41,21 @@ BEGIN
 END;
 $BODY$
 LANGUAGE plpgsql;
+
+-- Determines if the provided SQL query (with an EXPLAIN prefix) uses an "Index Scan" 
+-- by examining its execution plan. This function helps ensure consistent analysis 
+-- across varying Postgres versions where EXPLAIN output may differ.
+CREATE OR REPLACE FUNCTION has_index_scan(explain_query text) RETURNS boolean AS $$
+DECLARE
+    plan_row RECORD;
+    found boolean := false;
+BEGIN
+    FOR plan_row IN EXECUTE explain_query LOOP
+        IF position('Index Scan' in plan_row."QUERY PLAN") > 0 THEN
+            found := true;
+            EXIT;
+        END IF;
+    END LOOP;
+    RETURN found;
+END;
+$$ LANGUAGE plpgsql;
