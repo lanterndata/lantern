@@ -69,14 +69,17 @@ void ExecutorStart_hook_with_operator_check(QueryDesc *queryDesc, int eflags)
     }
 
     List *oidList = ldb_get_operator_oids();
-    ldb_invariant(oidList != NULL, "LanternDB hnsw operator list is NULL");
-    validate_operator_usage(queryDesc->plannedstmt->planTree, oidList);
-    ListCell *lc;
-    foreach(lc, queryDesc->plannedstmt->subplans) {
-        Plan *subplan = (Plan *)lfirst(lc);
-        validate_operator_usage(subplan, oidList);
+    if(oidList != NULL) {
+        // oidList will be NULL if LanternDB extension is not fully initialized
+        // e.g. in statements executed as a result of CREATE EXTENSION ... statement
+        validate_operator_usage(queryDesc->plannedstmt->planTree, oidList);
+        ListCell *lc;
+        foreach(lc, queryDesc->plannedstmt->subplans) {
+            Plan *subplan = (Plan *)lfirst(lc);
+            validate_operator_usage(subplan, oidList);
+        }
+        list_free(oidList);
     }
-    list_free(oidList);
 
     standard_ExecutorStart(queryDesc, eflags);
 }

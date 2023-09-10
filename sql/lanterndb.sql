@@ -3,10 +3,63 @@
 CREATE FUNCTION hnsw_handler(internal) RETURNS index_am_handler
 	AS 'MODULE_PATHNAME' LANGUAGE C;
 
-CREATE ACCESS METHOD hnsw TYPE INDEX HANDLER hnsw_handler;
+DO $BODY$
+DECLARE
+	hnsw_am_exists boolean;
+	pgvector_exists boolean;
+BEGIN
+	-- Check if another extension already created an access method named 'hnsw'
+	SELECT EXISTS (
+		SELECT 1
+		FROM pg_am
+		WHERE amname = 'hnsw'
+	) INTO hnsw_am_exists;
 
-COMMENT ON ACCESS METHOD hnsw IS 'LanternDB vector index access method. Can be configured to use various strategies such hs hnsw, graph-based, disk-optimized etc.';
+	-- Check if the vector type from pgvector exists
+	SELECT EXISTS (
+		SELECT 1
+		FROM pg_type
+		WHERE typname = 'vector'
+	) INTO pgvector_exists;
 
+	IF pgvector_exists OR hnsw_am_exists THEN
+		-- RAISE NOTICE 'hnsw access method already exists. Creating lanterndb_hnsw access method';
+		CREATE ACCESS METHOD lantern_hnsw TYPE INDEX HANDLER hnsw_handler;
+		COMMENT ON ACCESS METHOD lantern_hnsw IS 'LanternDB access method for vector embeddings, based on the hnsw algorithm';
+	END IF;
+
+	IF pgvector_exists THEN
+		-- taken from pgvector so our index can work with pgvector types
+		CREATE FUNCTION vector_l2sq_dist(vector, vector) RETURNS float8
+			AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+
+		CREATE OPERATOR CLASS dist_vec_l2sq_ops
+			DEFAULT FOR TYPE vector USING lantern_hnsw AS
+			OPERATOR 1 <-> (vector, vector) FOR ORDER BY float_ops,
+			FUNCTION 1 vector_l2sq_dist(vector, vector);
+	END IF;
+
+
+	IF hnsw_am_exists THEN
+		RAISE WARNING 'Access method(index type) "hnsw" already exists. Creating lanterndb_hnsw access method';
+	ELSE
+		-- create access method
+		CREATE ACCESS METHOD hnsw TYPE INDEX HANDLER hnsw_handler;
+		COMMENT ON ACCESS METHOD hnsw IS 'LanternDB access method for vector embeddings, based on the hnsw algorithm';
+		IF pgvector_exists THEN
+			-- An older version of pgvector exists, which does not have hnsw yet
+			-- So, there is no naming conflict. We still add a compatibility operator class
+			-- so pgvector vector type can be used with our index
+			-- taken from pgvector so our index can work with pgvector types
+			CREATE OPERATOR CLASS dist_vec_l2sq_ops
+				DEFAULT FOR TYPE vector USING hnsw AS
+				OPERATOR 1 <-> (vector, vector) FOR ORDER BY float_ops,
+				FUNCTION 1 vector_l2sq_dist(vector, vector);
+		END IF;
+	END IF;
+END;
+$BODY$
+LANGUAGE plpgsql;
 
 -- functions
 CREATE FUNCTION ldb_generic_dist(real[], real[]) RETURNS real
@@ -50,28 +103,3 @@ CREATE OPERATOR CLASS dist_hamming_ops
 	FOR TYPE integer[] USING hnsw AS
 	OPERATOR 1 <-> (integer[], integer[]) FOR ORDER BY float_ops,
 	FUNCTION 1 hamming_dist(integer[], integer[]);
-
--- conditionaly create operator class for vector type
-DO $$DECLARE type_exists boolean;
-BEGIN
-	-- Check if the vector type exists and store the result in the 'type_exists' variable
-	SELECT EXISTS (
-    	SELECT 1
-    	FROM pg_type
-    	WHERE typname = 'vector'
-	) INTO type_exists;
-
-	IF type_exists THEN
-	-- The type exists
-	-- taken from pgvector so our index can work with pgvector types
-		CREATE FUNCTION vector_l2sq_dist(vector, vector) RETURNS float8
-			AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
-
-		CREATE OPERATOR CLASS dist_vec_l2sq_ops
-			DEFAULT FOR TYPE vector USING hnsw AS
-			OPERATOR 1 <-> (vector, vector) FOR ORDER BY float_ops,
-			FUNCTION 1 vector_l2sq_dist(vector, vector);
-	END IF;
-END;
-$$
-LANGUAGE plpgsql;

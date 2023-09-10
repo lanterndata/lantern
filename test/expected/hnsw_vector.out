@@ -3,9 +3,13 @@
 ---------------------------------------------------------------------
 -- Note: We drop the Lantern extension and re-create it because Lantern only supports
 -- pgvector if it is present on initialization
-DROP EXTENSION lanterndb;
+DROP EXTENSION IF EXISTS lanterndb;
 CREATE EXTENSION vector;
+-- Setting min messages to ERROR so the WARNING about existing hnsw access method is NOT printed
+-- in tests. This makes sure that regression tests pass on pgvector <=0.4.4 as well as >=0.5.0
+SET client_min_messages=ERROR;
 CREATE EXTENSION lanterndb;
+RESET client_min_messages;
 -- Verify basic functionality of pgvector
 SELECT '[1,2,3]'::vector;
  vector  
@@ -16,12 +20,12 @@ SELECT '[1,2,3]'::vector;
 -- Test index creation x2 on empty table and subsequent inserts
 CREATE TABLE items (id SERIAL PRIMARY KEY, trait_ai VECTOR(3));
 INSERT INTO items (trait_ai) VALUES ('[1,2,3]'), ('[4,5,6]');
-CREATE INDEX ON items USING hnsw (trait_ai dist_vec_l2sq_ops) WITH (dims=3, M=2);
+CREATE INDEX ON items USING lantern_hnsw (trait_ai dist_vec_l2sq_ops) WITH (dims=3, M=2);
 INFO:  done init usearch index
 INFO:  inserted 2 elements
 INFO:  done saving 2 vectors
 INSERT INTO items (trait_ai) VALUES ('[6,7,8]');
-CREATE INDEX ON items USING hnsw (trait_ai dist_vec_l2sq_ops) WITH (dims=3, M=4);
+CREATE INDEX ON items USING lantern_hnsw (trait_ai dist_vec_l2sq_ops) WITH (dims=3, M=4);
 INFO:  done init usearch index
 INFO:  inserted 3 elements
 INFO:  done saving 3 vectors
@@ -35,11 +39,11 @@ SELECT * FROM items ORDER BY trait_ai <-> '[0,0,0]' LIMIT 3;
 (3 rows)
 
 SELECT * FROM ldb_get_indexes('items');
-      indexname      | size  |                                           indexdef                                            | total_index_size 
----------------------+-------+-----------------------------------------------------------------------------------------------+------------------
- items_pkey          | 16 kB | CREATE UNIQUE INDEX items_pkey ON public.items USING btree (id)                               | 64 kB
- items_trait_ai_idx  | 24 kB | CREATE INDEX items_trait_ai_idx ON public.items USING hnsw (trait_ai) WITH (dims='3', m='2')  | 64 kB
- items_trait_ai_idx1 | 24 kB | CREATE INDEX items_trait_ai_idx1 ON public.items USING hnsw (trait_ai) WITH (dims='3', m='4') | 64 kB
+      indexname      | size  |                                               indexdef                                                | total_index_size 
+---------------------+-------+-------------------------------------------------------------------------------------------------------+------------------
+ items_pkey          | 16 kB | CREATE UNIQUE INDEX items_pkey ON public.items USING btree (id)                                       | 64 kB
+ items_trait_ai_idx  | 24 kB | CREATE INDEX items_trait_ai_idx ON public.items USING lantern_hnsw (trait_ai) WITH (dims='3', m='2')  | 64 kB
+ items_trait_ai_idx1 | 24 kB | CREATE INDEX items_trait_ai_idx1 ON public.items USING lantern_hnsw (trait_ai) WITH (dims='3', m='4') | 64 kB
 (3 rows)
 
 -- Test index creation on table with existing data
@@ -59,14 +63,14 @@ INSERT INTO small_world (id, b, v) VALUES
     ('110', FALSE, '[1,1,0]'),
     ('111', TRUE,  '[1,1,1]');
 SET enable_seqscan = false;
-CREATE INDEX ON small_world USING hnsw (v) WITH (dims=3, M=5, ef=20, ef_construction=20);
+CREATE INDEX ON small_world USING lantern_hnsw (v) WITH (dims=3, M=5, ef=20, ef_construction=20);
 INFO:  done init usearch index
 INFO:  inserted 8 elements
 INFO:  done saving 8 vectors
 SELECT * FROM ldb_get_indexes('small_world');
-     indexname     | size  |                                                         indexdef                                                          | total_index_size 
--------------------+-------+---------------------------------------------------------------------------------------------------------------------------+------------------
- small_world_v_idx | 24 kB | CREATE INDEX small_world_v_idx ON public.small_world USING hnsw (v) WITH (dims='3', m='5', ef='20', ef_construction='20') | 24 kB
+     indexname     | size  |                                                             indexdef                                                              | total_index_size 
+-------------------+-------+-----------------------------------------------------------------------------------------------------------------------------------+------------------
+ small_world_v_idx | 24 kB | CREATE INDEX small_world_v_idx ON public.small_world USING lantern_hnsw (v) WITH (dims='3', m='5', ef='20', ef_construction='20') | 24 kB
 (1 row)
 
 INSERT INTO small_world (v) VALUES ('[99,99,2]');
@@ -125,7 +129,7 @@ FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
 -- Verify that index creation on a large vector produces an error
 CREATE TABLE large_vector (v VECTOR(2001));
 \set ON_ERROR_STOP off
-CREATE INDEX ON large_vector USING hnsw (v);
+CREATE INDEX ON large_vector USING lantern_hnsw (v);
 ERROR:  vector dimension 2001 is too large. LanternDB currently supports up to 2000dim vectors
 \set ON_ERROR_STOP on
 -- Validate that index creation works with a larger number of vectors
@@ -135,7 +139,7 @@ CREATE TABLE sift_base10k (
     v VECTOR(128)
 );
 \COPY sift_base10k (v) FROM '/tmp/lanterndb/vector_datasets/siftsmall_base.csv' WITH CSV;
-CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v);
+CREATE INDEX hnsw_idx ON sift_base10k USING lantern_hnsw (v);
 INFO:  done init usearch index
 INFO:  inserted 10000 elements
 INFO:  done saving 10000 vectors
