@@ -8,6 +8,7 @@ BraceWrapping:
     AfterClass: true
     AfterControlStatement: false
     AfterEnum : true
+    AfterCaseLabel: true
     AfterFunction : true
     AfterNamespace : true
     AfterStruct : true
