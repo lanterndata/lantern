@@ -122,6 +122,7 @@ bytea *ldb_amoptions(Datum reloptions, bool validate)
            {"_experimental_index_path", RELOPT_TYPE_STRING, offsetof(HnswOptions, experimantal_index_path_offset)}};
 
 #if PG_VERSION_NUM >= 130000
+    LDB_UNUSED(validate);
     return (bytea *)build_reloptions(
         reloptions, true, ldb_hnsw_index_withopts, sizeof(HnswOptions), tab, lengthof(tab));
 #else

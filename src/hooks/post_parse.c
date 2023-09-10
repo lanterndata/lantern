@@ -136,9 +136,10 @@ void post_parse_analyze_hook_with_operator_check(ParseState *pstate,
     }
 
     List *oidList = ldb_get_operator_oids();
-    if(is_operator_used((Node *)query, oidList)) {
-        List *sort_group_refs = get_sort_group_refs(query);
-        if(is_operator_used_incorrectly(query, oidList, sort_group_refs)) {
+    Node *query_as_node = (Node *)query;
+    if(is_operator_used(query_as_node, oidList)) {
+        List *sort_group_refs = get_sort_group_refs(query_as_node);
+        if(is_operator_used_incorrectly(query_as_node, oidList, sort_group_refs)) {
             elog(ERROR, "Operator <-> has no standalone meaning and is reserved for use in vector index lookups only");
         }
         list_free(sort_group_refs);

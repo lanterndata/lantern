@@ -1,5 +1,7 @@
 #include <postgres.h>
 
+#include "plan_tree_walker.h"
+
 #include <miscadmin.h>
 #include <nodes/nodeFuncs.h>
 #include <nodes/parsenodes.h>
@@ -78,7 +80,7 @@ bool plan_tree_walker(Plan *plan, bool (*walker_func)(Node *plan, void *context)
             break;
         case T_NestLoop:
             NestLoop *nestloop = (NestLoop *)plan;
-            if(base_plan_walker(&(nestloop->join), walker_func, context)) return true;
+            if(base_plan_walker((Plan *)&(nestloop->join), walker_func, context)) return true;
             break;
 
         // Singleton Nodes

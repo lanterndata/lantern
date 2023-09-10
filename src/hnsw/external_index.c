@@ -406,8 +406,8 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
 
         assert(last_dblock != InvalidBuffer);
 
-        const int blockmaps_are_enough
-            = new_tuple_id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE + 1 < (1 << (hdr->blockmap_page_groups + 1));
+        const uint32 blockmaps_are_enough
+            = new_tuple_id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE + 1 < ((uint32)1 << (hdr->blockmap_page_groups + 1));
         if(PageGetFreeSpace(page) > sizeof(HnswIndexTuple) + alloced_tuple->size && blockmaps_are_enough) {
             // there is enough space in the last page to fit the new vector
             // so we just append it to the page
@@ -433,7 +433,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
             // check the count of blockmaps, see if there's place to add the block id, if yes add, if no create a
             // new group check if already existing blockmaps are not enough new_tuple_id /
             // HNSW_BLOCKMAP_BLOCKS_PER_PAGE + 1 is kth blockmap we check if k is more than already created 2^groups
-            if(new_tuple_id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE + 1 >= (1 << (hdr->blockmap_page_groups + 1))) {
+            if(new_tuple_id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE + 1 >= ((uint32)1 << (hdr->blockmap_page_groups + 1))) {
                 CreateBlockMapGroup(hdr, index_rel, MAIN_FORKNUM, new_tuple_id, hdr->blockmap_page_groups + 1);
             }
 
@@ -607,7 +607,7 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
     max_offset = PageGetMaxOffsetNumber(page);
     for(offset = FirstOffsetNumber; offset <= max_offset; offset = OffsetNumberNext(offset)) {
         nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
-        if(nodepage->id == id) {
+        if(nodepage->id == (uint32)id) {
 #if LANTERNDB_USEARCH_LEVEL_DISTRIBUTION
             levels[ nodepage->level ]++;
 #endif
@@ -673,7 +673,7 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, int id)
     max_offset = PageGetMaxOffsetNumber(page);
     for(offset = FirstOffsetNumber; offset <= max_offset; offset = OffsetNumberNext(offset)) {
         nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
-        if(nodepage->id == id) {
+        if(nodepage->id == (uint32)id) {
             fa_cache_insert(&ctx->fa_cache, id, nodepage->node);
 
             return nodepage->node;
