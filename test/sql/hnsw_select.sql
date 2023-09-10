@@ -4,10 +4,10 @@
 SET client_min_messages=debug5;
 
 \ir utils/small_world_array.sql
-CREATE INDEX ON small_world USING hnsw (v) WITH (dims=3, M=5, ef=20, ef_construction=20);
+CREATE INDEX ON small_world USING hnsw (v) WITH (dim=3, M=5, ef=20, ef_construction=20);
 
 \ir utils/sift1k_array.sql
-CREATE INDEX ON sift_base1k USING hnsw (v) WITH (dims=128, M=5, ef=20, ef_construction=20);
+CREATE INDEX ON sift_base1k USING hnsw (v) WITH (dim=128, M=5, ef=20, ef_construction=20);
 
 CREATE TABLE test1 (id SERIAL, v REAL[]);
 CREATE TABLE test2 (id SERIAL, v REAL[]);

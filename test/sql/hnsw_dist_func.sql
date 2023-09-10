@@ -8,9 +8,9 @@ CREATE TABLE small_world_l2 (id VARCHAR(3), v REAL[]);
 CREATE TABLE small_world_cos (id VARCHAR(3), v REAL[]);
 CREATE TABLE small_world_ham (id VARCHAR(3), v INTEGER[]);
 
-CREATE INDEX ON small_world_l2 USING hnsw (v dist_l2sq_ops) WITH (dims=3);
-CREATE INDEX ON small_world_cos USING hnsw (v dist_cos_ops) WITH (dims=3);
-CREATE INDEX ON small_world_ham USING hnsw (v dist_hamming_ops) WITH (dims=3);
+CREATE INDEX ON small_world_l2 USING hnsw (v dist_l2sq_ops) WITH (dim=3);
+CREATE INDEX ON small_world_cos USING hnsw (v dist_cos_ops) WITH (dim=3);
+CREATE INDEX ON small_world_ham USING hnsw (v dist_hamming_ops) WITH (dim=3);
 
 INSERT INTO small_world_l2 SELECT id, v FROM small_world;
 INSERT INTO small_world_cos SELECT id, v FROM small_world;

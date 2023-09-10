@@ -69,7 +69,7 @@ INSERT INTO small_world (id, vector) VALUES
 -- create index with default parameters
 CREATE INDEX ON small_world USING hnsw (vector);
 -- create index with custom parameters
--- CREATE INDEX ON small_world USING hnsw (vector) WITH (M=2, ef_construction=10, ef=4, dims=3);
+-- CREATE INDEX ON small_world USING hnsw (vector) WITH (M=2, ef_construction=10, ef=4, dim=3);
 ```
 
 4. Leverage the index in queries like:

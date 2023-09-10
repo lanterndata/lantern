@@ -5,7 +5,7 @@ CREATE TABLE small_world (
     id SERIAL PRIMARY KEY,
     v REAL[2]
 );
-CREATE INDEX ON small_world USING hnsw (v) WITH (dims=3);
+CREATE INDEX ON small_world USING hnsw (v) WITH (dim=3);
 INFO:  done init usearch index
 INFO:  inserted 0 elements
 INFO:  done saving 0 vectors
@@ -36,7 +36,7 @@ INSERT INTO small_world (id, b, v) VALUES
     ('101', FALSE, '{1,0,1}'),
     ('110', FALSE, '{1,1,0}'),
     ('111', TRUE,  '{1,1,1}');
-CREATE INDEX ON small_world USING hnsw (v) WITH (dims=3);
+CREATE INDEX ON small_world USING hnsw (v) WITH (dim=3);
 INFO:  done init usearch index
 INFO:  inserted 8 elements
 INFO:  done saving 8 vectors
@@ -74,9 +74,9 @@ INFO:  usearch index initialized
 
 -- Ensure the index size remains consistent after inserts
 SELECT * from ldb_get_indexes('small_world');
-     indexname     | size  |                                      indexdef                                       | total_index_size 
--------------------+-------+-------------------------------------------------------------------------------------+------------------
- small_world_v_idx | 24 kB | CREATE INDEX small_world_v_idx ON public.small_world USING hnsw (v) WITH (dims='3') | 24 kB
+     indexname     | size  |                                      indexdef                                      | total_index_size 
+-------------------+-------+------------------------------------------------------------------------------------+------------------
+ small_world_v_idx | 24 kB | CREATE INDEX small_world_v_idx ON public.small_world USING hnsw (v) WITH (dim='3') | 24 kB
 (1 row)
 
 -- Ensure the query plan remains consistent after inserts
@@ -100,7 +100,7 @@ CREATE TABLE sift_base10k (
     id SERIAL PRIMARY KEY,
     v REAL[128]
 );
-CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=4, dims=128);
+CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=4, dim=128);
 INFO:  done init usearch index
 INFO:  inserted 0 elements
 INFO:  done saving 0 vectors

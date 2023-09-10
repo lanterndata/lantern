@@ -139,7 +139,7 @@ static int GetArrayLengthFromHeap(Relation heap, int indexCol)
     ArrayType *array;
     Datum      datum;
     bool       isNull;
-    int        n_items = HNSW_DEFAULT_DIMS;
+    int        n_items = HNSW_DEFAULT_DIM;
     //
     // Get the first row off the heap
     // if it's NULL we don't infer a length. Since vectors are expected to have fixed nonzero dimension this will result
@@ -175,8 +175,8 @@ int GetHnswIndexDimensions(Relation index)
     // check if column is type of real[] or integer[]
     if(columnType == REAL_ARRAY || columnType == INT_ARRAY) {
         // The dimension in options is not set if the dimension is inferred so we need to actually check the key
-        int opt_dim = ldb_HnswGetDims(index);
-        if(opt_dim == HNSW_DEFAULT_DIMS) {
+        int opt_dim = ldb_HnswGetDim(index);
+        if(opt_dim == HNSW_DEFAULT_DIM) {
             // If the option's still the default it needs to be updated to match what was inferred
             // todo: is there a way to do this earlier? (rd_options is null in BuildInit)
             Relation         heap;
@@ -193,7 +193,7 @@ int GetHnswIndexDimensions(Relation index)
             opt_dim = GetArrayLengthFromHeap(heap, attrNum);
             opts = (ldb_HnswOptions *)index->rd_options;
             if(opts != NULL) {
-                opts->dims = opt_dim;
+                opts->dim = opt_dim;
             }
 #if PG_VERSION_NUM < 120000
             heap_close(heap, AccessShareLock);
@@ -239,7 +239,7 @@ static int InferDimension(Relation heap, IndexInfo *indexInfo)
     // If NumIndexAttrs isn't 1 the index has been instantiated on multiple keys and there's no clear way to infer
     // the dim
     if(indexInfo->ii_NumIndexAttrs != 1) {
-        return HNSW_DEFAULT_DIMS;
+        return HNSW_DEFAULT_DIM;
     }
 
     indexCol = indexInfo->ii_IndexAttrNumbers[ 0 ];
@@ -267,12 +267,12 @@ static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation i
 
     // not supported because of 8K page limit in postgres WAL pages
     // can pass this limit once quantization is supported
-    if(buildstate->dimensions > HNSW_MAX_DIMS)
+    if(buildstate->dimensions > HNSW_MAX_DIM)
         elog(ERROR,
              "vector dimension %d is too large. "
              "LanternDB currently supports up to %ddim vectors",
              buildstate->dimensions,
-             HNSW_MAX_DIMS);
+             HNSW_MAX_DIM);
 
     // keeps track of number of tuples added to index
     buildstate->tuples_indexed = 0;

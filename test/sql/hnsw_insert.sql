@@ -6,7 +6,7 @@ CREATE TABLE small_world (
     id SERIAL PRIMARY KEY,
     v REAL[2]
 );
-CREATE INDEX ON small_world USING hnsw (v) WITH (dims=3);
+CREATE INDEX ON small_world USING hnsw (v) WITH (dim=3);
 
 -- Insert rows with valid vector data
 INSERT INTO small_world (v) VALUES ('{0,0,1}'), ('{0,1,0}');
@@ -25,7 +25,7 @@ DROP TABLE small_world;
 
 \ir utils/small_world_array.sql
 
-CREATE INDEX ON small_world USING hnsw (v) WITH (dims=3);
+CREATE INDEX ON small_world USING hnsw (v) WITH (dim=3);
 
 SET enable_seqscan = false;
 
@@ -64,7 +64,7 @@ CREATE TABLE sift_base10k (
     id SERIAL PRIMARY KEY,
     v REAL[128]
 );
-CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=4, dims=128);
+CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=4, dim=128);
 \COPY sift_base10k (v) FROM '/tmp/lanterndb/vector_datasets/siftsmall_base_arrays.csv' WITH CSV;
 SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
 EXPLAIN SELECT * FROM sift_base10k order by v <-> :'v4444'

@@ -10,7 +10,7 @@ CREATE TABLE small_world (
 INSERT INTO small_world (v) VALUES ('{0,0}'), ('{1,1}'), ('{2,2}'), ('{3,3}');
 
 -- Create index
-CREATE INDEX ON small_world USING hnsw (v dist_l2sq_ops) WITH (dims=2, M=4);
+CREATE INDEX ON small_world USING hnsw (v dist_l2sq_ops) WITH (dim=2, M=4);
 SET enable_seqscan = false;
 
 -- Get the results without the index
