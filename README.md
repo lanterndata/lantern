@@ -2,19 +2,19 @@
 
 This extension makes it easy to experiment with embeddings from inside a Postgres database. We use this extension along with [LanternDB](https://github.com/lanterndata/lanterndb) to make vector operations performant. But all the helpers here are standalone and may be used without the main database.
 
-__NOTE__: Functions defined in this extension use Postgres in ways Postgres is usually not used. 
+**NOTE**: Functions defined in this extension use Postgres in ways Postgres is usually not used.
 Some calls may result in large file downloads, or CPU-intensive model inference operations. Keep this in mind when using this extension a shared Postgres environment.
 
 ## Features
 
 - Streaming download of vector embeddings in archived and uncompressed formats
 - Streaming download of various standard vector benchmark datasets
-    - SIFT
-    - GIST
+  - SIFT
+  - GIST
 - Generation of various various embeddings for data stored in Postgres tables without leaving the database
 
-
 ## Examples
+
 ```sql
 -- parse the first 41 vectors from the uncompressed .fvecs vector dataset on server machine
 SELECT parse_fvecs('/tmp/rustftp/siftsmall/siftsmall_base.fvecs', 41);
@@ -36,6 +36,20 @@ SELECT abstract,
        clip_image(figure1) AS figure1_ai
 INTO papers_augmented
 FROM papers;
+
+```
+
+-- generate embeddings from other models which can be extended
+
+```sql
+-- generate text embedding
+SELECT text_embedding('BAAI/bge-base-en', 'My text input');
+-- generate image embedding with image url
+SELECT image_embedding('clip/ViT-B-32-visual', 'https://link-to-your-image');
+-- generate image embedding with image path (this path should be accessible from postgres server)
+SELECT image_embedding('clip/ViT-B-32-visual', '/path/to/image/in-postgres-server');
+-- get available list of models
+SELECT get_available_models();
 ```
 
 ## Getting started
@@ -55,35 +69,63 @@ You should have onnxruntime in your system in order to build the extension.
 You can download the `onnxruntime` binary realease from GitHub https://github.com/microsoft/onnxruntime/releases/tag/v1.15.1 and place it somewhere in your system (e.g. /usr/lib/onnxruntime)
 
 Then you should export these 2 environment variables
+
 ```bash
-export ORT_STRATEGY=system 
-export ORT_LIB_LOCATION=/usr/local/lib/onnxruntime 
+export ORT_STRATEGY=system
+export ORT_LIB_LOCATION=/usr/local/lib/onnxruntime
 ```
+
 And also add this configuration under `.cargo/config`
+
 ```
 [target.aarch64-unknown-linux-gnu]
-rustflags = ["-C", "link-args=-Wl,-rpath,/usr/local/lib/onnx/lib"]
+rustflags = ["-C", "link-args=-Wl,-rpath,/usr/local/lib/onnxruntime/lib"]
+[target.'cfg(target_os="macos")']
+# Postgres symbols won't be available until runtime
+rustflags = ["-Clink-arg=-Wl,-undefined,dynamic_lookup"]
 ```
-*replace `aarch64-unknown-linux-gnu` with your architecture. You can get it by running `rustc -vV | sed -n 's|host: ||p'`*  
+
+_replace `aarch64-unknown-linux-gnu` with your architecture. You can get it by running `rustc -vV | sed -n 's|host: ||p'`_
 
 This extension is written in Rust so requires Rust toolchain. It uses `pgrx`
 
 ```bash
-cargo build
-cargo package
 cargo pgrx run --package lanterndb_extras # runs in a testing environment
+```
+
+To package the extension run
+
+```bash
+cargo pgrx package --package lanterndb_extras
 ```
 
 ### Initializing with psql
 
 Once the extension is installed, in a psql shell or in your favorite SQL environment run:
+
 ```sql
 CREATE EXTENSION lanterndb_extras;
+```
+
+### Adding new models
+
+To add new textual or visual models for generating vector embeddings you can follow this steps:
+
+1. Find the model onnx file or convert it using [optimum-cli](https://huggingface.co/docs/transformers/serialization). Example `optimum-cli export onnx --model BAAI/bge-base-en onnx/`
+2. Host the onnx model
+3. Add model information in `MODEL_INFO_MAP` under `lanterndb_extras/src/encoder.rs`
+4. Add new image/text processor based on model inputs (you can check existing processors they might match the model) and then add the `match` arm in `process_text` or `process_image` function in `EncoderService` so it will run corresponding processor for model.
+
+After this your model should be callable from SQL like
+
+```sql
+SELECT text_embedding('your/model_name', 'Your text');
 ```
 
 ## LanternDB Index Builder
 
 ## Description
+
 This is a CLI application that creates an index for LanternDB outside of Postgres which can later be imported into Postgres. This allows for faster index creation through parallelization.
 
 ## How to use
@@ -107,4 +149,5 @@ ldb-create-index -u "postgresql://localhost/test" -t "small_world" -c "vec" -m 1
 ```
 
 ### Notes
+
 The index should be created from the same database on which it will be loaded, so row tids will match later.

@@ -11,14 +11,29 @@ pub mod encoder;
 #[macro_use]
 extern crate lazy_static;
 
-#[pg_extern(immutable)]
+#[pg_extern(immutable, parallel_safe)]
 fn clip_text<'a>(text: &'a str) -> Vec<f32> {
-    return encoder::clip::process_text(text.to_owned());
+    return encoder::clip::process_text("clip/ViT-B-32-textual", text.to_owned());
 }
 
-#[pg_extern(immutable)]
+#[pg_extern(immutable, parallel_safe)]
+fn text_embedding<'a>(text: &'a str, model_name: &'a str) -> Vec<f32> {
+    return encoder::clip::process_text(model_name, text.to_owned());
+}
+
+#[pg_extern(immutable, parallel_safe)]
+fn image_embedding<'a>(text: &'a str, model_name: &'a str) -> Vec<f32> {
+    return encoder::clip::process_image(model_name, text.to_owned());
+}
+
+#[pg_extern(immutable, parallel_safe)]
 fn clip_image<'a>(path_or_url: &'a str) -> Vec<f32> {
-    return encoder::clip::process_image(path_or_url.to_owned());
+    return encoder::clip::process_image("clip/ViT-B-32-visual", path_or_url.to_owned());
+}
+
+#[pg_extern(immutable, parallel_safe)]
+fn get_available_models() -> String {
+    return encoder::clip::get_available_models();
 }
 
 #[pg_extern]
