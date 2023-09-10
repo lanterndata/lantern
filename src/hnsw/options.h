@@ -29,7 +29,7 @@
 #define LDB_HNSW_DEFAULT_K 10
 #define LDB_HNSW_MAX_K     1000
 /* HNSW index options */
-typedef struct HnswOptions
+typedef struct ldb_HnswOptions
 {
     // max elements the table will ever have. required for hnswlib
     int32 vl_len_; /* varlena header (do not touch directly!) */
@@ -39,15 +39,14 @@ typedef struct HnswOptions
     int   ef_construction;
     int   ef;
     int   experimantal_index_path_offset;
-} HnswOptions;
+} ldb_HnswOptions;
 
-int                   HnswGetDims(Relation index);
-int                   HnswGetM(Relation index);
-int                   HnswGetEfConstruction(Relation index);
-int                   HnswGetEf(Relation index);
-int                   HnswGetElementLimit(Relation index);
-char*                 HnswGetIndexFilePath(Relation index);
-usearch_metric_kind_t HnswGetMetricKind(Relation index);
+int                   ldb_HnswGetDims(Relation index);
+int                   ldb_HnswGetM(Relation index);
+int                   ldb_HnswGetEfConstruction(Relation index);
+int                   ldb_HnswGetEf(Relation index);
+char*                 ldb_HnswGetIndexFilePath(Relation index);
+usearch_metric_kind_t ldb_HnswGetMetricKind(Relation index);
 
 bytea* ldb_amoptions(Datum reloptions, bool validate);
 

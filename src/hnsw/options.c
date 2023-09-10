@@ -35,37 +35,37 @@ static relopt_kind ldb_hnsw_index_withopts;
 
 int ldb_hnsw_init_k;
 
-int HnswGetDims(Relation index)
+int ldb_HnswGetDims(Relation index)
 {
-    HnswOptions *opts = (HnswOptions *)index->rd_options;
+    ldb_HnswOptions *opts = (ldb_HnswOptions *)index->rd_options;
     if(opts) return opts->dims;
     return HNSW_DEFAULT_DIMS;
 }
 
-int HnswGetM(Relation index)
+int ldb_HnswGetM(Relation index)
 {
-    HnswOptions *opts = (HnswOptions *)index->rd_options;
+    ldb_HnswOptions *opts = (ldb_HnswOptions *)index->rd_options;
     if(opts) return opts->m;
     return HNSW_DEFAULT_M;
 }
 
-int HnswGetEfConstruction(Relation index)
+int ldb_HnswGetEfConstruction(Relation index)
 {
-    HnswOptions *opts = (HnswOptions *)index->rd_options;
+    ldb_HnswOptions *opts = (ldb_HnswOptions *)index->rd_options;
     if(opts) return opts->ef_construction;
     return HNSW_DEFAULT_EF_CONSTRUCTION;
 }
 
-int HnswGetEf(Relation index)
+int ldb_HnswGetEf(Relation index)
 {
-    HnswOptions *opts = (HnswOptions *)index->rd_options;
+    ldb_HnswOptions *opts = (ldb_HnswOptions *)index->rd_options;
     if(opts) return opts->ef;
     return HNSW_DEFAULT_EF;
 }
 
-char *HnswGetIndexFilePath(Relation index)
+char *ldb_HnswGetIndexFilePath(Relation index)
 {
-    HnswOptions *opts = (HnswOptions *)index->rd_options;
+    ldb_HnswOptions *opts = (ldb_HnswOptions *)index->rd_options;
     if(!opts) return NULL;
     if(!opts->experimantal_index_path_offset) {
         return NULL;
@@ -74,7 +74,7 @@ char *HnswGetIndexFilePath(Relation index)
     return (char *)opts + opts->experimantal_index_path_offset;
 }
 
-usearch_metric_kind_t HnswGetMetricKind(Relation index)
+usearch_metric_kind_t ldb_HnswGetMetricKind(Relation index)
 {
     struct catclist *proclist = SearchSysCacheList1(AMPROCNUM, ObjectIdGetDatum(index->rd_opfamily[ 0 ]));
 
@@ -114,26 +114,26 @@ static void IndexFileParamValidator(const char *value)
 bytea *ldb_amoptions(Datum reloptions, bool validate)
 {
     static const relopt_parse_elt tab[]
-        = {{"dims", RELOPT_TYPE_INT, offsetof(HnswOptions, dims)},
-           {"element_limit", RELOPT_TYPE_INT, offsetof(HnswOptions, element_limit)},
-           {"m", RELOPT_TYPE_INT, offsetof(HnswOptions, m)},
-           {"ef_construction", RELOPT_TYPE_INT, offsetof(HnswOptions, ef_construction)},
-           {"ef", RELOPT_TYPE_INT, offsetof(HnswOptions, ef)},
-           {"_experimental_index_path", RELOPT_TYPE_STRING, offsetof(HnswOptions, experimantal_index_path_offset)}};
+        = {{"dims", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, dims)},
+           {"element_limit", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, element_limit)},
+           {"m", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, m)},
+           {"ef_construction", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, ef_construction)},
+           {"ef", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, ef)},
+           {"_experimental_index_path", RELOPT_TYPE_STRING, offsetof(ldb_HnswOptions, experimantal_index_path_offset)}};
 
 #if PG_VERSION_NUM >= 130000
     LDB_UNUSED(validate);
     return (bytea *)build_reloptions(
-        reloptions, true, ldb_hnsw_index_withopts, sizeof(HnswOptions), tab, lengthof(tab));
+        reloptions, true, ldb_hnsw_index_withopts, sizeof(ldb_HnswOptions), tab, lengthof(tab));
 #else
     // todo::currently unused so out of date
-    relopt_value *options;
-    int           numoptions;
-    HnswOptions  *rdopts;
+    relopt_value    *options;
+    int              numoptions;
+    ldb_HnswOptions *rdopts;
 
     options = parseRelOptions(reloptions, validate, ldb_hnsw_index_withopts, &numoptions);
-    rdopts = allocateReloptStruct(sizeof(HnswOptions), options, numoptions);
-    fillRelOptions((void *)rdopts, sizeof(HnswOptions), options, numoptions, validate, tab, lengthof(tab));
+    rdopts = allocateReloptStruct(sizeof(ldb_HnswOptions), options, numoptions);
+    fillRelOptions((void *)rdopts, sizeof(ldb_HnswOptions), options, numoptions, validate, tab, lengthof(tab));
 
     return (bytea *)rdopts;
 #endif
@@ -230,20 +230,6 @@ void _PG_init(void)
                             NULL,
                             NULL);
 }
-
-// this is only applicable to hnswlib
-// worry about it if/when it is back up to date again
-#if 0
-int
-HnswGetElementLimit(Relation index)
-{
-	HnswOptions *opts = (HnswOptions *) index->rd_options;
-	if (opts)
-		return opts->element_limit;
-		
-	return HNSWLIB_DEFAULT_ELEMENT_LIMIT;
-}
-#endif
 
 // Called with extension unload.
 void _PG_fini(void)
