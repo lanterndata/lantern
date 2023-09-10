@@ -220,8 +220,10 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         float4         *vec;
         usearch_error_t error = NULL;
         int             k = scanstate->count * 2;
+        int             index_size = usearch_size(scanstate->usearch_index, &error);
+        assert(error == NULL);
 
-        if(usearch_size(scanstate->usearch_index, &error) == scanstate->current) {
+        if(index_size == scanstate->current) {
             return false;
         }
 

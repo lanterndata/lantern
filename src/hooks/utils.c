@@ -3,6 +3,7 @@
 #include <catalog/pg_type_d.h>
 #include <nodes/makefuncs.h>
 #include <nodes/pg_list.h>
+#include <parser/parse_oper.h>
 
 List *ldb_get_operator_oids()
 {

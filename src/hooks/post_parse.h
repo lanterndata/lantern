@@ -7,8 +7,9 @@
 #include <parser/analyze.h>
 
 extern post_parse_analyze_hook_type original_post_parse_analyze_hook;
-void                                post_parse_analyze_hook_with_operator_check(ParseState *pstate,
-                                                                                Query      *query
+
+void post_parse_analyze_hook_with_operator_check(ParseState *pstate,
+                                                 Query      *query
 #if PG_VERSION_NUM >= 140000
                                                  ,
                                                  JumbleState *jstate
