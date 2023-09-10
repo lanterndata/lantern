@@ -34,10 +34,10 @@ so below the human readable string names can be printed
 
 void PopulateUsearchOpts(Relation index, usearch_init_options_t *opts)
 {
-    opts->connectivity = HnswGetM(index);
-    opts->expansion_add = HnswGetEfConstruction(index);
-    opts->expansion_search = HnswGetEf(index);
-    opts->metric_kind = HnswGetMetricKind(index);
+    opts->connectivity = ldb_HnswGetM(index);
+    opts->expansion_add = ldb_HnswGetEfConstruction(index);
+    opts->expansion_search = ldb_HnswGetEf(index);
+    opts->metric_kind = ldb_HnswGetMetricKind(index);
     opts->metric = NULL;
     opts->quantization = usearch_scalar_f32_k;
 }

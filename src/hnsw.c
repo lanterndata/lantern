@@ -89,8 +89,8 @@ static uint64 estimate_number_tuples_accessed(Oid index_relation, double num_tup
     int M, ef;
     {  // index_rel scope
         Relation index_rel = relation_open(index_relation, AccessShareLock);
-        M = HnswGetM(index_rel);
-        ef = HnswGetEf(index_rel);
+        M = ldb_HnswGetM(index_rel);
+        ef = ldb_HnswGetEf(index_rel);
         relation_close(index_rel, AccessShareLock);
     }
 

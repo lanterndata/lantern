@@ -175,13 +175,13 @@ int GetHnswIndexDimensions(Relation index)
     // check if column is type of real[] or integer[]
     if(columnType == REAL_ARRAY || columnType == INT_ARRAY) {
         // The dimension in options is not set if the dimension is inferred so we need to actually check the key
-        int opt_dim = HnswGetDims(index);
+        int opt_dim = ldb_HnswGetDims(index);
         if(opt_dim == HNSW_DEFAULT_DIMS) {
             // If the option's still the default it needs to be updated to match what was inferred
             // todo: is there a way to do this earlier? (rd_options is null in BuildInit)
-            Relation     heap;
-            HnswOptions *opts;
-            int          attrNum;
+            Relation         heap;
+            ldb_HnswOptions *opts;
+            int              attrNum;
 
             assert(index->rd_index->indnatts == 1);
             attrNum = index->rd_index->indkey.values[ 0 ];
@@ -191,7 +191,7 @@ int GetHnswIndexDimensions(Relation index)
             heap = table_open(index->rd_index->indrelid, AccessShareLock);
 #endif
             opt_dim = GetArrayLengthFromHeap(heap, attrNum);
-            opts = (HnswOptions *)index->rd_options;
+            opts = (ldb_HnswOptions *)index->rd_options;
             if(opts != NULL) {
                 opts->dims = opt_dim;
             }
@@ -256,7 +256,7 @@ static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation i
     buildstate->indexInfo = indexInfo;
     buildstate->columnType = GetIndexColumnType(index);
     buildstate->dimensions = GetHnswIndexDimensions(index);
-    buildstate->index_file_path = HnswGetIndexFilePath(index);
+    buildstate->index_file_path = ldb_HnswGetIndexFilePath(index);
 
     // If a dimension wasn't specified try to infer it
     if(buildstate->dimensions < 1) {
