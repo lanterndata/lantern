@@ -39,7 +39,7 @@ struct FileInfo {
 
 lazy_static! {
     static ref FILE_INFO_MAP: HashMap<FileType, FileInfo> = HashMap::from([
-        (FileType::TextModel, FileInfo{url: "https://clip-as-service.s3.us-east-2.amazonaws.com/models-436c69702d61732d53657276696365/onnx/ViT-B-32-laion2b_e16/textual.onnx", path: Path::new(DATA_PATH).join("textual.onnx")}),
+        (FileType::TextModel, FileInfo{url: "https://clip-as-service.s3.us-east-2.amazonaws.com/models-436c69702d61732d53657276696365/onnx/ViT-B-32/textual.onnx", path: Path::new(DATA_PATH).join("textual.onnx")}),
         (FileType::VisualModel, FileInfo{url: "https://clip-as-service.s3.us-east-2.amazonaws.com/models-436c69702d61732d53657276696365/onnx/ViT-B-32/visual.onnx", path: Path::new(DATA_PATH).join("visual.onnx")}),
         (FileType::Tokenizer, FileInfo{url: "https://huggingface.co/openai/clip-vit-base-patch32/resolve/main/tokenizer.json", path: Path::new(DATA_PATH).join("tokenizer.json")}),
     ]);
