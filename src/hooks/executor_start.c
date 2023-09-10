@@ -69,6 +69,7 @@ void ExecutorStart_hook_with_operator_check(QueryDesc *queryDesc, int eflags)
     }
 
     List *oidList = ldb_get_operator_oids();
+    ldb_invariant(oidList != NULL, "LanternDB hnsw operator list is NULL");
     validate_operator_usage(queryDesc->plannedstmt->planTree, oidList);
     ListCell *lc;
     foreach(lc, queryDesc->plannedstmt->subplans) {

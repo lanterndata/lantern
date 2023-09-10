@@ -38,11 +38,7 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     // index header is always at BlockNumber blockno = 0
     BlockNumber header_blockno = 0;
 
-    if(!BlockNumberIsValid(header_blockno)) {
-        elog(ERROR,
-             "usearch index not initalized and root "
-             "block not valid");
-    }
+    ldb_invariant(BlockNumberIsValid(header_blockno), "invalid hnsw header blockno");
 
     assert(scan->indexRelation == index);
     buf = ReadBuffer(scan->indexRelation, header_blockno);
