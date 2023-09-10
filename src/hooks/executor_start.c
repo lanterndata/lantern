@@ -17,12 +17,12 @@ typedef struct
     bool  isIndexScan;
 } OperatorUsedCorrectlyContext;
 
-static bool operator_used_correctly_walker(Node *node, OperatorUsedCorrectlyContext *context)
+static bool operator_used_incorrectly_walker(Node *node, OperatorUsedCorrectlyContext *context)
 {
     if(node == NULL) return false;
     if(IsA(node, IndexScan)) {
         context->isIndexScan = true;
-        bool status = plan_tree_walker(node, operator_used_correctly_walker, (void *)context);
+        bool status = plan_tree_walker(node, operator_used_incorrectly_walker, (void *)context);
         context->isIndexScan = false;
         return status;
     }
@@ -36,15 +36,15 @@ static bool operator_used_correctly_walker(Node *node, OperatorUsedCorrectlyCont
         List     *list = (List *)node;
         ListCell *lc;
         foreach(lc, list) {
-            if(operator_used_correctly_walker(lfirst(lc), context)) return true;
+            if(operator_used_incorrectly_walker(lfirst(lc), context)) return true;
         }
         return false;
     }
 
     if(nodeTag(node) < T_PlanState) {
-        return plan_tree_walker(node, operator_used_correctly_walker, (void *)context);
+        return plan_tree_walker(node, operator_used_incorrectly_walker, (void *)context);
     } else {
-        return expression_tree_walker(node, operator_used_correctly_walker, (void *)context);
+        return expression_tree_walker(node, operator_used_incorrectly_walker, (void *)context);
     }
 }
 
@@ -53,7 +53,7 @@ static bool validate_operator_usage(Plan *plan, List *oidList)
     OperatorUsedCorrectlyContext context;
     context.oidList = oidList;
     context.isIndexScan = false;
-    if(operator_used_correctly_walker(plan, &context)) {
+    if(operator_used_incorrectly_walker(plan, &context)) {
         elog(ERROR, "Operator <-> has no standalone meaning and is reserved for use in vector index lookups only");
     }
 }

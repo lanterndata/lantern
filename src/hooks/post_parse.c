@@ -74,10 +74,10 @@ typedef struct
     bool  usedCorrectly;
 } OperatorUsedCorrectlyContext;
 
-static bool operator_used_correctly_walker(Node *node, OperatorUsedCorrectlyContext *context)
+static bool operator_used_incorrectly_walker(Node *node, OperatorUsedCorrectlyContext *context)
 {
     if(node == NULL) return false;
-    if(IsA(node, Query)) return query_tree_walker((Query *)node, operator_used_correctly_walker, (void *)context, 0);
+    if(IsA(node, Query)) return query_tree_walker((Query *)node, operator_used_incorrectly_walker, (void *)context, 0);
     if(IsA(node, TargetEntry)) {
         TargetEntry *te = (TargetEntry *)node;
         if(te->resjunk && list_member_int(context->sortGroupRefs, te->ressortgroupref)) {
@@ -93,9 +93,9 @@ static bool operator_used_correctly_walker(Node *node, OperatorUsedCorrectlyCont
                     } else if(!isVar1 && !isVar2) {
                         return true;
                     } else if(isVar1) {
-                        return operator_used_correctly_walker(arg2, context);
+                        return operator_used_incorrectly_walker(arg2, context);
                     } else {
-                        return operator_used_correctly_walker(arg1, context);
+                        return operator_used_incorrectly_walker(arg1, context);
                     }
                 }
             }
@@ -108,15 +108,15 @@ static bool operator_used_correctly_walker(Node *node, OperatorUsedCorrectlyCont
         }
     }
 
-    return expression_tree_walker(node, operator_used_correctly_walker, (void *)context);
+    return expression_tree_walker(node, operator_used_incorrectly_walker, (void *)context);
 }
 
-static bool is_operator_used_correctly(Node *node, List *oidList, List *sortGroupRefs)
+static bool is_operator_used_incorrectly(Node *node, List *oidList, List *sortGroupRefs)
 {
     OperatorUsedCorrectlyContext context;
     context.oidList = oidList;
     context.sortGroupRefs = sortGroupRefs;
-    return !operator_used_correctly_walker(node, &context);
+    return operator_used_incorrectly_walker(node, &context);
 }
 
 void post_parse_analyze_hook_with_operator_check(ParseState *pstate,
@@ -138,7 +138,7 @@ void post_parse_analyze_hook_with_operator_check(ParseState *pstate,
     List *oidList = ldb_get_operator_oids();
     if(is_operator_used((Node *)query, oidList)) {
         List *sort_group_refs = get_sort_group_refs(query);
-        if(!is_operator_used_correctly(query, oidList, sort_group_refs)) {
+        if(is_operator_used_incorrectly(query, oidList, sort_group_refs)) {
             elog(ERROR, "Operator <-> has no standalone meaning and is reserved for use in vector index lookups only");
         }
         list_free(sort_group_refs);
