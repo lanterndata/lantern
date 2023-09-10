@@ -20,12 +20,12 @@ SELECT '[1,2,3]'::vector;
 -- Test index creation x2 on empty table and subsequent inserts
 CREATE TABLE items (id SERIAL PRIMARY KEY, trait_ai VECTOR(3));
 INSERT INTO items (trait_ai) VALUES ('[1,2,3]'), ('[4,5,6]');
-CREATE INDEX ON items USING lantern_hnsw (trait_ai dist_vec_l2sq_ops) WITH (dims=3, M=2);
+CREATE INDEX ON items USING lantern_hnsw (trait_ai dist_vec_l2sq_ops) WITH (dim=3, M=2);
 INFO:  done init usearch index
 INFO:  inserted 2 elements
 INFO:  done saving 2 vectors
 INSERT INTO items (trait_ai) VALUES ('[6,7,8]');
-CREATE INDEX ON items USING lantern_hnsw (trait_ai dist_vec_l2sq_ops) WITH (dims=3, M=4);
+CREATE INDEX ON items USING lantern_hnsw (trait_ai dist_vec_l2sq_ops) WITH (dim=3, M=4);
 INFO:  done init usearch index
 INFO:  inserted 3 elements
 INFO:  done saving 3 vectors
@@ -39,11 +39,11 @@ SELECT * FROM items ORDER BY trait_ai <-> '[0,0,0]' LIMIT 3;
 (3 rows)
 
 SELECT * FROM ldb_get_indexes('items');
-      indexname      | size  |                                               indexdef                                                | total_index_size 
----------------------+-------+-------------------------------------------------------------------------------------------------------+------------------
- items_pkey          | 16 kB | CREATE UNIQUE INDEX items_pkey ON public.items USING btree (id)                                       | 64 kB
- items_trait_ai_idx  | 24 kB | CREATE INDEX items_trait_ai_idx ON public.items USING lantern_hnsw (trait_ai) WITH (dims='3', m='2')  | 64 kB
- items_trait_ai_idx1 | 24 kB | CREATE INDEX items_trait_ai_idx1 ON public.items USING lantern_hnsw (trait_ai) WITH (dims='3', m='4') | 64 kB
+      indexname      | size  |                                               indexdef                                               | total_index_size 
+---------------------+-------+------------------------------------------------------------------------------------------------------+------------------
+ items_pkey          | 16 kB | CREATE UNIQUE INDEX items_pkey ON public.items USING btree (id)                                      | 64 kB
+ items_trait_ai_idx  | 24 kB | CREATE INDEX items_trait_ai_idx ON public.items USING lantern_hnsw (trait_ai) WITH (dim='3', m='2')  | 64 kB
+ items_trait_ai_idx1 | 24 kB | CREATE INDEX items_trait_ai_idx1 ON public.items USING lantern_hnsw (trait_ai) WITH (dim='3', m='4') | 64 kB
 (3 rows)
 
 -- Test index creation on table with existing data
@@ -63,14 +63,14 @@ INSERT INTO small_world (id, b, v) VALUES
     ('110', FALSE, '[1,1,0]'),
     ('111', TRUE,  '[1,1,1]');
 SET enable_seqscan = false;
-CREATE INDEX ON small_world USING lantern_hnsw (v) WITH (dims=3, M=5, ef=20, ef_construction=20);
+CREATE INDEX ON small_world USING lantern_hnsw (v) WITH (dim=3, M=5, ef=20, ef_construction=20);
 INFO:  done init usearch index
 INFO:  inserted 8 elements
 INFO:  done saving 8 vectors
 SELECT * FROM ldb_get_indexes('small_world');
-     indexname     | size  |                                                             indexdef                                                              | total_index_size 
--------------------+-------+-----------------------------------------------------------------------------------------------------------------------------------+------------------
- small_world_v_idx | 24 kB | CREATE INDEX small_world_v_idx ON public.small_world USING lantern_hnsw (v) WITH (dims='3', m='5', ef='20', ef_construction='20') | 24 kB
+     indexname     | size  |                                                             indexdef                                                             | total_index_size 
+-------------------+-------+----------------------------------------------------------------------------------------------------------------------------------+------------------
+ small_world_v_idx | 24 kB | CREATE INDEX small_world_v_idx ON public.small_world USING lantern_hnsw (v) WITH (dim='3', m='5', ef='20', ef_construction='20') | 24 kB
 (1 row)
 
 INSERT INTO small_world (v) VALUES ('[99,99,2]');

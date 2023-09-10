@@ -3,7 +3,7 @@
 ------------------------------------------------------------------------------
 -- Index files were created with ldb-create-index program which source is under https://github.com/lanterndata/lanterndb_extras/
 -- We have exported index files for sift1k dataset for cosine and l2sq distances
--- With the following params m=16 ef=64 ef_construction=128 dims=128
+-- With the following params m=16 ef=64 ef_construction=128 dim=128
 -- Validate that index creation works with a small number of vectors
 \ir utils/sift1k_array.sql
 CREATE TABLE IF NOT EXISTS sift_base1k (

@@ -35,11 +35,11 @@ static relopt_kind ldb_hnsw_index_withopts;
 
 int ldb_hnsw_init_k;
 
-int ldb_HnswGetDims(Relation index)
+int ldb_HnswGetDim(Relation index)
 {
     ldb_HnswOptions *opts = (ldb_HnswOptions *)index->rd_options;
-    if(opts) return opts->dims;
-    return HNSW_DEFAULT_DIMS;
+    if(opts) return opts->dim;
+    return HNSW_DEFAULT_DIM;
 }
 
 int ldb_HnswGetM(Relation index)
@@ -114,7 +114,7 @@ static void IndexFileParamValidator(const char *value)
 bytea *ldb_amoptions(Datum reloptions, bool validate)
 {
     static const relopt_parse_elt tab[]
-        = {{"dims", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, dims)},
+        = {{"dim", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, dim)},
            {"element_limit", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, element_limit)},
            {"m", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, m)},
            {"ef_construction", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, ef_construction)},
@@ -163,11 +163,11 @@ void _PG_init(void)
 	);
 #endif
     add_int_reloption(ldb_hnsw_index_withopts,
-                      "dims",
+                      "dim",
                       "Number of dimensions of the vector",
-                      HNSW_DEFAULT_DIMS,
+                      HNSW_DEFAULT_DIM,
                       1,
-                      HNSW_MAX_DIMS
+                      HNSW_MAX_DIM
 #if PG_VERSION_NUM >= 130000
                       ,
                       AccessExclusiveLock

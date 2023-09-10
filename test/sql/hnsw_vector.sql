@@ -18,9 +18,9 @@ SELECT '[1,2,3]'::vector;
 -- Test index creation x2 on empty table and subsequent inserts
 CREATE TABLE items (id SERIAL PRIMARY KEY, trait_ai VECTOR(3));
 INSERT INTO items (trait_ai) VALUES ('[1,2,3]'), ('[4,5,6]');
-CREATE INDEX ON items USING lantern_hnsw (trait_ai dist_vec_l2sq_ops) WITH (dims=3, M=2);
+CREATE INDEX ON items USING lantern_hnsw (trait_ai dist_vec_l2sq_ops) WITH (dim=3, M=2);
 INSERT INTO items (trait_ai) VALUES ('[6,7,8]');
-CREATE INDEX ON items USING lantern_hnsw (trait_ai dist_vec_l2sq_ops) WITH (dims=3, M=4);
+CREATE INDEX ON items USING lantern_hnsw (trait_ai dist_vec_l2sq_ops) WITH (dim=3, M=4);
 INSERT INTO items (trait_ai) VALUES ('[10,10,10]'), (NULL);
 SELECT * FROM items ORDER BY trait_ai <-> '[0,0,0]' LIMIT 3;
 SELECT * FROM ldb_get_indexes('items');
@@ -28,7 +28,7 @@ SELECT * FROM ldb_get_indexes('items');
 -- Test index creation on table with existing data
 \ir utils/small_world_vector.sql
 SET enable_seqscan = false;
-CREATE INDEX ON small_world USING lantern_hnsw (v) WITH (dims=3, M=5, ef=20, ef_construction=20);
+CREATE INDEX ON small_world USING lantern_hnsw (v) WITH (dim=3, M=5, ef=20, ef_construction=20);
 SELECT * FROM ldb_get_indexes('small_world');
 INSERT INTO small_world (v) VALUES ('[99,99,2]');
 INSERT INTO small_world (v) VALUES (NULL);
