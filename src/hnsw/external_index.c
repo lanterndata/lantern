@@ -17,6 +17,7 @@
 #include "options.h"
 #include "retriever.h"
 #include "usearch.h"
+#include "utils.h"
 
 static BlockNumber getBlockMapPageBlockNumber(uint32 *blockmap_page_group_index, int id);
 
@@ -52,7 +53,8 @@ int CreateBlockMapGroup(
     HnswIndexHeaderPage *hdr, Relation index, ForkNumber forkNum, int first_node_index, int blockmap_groupno)
 {
     // Create empty blockmap pages for the group
-    const int number_of_blockmaps_in_group = 1 << blockmap_groupno;
+    const int    number_of_blockmaps_in_group = 1 << blockmap_groupno;
+    OffsetNumber inserted_at = InvalidOffsetNumber;
     assert(hdr != NULL);
 
     for(int blockmap_id = 0; blockmap_id < number_of_blockmaps_in_group; ++blockmap_id) {
@@ -75,13 +77,11 @@ int CreateBlockMapGroup(
         HnswBlockmapPage *blockmap = palloc0(BLCKSZ);
         blockmap->first_id = first_node_index + blockmap_id * HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
 
-        if(PageAddItem(page, (Item)blockmap, sizeof(HnswBlockmapPage), InvalidOffsetNumber, false, false)
-           == InvalidOffsetNumber) {
-            // we always add a single Blockmap page per Index page which has a fixed size that
-            // always fits in postgres wal page. So this should never happen
-            // (Assumes 8k BLKSZ. we can make HnswBlockmapPage size configurable by BLCKSZ)
-            elog(ERROR, "could not add blockmap to page");
-        }
+        // we always add a single Blockmap page per Index page which has a fixed size that
+        // always fits in postgres wal page. So this should never happen
+        // (Assumes 8k BLKSZ. we can make HnswBlockmapPage size configurable by BLCKSZ)
+        inserted_at = PageAddItem(page, (Item)blockmap, sizeof(HnswBlockmapPage), InvalidOffsetNumber, false, false);
+        ldb_invariant(inserted_at != InvalidOffsetNumber, "could not add blockmap to page %d", inserted_at);
 
         special->lastId = first_node_index + (blockmap_id + 1) * HNSW_BLOCKMAP_BLOCKS_PER_PAGE - 1;
         special->nextblockno = BufferGetBlockNumber(buf) + 1;
@@ -146,14 +146,12 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
         PageInit(page, BufferGetPageSize(buf), sizeof(HnswIndexPageSpecialBlock));
 
         if(predicted_next_block != InvalidBlockNumber) {
-            if(predicted_next_block != BufferGetBlockNumber(buf)) {
-                elog(ERROR,
-                     "my block number hypothesis failed. "
-                     "predicted block number %d does not match "
-                     "actual %d",
-                     predicted_next_block,
-                     BufferGetBlockNumber(buf));
-            }
+            ldb_invariant(predicted_next_block == BufferGetBlockNumber(buf),
+                          "my block number hypothesis failed. "
+                          "predicted block number %d does not match "
+                          "actual %d",
+                          predicted_next_block,
+                          BufferGetBlockNumber(buf));
         }
 
         HnswIndexPageSpecialBlock *special = (HnswIndexPageSpecialBlock *)PageGetSpecialPointer(page);
@@ -176,14 +174,12 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
             bufferpage->id = node_id;
             bufferpage->level = node_level;
             bufferpage->size = node_size;
-            if(node_level > 100) {
-                elog(ERROR,
-                     "node level is too large. at id %d"
-                     "this is likely a bug in usearch. "
-                     "level: %d",
-                     node_id,
-                     node_level);
-            }
+            ldb_invariant(node_level < 100,
+                          "node level is too large. at id %d"
+                          "this is likely a bug in usearch. "
+                          "level: %d",
+                          node_id,
+                          node_level);
 
             // node should not be larger than the 8k bufferpage
             // invariant holds because of dimension <2000 check in index creation
@@ -315,9 +311,7 @@ static OffsetNumber HnswIndexPageAddVector(Page page, HnswIndexTuple *new_vector
 
     inserted_at = PageAddItem(
         page, (Item)new_vector_data, sizeof(HnswIndexTuple) + new_vector_size, InvalidOffsetNumber, false, false);
-    if(inserted_at == InvalidOffsetNumber) {
-        elog(ERROR, "unexpectedly could not add item to the last existing page");
-    }
+    ldb_invariant(inserted_at != InvalidOffsetNumber, "unexpectedly could not add item to the last existing page");
     special_block = (HnswIndexPageSpecialBlock *)PageGetSpecialPointer(page);
 
     if(PageGetMaxOffsetNumber(page) == 1) {
@@ -487,9 +481,10 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
 
         /* sanity-check blockmap block offset number */
         max_offset = PageGetMaxOffsetNumber(blockmap_page);
-        if(max_offset != FirstOffsetNumber) {
-            elog(ERROR, "ERROR: Blockmap max_offset is %d but was supposed to be %d", max_offset, FirstOffsetNumber);
-        }
+        ldb_invariant(max_offset == FirstOffsetNumber,
+                      "ERROR: Blockmap max_offset is %d but was supposed to be %d",
+                      max_offset,
+                      FirstOffsetNumber);
 
         // todo:: elsewhere this blockmap var is called blockmap_page
         // be consistent with naming here and elsewhere
@@ -643,6 +638,7 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
         assert(BufferIsValid(buf));
         UnlockReleaseBuffer(buf);
     }
+    ldb_invariant(false, "node with id %d not found", id);
     pg_unreachable();
 }
 
@@ -684,5 +680,6 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, int id)
         assert(BufferIsValid(buf));
         UnlockReleaseBuffer(buf);
     }
+    ldb_invariant(false, "node with id %d not found", id);
     pg_unreachable();
 }
