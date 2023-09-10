@@ -17,7 +17,7 @@ CREATE INDEX ON test1 USING hnsw (v);
 
 SET enable_seqscan = false;
 
--- Verify that basic queries still work
+-- Verify that basic queries still work given our query parser and planner hooks
 SELECT 0 + 1;
 SELECT 1 FROM test1 WHERE id = 0 + 1;
 

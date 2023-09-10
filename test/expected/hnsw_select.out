@@ -40,7 +40,7 @@ INFO:  done init usearch index
 INFO:  inserted 1 elements
 INFO:  done saving 1 vectors
 SET enable_seqscan = false;
--- Verify that basic queries still work
+-- Verify that basic queries still work given our query parser and planner hooks
 SELECT 0 + 1;
  ?column? 
 ----------
