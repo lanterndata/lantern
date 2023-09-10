@@ -24,6 +24,7 @@ bool plan_tree_walker(Plan *plan, bool (*walker_func)(Node *plan, void *context)
     switch(nodeTag(plan)) {
         // Scan nodes
         case T_SeqScan:
+        {
             SeqScan *seqscan = (SeqScan *)plan;
 #if PG_VERSION_NUM >= 150000
             Plan seqscanplan = seqscan->scan.plan;
@@ -32,75 +33,98 @@ bool plan_tree_walker(Plan *plan, bool (*walker_func)(Node *plan, void *context)
 #endif
             if(base_plan_walker(&seqscanplan, walker_func, context)) return true;
             break;
+        }
         case T_IndexScan:
+        {
             IndexScan *indexscan = (IndexScan *)plan;
             if(base_plan_walker(&(indexscan->scan.plan), walker_func, context)) return true;
             if(walker_func((Node *)indexscan->indexqual, context)) return true;
             if(walker_func((Node *)indexscan->indexorderby, context)) return true;
             break;
+        }
         case T_IndexOnlyScan:
+        {
             IndexOnlyScan *indexonlyscan = (IndexOnlyScan *)plan;
             if(base_plan_walker(&(indexonlyscan->scan.plan), walker_func, context)) return true;
             if(walker_func((Node *)indexonlyscan->indexqual, context)) return true;
             if(walker_func((Node *)indexonlyscan->indexorderby, context)) return true;
             break;
+        }
         case T_SubqueryScan:
+        {
             SubqueryScan *subqueryscan = (SubqueryScan *)plan;
             if(base_plan_walker(&(subqueryscan->scan.plan), walker_func, context)) return true;
             if(walker_func((Node *)subqueryscan->subplan, context)) return true;
             break;
+        }
         case T_CteScan:
+        {
             CteScan *ctescan = (CteScan *)plan;
             if(base_plan_walker(&(ctescan->scan.plan), walker_func, context)) return true;
             break;
-
+        }
         // Join nodes
         case T_Join:
+        {
             Join *join = (Join *)plan;
             if(base_plan_walker(&(join->plan), walker_func, context)) return true;
             if(walker_func((Node *)join->joinqual, context)) return true;
             break;
-
+        }
         // Nodes dealing with aggregation / grouping / sorting
         case T_Agg:
+        {
             Agg *agg = (Agg *)plan;
             if(base_plan_walker(&(agg->plan), walker_func, context)) return true;
             break;
+        }
         case T_Group:
+        {
             Group *group = (Group *)plan;
             if(base_plan_walker(&(group->plan), walker_func, context)) return true;
             break;
+        }
         case T_Sort:
+        {
             Sort *sort = (Sort *)plan;
             if(base_plan_walker(&(sort->plan), walker_func, context)) return true;
             break;
+        }
         case T_Unique:
+        {
             Unique *unique = (Unique *)plan;
             if(base_plan_walker(&(unique->plan), walker_func, context)) return true;
             break;
+        }
         case T_NestLoop:
+        {
             NestLoop *nestloop = (NestLoop *)plan;
             if(base_plan_walker((Plan *)&(nestloop->join), walker_func, context)) return true;
             break;
-
+        }
         // Singleton Nodes
         case T_Result:
+        {
             Result *result = (Result *)plan;
             if(base_plan_walker(&(result->plan), walker_func, context)) return true;
             if(walker_func((Node *)result->resconstantqual, context)) return true;
             break;
+        }
         case T_Limit:
+        {
             Limit *limit = (Limit *)plan;
             if(base_plan_walker(&(limit->plan), walker_func, context)) return true;
             if(walker_func((Node *)limit->limitOffset, context)) return true;
             if(walker_func((Node *)limit->limitCount, context)) return true;
             break;
+        }
         case T_Append:
+        {
             Append *append = (Append *)plan;
             if(base_plan_walker(&(append->plan), walker_func, context)) return true;
             if(walker_func((Node *)append->appendplans, context)) return true;
             break;
-
+        }
         default:
             return false;
     }
