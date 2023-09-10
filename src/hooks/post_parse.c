@@ -12,6 +12,8 @@
 
 #include "utils.h"
 
+post_parse_analyze_hook_type original_post_parse_analyze_hook = NULL;
+
 typedef struct
 {
     List *oidList;
@@ -117,9 +119,8 @@ static bool is_operator_used_correctly(Node *node, List *oidList, List *sortGrou
     return !operator_used_correctly_walker(node, &context);
 }
 
-post_parse_analyze_hook_type original_post_parse_analyze_hook = NULL;
-void                         post_parse_analyze_hook_with_operator_check(ParseState *pstate,
-                                                                         Query      *query
+void post_parse_analyze_hook_with_operator_check(ParseState *pstate,
+                                                 Query      *query
 #if PG_VERSION_NUM >= 140000
                                                  ,
                                                  JumbleState *jstate

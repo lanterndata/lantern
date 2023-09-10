@@ -9,6 +9,8 @@
 #include "plan_tree_walker.h"
 #include "utils.h"
 
+ExecutorStart_hook_type original_ExecutorStart_hook = NULL;
+
 typedef struct
 {
     List *oidList;
@@ -56,8 +58,7 @@ static bool validate_operator_usage(Plan *plan, List *oidList)
     }
 }
 
-ExecutorStart_hook_type original_ExecutorStart_hook = NULL;
-void                    ExecutorStart_hook_with_operator_check(QueryDesc *queryDesc, int eflags)
+void ExecutorStart_hook_with_operator_check(QueryDesc *queryDesc, int eflags)
 {
     if(original_ExecutorStart_hook) {
         original_ExecutorStart_hook(queryDesc, eflags);
