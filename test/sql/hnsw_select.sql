@@ -46,28 +46,28 @@ WITH neighbors AS (
 RESET client_min_messages;
 
 -- Verify where condition works properly and still uses index
-SELECT has_index_scan('SELECT * FROM small_world WHERE b IS TRUE ORDER BY v <-> ''{0,0,0}''');
+SELECT has_index_scan('EXPLAIN SELECT * FROM small_world WHERE b IS TRUE ORDER BY v <-> ''{0,0,0}''');
 
 -- Verify that the index is not being used when there is no order by
-SELECT NOT has_index_scan('SELECT COUNT(*) FROM small_world');
+SELECT NOT has_index_scan('EXPLAIN SELECT COUNT(*) FROM small_world');
 
 -- Verify swapping order doesn't change anything and still uses index
-SELECT has_index_scan('SELECT id FROM test1 ORDER BY ''{1,2}''::REAL[] <-> v');
+SELECT has_index_scan('EXPLAIN SELECT id FROM test1 ORDER BY ''{1,2}''::REAL[] <-> v');
 
 -- Verify group by works and uses index
-SELECT has_index_scan('WITH t AS (SELECT id FROM test1 ORDER BY ''{1,2}''::REAL[] <-> v LIMIT 1) SELECT id, COUNT(*) FROM t GROUP BY 1');
+SELECT has_index_scan('EXPLAIN WITH t AS (SELECT id FROM test1 ORDER BY ''{1,2}''::REAL[] <-> v LIMIT 1) SELECT id, COUNT(*) FROM t GROUP BY 1');
 
 -- Validate distinct works and uses index
-SELECT has_index_scan('WITH t AS (SELECT id FROM test1 ORDER BY v <-> ''{1,2}'' LIMIT 1) SELECT DISTINCT id FROM t');
+SELECT has_index_scan('EXPLAIN WITH t AS (SELECT id FROM test1 ORDER BY v <-> ''{1,2}'' LIMIT 1) SELECT DISTINCT id FROM t');
 
 -- Validate join lateral works and uses index
-SELECT has_index_scan('SELECT t1_results.id FROM test2 t2 JOIN LATERAL (SELECT t1.id FROM test1 t1 ORDER BY t2.v <-> t1.v LIMIT 1) t1_results ON TRUE');
+SELECT has_index_scan('EXPLAIN SELECT t1_results.id FROM test2 t2 JOIN LATERAL (SELECT t1.id FROM test1 t1 ORDER BY t2.v <-> t1.v LIMIT 1) t1_results ON TRUE');
 
 -- Validate union works and uses index
-SELECT has_index_scan('(SELECT id FROM test1 ORDER BY v <-> ''{1,4}'') UNION (SELECT id FROM test1 ORDER BY v IS NOT NULL LIMIT 1)');
+SELECT has_index_scan('EXPLAIN (SELECT id FROM test1 ORDER BY v <-> ''{1,4}'') UNION (SELECT id FROM test1 ORDER BY v IS NOT NULL LIMIT 1)');
 
 -- Validate CTEs work and still use index
-SELECT has_index_scan('WITH t AS (SELECT id FROM test1 ORDER BY v <-> ''{1,4}'') SELECT id FROM t UNION SELECT id FROM t');
+SELECT has_index_scan('EXPLAIN WITH t AS (SELECT id FROM test1 ORDER BY v <-> ''{1,4}'') SELECT id FROM t UNION SELECT id FROM t');
 
 -- todo:: Verify joins work and still use index
 -- todo:: Verify incremental sorts work

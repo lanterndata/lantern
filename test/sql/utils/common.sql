@@ -42,14 +42,15 @@ END;
 $BODY$
 LANGUAGE plpgsql;
 
--- Determines if the provided SQL query uses an "Index Scan" by examining its EXPLAIN plan.
--- Reason: The output of EXPLAIN is not consistent across postgres versions
-CREATE OR REPLACE FUNCTION has_index_scan(query_text text) RETURNS boolean AS $$
+-- Determines if the provided SQL query (with an EXPLAIN prefix) uses an "Index Scan" 
+-- by examining its execution plan. This function helps ensure consistent analysis 
+-- across varying Postgres versions where EXPLAIN output may differ.
+CREATE OR REPLACE FUNCTION has_index_scan(explain_query text) RETURNS boolean AS $$
 DECLARE
     plan_row RECORD;
     found boolean := false;
 BEGIN
-    FOR plan_row IN EXECUTE 'EXPLAIN ' || query_text LOOP
+    FOR plan_row IN EXECUTE explain_query LOOP
         IF position('Index Scan' in plan_row."QUERY PLAN") > 0 THEN
             found := true;
             EXIT;
