@@ -61,6 +61,8 @@ function build_and_install() {
 
    # TODO:: remove after test
   flags="-DUSEARCH_NO_MARCH_NATIVE=ON"
+  # Treat warnings as errors in CI/CD
+  flags+="-DCMAKE_COMPILE_WARNING_AS_ERROR=ON"
   # if [[ $ARCH == *"arm"* ]]; then
   #   echo "-DUSEARCH_NO_MARCH_NATIVE=ON"
   # fi
