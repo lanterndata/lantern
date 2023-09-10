@@ -30,7 +30,7 @@ function setup_postgres() {
   apt install -y postgresql-$PG_VERSION postgresql-server-dev-$PG_VERSION
   # Install pgvector
   pushd /tmp
-    PGVECTOR_VERSION=0.4.4
+    PGVECTOR_VERSION=0.5.0
     wget -O pgvector.tar.gz https://github.com/pgvector/pgvector/archive/refs/tags/v${PGVECTOR_VERSION}.tar.gz
     tar xzf pgvector.tar.gz
     pushd pgvector-${PGVECTOR_VERSION}
