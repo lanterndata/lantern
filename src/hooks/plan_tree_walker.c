@@ -5,17 +5,17 @@
 #include <nodes/parsenodes.h>
 #include <nodes/plannodes.h>
 
-bool base_plan_walker(Plan *plan, bool (*walker_func)(Plan *plan, void *context), void *context)
+bool base_plan_walker(Plan *plan, bool (*walker_func)(Node *plan, void *context), void *context)
 {
-    if(walker_func(plan->targetlist, context)) return true;
-    if(walker_func(plan->qual, context)) return true;
-    if(walker_func(plan->lefttree, context)) return true;
-    if(walker_func(plan->righttree, context)) return true;
-    if(walker_func(plan->initPlan, context)) return true;
+    if(walker_func((Node *)plan->targetlist, context)) return true;
+    if(walker_func((Node *)plan->qual, context)) return true;
+    if(walker_func((Node *)plan->lefttree, context)) return true;
+    if(walker_func((Node *)plan->righttree, context)) return true;
+    if(walker_func((Node *)plan->initPlan, context)) return true;
     return false;
 }
 
-bool plan_tree_walker(Plan *plan, bool (*walker_func)(Plan *plan, void *context), void *context)
+bool plan_tree_walker(Plan *plan, bool (*walker_func)(Node *plan, void *context), void *context)
 {
     check_stack_depth();
 
@@ -33,19 +33,19 @@ bool plan_tree_walker(Plan *plan, bool (*walker_func)(Plan *plan, void *context)
         case T_IndexScan:
             IndexScan *indexscan = (IndexScan *)plan;
             if(base_plan_walker(&(indexscan->scan.plan), walker_func, context)) return true;
-            if(walker_func(indexscan->indexqual, context)) return true;
-            if(walker_func(indexscan->indexorderby, context)) return true;
+            if(walker_func((Node *)indexscan->indexqual, context)) return true;
+            if(walker_func((Node *)indexscan->indexorderby, context)) return true;
             break;
         case T_IndexOnlyScan:
             IndexOnlyScan *indexonlyscan = (IndexOnlyScan *)plan;
             if(base_plan_walker(&(indexonlyscan->scan.plan), walker_func, context)) return true;
-            if(walker_func(indexonlyscan->indexqual, context)) return true;
-            if(walker_func(indexonlyscan->indexorderby, context)) return true;
+            if(walker_func((Node *)indexonlyscan->indexqual, context)) return true;
+            if(walker_func((Node *)indexonlyscan->indexorderby, context)) return true;
             break;
         case T_SubqueryScan:
             SubqueryScan *subqueryscan = (SubqueryScan *)plan;
             if(base_plan_walker(&(subqueryscan->scan.plan), walker_func, context)) return true;
-            if(walker_func(subqueryscan->subplan, context)) return true;
+            if(walker_func((Node *)subqueryscan->subplan, context)) return true;
             break;
         case T_CteScan:
             CteScan *ctescan = (CteScan *)plan;
@@ -56,7 +56,7 @@ bool plan_tree_walker(Plan *plan, bool (*walker_func)(Plan *plan, void *context)
         case T_Join:
             Join *join = (Join *)plan;
             if(base_plan_walker(&(join->plan), walker_func, context)) return true;
-            if(walker_func(join->joinqual, context)) return true;
+            if(walker_func((Node *)join->joinqual, context)) return true;
             break;
 
         // Nodes dealing with aggregation / grouping / sorting
@@ -85,18 +85,18 @@ bool plan_tree_walker(Plan *plan, bool (*walker_func)(Plan *plan, void *context)
         case T_Result:
             Result *result = (Result *)plan;
             if(base_plan_walker(&(result->plan), walker_func, context)) return true;
-            if(walker_func(result->resconstantqual, context)) return true;
+            if(walker_func((Node *)result->resconstantqual, context)) return true;
             break;
         case T_Limit:
             Limit *limit = (Limit *)plan;
             if(base_plan_walker(&(limit->plan), walker_func, context)) return true;
-            if(walker_func(limit->limitOffset, context)) return true;
-            if(walker_func(limit->limitCount, context)) return true;
+            if(walker_func((Node *)limit->limitOffset, context)) return true;
+            if(walker_func((Node *)limit->limitCount, context)) return true;
             break;
         case T_Append:
             Append *append = (Append *)plan;
             if(base_plan_walker(&(append->plan), walker_func, context)) return true;
-            if(walker_func(append->appendplans, context)) return true;
+            if(walker_func((Node *)append->appendplans, context)) return true;
             break;
 
         default:
