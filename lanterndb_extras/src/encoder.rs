@@ -10,7 +10,10 @@ use std::fs::File;
 use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use tokenizers::{PaddingDirection, PaddingParams, PaddingStrategy, Tokenizer};
+use tokenizers::{
+    PaddingDirection, PaddingParams, PaddingStrategy, Tokenizer, TruncationDirection,
+    TruncationParams, TruncationStrategy,
+};
 
 pub struct EncoderService {
     name: String,
@@ -22,7 +25,7 @@ pub struct EncoderService {
 pub struct EncoderOptions {
     pub visual: bool,
     pub use_tokenizer: bool,
-    pub pad_token_sequence: bool,
+    pub pad_token_sequence: usize,
     pub input_image_size: Option<usize>,
 }
 
@@ -37,10 +40,10 @@ struct ModelInfo {
 
 lazy_static! {
     static ref MODEL_INFO_MAP: Mutex<HashMap<&'static str, ModelInfo>> = Mutex::new(HashMap::from([
-        ("clip/ViT-B-32-textual", ModelInfo{encoder: None, url: "https://huggingface.co/varik77/onnx-models/resolve/main/openai/ViT-B-32/textual/model.onnx", tokenizer_url: Some("https://huggingface.co/varik77/onnx-models/resolve/main/openai/ViT-B-32/textual/tokenizer.json"), encoder_args: EncoderOptions{visual:false, pad_token_sequence: true, use_tokenizer: true, input_image_size: None}}),
-        ("clip/ViT-B-32-visual", ModelInfo{encoder: None, url: "https://huggingface.co/varik77/onnx-models/resolve/main/openai/ViT-B-32/visual/model.onnx", tokenizer_url: None, encoder_args: EncoderOptions{visual:true, input_image_size: Some(224), use_tokenizer: false, pad_token_sequence: false} }),
-        ("BAAI/bge-base-en", ModelInfo{encoder: None, url: "https://huggingface.co/varik77/onnx-models/resolve/main/BAAI/bge-base-en/model.onnx", tokenizer_url: Some("https://huggingface.co/varik77/onnx-models/resolve/main/BAAI/bge-base-en/tokenizer.json"), encoder_args: EncoderOptions{visual:false, pad_token_sequence: true, use_tokenizer: true, input_image_size: None}}),
-        ("BAAI/bge-large-en", ModelInfo{encoder: None, url: "https://huggingface.co/varik77/onnx-models/resolve/main/BAAI/bge-large-en/model.onnx", tokenizer_url: Some("https://huggingface.co/varik77/onnx-models/resolve/main/BAAI/bge-large-en/tokenizer.json"), encoder_args: EncoderOptions{visual:false, pad_token_sequence: true, use_tokenizer: true, input_image_size: None}}),
+        ("clip/ViT-B-32-textual", ModelInfo{encoder: None, url: "https://huggingface.co/varik77/onnx-models/resolve/main/openai/ViT-B-32/textual/model.onnx", tokenizer_url: Some("https://huggingface.co/varik77/onnx-models/resolve/main/openai/ViT-B-32/textual/tokenizer.json"), encoder_args: EncoderOptions{visual:false, pad_token_sequence: 77, use_tokenizer: true, input_image_size: None}}),
+        ("clip/ViT-B-32-visual", ModelInfo{encoder: None, url: "https://huggingface.co/varik77/onnx-models/resolve/main/openai/ViT-B-32/visual/model.onnx", tokenizer_url: None, encoder_args: EncoderOptions{visual:true, input_image_size: Some(224), use_tokenizer: false, pad_token_sequence: 0} }),
+        ("BAAI/bge-base-en", ModelInfo{encoder: None, url: "https://huggingface.co/varik77/onnx-models/resolve/main/BAAI/bge-base-en/model.onnx", tokenizer_url: Some("https://huggingface.co/varik77/onnx-models/resolve/main/BAAI/bge-base-en/tokenizer.json"), encoder_args: EncoderOptions{visual:false, pad_token_sequence: 512, use_tokenizer: true, input_image_size: None}}),
+        ("BAAI/bge-large-en", ModelInfo{encoder: None, url: "https://huggingface.co/varik77/onnx-models/resolve/main/BAAI/bge-large-en/model.onnx", tokenizer_url: Some("https://huggingface.co/varik77/onnx-models/resolve/main/BAAI/bge-large-en/tokenizer.json"), encoder_args: EncoderOptions{visual:false, pad_token_sequence: 512, use_tokenizer: true, input_image_size: None}}),
     ]));
 }
 
@@ -71,8 +74,8 @@ impl EncoderService {
                 Tokenizer::from_file(Path::join(model_folder, "tokenizer.json")).unwrap();
 
             tokenizer_instance.with_padding(Some(PaddingParams {
-                strategy: if args.pad_token_sequence {
-                    PaddingStrategy::Fixed(77)
+                strategy: if args.pad_token_sequence > 0 {
+                    PaddingStrategy::Fixed(args.pad_token_sequence)
                 } else {
                     PaddingStrategy::BatchLongest
                 },
@@ -82,6 +85,15 @@ impl EncoderService {
                 pad_type_id: 0,
                 pad_token: "[PAD]".to_string(),
             }));
+
+            if args.pad_token_sequence > 0 {
+                tokenizer_instance.with_truncation(Some(TruncationParams {
+                    direction: TruncationDirection::Right,
+                    max_length: args.pad_token_sequence,
+                    strategy: TruncationStrategy::LongestFirst,
+                    stride: 0,
+                }))?;
+            }
 
             tokenizer = Some(tokenizer_instance);
         }
@@ -325,7 +337,6 @@ pub mod clip {
 
         if model_info.encoder.is_some() {
             // if encoder exists return
-            notice!("Encoder exists");
             return Ok(());
         }
 

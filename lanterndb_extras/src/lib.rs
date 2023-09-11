@@ -17,13 +17,13 @@ fn clip_text<'a>(text: &'a str) -> Vec<f32> {
 }
 
 #[pg_extern(immutable, parallel_safe)]
-fn text_embedding<'a>(text: &'a str, model_name: &'a str) -> Vec<f32> {
+fn text_embedding<'a>(model_name: &'a str, text: &'a str) -> Vec<f32> {
     return encoder::clip::process_text(model_name, text.to_owned());
 }
 
 #[pg_extern(immutable, parallel_safe)]
-fn image_embedding<'a>(text: &'a str, model_name: &'a str) -> Vec<f32> {
-    return encoder::clip::process_image(model_name, text.to_owned());
+fn image_embedding<'a>(model_name: &'a str, path_or_url: &'a str) -> Vec<f32> {
+    return encoder::clip::process_image(model_name, path_or_url.to_owned());
 }
 
 #[pg_extern(immutable, parallel_safe)]
