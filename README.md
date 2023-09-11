@@ -1,9 +1,9 @@
 # LanternDB Extras
 
-This extension makes it a brease to experiment with embeddings from inside a postgres database. We use this extension along with [LanternDB](https://github.com/lanterndata/lanterndb) to make vector operations performant. But all the helpers here are standalone and may be used without the main database.
+This extension makes it easy to experiment with embeddings from inside a Postgres database. We use this extension along with [LanternDB](https://github.com/lanterndata/lanterndb) to make vector operations performant. But all the helpers here are standalone and may be used without the main database.
 
-__NOTE__: Functions defined in this extension use postgres in ways postgres is usually not used. 
-Some calls may result in large file downloads, or cpu-intensive model inference operations. Keep this in mind when using this extension a shared postgres environment.
+__NOTE__: Functions defined in this extension use Postgres in ways Postgres is usually not used. 
+Some calls may result in large file downloads, or CPU-intensive model inference operations. Keep this in mind when using this extension a shared Postgres environment.
 
 ## Features
 
@@ -84,8 +84,7 @@ CREATE EXTENSION lanterndb_extras;
 ## LanternDB Index Builder
 
 ## Description
-This is a cli applications, which will help to create an index file for LanternDB, which will can later be imported into database.
-Advantages of this project againts casual index creation is the parallelization of the job.
+This is a CLI application that creates an index for LanternDB outside of Postgres which can later be imported into Postgres. This allows for faster index creation through parallelization.
 
 ## How to use
 
@@ -97,17 +96,15 @@ Run `cargo install --path lanterndb_create_index` to install the binary
 
 Run `ldb-create-index --help` to show the cli options.
 
-```
+```bash
 Usage: ldb-create-index --uri <URI> --table <TABLE> --column <COLUMN> -m <M> --efc <EFC> --ef <EF> -d <DIMS> --metric-kind <METRIC_KIND> --out <OUT>
 ```
 
 ### Example
 
-```
+```bash
 ldb-create-index -u "postgresql://localhost/test" -t "small_world" -c "vec" -m 16 --ef 64 --efc 128 -d 3 --metric-kind cos --out /tmp/index.usearch
 ```
 
 ### Notes
-The index should be created from the same database on which it will be loaded, so row tids will match later.  
-Currently version of usearch is not up to date, so it will match with LanternDB's usearch version, but this version has bugs when creating index with more than 8k items.
-
+The index should be created from the same database on which it will be loaded, so row tids will match later.
