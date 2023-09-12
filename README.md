@@ -28,7 +28,9 @@ cd build
 cmake ..
 make install
 ```
-You can also install Lantern on top of PostgreSQL from our [precompiled binaries](https://github.com/lanterndata/lanterndb/releases) via a single make install
+You can also install Lantern on top of PostgreSQL from our [precompiled binaries](https://github.com/lanterndata/lanterndb/releases) via a single `make install`.
+
+Alternatively, you can use Lantern in one click using [Replit](https://replit.com/@lanterndata/lanterndb-playground#.replit).
 
 ## 📖 How to use Lantern 
 
