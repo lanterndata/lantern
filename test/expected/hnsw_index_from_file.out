@@ -14,6 +14,7 @@ COPY sift_base1k (v) FROM '/tmp/lanterndb/vector_datasets/sift_base1k_arrays.csv
 \set ON_ERROR_STOP off
 -- Validate error on invalid path
 CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lanterndb/files/invalid-path');
+INFO:  done init usearch index
 ERROR:  Invalid index file path 
 -- Validate error on incompatible version
 CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lanterndb/files/index-sift1k-l2-0.0.0.usearch');

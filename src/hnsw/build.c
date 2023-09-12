@@ -11,6 +11,11 @@
 #include <utils/array.h>
 #include <utils/lsyscache.h>
 #include <utils/memutils.h>
+#ifdef _WIN32
+#define access _access
+#else
+#include <unistd.h>
+#endif
 
 #include "bench.h"
 #include "external_index.h"
@@ -336,6 +341,9 @@ static void BuildIndex(
 
     buildstate->hnsw = NULL;
     if(buildstate->index_file_path) {
+        if(access(buildstate->index_file_path, F_OK) != 0) {
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), errmsg("Invalid index file path ")));
+        }
         usearch_load(buildstate->usearch_index, buildstate->index_file_path, &error);
         if(error != NULL) {
             elog(ERROR, "%s", error);
