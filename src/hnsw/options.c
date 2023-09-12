@@ -17,12 +17,6 @@
 #include "../hooks/executor_start.h"
 #include "../hooks/post_parse.h"
 
-#ifdef _WIN32
-#define access _access
-#else
-#include <unistd.h>
-#endif
-
 // We import this header file
 // to access the op class support function pointers
 #include "../hnsw.h"
@@ -96,15 +90,6 @@ usearch_metric_kind_t ldb_HnswGetMetricKind(Relation index)
         return usearch_metric_cos_k;
     } else {
         elog(ERROR, "could not find distance function for index");
-    }
-}
-
-static void IndexFileParamValidator(const char *value)
-{
-    if(value == NULL) return;
-
-    if(access(value, F_OK) != 0) {
-        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), errmsg("Invalid index file path ")));
     }
 }
 
@@ -211,7 +196,7 @@ void _PG_init(void)
                          "_experimental_index_path",
                          "LanternDB expored index file path",
                          NULL,
-                         IndexFileParamValidator
+                         NULL
 #if PG_VERSION_NUM >= 130000
                          ,
                          AccessExclusiveLock
