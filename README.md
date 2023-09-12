@@ -84,8 +84,7 @@ The `M`, `ef`, and `ef_construction` parameters control the performance of the H
 - Lower `M` and `ef` improve search speed and result in fewer shared buffer hits at the cost of recall. Tuning these parameters will require experimentation for your specific use case.
 
 ### Miscellaneous
-- If you have previously cloned Lantern and would like to update```bash git pull git submodule update ```
-- To install on M1 macs, replace `cmake ..` from the above with `cmake -DUSEARCH_NO_MARCH_NATIVE=ON ..` to avoid building usearch with unsupported `march=native`
+- If you have previously cloned Lantern and would like to update run `git pull && git submodule update`
 
 ## ⭐️ Features 
 - Embedding generation for popular use cases (CLIP model, Hugging Face models, custom model)
