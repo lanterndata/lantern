@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.3)
 
-set(LANTERNDB_VERSION 0.0.3)
+set(LANTERNDB_VERSION 0.0.4)
 
 project(
   LanternDB
