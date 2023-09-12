@@ -3,6 +3,7 @@
 [![build](https://github.com/lanterndata/lanterndb/actions/workflows/build-linux.yaml/badge.svg?branch=main)](https://github.com/lanterndata/lanterndb/actions/workflows/build-linux.yaml)
 [![test](https://github.com/lanterndata/lanterndb/actions/workflows/test-linux.yaml/badge.svg?branch=main)](https://github.com/lanterndata/lanterndb/actions/workflows/test-linux.yaml)
 [![codecov](https://codecov.io/github/lanterndata/lanterndb/branch/main/graph/badge.svg)](https://codecov.io/github/lanterndata/lanterndb)
+[![Run on Replit](https://img.shields.io/badge/Run%20on-Replit-blue?logo=replit)](https://replit.com/@lanterndata/lanterndb-playground#.replit)
 
 Lantern is an open-source PostgreSQL database extension to store vector data, generate embeddings, and handle vector search operations.
 
