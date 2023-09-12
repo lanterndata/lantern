@@ -121,4 +121,4 @@ Graph 3 — Index Creation
 
 - [GitHub issues](https://github.com/lanterndata/lanterndb/issues): report bugs or issues with Lantern
 - Need support? Contact [support@lantern.dev](mailto:support@lantern.dev). We are happy to troubleshoot issues and advise on how to use Lantern for your use case 
-- Want to make contributions? Contact [support@lantern.dev](mailto:support@lantern.dev). We can find an open issue or project that fits you
+- We welcome community contributions! Feel free to open an issue or a PR. If you contact [support@lantern.dev](mailto:support@lantern.dev), we can find an open issue or project that fits you
