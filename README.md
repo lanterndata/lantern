@@ -113,7 +113,7 @@ Graph 3 — Index Creation
 - More tools for generating embeddings (support for third party model API’s, more local models) 
 - Support for version control and A/B test embeddings
 - Autotuned index type that will choose appropriate  creation parameters
-- 1 byte and 2 byte vector elements, and up to 8000 dimensional vectors support
+- [Support](https://github.com/lanterndata/lanterndb/pull/19) for 1 byte and 2 byte vector elements, and up to 8000 dimensional vectors
 - Request a feature at [support@lantern.dev](mailto:support@lantern.dev)
 
 ## 📚 Resources
