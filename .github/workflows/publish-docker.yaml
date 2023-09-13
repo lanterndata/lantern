@@ -11,7 +11,7 @@ on:
         type: string
         description: "Container image name to tag"
         required: true
-        default: "lanterndata/lanterndb"
+        default: "lanterndata/lantern"
 jobs:
   ubuntu:
     runs-on: ubuntu-22.04

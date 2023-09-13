@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS sift_base1k (
     id SERIAL,
     v REAL[]
 );
-COPY sift_base1k (v) FROM '/tmp/lanterndb/vector_datasets/sift_base1k_arrays.csv' WITH csv;
+COPY sift_base1k (v) FROM '/tmp/lantern/vector_datasets/sift_base1k_arrays.csv' WITH csv;
 CREATE INDEX ON sift_base1k USING hnsw (v) WITH (dim=128, M=5, ef=20, ef_construction=20);
 INFO:  done init usearch index
 INFO:  inserted 1000 elements

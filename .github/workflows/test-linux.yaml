@@ -70,4 +70,4 @@ jobs:
           fail_ci_if_error: true
           files: /tmp/coverage.xml
       - name: Check clang formatting
-        run: "cd /tmp/lanterndb/build && make format_check"
+        run: "cd /tmp/lantern/build && make format_check"

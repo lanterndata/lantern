@@ -23,7 +23,7 @@ BEGIN
 	) INTO pgvector_exists;
 
 	IF pgvector_exists OR hnsw_am_exists THEN
-		-- RAISE NOTICE 'hnsw access method already exists. Creating lanterndb_hnsw access method';
+		-- RAISE NOTICE 'hnsw access method already exists. Creating lantern_hnsw access method';
 		CREATE ACCESS METHOD lantern_hnsw TYPE INDEX HANDLER hnsw_handler;
 		COMMENT ON ACCESS METHOD lantern_hnsw IS 'LanternDB access method for vector embeddings, based on the hnsw algorithm';
 	END IF;
@@ -41,7 +41,7 @@ BEGIN
 
 
 	IF hnsw_am_exists THEN
-		RAISE WARNING 'Access method(index type) "hnsw" already exists. Creating lanterndb_hnsw access method';
+		RAISE WARNING 'Access method(index type) "hnsw" already exists. Creating lantern_hnsw access method';
 	ELSE
 		-- create access method
 		CREATE ACCESS METHOD hnsw TYPE INDEX HANDLER hnsw_handler;

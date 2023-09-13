@@ -15,7 +15,7 @@ wait_for_pg(){
  done
 }
 
-export WORKDIR=/tmp/lanterndb
+export WORKDIR=/tmp/lantern
 
 if [ -z "$PG_VERSION" ]
 then
@@ -31,7 +31,7 @@ export PGDATA=/etc/postgresql/$PG_VERSION/main/
 # Set port
 echo "port = 5432" >> $PGDATA/postgresql.conf
 # Run postgres database
-GCOV_PREFIX=$WORKDIR/build/CMakeFiles/lanterndb.dir/ GCOV_PREFIX_STRIP=5 POSTGRES_HOST_AUTH_METHOD=trust /usr/lib/postgresql/$PG_VERSION/bin/postgres 1>/tmp/pg-out.log 2>/tmp/pg-error.log &
+GCOV_PREFIX=$WORKDIR/build/CMakeFiles/lantern.dir/ GCOV_PREFIX_STRIP=5 POSTGRES_HOST_AUTH_METHOD=trust /usr/lib/postgresql/$PG_VERSION/bin/postgres 1>/tmp/pg-out.log 2>/tmp/pg-error.log &
 # Wait for start and run tests
 wait_for_pg && cd $WORKDIR/build && make test && \
 killall postgres && \

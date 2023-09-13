@@ -54,7 +54,7 @@ jobs:
         uses: actions/upload-artifact@v3
         if: ${{ steps.archive.outputs.archive_package_name != '' }}
         with:
-          name: lanterndb-package
+          name: lantern-package
           path: ${{ steps.archive.outputs.archive_package_path }}
   ubuntu-package:
     runs-on: ubuntu-22.04
@@ -63,8 +63,8 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/download-artifact@v3
         with:
-          name: lanterndb-package
-          path: /tmp/lanterndb-package
+          name: lantern-package
+          path: /tmp/lantern-package
       - name: Create universal package
         id: package
         run: sudo su -c "GITHUB_OUTPUT=$GITHUB_OUTPUT PACKAGE_EXTRAS=1 GITHUB_TOKEN=$GITHUB_TOKEN ./ci/scripts/universal-package.sh"
@@ -77,7 +77,7 @@ jobs:
           path: ${{ steps.package.outputs.package_path }}
       - uses: geekyeggo/delete-artifact@v2
         with:
-          name: lanterndb-package
+          name: lantern-package
       - name: Create GitHub release
         uses: softprops/action-gh-release@v1
         id: create_release

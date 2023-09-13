@@ -5,9 +5,9 @@ then
   export GITHUB_OUTPUT=/dev/null
 fi
 
-PACKAGE_DIR=/tmp/lanterndb-package
-PACKAGE_VERSION=$(ls -t $PACKAGE_DIR | head -1 | sed -E "s#lanterndb-(.*)-postgres.*#\1#")
-PACKAGE_NAME=lanterndb-${PACKAGE_VERSION}
+PACKAGE_DIR=/tmp/lantern-package
+PACKAGE_VERSION=$(ls -t $PACKAGE_DIR | head -1 | sed -E "s#lantern-(.*)-postgres.*#\1#")
+PACKAGE_NAME=lantern-${PACKAGE_VERSION}
 OUTPUT_DIR=/tmp/$PACKAGE_NAME
 SHARED_DIR=${OUTPUT_DIR}/shared
 mkdir $OUTPUT_DIR
@@ -36,14 +36,14 @@ done
 
 if [ ! -z "$PACKAGE_EXTRAS" ]
 then
-    EXTRAS_REPO=lanterndata/lanterndb_extras
+    EXTRAS_REPO=lanterndata/lantern_extras
     EXTRAS_TAG_NAME=$(gh release list --repo $EXTRAS_REPO | head -n 1 |  awk '{print $3}')
     if [ ! -z "$EXTRAS_TAG_NAME" ]
     then
       gh release download --repo $EXTRAS_REPO $EXTRAS_TAG_NAME
-      tar xf lanterndb-extras-*.tar && rm -f lanterndb-extras-*.tar && mv lanterndb-extras* $OUTPUT_DIR
+      tar xf lantern-extras-*.tar && rm -f lantern-extras-*.tar && mv lantern-extras* $OUTPUT_DIR
     else
-        echo "No release tag found for lanterndb_extras package"
+        echo "No release tag found for lantern_extras package"
     fi
 fi
 

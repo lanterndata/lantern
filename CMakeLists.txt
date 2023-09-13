@@ -43,7 +43,7 @@ if (BENCH)
   add_compile_definitions(LANTERN_BENCH)
 endif()
 
-# options passed into lanterndb sourcecode
+# options passed into lantern sourcecode
 # todo:: tests for copynodes=ON are broken
 option(LANTERNDB_COPYNODES "Copy postgres index tuples for external retriever during scan instead of pinning" OFF)
 
@@ -80,11 +80,11 @@ set(USEARCH_BUILD_BENCHMARK OFF)
 add_subdirectory("./third_party/usearch/c")
 
 # ADD LanternDB! Let there be light!
-add_library(lanterndb MODULE ${SOURCES})
+add_library(lantern MODULE ${SOURCES})
 
 # Add postgres extension packaging rules
 target_include_directories(
-  lanterndb
+  lantern
   SYSTEM PRIVATE ${PostgreSQL_SERVER_INCLUDE_DIRS}
   PUBLIC ${CMAKE_SOURCE_DIR}/src
   PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -100,7 +100,7 @@ endif()
 
 
 set_target_properties(
-  lanterndb
+  lantern
   PROPERTIES PREFIX ""
              LINK_FLAGS "${_link_flags}"
              POSITION_INDEPENDENT_CODE ON)
@@ -119,52 +119,52 @@ if(NOT APPLE)
   set(CMAKE_CXX_IMPLICIT_LINK_LIBRARIES "")
   set(CMAKE_CXX_IMPLICIT_LINK_DIRECTORIES "")
 endif()
-set_target_properties(lanterndb PROPERTIES LINKER_LANGUAGE C)
+set_target_properties(lantern PROPERTIES LINKER_LANGUAGE C)
 
-target_include_directories(lanterndb PRIVATE "./third_party/usearch/c")
-target_link_directories(lanterndb PRIVATE "./src")
+target_include_directories(lantern PRIVATE "./third_party/usearch/c")
+target_link_directories(lantern PRIVATE "./src")
 if (${BUILD_WITH_USEARCH})
-  target_link_libraries(lanterndb PRIVATE usearch_c)
-  target_compile_definitions(lanterndb PRIVATE LANTERN_USE_USEARCH)
+  target_link_libraries(lantern PRIVATE usearch_c)
+  target_compile_definitions(lantern PRIVATE LANTERN_USE_USEARCH)
 endif()
 if (${BUILD_WITH_LIBHNSW})
-  target_link_libraries(lanterndb PRIVATE hnsw)
-  target_compile_definitions(lanterndb PRIVATE LANTERN_USE_LIBHNSW)
+  target_link_libraries(lantern PRIVATE hnsw)
+  target_compile_definitions(lantern PRIVATE LANTERN_USE_LIBHNSW)
 endif()
 if (${LANTERNDB_COPYNODES})
-  target_compile_definitions(lanterndb PRIVATE LANTERNDB_COPYNODES)
+  target_compile_definitions(lantern PRIVATE LANTERNDB_COPYNODES)
 endif()
 
-set(_script_file "lanterndb--${LANTERNDB_VERSION}.sql")
+set(_script_file "lantern--${LANTERNDB_VERSION}.sql")
 set (_update_files
   sql/updates/0.0.1--0.0.2.sql
   sql/updates/0.0.2--0.0.3.sql)
 
 add_custom_command(
   OUTPUT ${CMAKE_BINARY_DIR}/${_script_file}
-  COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/sql/lanterndb.sql ${CMAKE_BINARY_DIR}/${_script_file}
-  DEPENDS ${CMAKE_SOURCE_DIR}/sql/lanterndb.sql
-  COMMENT "Copying lanterndb.sql into a versioned filename"
+  COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/sql/lantern.sql ${CMAKE_BINARY_DIR}/${_script_file}
+  DEPENDS ${CMAKE_SOURCE_DIR}/sql/lantern.sql
+  COMMENT "Copying lantern.sql into a versioned filename"
 )
 
 add_custom_target(phony_always_runs ALL DEPENDS ${CMAKE_BINARY_DIR}/${_script_file})
 
 
-# AUTO-GENERATE lanterndb.control file for PostgreSQL
-set(CONTROL_TEMPLATE "${CMAKE_MODULE_PATH}/lanterndb.control.template")
-set(CONTROL_OUTPUT "${CMAKE_BINARY_DIR}/lanterndb.control")
+# AUTO-GENERATE lantern.control file for PostgreSQL
+set(CONTROL_TEMPLATE "${CMAKE_MODULE_PATH}/lantern.control.template")
+set(CONTROL_OUTPUT "${CMAKE_BINARY_DIR}/lantern.control")
 configure_file(${CONTROL_TEMPLATE} ${CONTROL_OUTPUT})
 
 
 # INSTALL
 
-install(TARGETS lanterndb LIBRARY DESTINATION ${PostgreSQL_PACKAGE_LIBRARY_DIR})
+install(TARGETS lantern LIBRARY DESTINATION ${PostgreSQL_PACKAGE_LIBRARY_DIR})
 install(FILES ${CONTROL_OUTPUT} ${CMAKE_BINARY_DIR}/${_script_file}
         DESTINATION ${PostgreSQL_EXTENSION_DIR})
 
 foreach(_update_file ${_update_files})
   get_filename_component(_update_file_name ${_update_file} NAME)
-  install(FILES ${_update_file} DESTINATION ${PostgreSQL_EXTENSION_DIR} RENAME "lanterndb--${_update_file_name}")
+  install(FILES ${_update_file} DESTINATION ${PostgreSQL_EXTENSION_DIR} RENAME "lantern--${_update_file_name}")
 endforeach()
 
 # todo:: add llvm bytecode generation for postgres optimizations (see how the
@@ -178,7 +178,7 @@ add_custom_target(
   COMMAND ${CMAKE_COMMAND} -E remove -f
           ${PostgreSQL_EXTENSION_DIR}/${_script_file}
   COMMAND ${CMAKE_COMMAND} -E remove -f
-          ${PostgreSQL_PACKAGE_LIBRARY_DIR}/lanterndb.so)
+          ${PostgreSQL_PACKAGE_LIBRARY_DIR}/lantern.so)
 
 # TEST
 add_custom_target(
@@ -255,7 +255,7 @@ add_custom_target(
   DEPENDS ${CMAKE_BINARY_DIR}/${_script_file}
   WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
-add_dependencies(archive lanterndb)
+add_dependencies(archive lantern)
 
 # Debian packaging
 set(CPACK_GENERATOR "DEB")

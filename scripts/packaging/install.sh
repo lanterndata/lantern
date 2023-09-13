@@ -50,7 +50,7 @@ cp -r shared/*.control $PG_EXTENSION_DIR
 
 echo "LanternDB installed successfully"
 
-EXTRAS_PACKAGE_NAME=$(find . -name "lanterndb-extras*" | head -n 1)
+EXTRAS_PACKAGE_NAME=$(find . -name "lantern-extras*" | head -n 1)
 
 if [ ! -z "$EXTRAS_PACKAGE_NAME" ]
 then

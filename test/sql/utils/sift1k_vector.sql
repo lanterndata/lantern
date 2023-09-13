@@ -3,4 +3,4 @@ CREATE TABLE IF NOT EXISTS sift_base1k (
     v VECTOR(128)
 );
 
-COPY sift_base1k (v) FROM '/tmp/lanterndb/vector_datasets/sift_base1k.csv' WITH CSV;
+COPY sift_base1k (v) FROM '/tmp/lantern/vector_datasets/sift_base1k.csv' WITH CSV;
