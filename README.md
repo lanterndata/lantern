@@ -136,10 +136,10 @@ Run `cargo install --path lantern_create_index` to install the binary
 
 ### Usage
 
-Run `ldb-create-index --help` to show the cli options.
+Run `lantern-create-index --help` to show the cli options.
 
 ```bash
-Usage: ldb-create-index --uri <URI> --table <TABLE> --column <COLUMN> -m <M> --efc <EFC> --ef <EF> -d <DIMS> --metric-kind <METRIC_KIND> --out <OUT>
+Usage: lantern-create-index --uri <URI> --table <TABLE> --column <COLUMN> -m <M> --efc <EFC> --ef <EF> -d <DIMS> --metric-kind <METRIC_KIND> --out <OUT>
 ```
 
 ### Example
