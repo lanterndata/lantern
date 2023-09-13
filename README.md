@@ -1,6 +1,6 @@
-# LanternDB Extras
+# Lantern Extras
 
-This extension makes it easy to experiment with embeddings from inside a Postgres database. We use this extension along with [LanternDB](https://github.com/lanterndata/lanterndb) to make vector operations performant. But all the helpers here are standalone and may be used without the main database.
+This extension makes it easy to experiment with embeddings from inside a Postgres database. We use this extension along with [Lantern](https://github.com/lanterndata/lantern) to make vector operations performant. But all the helpers here are standalone and may be used without the main database.
 
 **NOTE**: Functions defined in this extension use Postgres in ways Postgres is usually not used.
 Some calls may result in large file downloads, or CPU-intensive model inference operations. Keep this in mind when using this extension a shared Postgres environment.
@@ -57,7 +57,7 @@ SELECT get_available_models();
 ### Installing from precompiled binaries
 
 You can download precompiled binaries for Mac and linux from Github releases page.
-Make sure postgres is installed in your environment and `pg_config` is accessible form `$PATH`. Unzip the release archive from `lanterndb_extras` the directory run:
+Make sure postgres is installed in your environment and `pg_config` is accessible form `$PATH`. Unzip the release archive from `lantern_extras` the directory run:
 
 ```bash
 make install
@@ -90,13 +90,13 @@ _replace `aarch64-unknown-linux-gnu` with your architecture. You can get it by r
 This extension is written in Rust so requires Rust toolchain. It uses `pgrx`
 
 ```bash
-cargo pgrx run --package lanterndb_extras # runs in a testing environment
+cargo pgrx run --package lantern_extras # runs in a testing environment
 ```
 
 To package the extension run
 
 ```bash
-cargo pgrx package --package lanterndb_extras
+cargo pgrx package --package lantern_extras
 ```
 
 ### Initializing with psql
@@ -104,7 +104,7 @@ cargo pgrx package --package lanterndb_extras
 Once the extension is installed, in a psql shell or in your favorite SQL environment run:
 
 ```sql
-CREATE EXTENSION lanterndb_extras;
+CREATE EXTENSION lantern_extras;
 ```
 
 ### Adding new models
@@ -113,7 +113,7 @@ To add new textual or visual models for generating vector embeddings you can fol
 
 1. Find the model onnx file or convert it using [optimum-cli](https://huggingface.co/docs/transformers/serialization). Example `optimum-cli export onnx --model BAAI/bge-base-en onnx/`
 2. Host the onnx model
-3. Add model information in `MODEL_INFO_MAP` under `lanterndb_extras/src/encoder.rs`
+3. Add model information in `MODEL_INFO_MAP` under `lantern_extras/src/encoder.rs`
 4. Add new image/text processor based on model inputs (you can check existing processors they might match the model) and then add the `match` arm in `process_text` or `process_image` function in `EncoderService` so it will run corresponding processor for model.
 
 After this your model should be callable from SQL like
@@ -122,24 +122,24 @@ After this your model should be callable from SQL like
 SELECT text_embedding('your/model_name', 'Your text');
 ```
 
-## LanternDB Index Builder
+## Lantern Index Builder
 
 ## Description
 
-This is a CLI application that creates an index for LanternDB outside of Postgres which can later be imported into Postgres. This allows for faster index creation through parallelization.
+This is a CLI application that creates an index for Lantern outside of Postgres which can later be imported into Postgres. This allows for faster index creation through parallelization.
 
 ## How to use
 
 ### Installation
 
-Run `cargo install --path lanterndb_create_index` to install the binary
+Run `cargo install --path lantern_create_index` to install the binary
 
 ### Usage
 
-Run `ldb-create-index --help` to show the cli options.
+Run `lantern-create-index --help` to show the cli options.
 
 ```bash
-Usage: ldb-create-index --uri <URI> --table <TABLE> --column <COLUMN> -m <M> --efc <EFC> --ef <EF> -d <DIMS> --metric-kind <METRIC_KIND> --out <OUT>
+Usage: lantern-create-index --uri <URI> --table <TABLE> --column <COLUMN> -m <M> --efc <EFC> --ef <EF> -d <DIMS> --metric-kind <METRIC_KIND> --out <OUT>
 ```
 
 ### Example

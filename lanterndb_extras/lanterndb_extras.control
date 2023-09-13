@@ -1,5 +1,0 @@
-comment = 'lanterndb_extras:  Convenience functions for working with vector embeddings'
-default_version = '@CARGO_VERSION@'
-module_pathname = '$libdir/lanterndb_extras'
-relocatable = false
-superuser = true

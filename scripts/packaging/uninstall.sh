@@ -13,8 +13,8 @@ fi
 PG_LIBRARY_DIR=$($PG_CONFIG --pkglibdir)
 PG_EXTENSION_DIR=$($PG_CONFIG --sharedir)/extension
 
-rm -rf $PG_LIBRARY_DIR/lanterndb*.so
-rm -rf $PG_EXTENSION_DIR/lanterndb*.sql
-rm -rf $PG_EXTENSION_DIR/lanterndb.control
+rm -rf $PG_LIBRARY_DIR/lantern_extras*.so
+rm -rf $PG_EXTENSION_DIR/lantern_extras*.sql
+rm -rf $PG_EXTENSION_DIR/lantern_extras.control
 
-echo "LanternDB Extras uninstalled successfully"
+echo "Lantern Extras uninstalled successfully"
