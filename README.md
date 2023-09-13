@@ -145,7 +145,7 @@ Usage: lantern-create-index --uri <URI> --table <TABLE> --column <COLUMN> -m <M>
 ### Example
 
 ```bash
-ldb-create-index -u "postgresql://localhost/test" -t "small_world" -c "vec" -m 16 --ef 64 --efc 128 -d 3 --metric-kind cos --out /tmp/index.usearch
+lantern-create-index -u "postgresql://localhost/test" -t "small_world" -c "vec" -m 16 --ef 64 --efc 128 -d 3 --metric-kind cos --out /tmp/index.usearch
 ```
 
 ### Notes
