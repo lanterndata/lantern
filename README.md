@@ -92,21 +92,23 @@ The `M`, `ef`, and `ef_construction` parameters control the performance of the H
 ## ⭐️ Features 
 - Embedding generation for popular use cases (CLIP model, Hugging Face models, custom model)
 - Interoperability with pgvector's data type, so anyone using pgvector can switch to Lantern 
-- Parallel index creation capabilities (up to 40x faster than constructors like pgvector + pgembedding)
+- Parallel index creation via an external indexer
+- Ability to generate the index graph outside of the database server
 - Support for creating the index outside of the database and inside another instance allows you to create an index without interrupting database workflows.
 - See all of our helper functions to better enable your workflows 
 
 ## 🏎️ Performance
 
-Important takeaways: 
-- Lantern is already 40x faster than pgvector and Neon’s pgembedding at creating an index to store data. 
-- We match and often outperform pgvector and Neon’s pgembedding on latency + throughput. 
+Important takeaways:
+- There's three key metrics we track. `CREATE INDEX` time, `SELECT` throughput, and `SELECT` latency.
+- We match or outperform pgvector and pg_embedding (Neon) on all of these metrics.
+- We plan to continue to make performance improvements to ensure we are the best performing database.
 
-Graph 1 — Throughput
-
-Graph 2 — Latency 
-
-Graph 3 — Index Creation
+<p>
+<img alt="Lantern throughput" src="http://docs.lantern.dev/graphs/throughput.png" width="400" style="float: left;" />
+<img alt="Lantern latency" src="http://docs.lantern.dev/graphs/latency.png" width="400" style="float: left;" />
+<img alt="Lantern index creation" src="http://docs.lantern.dev/graphs/create.png" width="400" style="float: left;" />
+</p>
 
 ## 🗺️ Roadmap
 
@@ -116,7 +118,7 @@ Graph 3 — Index Creation
 - More tools for generating embeddings (support for third party model API’s, more local models) 
 - Support for version control and A/B test embeddings
 - Autotuned index type that will choose appropriate  creation parameters
-- [Support](https://github.com/lanterndata/lantern/pull/19) for 1 byte and 2 byte vector elements, and up to 8000 dimensional vectors
+- Support for 1 byte and 2 byte vector elements, and up to 8000 dimensional vectors [PR #19](https://github.com/lanterndata/lantern/pull/19)
 - Request a feature at [support@lantern.dev](mailto:support@lantern.dev)
 
 ## 📚 Resources
