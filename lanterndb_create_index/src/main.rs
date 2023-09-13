@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 
 use clap::Parser;
 use cxx::UniquePtr;
@@ -55,7 +55,7 @@ async fn index_chunk(
     let rows = client
         .query(
             &format!(
-                "SELECT ctid, {} FROM {} LIMIT {} OFFSET {};",
+                "SELECT ctid, {} FROM {} ORDER BY ctid LIMIT {} OFFSET {};",
                 args.column, args.table, limit, offset
             ),
             &[],
@@ -73,17 +73,15 @@ async fn index_chunk(
 }
 
 struct ThreadSafeIndex {
-    inner: Mutex<UniquePtr<usearch::ffi::Index>>,
+    inner: UniquePtr<usearch::ffi::Index>,
 }
 
 impl ThreadSafeIndex {
     fn add(&self, label: u64, data: &Vec<f32>) {
-        let index = self.inner.lock().unwrap();
-        index.add(label, data).unwrap();
+        self.inner.add(label, data).unwrap();
     }
     fn save(&self, path: &str) {
-        let index = self.inner.lock().unwrap();
-        index.save(path).unwrap();
+        self.inner.save(path).unwrap();
     }
 }
 
@@ -119,7 +117,7 @@ async fn create_usearch_index(args: cli::Args, client: Client) -> Result<(), any
     };
 
     let thread_safe_index = ThreadSafeIndex {
-        inner: Mutex::new(index),
+        inner: index,
     };
 
     let index_arc = Arc::new(thread_safe_index);
