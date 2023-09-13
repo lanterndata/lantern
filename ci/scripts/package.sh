@@ -2,9 +2,9 @@
 
 export GITHUB_OUTPUT=${GITHUB_OUTPUT:-/dev/null}
 
-PACKAGE_DIR=/tmp/lanterndb-extras-package
-PACKAGE_VERSION=$(ls -t $PACKAGE_DIR | head -1 | sed -E "s#lanterndb-extras-(.*)-postgres.*#\1#")
-PACKAGE_NAME=lanterndb-extras-${PACKAGE_VERSION}
+PACKAGE_DIR=/tmp/lantern-extras-package
+PACKAGE_VERSION=$(ls -t $PACKAGE_DIR | head -1 | sed -E "s#lantern-extras-(.*)-postgres.*#\1#")
+PACKAGE_NAME=lantern-extras-${PACKAGE_VERSION}
 OUTPUT_DIR=/tmp/$PACKAGE_NAME
 SHARED_DIR=${OUTPUT_DIR}/shared
 mkdir $OUTPUT_DIR

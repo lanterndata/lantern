@@ -1,5 +1,5 @@
 [package]
-name = "lanterndb_extras"
+name = "lantern_extras"
 version = "0.0.1"
 edition = "2021"
 

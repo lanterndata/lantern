@@ -2,6 +2,6 @@
 [workspace]
 
 members = [
-    "lanterndb_extras",
-    "lanterndb_create_index",
+    "lantern_extras",
+    "lantern_create_index",
 ]

@@ -123,11 +123,8 @@ mod tests {
     // use pgrx::prelude::*;
 
     #[pg_test]
-    fn test_hello_lanterndb_extras() {
-        assert_eq!(
-            "Hello, lanterndb_extras",
-            crate::get_vectors("invalid path")
-        );
+    fn test_hello_lantern_extras() {
+        assert_eq!("Hello, lantern_extras", crate::get_vectors("invalid path"));
     }
 }
 
