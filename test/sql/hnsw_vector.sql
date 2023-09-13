@@ -4,12 +4,12 @@
 
 -- Note: We drop the Lantern extension and re-create it because Lantern only supports
 -- pgvector if it is present on initialization
-DROP EXTENSION IF EXISTS lanterndb;
+DROP EXTENSION IF EXISTS lantern;
 CREATE EXTENSION vector;
 -- Setting min messages to ERROR so the WARNING about existing hnsw access method is NOT printed
 -- in tests. This makes sure that regression tests pass on pgvector <=0.4.4 as well as >=0.5.0
 SET client_min_messages=ERROR;
-CREATE EXTENSION lanterndb;
+CREATE EXTENSION lantern;
 RESET client_min_messages;
 
 -- Verify basic functionality of pgvector
@@ -57,7 +57,7 @@ CREATE TABLE sift_base10k (
     id SERIAL PRIMARY KEY,
     v VECTOR(128)
 );
-\COPY sift_base10k (v) FROM '/tmp/lanterndb/vector_datasets/siftsmall_base.csv' WITH CSV;
+\COPY sift_base10k (v) FROM '/tmp/lantern/vector_datasets/siftsmall_base.csv' WITH CSV;
 CREATE INDEX hnsw_idx ON sift_base10k USING lantern_hnsw (v);
 SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
 EXPLAIN SELECT * FROM sift_base10k ORDER BY v <-> :'v4444' LIMIT 10;

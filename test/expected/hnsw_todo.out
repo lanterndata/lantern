@@ -62,12 +62,12 @@ CREATE TABLE IF NOT EXISTS sift_base1k (
     id SERIAL,
     v REAL[]
 );
-COPY sift_base1k (v) FROM '/tmp/lanterndb/vector_datasets/sift_base1k_arrays.csv' WITH csv;
+COPY sift_base1k (v) FROM '/tmp/lantern/vector_datasets/sift_base1k_arrays.csv' WITH csv;
 INSERT INTO sift_base1k (id, v) VALUES 
 (1001, array_fill(1, ARRAY[128])),
 (1102, array_fill(2, ARRAY[128]));
 SELECT v AS v1001 FROM sift_base1k WHERE id = 1001 \gset
-CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lanterndb/files/index-sift1k-l2.usearch');
+CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2.usearch');
 INFO:  done init usearch index
 INFO:  done loading usearch index
 INFO:  done saving 1000 vectors
@@ -88,9 +88,9 @@ CREATE TABLE IF NOT EXISTS sift_base1k (
     id SERIAL,
     v REAL[]
 );
-COPY sift_base1k (v) FROM '/tmp/lanterndb/vector_datasets/sift_base1k_arrays.csv' WITH csv;
+COPY sift_base1k (v) FROM '/tmp/lantern/vector_datasets/sift_base1k_arrays.csv' WITH csv;
 UPDATE sift_base1k SET v=:'v1001' WHERE id=777;
-CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lanterndb/files/index-sift1k-l2.usearch');
+CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2.usearch');
 INFO:  done init usearch index
 INFO:  done loading usearch index
 INFO:  done saving 1000 vectors

@@ -3,7 +3,7 @@ IFS=$'\n\t'
 
 TESTDB=testdb
 PSQL=psql
-TMP_ROOT=/tmp/lanterndb
+TMP_ROOT=/tmp/lantern
 TMP_OUTDIR=$TMP_ROOT/tmp_output
 FILTER="${FILTER:-}"
 # $USER is not set in docker containers, so use whoami

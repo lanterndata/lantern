@@ -22,7 +22,7 @@
 #include "../hnsw.h"
 #include "utils.h"
 
-// reloption for lanterndb hnsw index creation paramters in
+// reloption for lantern hnsw index creation paramters in
 // CREATE INDEX ... WITH (...)
 //                       ^^^^
 static relopt_kind ldb_hnsw_index_withopts;

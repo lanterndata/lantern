@@ -19,13 +19,13 @@ fi
 apt update && apt-mark hold locales && \
 # Install required packages for build
 apt install -y --no-install-recommends build-essential cmake postgresql-server-dev-$PG_VERSION postgresql-$PG_VERSION-pgvector && \
-# Build lanterndb
-cd /tmp/lanterndb && mkdir build && cd build && \
+# Build lantern
+cd /tmp/lantern && mkdir build && cd build && \
 # Run cmake
 sh -c "cmake $(get_cmake_flags) .." && \
 make install && \
 # Remove dev files
-rm -rf /tmp/lanterndb && \
+rm -rf /tmp/lantern && \
 apt-get remove -y build-essential postgresql-server-dev-$PG_VERSION cmake && \
 apt-get autoremove -y && \
 apt-mark unhold locales && \

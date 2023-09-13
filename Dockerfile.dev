@@ -6,7 +6,7 @@ FROM postgres:$IMAGE_TAG
 ARG VERSION
 ARG PGVECTOR_VERSION
 
-WORKDIR /lanterndb
+WORKDIR /lantern
 
 RUN apt update \
     # Fix the locales package version to prevent unexpected updates
@@ -32,7 +32,7 @@ RUN apt update \
 
 COPY . .
 
-# Build lanterndb
+# Build lantern
 RUN rm -rf build \
     && mkdir build \
     && cd build \

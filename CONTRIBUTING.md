@@ -26,7 +26,7 @@ make benchmark-print-only
 ## VSCode and IntelliSense
 
 `.vscode/c_cpp_properties` is configured to use `./build/compile_commands.json`.
-If you build lanterndb in a different directory, make sure to update `.vscode` config appropriately in order to have IntelliSense working.
+If you build Lantern in a different directory, make sure to update `.vscode` config appropriately in order to have IntelliSense working.
 
 ## Debugging the C codebase
 
@@ -41,7 +41,7 @@ When modifying the SQL interface, you add relevant SQL logic under `sql/`. In ad
 
 Note that you never modify an already existing update file that does not have `latest` in its name.
 
-The files that do not have `latest` in the name are part of a previous releases and help LanternDB users update to a newer version of the extension via `ALTER EXTENSION lanterndb UPDATE`.
+The files that do not have `latest` in the name are part of a previous releases and help LanternDB users update to a newer version of the extension via `ALTER EXTENSION lantern UPDATE`.
 
 ## Browsing the Postgres repository offline
 

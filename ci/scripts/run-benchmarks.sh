@@ -15,7 +15,7 @@ wait_for_pg(){
  done
 }
 
-export WORKDIR=/tmp/lanterndb
+export WORKDIR=/tmp/lantern
 export PG_VERSION=15
 export GITHUB_OUTPUT=/dev/null
 export PGDATA=/etc/postgresql/$PG_VERSION/main/

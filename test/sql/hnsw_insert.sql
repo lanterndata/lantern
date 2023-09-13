@@ -65,6 +65,6 @@ CREATE TABLE sift_base10k (
     v REAL[128]
 );
 CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=4, dim=128);
-\COPY sift_base10k (v) FROM '/tmp/lanterndb/vector_datasets/siftsmall_base_arrays.csv' WITH CSV;
+\COPY sift_base10k (v) FROM '/tmp/lantern/vector_datasets/siftsmall_base_arrays.csv' WITH CSV;
 SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
 EXPLAIN SELECT * FROM sift_base10k order by v <-> :'v4444'
