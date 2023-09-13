@@ -16,10 +16,10 @@ Lantern builds and uses [usearch](https://github.com/unum-cloud/usearch), a sing
 If you don’t have PostgreSQL already, use Lantern with [Docker](https://hub.docker.com/r/lanterndata/lantern
 ) to get started quickly:
 ```bash
-docker run -it -p 5432:5432 lanterndata/lantern
+docker run -p 5432:5432 -e 'POSTGRES_PASSWORD=postgres' lanterndata/lantern:latest-pg15
 ```
 
-To install Lantern on top of PostgreSQL:
+To install Lantern from source on top of PostgreSQL:
 ```
 git clone --recursive https://github.com/lanterndata/lantern.git
 cd lantern
@@ -118,7 +118,7 @@ Important takeaways:
 - More tools for generating embeddings (support for third party model API’s, more local models) 
 - Support for version control and A/B test embeddings
 - Autotuned index type that will choose appropriate  creation parameters
-- Support for 1 byte and 2 byte vector elements, and up to 8000 dimensional vectors [PR #19](https://github.com/lanterndata/lantern/pull/19)
+- Support for 1 byte and 2 byte vector elements, and up to 8000 dimensional vectors ([PR #19](https://github.com/lanterndata/lantern/pull/19))
 - Request a feature at [support@lantern.dev](mailto:support@lantern.dev)
 
 ## 📚 Resources
