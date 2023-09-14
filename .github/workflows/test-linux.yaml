@@ -21,26 +21,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - postgres: 16
-            os: ubuntu-22.04
-          - postgres: 15
-            os: ubuntu-22.04
-          - postgres: 14
-            os: ubuntu-22.04
-          - postgres: 13
-            os: ubuntu-22.04
-          - postgres: 12
-            os: ubuntu-22.04
-          - postgres: 11
-            os: ubuntu-22.04
+        os: [ubuntu-22.04]
+        postgres: [11, 12, 13, 14, 15, 16]
     steps:
       - uses: actions/checkout@v3
         with:
           submodules: "recursive"
       - name: Build
         id: build
-        run: sudo su -c "PG_VERSION=$PG_VERSION USE_SOURCE=1 GITHUB_OUTPUT=$GITHUB_OUTPUT ENABLE_COVERAGE=1 ./ci/scripts/build-linux.sh"
+        run: sudo su -c "PG_VERSION=$PG_VERSION USE_SOURCE=1 GITHUB_OUTPUT=$GITHUB_OUTPUT ENABLE_COVERAGE=1 ./ci/scripts/build.sh"
         env:
           PG_VERSION: ${{ matrix.postgres }}
           BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
