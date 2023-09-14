@@ -58,7 +58,7 @@ CREATE INDEX ON small_world USING hnsw (vector);
 Customize `hnsw` index parameters depending on your vector data, such as the distance function (e.g., `dist_l2sq_ops`), index construction parameters, and index search parameters.
 ```sql
 CREATE INDEX ON small_world USING hnsw (vector dist_l2sq_ops)
-WITH (M=2, ef_construction=10, ef=4, dims=3);
+WITH (M=2, ef_construction=10, ef=4, dim=3);
 ```
 
 Start querying data
