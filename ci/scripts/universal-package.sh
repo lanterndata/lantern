@@ -1,10 +1,6 @@
 #!/bin/bash
 
-if [ -z "$GITHUB_OUTPUT" ]
-then
-  export GITHUB_OUTPUT=/dev/null
-fi
-
+GITHUB_OUTPUT=${GITHUB_OUTPUT:-/dev/null}
 PACKAGE_DIR=/tmp/lantern-package
 PACKAGE_VERSION=$(ls -t $PACKAGE_DIR | head -1 | sed -E "s#lantern-(.*)-postgres.*#\1#")
 PACKAGE_NAME=lantern-${PACKAGE_VERSION}
@@ -15,9 +11,15 @@ mkdir $OUTPUT_DIR
 cd $PACKAGE_DIR
 for f in $(find "." -name "*.tar"); do
     current_archive_name=$(echo $f | sed -E 's#(.*).tar#\1#')   
-    current_pg_version=$(echo $current_archive_name | sed -E 's#(.*)-postgres-(.*)-(.*)#\2#')   
-    current_arch=$(echo $current_archive_name | sed -E 's#(.*)-postgres-(.*)-(.*)#\3#')   
-    current_dest_folder=${OUTPUT_DIR}/src/${current_arch}/${current_pg_version}
+    current_pg_version=$(echo $current_archive_name | sed -E 's#(.*)-postgres-(.*)-(.*)-(.*)#\2#')   
+    current_platform=$(echo $current_archive_name | sed -E 's#(.*)-postgres-(.*)-(.*)-(.*)#\3#')
+    current_arch=$(echo $current_archive_name | sed -E 's#(.*)-postgres-(.*)-(.*)-(.*)#\4#')   
+    current_dest_folder=${OUTPUT_DIR}/src/${current_arch}/${current_platform}/${current_pg_version}
+    echo "current_archive_name=${current_archive_name}"
+    echo "current_pg_version=${current_pg_version}"
+    echo "current_arch=${current_arch}"
+    echo "current_platform=${current_platform}"
+    echo "current_dest_folder=${current_dest_folder}"
 
     tar xf $f
 

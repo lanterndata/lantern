@@ -10,22 +10,29 @@ then
   PG_CONFIG=$(which pg_config)
 fi
 
-if [ -z "$ARCH" ]
+if command -v uname &> /dev/null
 then
-  if command -v dpkg &> /dev/null
-  then
-    ARCH=$(dpkg --print-architecture)
-  elif command -v apk &> /dev/null
-  then
-    ARCH=$(apk --print-arch)
-  elif command -v uname &> /dev/null
-  then
-    ARCH=$(uname -m)
-  else
-    echo "Could not detect system architecture. Please specify with ARCH env variable"
-    exit
-  fi
+  ARCH=$(uname -m)
+elif command -v dpkg &> /dev/null
+then
+  ARCH=$(dpkg --print-architecture)
+elif command -v apk &> /dev/null
+then
+  ARCH=$(apk --print-arch)
+else
+  echo "Could not detect system architecture. Please specify with ARCH env variable"
+  exit 1
 fi
+
+unameOut="$(uname -s)"
+case "${unameOut}" in
+    Linux*)     PLATFORM=linux;;
+    Darwin*)    PLATFORM=mac;;
+    CYGWIN*)    PLATFORM=cygwin;;
+    MINGW*)     PLATFORM=mingw;;
+    MSYS_NT*)   PLATFORM=git;;
+    *)          PLATFORM=${unameOut}
+esac
 
 PG_LIBRARY_DIR=$($PG_CONFIG --pkglibdir)
 PG_EXTENSION_DIR=$($PG_CONFIG --sharedir)/extension
@@ -38,13 +45,19 @@ then
   exit
 fi
 
-if [ ! -d src/${ARCH}/${PG_VERSION} ]
+if [ ! -d src/${ARCH}/${PLATFORM} ]
+then
+  echo "Platform $PLATFORM not supported. Try building from source"
+  exit
+fi
+
+if [ ! -d src/${ARCH}/${PLATFORM}/${PG_VERSION} ]
 then
   echo "Postgres version $PG_VERSION not supported"
   exit
 fi
 
-cp -r src/${ARCH}/${PG_VERSION}/*.so $PG_LIBRARY_DIR
+cp -r src/${ARCH}/${PLATFORM}/${PG_VERSION}/*.so $PG_LIBRARY_DIR
 cp -r shared/*.sql $PG_EXTENSION_DIR
 cp -r shared/*.control $PG_EXTENSION_DIR
 

@@ -1,9 +1,6 @@
 #!/bin/bash
 
-if [ -z "$GITHUB_OUTPUT" ]
-then
-  export GITHUB_OUTPUT=/dev/null
-fi
+GITHUB_OUTPUT=${GITHUB_OUTPUT:-/dev/null}
 
 cd /tmp/lantern/build && make archive
 cat /tmp/gh-output.txt >> $GITHUB_OUTPUT && rm -rf /tmp/gh-output

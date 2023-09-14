@@ -16,51 +16,40 @@ on:
         required: false
         default: false
 jobs:
-  ubuntu-build:
+  build:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - postgres: 16
-            os: ubuntu-22.04
-          - postgres: 15
-            os: ubuntu-22.04
-          - postgres: 14
-            os: ubuntu-22.04
-          - postgres: 13
-            os: ubuntu-22.04
-          - postgres: 12
-            os: ubuntu-22.04
-          - postgres: 11
-            os: ubuntu-22.04
+        os: [ubuntu-22.04, macos-13]
+        postgres: [11, 12, 13, 14, 15, 16]
     steps:
       - uses: actions/checkout@v3
         with:
           submodules: "recursive"
       - name: Build
         id: build
-        run: sudo su -c "PG_VERSION=$PG_VERSION USE_SOURCE=1 GITHUB_OUTPUT=$GITHUB_OUTPUT BUILD_PACKAGES=1 ./ci/scripts/build-linux.sh"
+        run: sudo sh -c "PG_VERSION=$PG_VERSION USE_SOURCE=1 GITHUB_OUTPUT=$GITHUB_OUTPUT BUILD_PACKAGES=1 ./ci/scripts/build.sh"
         env:
           PG_VERSION: ${{ matrix.postgres }}
-          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
       - name: Create Archive Package
         id: archive
-        run: sudo su -c "GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/package-archive.sh"
-      - name: Upload artifacts
+        run: sudo sh -c "GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/package-archive.sh"
+      - name: Upload deb package artifacts
         uses: actions/upload-artifact@v3
+        if: ${{ steps.build.outputs.deb_package_path != '' }}
         with:
-          name: ${{ steps.build.outputs.package_name }}
-          path: ${{ steps.build.outputs.package_path }}
+          name: ${{ steps.build.outputs.deb_package_name }}
+          path: ${{ steps.build.outputs.deb_package_path }}
       - name: Upload archive package artifacts
         uses: actions/upload-artifact@v3
-        if: ${{ steps.archive.outputs.archive_package_name != '' }}
+        if: ${{ steps.archive.outputs.archive_package_path != '' }}
         with:
           name: lantern-package
           path: ${{ steps.archive.outputs.archive_package_path }}
-  ubuntu-package:
+  package:
     runs-on: ubuntu-22.04
-    needs: [ubuntu-build]
+    needs: [build]
     steps:
       - uses: actions/checkout@v3
       - uses: actions/download-artifact@v3
@@ -69,7 +58,7 @@ jobs:
           path: /tmp/lantern-package
       - name: Create universal package
         id: package
-        run: sudo su -c "GITHUB_OUTPUT=$GITHUB_OUTPUT PACKAGE_EXTRAS=1 GITHUB_TOKEN=$GITHUB_TOKEN ./ci/scripts/universal-package.sh"
+        run: sudo sh -c "GITHUB_OUTPUT=$GITHUB_OUTPUT PACKAGE_EXTRAS=1 GITHUB_TOKEN=$GITHUB_TOKEN ./ci/scripts/universal-package.sh"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload artifacts
