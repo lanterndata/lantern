@@ -66,7 +66,6 @@ Start querying data
 SET enable_seqscan = false;
 SELECT id, l2sq_dist(vector, ARRAY[0,0,0]) AS dist
 FROM small_world ORDER BY vector <-> ARRAY[0,0,0] LIMIT 1;
-SET enable_seqscan = true;
 ```
 
 ### A note on operators and operator classes
