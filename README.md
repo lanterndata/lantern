@@ -13,8 +13,7 @@ Lantern builds and uses [usearch](https://github.com/unum-cloud/usearch), a sing
 
 ## 🔧 Quick Install
 
-If you don’t have PostgreSQL already, use Lantern with [Docker](https://hub.docker.com/r/lanterndata/lantern
-) to get started quickly:
+If you don’t have PostgreSQL already, use Lantern with [Docker](https://hub.docker.com/r/lanterndata/lantern) to get started quickly:
 ```bash
 docker run -p 5432:5432 -e 'POSTGRES_PASSWORD=postgres' lanterndata/lantern:latest-pg15
 ```
@@ -113,7 +112,7 @@ Important takeaways:
 
 ## 🗺️ Roadmap
 
-- Cloud-hosted version of Lantern
+- Cloud-hosted version of Lantern - [Sign up](https://forms.gle/YwxTzN9138LZEeCw8) for updates
 - Hardware-accelerated distance metrics, tailored for your CPU, enabling faster queries
 - Templates and guides for building applications for different industries
 - More tools for generating embeddings (support for third party model API’s, more local models) 
