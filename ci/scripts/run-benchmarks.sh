@@ -15,7 +15,7 @@ wait_for_pg(){
  done
 }
 
-export WORKDIR=/tmp/lantern
+export WORKDIR=/home/vagrant/lanterndb
 export PG_VERSION=15
 export GITHUB_OUTPUT=/dev/null
 export PGDATA=/etc/postgresql/$PG_VERSION/main/
@@ -31,6 +31,7 @@ wait_for_pg
 cd $WORKDIR/build
 
 export LANTERN_DATABASE_URL=postgresql://localhost:5432/postgres
+export DATABASE_URL=postgresql://localhost:5432/postgres
 git clone https://github.com/lanterndata/benchmark
 cd benchmark
 pip install -r core/requirements.txt
