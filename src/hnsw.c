@@ -296,15 +296,6 @@ static float4 array_dist(ArrayType *a, ArrayType *b, usearch_metric_kind_t metri
     return usearch_dist(ax, bx, metric_kind, a_dim, usearch_scalar_f32_k);
 }
 
-static float8 vector_dist(Vector *a, Vector *b, usearch_metric_kind_t metric_kind)
-{
-    if(a->dim != b->dim) {
-        elog(ERROR, "expected equally sized vectors but got vectors with dimensions %d and %d", a->dim, b->dim);
-    }
-
-    return usearch_dist(a->x, b->x, metric_kind, a->dim, usearch_scalar_f32_k);
-}
-
 PGDLLEXPORT PG_FUNCTION_INFO_V1(ldb_generic_dist);
 Datum       ldb_generic_dist(PG_FUNCTION_ARGS) { PG_RETURN_NULL(); }
 
