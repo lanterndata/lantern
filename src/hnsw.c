@@ -332,15 +332,6 @@ Datum       hamming_dist(PG_FUNCTION_ARGS)
     PG_RETURN_INT32(array_dist(a, b, usearch_metric_hamming_k));
 }
 
-PGDLLEXPORT PG_FUNCTION_INFO_V1(vector_l2sq_dist);
-Datum       vector_l2sq_dist(PG_FUNCTION_ARGS)
-{
-    Vector *a = PG_GETARG_VECTOR_P(0);
-    Vector *b = PG_GETARG_VECTOR_P(1);
-
-    PG_RETURN_FLOAT8((double)vector_dist(a, b, usearch_metric_l2sq_k));
-}
-
 /*
  * Get data type of index
  */

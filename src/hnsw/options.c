@@ -82,7 +82,7 @@ usearch_metric_kind_t ldb_HnswGetMetricKind(Relation index)
     void          *fnaddr = fninfo->fn_addr;
     ReleaseCatCacheList(proclist);
 
-    if(fnaddr == l2sq_dist || fnaddr == vector_l2sq_dist) {
+    if(fnaddr == l2sq_dist) {
         return usearch_metric_l2sq_k;
     } else if(fnaddr == hamming_dist) {
         return usearch_metric_hamming_k;

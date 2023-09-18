@@ -39,9 +39,9 @@ FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
 EXPLAIN SELECT id, ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
 
-SELECT id, ROUND(vector_l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+SELECT id, ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
-EXPLAIN SELECT id, ROUND(vector_l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+EXPLAIN SELECT id, ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
 
 -- Verify that index creation on a large vector produces an error
@@ -79,4 +79,4 @@ SELECT ARRAY[1,2,3] <-> ARRAY[3,2,1];
 
 -- Expect error due to mismatching vector dimensions
 SELECT 1 FROM small_world ORDER BY v <-> '[0,1,0,1]' LIMIT 1;
-SELECT vector_l2sq_dist('[1,1]'::vector, '[0,1,0]'::vector);
+SELECT l2sq_dist('[1,1]'::vector, '[0,1,0]'::vector);
