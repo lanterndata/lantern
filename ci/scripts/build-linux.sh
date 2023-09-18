@@ -37,7 +37,12 @@ function package_if_necessary() {
 }
 
 function cleanup_environment() {
+  # Check for undefined symbols
+  if [ ! -n "$ENABLE_COVERAGE" ]
+  then
+    /tmp/lantern/scripts/check_symbols.sh ./lantern.so
+  fi
+
   # Chown to postgres for running tests
   chown -R postgres:postgres /tmp/lantern
 }
-

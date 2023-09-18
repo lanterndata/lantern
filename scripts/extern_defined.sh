@@ -33,34 +33,28 @@ IFS=$'\n\t'
 #     hardcoding their paths
 # 3. use platorm specific equivalent of nm, ldd, awk
 
-##
-# defined in the postgres binary
-nm -D  /usr/lib/postgresql/14/bin/postgres | grep " T " | awk '{print $3}'
+PG_BIN=$(pg_config --bindir)/postgres
+
+# " T " - text symbol
+nm -D  $PG_BIN | grep " T " | awk '{print $3}' | sed -e 's/@.*$//p'
 # global bss symbol in postgres
-nm -D  /usr/lib/postgresql/14/bin/postgres | grep " B " | awk '{print $3}'
+nm -D  $PG_BIN | grep " B " | awk '{print $3}' | sed -e 's/@.*$//p'
 # postgres weak symbols
-nm -D  /usr/lib/postgresql/14/bin/postgres | grep " w " | awk '{print $2}'
+nm -D  $PG_BIN | grep " w " | awk '{print $2}' | sed -e 's/@.*$//p'
 
-nm -D /lib/x86_64-linux-gnu/libc.so.6 |  grep " T "| awk '{print $3}'
-nm -D /lib/x86_64-linux-gnu/libc.so.6 |  grep " i "| awk '{print $3}' # for memmove et al
-nm -D /lib/x86_64-linux-gnu/libc.so.6 |  grep " W "| awk '{print $3}' # for munmap, fread et al
+# Get a list of shared library dependencies using ldd
+dependencies=$(ldd "$PG_BIN" | awk '{print $3}' | grep -v "not a dynamic executable")
 
-# cpp symbols
-nm -D   /lib/x86_64-linux-gnu/libstdc++.so.6  | grep " T "| awk '{print $3}' | sed -n -e 's/@@.*$//p'
-
-# for _ZNSt9basic_iosIcSt11char_traitsIcEE5clearESt12_Ios_Iostate et all, pulled through usearch
-# todo: make sure this is not an indication of an issue
-# m " V " - the symbol is a weak object
-nm -D   /lib/x86_64-linux-gnu/libstdc++.so.6  | grep " V "| awk '{print $3}' | sed -n -e 's/@@.*$//p'
-# m " W " - the symbol is a weak symbol that has not been specifically tagged as weak object symbol
-nm -D   /lib/x86_64-linux-gnu/libstdc++.so.6  | grep " W "| awk '{print $3}' | sed -n -e 's/@@.*$//p'
-
-# for Unwind_Resome
-#  has @@GCC_3.0 and our version has @GCC_3.0
-# but the undefined symbols in our lib are modified with s/@/@@/
-nm -D /lib/x86_64-linux-gnu/libgcc_s.so.1 | grep ' T '  | awk '{print $3}'
-
-# add all libm symbols
-nm -D /lib/x86_64-linux-gnu/libm.so.6 | grep -v " U " | awk '{print $3}' | sed -n -e 's/@@.*$//p'
-
-
+# Loop through the dependencies and extract symbols
+for dependency in $dependencies; do
+   # " U " - undefined symbol
+   nm -D "$dependency" | awk '/ U / {print $3}' | sed -e 's/@.*$//p'
+   # " i " - the symbol is an indirect reference to another symbol. This is often used for compiler-generated code
+   nm -D "$dependency" | awk '/ i / {print $3}' | sed -e 's/@.*$//p'
+   # " T " - The symbol is a text (code) symbol, representing a function or code that can be executed
+   nm -D "$dependency" | awk '/ T / {print $3}' | sed -e 's/@.*$//p'
+   # " V " - the symbol is a weak object
+   nm -D "$dependency" | awk '/ V / {print $3}' | sed -e 's/@.*$//p'
+   # " W " - the symbol is a weak symbol that has not been specifically tagged as weak object symbol
+   nm -D "$dependency" | awk '/ W / {print $3}' | sed -e 's/@.*$//p'
+done
