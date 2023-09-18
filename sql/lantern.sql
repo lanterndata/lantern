@@ -1,3 +1,19 @@
+-- functions
+CREATE FUNCTION ldb_generic_dist(real[], real[]) RETURNS real
+	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+
+CREATE FUNCTION ldb_generic_dist(integer[], integer[]) RETURNS real
+	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+
+CREATE FUNCTION l2sq_dist(real[], real[]) RETURNS real
+	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+
+CREATE FUNCTION cos_dist(real[], real[]) RETURNS real
+	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+
+CREATE FUNCTION hamming_dist(integer[], integer[]) RETURNS integer
+	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+
 -- Definitions concerning our hnsw-based index data strucuture
 
 CREATE FUNCTION hnsw_handler(internal) RETURNS index_am_handler
@@ -29,9 +45,7 @@ BEGIN
 	END IF;
 
 	IF pgvector_exists THEN
-                CREATE FUNCTION l2sq_dist(real[], real[]) RETURNS real
-                        AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
-
+                -- Define operator class for vector type
 		CREATE OPERATOR CLASS dist_vec_l2sq_ops
 			DEFAULT FOR TYPE vector USING lantern_hnsw AS
 			OPERATOR 1 <-> (vector, vector) FOR ORDER BY float_ops,
@@ -49,22 +63,6 @@ BEGIN
 END;
 $BODY$
 LANGUAGE plpgsql;
-
--- functions
-CREATE FUNCTION ldb_generic_dist(real[], real[]) RETURNS real
-	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
-	
-CREATE FUNCTION ldb_generic_dist(integer[], integer[]) RETURNS real
-	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
-	
-CREATE OR REPLACE FUNCTION l2sq_dist(real[], real[]) RETURNS real
-	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
-
-CREATE FUNCTION cos_dist(real[], real[]) RETURNS real
-	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
-
-CREATE FUNCTION hamming_dist(integer[], integer[]) RETURNS integer
-	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 
 -- operators
 CREATE OPERATOR <-> (

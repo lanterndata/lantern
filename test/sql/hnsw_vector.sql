@@ -36,12 +36,7 @@ INSERT INTO small_world (v) VALUES (NULL);
 -- Distance functions
 SELECT id, ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
-EXPLAIN SELECT id, ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
-FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
-
-SELECT id, ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
-FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
-EXPLAIN SELECT id, ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+EXPLAIN (COSTS FALSE) SELECT id, ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
 
 -- Verify that index creation on a large vector produces an error

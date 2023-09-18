@@ -89,34 +89,12 @@ FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
  100 | 2.00
 (7 rows)
 
-EXPLAIN SELECT id, ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+EXPLAIN (COSTS FALSE) SELECT id, ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
-                                         QUERY PLAN                                         
---------------------------------------------------------------------------------------------
- Limit  (cost=0.00..7.17 rows=7 width=56)
-   ->  Index Scan using small_world_v_idx on small_world  (cost=0.00..8.20 rows=8 width=56)
-         Order By: (v <-> '[0,1,0]'::vector)
-(3 rows)
-
-SELECT id, ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
-FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
- id  | dist 
------+------
- 010 | 0.00
- 011 | 1.00
- 000 | 1.00
- 110 | 1.00
- 001 | 2.00
- 111 | 2.00
- 100 | 2.00
-(7 rows)
-
-EXPLAIN SELECT id, ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
-FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
-                                         QUERY PLAN                                         
---------------------------------------------------------------------------------------------
- Limit  (cost=0.00..7.17 rows=7 width=56)
-   ->  Index Scan using small_world_v_idx on small_world  (cost=0.00..8.20 rows=8 width=56)
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Limit
+   ->  Index Scan using small_world_v_idx on small_world
          Order By: (v <-> '[0,1,0]'::vector)
 (3 rows)
 
