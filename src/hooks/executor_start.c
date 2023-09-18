@@ -4,6 +4,7 @@
 
 #include <executor/executor.h>
 #include <nodes/nodeFuncs.h>
+#include <nodes/nodes.h>
 #include <nodes/pg_list.h>
 #include <nodes/plannodes.h>
 
@@ -44,7 +45,7 @@ static bool operator_used_incorrectly_walker(Node *node, void *context)
         return false;
     }
 
-    if(nodeTag(node) < T_PlanState) {
+    if(is_plan_tree_node(node)) {
         return plan_tree_walker((Plan *)node, operator_used_incorrectly_walker, (void *)context);
     } else {
         return expression_tree_walker(node, operator_used_incorrectly_walker, (void *)context);
