@@ -9,10 +9,10 @@
 #include <utils/hsearch.h>
 #include <utils/relcache.h>
 
-#include "cache.h"
+#include "block_number_cache.h"
 #include "external_index.h"
-#include "fa_cache.h"
 #include "insert.h"
+#include "node_cache.h"
 
 RetrieverCtx *ldb_wal_retriever_area_init(Relation index_rel, HnswIndexHeaderPage *header_page_under_wal)
 {
@@ -20,12 +20,12 @@ RetrieverCtx *ldb_wal_retriever_area_init(Relation index_rel, HnswIndexHeaderPag
     ctx->index_rel = index_rel;
     ctx->header_page_under_wal = header_page_under_wal;
     ctx->extra_dirted = extra_dirtied_new();
-    fa_cache_init(&ctx->fa_cache);
+    ctx->node_cache = node_cache_create();
 
     dlist_init(&ctx->takenbuffers);
 
     /* fill in a buffer with blockno index information, before spilling it to disk */
-    ctx->block_numbers_cache = cache_create();
+    ctx->block_numbers_cache = bln_cache_create();
 
     return ctx;
 }
@@ -54,7 +54,8 @@ void ldb_wal_retriever_area_reset(RetrieverCtx *ctx, HnswIndexHeaderPage *header
 
 void ldb_wal_retriever_area_fini(RetrieverCtx *ctx)
 {
-    cache_destroy(&ctx->block_numbers_cache);
+    bln_cache_destroy(&ctx->block_numbers_cache);
+    node_cache_destroy(&ctx->node_cache);
     dlist_mutable_iter miter;
     dlist_foreach_modify(miter, &ctx->takenbuffers)
     {

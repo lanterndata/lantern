@@ -11,9 +11,10 @@
 #include <utils/hsearch.h>
 #include <utils/relcache.h>
 
-#include "cache.h"
+#include "block_number_cache.h"
 #include "extra_dirtied.h"
 #include "insert.h"
+#include "node_cache.h"
 #include "options.h"
 #include "retriever.h"
 #include "usearch.h"
@@ -512,7 +513,7 @@ static BlockNumber getBlockMapPageBlockNumber(uint32 *blockmap_page_group_index,
 
 BlockNumber getDataBlockNumber(RetrieverCtx *ctx, int id, bool add_to_extra_dirtied)
 {
-    Cache            *cache = &ctx->block_numbers_cache;
+    BlockNumberCache *cache = &ctx->block_numbers_cache;
     uint32           *blockmap_group_index = ctx->header_page_under_wal != NULL
                                                  ? ctx->header_page_under_wal->blockmap_page_group_index
                                                  : ctx->blockmap_page_group_index_cache;
@@ -539,7 +540,7 @@ BlockNumber getDataBlockNumber(RetrieverCtx *ctx, int id, bool add_to_extra_dirt
     // clang-format on
 #endif
 
-    blockno_from_cache = cache_get_item(cache, &id);
+    blockno_from_cache = bln_cache_get_item(cache, &id);
     if(blockno_from_cache != InvalidBlockNumber) {
         return blockno_from_cache;
     }
@@ -566,7 +567,7 @@ BlockNumber getDataBlockNumber(RetrieverCtx *ctx, int id, bool add_to_extra_dirt
 
     offset = id % HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
     blockno = blockmap_page->blocknos[ offset ];
-    cache_set_item(cache, &id, blockmap_page->blocknos[ offset ]);
+    bln_cache_set_item(cache, &id, blockmap_page->blocknos[ offset ]);
     if(!idx_pagemap_prelocked) {
         UnlockReleaseBuffer(buf);
     }
@@ -583,7 +584,7 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
     OffsetNumber    offset, max_offset;
     Buffer          buf = InvalidBuffer;
     bool            idx_page_prelocked = false;
-    void           *cached_node = fa_cache_get(&ctx->fa_cache, id);
+    void           *cached_node = node_cache_get_item(&ctx->node_cache, &id);
     if(cached_node != NULL) {
         return cached_node;
     }
@@ -628,7 +629,7 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
                 LockBuffer(buf, BUFFER_LOCK_UNLOCK);
             }
 
-            fa_cache_insert(&ctx->fa_cache, id, nodepage->node);
+            node_cache_set_item(&ctx->node_cache, &id, nodepage->node);
 
             return nodepage->node;
 #endif
@@ -651,6 +652,10 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, int id)
     OffsetNumber    offset, max_offset;
     Buffer          buf = InvalidBuffer;
     bool            idx_page_prelocked = false;
+    void           *cached_node = node_cache_get_item(&ctx->node_cache, &id);
+    if(cached_node != NULL) {
+        return cached_node;
+    }
 
     // here, we don't bother looking up the fully associative cache because
     // given the current usage of _mut, it is never going to be in the chache
@@ -670,7 +675,7 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, int id)
     for(offset = FirstOffsetNumber; offset <= max_offset; offset = OffsetNumberNext(offset)) {
         nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
         if(nodepage->id == (uint32)id) {
-            fa_cache_insert(&ctx->fa_cache, id, nodepage->node);
+            node_cache_set_item(&ctx->node_cache, &id, nodepage->node);
 
             return nodepage->node;
         }
