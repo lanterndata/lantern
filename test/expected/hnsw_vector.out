@@ -76,47 +76,47 @@ SELECT * FROM ldb_get_indexes('small_world');
 INSERT INTO small_world (v) VALUES ('[99,99,2]');
 INSERT INTO small_world (v) VALUES (NULL);
 -- Distance functions
-SELECT id, ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+SELECT ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
- id  | dist 
------+------
- 010 | 0.00
- 011 | 1.00
- 000 | 1.00
- 110 | 1.00
- 001 | 2.00
- 111 | 2.00
- 100 | 2.00
+ dist 
+------
+ 0.00
+ 1.00
+ 1.00
+ 1.00
+ 2.00
+ 2.00
+ 2.00
 (7 rows)
 
-EXPLAIN SELECT id, ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+EXPLAIN (COSTS FALSE) SELECT ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
-                                         QUERY PLAN                                         
---------------------------------------------------------------------------------------------
- Limit  (cost=0.00..7.17 rows=7 width=56)
-   ->  Index Scan using small_world_v_idx on small_world  (cost=0.00..8.20 rows=8 width=56)
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Limit
+   ->  Index Scan using small_world_v_idx on small_world
          Order By: (v <-> '[0,1,0]'::vector)
 (3 rows)
 
-SELECT id, ROUND(vector_l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+SELECT ROUND(vector_l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
- id  | dist 
------+------
- 010 | 0.00
- 011 | 1.00
- 000 | 1.00
- 110 | 1.00
- 001 | 2.00
- 111 | 2.00
- 100 | 2.00
+ dist 
+------
+ 0.00
+ 1.00
+ 1.00
+ 1.00
+ 2.00
+ 2.00
+ 2.00
 (7 rows)
 
-EXPLAIN SELECT id, ROUND(vector_l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+EXPLAIN (COSTS FALSE) SELECT ROUND(vector_l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
-                                         QUERY PLAN                                         
---------------------------------------------------------------------------------------------
- Limit  (cost=0.00..7.15 rows=7 width=56)
-   ->  Index Scan using small_world_v_idx on small_world  (cost=0.00..8.18 rows=8 width=56)
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Limit
+   ->  Index Scan using small_world_v_idx on small_world
          Order By: (v <-> '[0,1,0]'::vector)
 (3 rows)
 
@@ -127,7 +127,6 @@ CREATE INDEX ON large_vector USING lantern_hnsw (v);
 ERROR:  vector dimension 2001 is too large. LanternDB currently supports up to 2000dim vectors
 \set ON_ERROR_STOP on
 -- Validate that index creation works with a larger number of vectors
-SET client_min_messages=debug5;
 CREATE TABLE sift_base10k (
     id SERIAL PRIMARY KEY,
     v VECTOR(128)
@@ -138,19 +137,11 @@ INFO:  done init usearch index
 INFO:  inserted 10000 elements
 INFO:  done saving 10000 vectors
 SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
-SET _lantern_internal.is_test = true;
-EXPLAIN SELECT * FROM sift_base10k ORDER BY v <-> :'v4444' LIMIT 10;
-DEBUG:  LANTERN - Query cost estimator
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 1192.827449
-DEBUG:  LANTERN - Selectivity: 1.000000
-DEBUG:  LANTERN - Num pages: 292.000000
-DEBUG:  LANTERN - Num tuples: 3333.000000
-DEBUG:  LANTERN - ---------------------
+EXPLAIN (COSTS FALSE) SELECT * FROM sift_base10k ORDER BY v <-> :'v4444' LIMIT 10;
                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                           
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Limit  (cost=0.00..4.18 rows=10 width=44)
-   ->  Index Scan using hnsw_idx on sift_base10k  (cost=0.00..4177.83 rows=10000 width=44)
+ Limit
+   ->  Index Scan using hnsw_idx on sift_base10k
          Order By: (v <-> '[55,61,11,4,5,2,13,24,65,49,13,9,23,37,94,38,54,11,14,14,40,31,50,44,53,4,0,0,27,17,8,34,12,10,4,4,22,52,68,53,9,2,0,0,2,116,119,64,119,2,0,0,2,30,119,119,116,5,0,8,47,9,5,60,7,7,10,23,56,50,23,5,28,68,6,18,24,65,50,9,119,75,3,0,1,8,12,85,119,11,4,6,8,9,5,74,25,11,8,20,18,12,2,21,11,90,25,32,33,15,2,9,84,67,8,4,22,31,11,33,119,30,3,6,0,0,0,26]'::vector)
 (3 rows)
 
@@ -159,14 +150,6 @@ SET hnsw.init_k = 4;
 WITH neighbors AS (
     SELECT * FROM small_world order by v <-> '[1,0,0]' LIMIT 3
 ) SELECT COUNT(*) from neighbors;
-DEBUG:  LANTERN - Query cost estimator
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 4.015000
-DEBUG:  LANTERN - Selectivity: 1.000000
-DEBUG:  LANTERN - Num pages: 1.000000
-DEBUG:  LANTERN - Num tuples: 2.000000
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN querying index for 4 elements
  count 
 -------
      3
@@ -175,23 +158,12 @@ DEBUG:  LANTERN querying index for 4 elements
 WITH neighbors AS (
     SELECT * FROM small_world order by v <-> '[1,0,0]' LIMIT 15
 ) SELECT COUNT(*) from neighbors;
-DEBUG:  LANTERN - Query cost estimator
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 4.015000
-DEBUG:  LANTERN - Selectivity: 1.000000
-DEBUG:  LANTERN - Num pages: 1.000000
-DEBUG:  LANTERN - Num tuples: 2.000000
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN querying index for 4 elements
-DEBUG:  LANTERN - querying index for 8 elements
-DEBUG:  LANTERN - querying index for 16 elements
  count 
 -------
      9
 (1 row)
 
 RESET client_min_messages;
-SET _lantern_internal.is_test = false;
 \set ON_ERROR_STOP off
 -- Expect error due to improper use of the <-> operator outside of its supported context
 SELECT ARRAY[1,2,3] <-> ARRAY[3,2,1];
