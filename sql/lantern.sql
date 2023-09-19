@@ -30,13 +30,13 @@ BEGIN
 
 	IF pgvector_exists THEN
 		-- taken from pgvector so our index can work with pgvector types
-		CREATE FUNCTION vector_l2sq_dist(vector, vector) RETURNS float8
-			AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+		CREATE FUNCTION l2sq_dist(vector, vector) RETURNS float8
+			AS 'MODULE_PATHNAME', 'vector_l2sq_dist' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 
 		CREATE OPERATOR CLASS dist_vec_l2sq_ops
 			DEFAULT FOR TYPE vector USING lantern_hnsw AS
 			OPERATOR 1 <-> (vector, vector) FOR ORDER BY float_ops,
-			FUNCTION 1 vector_l2sq_dist(vector, vector);
+			FUNCTION 1 l2sq_dist(vector, vector);
 	END IF;
 
 
@@ -46,16 +46,6 @@ BEGIN
 		-- create access method
 		CREATE ACCESS METHOD hnsw TYPE INDEX HANDLER hnsw_handler;
 		COMMENT ON ACCESS METHOD hnsw IS 'LanternDB access method for vector embeddings, based on the hnsw algorithm';
-		IF pgvector_exists THEN
-			-- An older version of pgvector exists, which does not have hnsw yet
-			-- So, there is no naming conflict. We still add a compatibility operator class
-			-- so pgvector vector type can be used with our index
-			-- taken from pgvector so our index can work with pgvector types
-			CREATE OPERATOR CLASS dist_vec_l2sq_ops
-				DEFAULT FOR TYPE vector USING hnsw AS
-				OPERATOR 1 <-> (vector, vector) FOR ORDER BY float_ops,
-				FUNCTION 1 vector_l2sq_dist(vector, vector);
-		END IF;
 	END IF;
 END;
 $BODY$
