@@ -11,11 +11,7 @@ CREATE INDEX ON sift_base1k USING hnsw (v) WITH (dim=128, M=4);
 SELECT * FROM ldb_get_indexes('sift_base1k');
 
 -- Validate that index creation works with a larger number of vectors
-CREATE TABLE sift_base10k (
-    id SERIAL PRIMARY KEY,
-    v REAL[128]
-);
-\COPY sift_base10k (v) FROM '/tmp/lantern/vector_datasets/siftsmall_base_arrays.csv' WITH CSV;
+\ir utils/sift10k_array.sql
 CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=4, dim=128);
 SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
 EXPLAIN (COSTS FALSE) SELECT * FROM sift_base10k order by v <-> :'v4444' LIMIT 10;
