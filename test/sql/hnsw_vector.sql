@@ -34,14 +34,14 @@ INSERT INTO small_world (v) VALUES ('[99,99,2]');
 INSERT INTO small_world (v) VALUES (NULL);
 
 -- Distance functions
-SELECT id, ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+SELECT ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
-EXPLAIN (COSTS FALSE) SELECT id, ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+EXPLAIN (COSTS FALSE) SELECT ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
 
-SELECT id, ROUND(vector_l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+SELECT ROUND(vector_l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
-EXPLAIN (COSTS FALSE) SELECT id, ROUND(vector_l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+EXPLAIN (COSTS FALSE) SELECT ROUND(vector_l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
 
 -- Verify that index creation on a large vector produces an error
@@ -51,8 +51,6 @@ CREATE INDEX ON large_vector USING lantern_hnsw (v);
 \set ON_ERROR_STOP on
 
 -- Validate that index creation works with a larger number of vectors
-SET client_min_messages=debug5;
-
 CREATE TABLE sift_base10k (
     id SERIAL PRIMARY KEY,
     v VECTOR(128)

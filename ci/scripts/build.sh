@@ -35,6 +35,18 @@ function clone_or_use_source() {
   fi
 }
 
+function install_external_dependencies() {
+  # Install pgvector
+  pushd /tmp
+    PGVECTOR_VERSION=0.5.0
+    wget -O pgvector.tar.gz https://github.com/pgvector/pgvector/archive/refs/tags/v${PGVECTOR_VERSION}.tar.gz
+    tar xzf pgvector.tar.gz
+    pushd pgvector-${PGVECTOR_VERSION}
+      make && make install
+    popd
+  popd
+}
+
 function build_and_install() {
   cd /tmp/lantern
   mkdir build
@@ -61,6 +73,7 @@ source "$(dirname "$0")/${BUILD_SCRIPT}"
 setup_environment
 setup_locale_and_install_packages
 setup_postgres
+install_external_dependencies
 clone_or_use_source
 build_and_install
 package_if_necessary

@@ -76,20 +76,20 @@ SELECT * FROM ldb_get_indexes('small_world');
 INSERT INTO small_world (v) VALUES ('[99,99,2]');
 INSERT INTO small_world (v) VALUES (NULL);
 -- Distance functions
-SELECT id, ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+SELECT ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
- id  | dist 
------+------
- 010 | 0.00
- 011 | 1.00
- 000 | 1.00
- 110 | 1.00
- 001 | 2.00
- 111 | 2.00
- 100 | 2.00
+ dist 
+------
+ 0.00
+ 1.00
+ 1.00
+ 1.00
+ 2.00
+ 2.00
+ 2.00
 (7 rows)
 
-EXPLAIN (COSTS FALSE) SELECT id, ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+EXPLAIN (COSTS FALSE) SELECT ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
                        QUERY PLAN                        
 ---------------------------------------------------------
@@ -98,20 +98,20 @@ FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
          Order By: (v <-> '[0,1,0]'::vector)
 (3 rows)
 
-SELECT id, ROUND(vector_l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+SELECT ROUND(vector_l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
- id  | dist 
------+------
- 010 | 0.00
- 011 | 1.00
- 000 | 1.00
- 110 | 1.00
- 001 | 2.00
- 111 | 2.00
- 100 | 2.00
+ dist 
+------
+ 0.00
+ 1.00
+ 1.00
+ 1.00
+ 2.00
+ 2.00
+ 2.00
 (7 rows)
 
-EXPLAIN (COSTS FALSE) SELECT id, ROUND(vector_l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+EXPLAIN (COSTS FALSE) SELECT ROUND(vector_l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
                        QUERY PLAN                        
 ---------------------------------------------------------
@@ -127,7 +127,6 @@ CREATE INDEX ON large_vector USING lantern_hnsw (v);
 ERROR:  vector dimension 2001 is too large. LanternDB currently supports up to 2000dim vectors
 \set ON_ERROR_STOP on
 -- Validate that index creation works with a larger number of vectors
-SET client_min_messages=debug5;
 CREATE TABLE sift_base10k (
     id SERIAL PRIMARY KEY,
     v VECTOR(128)
@@ -139,13 +138,6 @@ INFO:  inserted 10000 elements
 INFO:  done saving 10000 vectors
 SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
 EXPLAIN (COSTS FALSE) SELECT * FROM sift_base10k ORDER BY v <-> :'v4444' LIMIT 10;
-DEBUG:  LANTERN - Query cost estimator
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 1192.827449
-DEBUG:  LANTERN - Selectivity: 1.000000
-DEBUG:  LANTERN - Num pages: 292.000000
-DEBUG:  LANTERN - Num tuples: 3333.000000
-DEBUG:  LANTERN - ---------------------
                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                           
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit
@@ -158,13 +150,6 @@ SET hnsw.init_k = 4;
 WITH neighbors AS (
     SELECT * FROM small_world order by v <-> '[1,0,0]' LIMIT 3
 ) SELECT COUNT(*) from neighbors;
-DEBUG:  LANTERN - Query cost estimator
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 4.015000
-DEBUG:  LANTERN - Selectivity: 1.000000
-DEBUG:  LANTERN - Num pages: 1.000000
-DEBUG:  LANTERN - Num tuples: 2.000000
-DEBUG:  LANTERN - ---------------------
  count 
 -------
      3
@@ -173,13 +158,6 @@ DEBUG:  LANTERN - ---------------------
 WITH neighbors AS (
     SELECT * FROM small_world order by v <-> '[1,0,0]' LIMIT 15
 ) SELECT COUNT(*) from neighbors;
-DEBUG:  LANTERN - Query cost estimator
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 4.015000
-DEBUG:  LANTERN - Selectivity: 1.000000
-DEBUG:  LANTERN - Num pages: 1.000000
-DEBUG:  LANTERN - Num tuples: 2.000000
-DEBUG:  LANTERN - ---------------------
  count 
 -------
      9
