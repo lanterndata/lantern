@@ -52,33 +52,36 @@ static char *hnswbuildphasename(int64 phasenum)
  * However, before doing so, we should benchmark that implementation and compare with
  * this implementation first that computes an expectation.
  *
- * An element will be in level given by random variable`floor(-ln(unif(0, 1)) * mL)`, based on the paper.
+ * An element will given a level by random variable`floor(-ln(unif(0, 1)) * mL)`, based on the paper.
  * Link to paper: https://arxiv.org/pdf/1603.09320.pdf
- * Every time an element is inserted into the index, we "draw" from this random variable.
- *
- * The Expected Value of this distribtion is mL, as the author says in 4.2.2.
- * I.e. when we "draw" a number, we expect it to be mL.
  * 
  * Let the N draws be X_1, ..., X_N where each X_i is unif(0, 1). Let X = min(X_1, ..., X_N).
- * The number of levels is equal to floor(-ln(X) * mL) + 1. We are interested in E[floor(-ln(X) * mL) + 1]. 
+ * The total number of levels is floor(-ln(X) * mL) + 1. We want E[floor(-ln(X) * mL) + 1]. 
  * We will estimate E[-ln(X) * mL + 1]. It can be easily verified that 
  * E[-ln(X) * mL + 1] - E[floor(-ln(X) * mL) + 1] < 1. Also, we will use n = N.
  * 
  * Let Y = ln(X). Then P[Y < z] = P[X < e^z] = 1 - (1 - e^z)^n. 
  * To see this, note that (1 - x)^n is the probability all n draws are greater than x.
- * Then, using the fact that E[X] = int_0^infty (1 - P[X < z]) dz - int_-infty^0 P[X < z] dz, (*)
- * we get E[Y] = -1 * int_-infty^0 (1 - (1 - e^z)^n) dz. We can find equation (*) in the 
+ * Then, using the fact that E[X] = int_0^inf (1 - P[X < z]) dz - int_-inf^0 P[X < z] dz, (*)
+ * we get E[Y] = -1 * int_-inf^0 (1 - (1 - e^z)^n) dz. We can find equation (*) in the 
  * Properties section of this page: https://en.wikipedia.org/wiki/Expected_value
- *
- * Running tests on Wolfram Alpha up to n = 10^9, E[Y] is very close to -ln(n+1), with error less than 1.0.
  * 
- * We approximate E[-ln(X) * mL + 1] = -ln(n+1) * mL + 1. 
+ * Substituting y = e^z, we get int_-inf^0 (1 - (1 - e^z)^n) dz = int_0^1 (1 - (1 - y)^n)/y dy.
+ * Substituting t = 1-y, we get int_0^1 (1 - (1 - y)^n)/y dy = int_0^1 (1 - t^n)/(1 - t) dt.
+ * Factoring, we get int_0^1 (1 - t^n)/(1 - t) dt = int_0^1 1 + t + t^2 + ... + t^(n-1) dt
+ * which is equal to 1 + 1/2 + ... + 1/n = H(n). 
+ * 
+ * A well-known approximation for H(n) is ln(n) + 1/2n + 1/12n^2 + g where g is the Euler-Mascheroni constant.
+ * See here: https://math.stackexchange.com/questions/496116/is-there-a-partial-sum-formula-for-the-harmonic-series 
+ * 
+ * We approximate E[-ln(X) * mL + 1] = (ln(n) + 1/2n + 1/12n^2 + g) * mL + 1.
  *
  * This takes O(log(N)) time to calculate, which is what the author claims the scaling with dateset is in 4.2.1 and 4.2.2.
  */
 static uint64 expected_number_of_levels(double num_tuples_in_index, double mL)
 {
-    return floor(log(1.0 + num_tuples_in_index) * mL) + 1;
+    const double g = 0.5772156649;
+    return floor((log(num_tuples_in_index) + 1.0 / (2.0 * n) + 1.0 / (12.0 * n * n) + g) * mL) + 1;
 }
 
 /*
