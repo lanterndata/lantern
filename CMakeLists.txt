@@ -79,6 +79,15 @@ set(USEARCH_BUILD_TEST OFF)
 set(USEARCH_BUILD_BENCHMARK OFF)
 add_subdirectory("./third_party/usearch/c")
 
+string(REGEX MATCH "^PostgreSQL (\[0-9]+).*"
+  PostgreSQL_VERSION_NUMBER ${PostgreSQL_VERSION_STRING})
+set(PG_VERSION ${CMAKE_MATCH_1})
+
+# For Apple and Postgres 16 use .dylib instead of .so
+if (APPLE AND PG_VERSION VERSION_GREATER_EQUAL "16")
+  set(CMAKE_SHARED_MODULE_SUFFIX ".dylib")
+endif()
+
 # ADD LanternDB! Let there be light!
 add_library(lantern MODULE ${SOURCES})
 
@@ -246,12 +255,9 @@ if (CLANG_FORMAT)
 endif()
 
 # Package universal install script
-string(REGEX MATCH "^PostgreSQL (\[0-9]+).*"
-  PostgreSQL_VERSION_NUMBER ${PostgreSQL_VERSION_STRING})
-
 add_custom_target(
   archive
-  ${CMAKE_COMMAND} -E env SOURCE_DIR=${CMAKE_SOURCE_DIR} BUILD_DIR=${CMAKE_BINARY_DIR} PG_VERSION=${CMAKE_MATCH_1} ${CMAKE_SOURCE_DIR}/scripts/package.sh
+  ${CMAKE_COMMAND} -E env SOURCE_DIR=${CMAKE_SOURCE_DIR} BUILD_DIR=${CMAKE_BINARY_DIR} PG_VERSION=${PG_VERSION} ${CMAKE_SOURCE_DIR}/scripts/package.sh
   DEPENDS ${CMAKE_BINARY_DIR}/${_script_file}
   WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
@@ -259,6 +265,7 @@ add_dependencies(archive lantern)
 
 # Debian packaging
 set(CPACK_GENERATOR "DEB")
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "postgresql-${CMAKE_MATCH_1}, postgresql-${CMAKE_MATCH_1}-pgvector")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "postgresql-${PG_VERSION}, postgresql-${PG_VERSION}-pgvector")
 set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Lantern Data")
 include(CPack)
+
