@@ -38,17 +38,17 @@ jobs:
         uses: mxschmitt/action-tmate@v3
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
       - name: Run tests linux
-        id: test
+        id: test-linux
         run: sudo su postgres -c "PG_VERSION=$PG_VERSION ./ci/scripts/run-tests-linux.sh"
         env:
           PG_VERSION: ${{ matrix.postgres }}
-        if: ${{ startsWith(matrix.os, "ubuntu") }}
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
       - name: Run tests mac
-        id: test
+        id: test-mac
         run: sudo su postgres -c "PG_VERSION=$PG_VERSION ./ci/scripts/run-tests-mac.sh"
         env:
           PG_VERSION: ${{ matrix.postgres }}
-        if: ${{ startsWith(matrix.os, "mac") }}
+        if: ${{ startsWith(matrix.os, 'mac') }}
       - name: Upload Postgres logs
         if: failure()
         uses: actions/upload-artifact@v3
@@ -61,7 +61,7 @@ jobs:
         uses: codecov/codecov-action@v3
         env:
           codecov_token: ${{ secrets.CODECOV_TOKEN }}
-        if: ${{ env.codecov_token != '' && startsWith(matrix.os, "ubuntu") && matrix.postgres == 15 }} # for now run only on once
+        if: ${{ env.codecov_token != '' && startsWith(matrix.os, 'ubuntu') && matrix.postgres == 15 }} # for now run only on once
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           name: codecov-lanterndb

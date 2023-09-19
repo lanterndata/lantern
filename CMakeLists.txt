@@ -68,11 +68,7 @@ set(USEARCH_USE_SIMSIMD OFF)
 set(USEARCH_LOOKUP_LABEL OFF)
 # we always use a usearch index from a single thread
 set(USEARCH_CONCURRENT OFF)
-if(APPLE)
-  set(USEARCH_BUILD_STATIC OFF)
-else()
-  set(USEARCH_BUILD_STATIC ON)
-endif()
+set(USEARCH_BUILD_STATIC ON)
 # do not add asan flags to usearch debug build of the library since
 # we still have not figured out how to load those into postgres
 set(USEARCH_DEBUG_BUILD_ASAN OFF)
