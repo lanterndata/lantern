@@ -3,6 +3,7 @@ set -e
 
 WORKDIR=/tmp/lantern
 PG_VERSION=${PG_VERSION:-15}
+export PATH="/usr/local/opt/postgresql@${PG_VERSION}/bin:$PATH"
 
 wait_for_pg(){
  tries=0

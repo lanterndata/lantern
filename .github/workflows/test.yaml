@@ -16,7 +16,7 @@ on:
         required: false
         default: false
 jobs:
-  ubuntu-build:
+  test:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -29,7 +29,7 @@ jobs:
           submodules: "recursive"
       - name: Build
         id: build
-        run: sudo su -c "PG_VERSION=$PG_VERSION USE_SOURCE=1 GITHUB_OUTPUT=$GITHUB_OUTPUT ENABLE_COVERAGE=1 ./ci/scripts/build.sh"
+        run: sudo sh -c "PG_VERSION=$PG_VERSION USE_SOURCE=1 GITHUB_OUTPUT=$GITHUB_OUTPUT ENABLE_COVERAGE=1 ./ci/scripts/build.sh"
         env:
           PG_VERSION: ${{ matrix.postgres }}
           BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
@@ -45,7 +45,7 @@ jobs:
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
       - name: Run tests mac
         id: test-mac
-        run: sudo su postgres -c "PG_VERSION=$PG_VERSION ./ci/scripts/run-tests-mac.sh"
+        run: ./ci/scripts/run-tests-mac.sh
         env:
           PG_VERSION: ${{ matrix.postgres }}
         if: ${{ startsWith(matrix.os, 'mac') }}
