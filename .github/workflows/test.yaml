@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04]
+        os: [ubuntu-22.04, macos-13]
         postgres: [11, 12, 13, 14, 15, 16]
     steps:
       - uses: actions/checkout@v3
@@ -37,11 +37,18 @@ jobs:
       - name: Setup tmate session
         uses: mxschmitt/action-tmate@v3
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
-      - name: Run tests
+      - name: Run tests linux
         id: test
-        run: sudo su postgres -c "PG_VERSION=$PG_VERSION ./ci/scripts/run-tests.sh"
+        run: sudo su postgres -c "PG_VERSION=$PG_VERSION ./ci/scripts/run-tests-linux.sh"
         env:
           PG_VERSION: ${{ matrix.postgres }}
+        if: ${{ startsWith(matrix.os, "ubuntu") }}
+      - name: Run tests mac
+        id: test
+        run: sudo su postgres -c "PG_VERSION=$PG_VERSION ./ci/scripts/run-tests-mac.sh"
+        env:
+          PG_VERSION: ${{ matrix.postgres }}
+        if: ${{ startsWith(matrix.os, "mac") }}
       - name: Upload Postgres logs
         if: failure()
         uses: actions/upload-artifact@v3
@@ -54,7 +61,7 @@ jobs:
         uses: codecov/codecov-action@v3
         env:
           codecov_token: ${{ secrets.CODECOV_TOKEN }}
-        if: ${{ env.codecov_token != '' && matrix.postgres == 15 }} # for now run only on once
+        if: ${{ env.codecov_token != '' && startsWith(matrix.os, "ubuntu") && matrix.postgres == 15 }} # for now run only on once
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           name: codecov-lanterndb

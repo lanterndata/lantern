@@ -42,13 +42,8 @@ function build_and_install() {
 
   flags="-DUSEARCH_NO_MARCH_NATIVE=ON"
   
-  # On macs -static-libstdc++ throws warning
-  # As it is unused by compiler
-  if [[ $PLATFORM != "mac" ]] 
-  then
-    # Treat warnings as errors in CI/CD
-    flags+=" -DCMAKE_COMPILE_WARNING_AS_ERROR=ON"
-  fi
+  # Treat warnings as errors in CI/CD
+  flags+=" -DCMAKE_COMPILE_WARNING_AS_ERROR=ON"
   
   if [ -n "$ENABLE_COVERAGE" ]
   then
