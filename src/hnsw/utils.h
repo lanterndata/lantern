@@ -32,7 +32,7 @@ static inline void ldb_invariant(bool condition, const char *msg, ...)
 // To print debug or test output on these hot codepaths, use ldb_dlog.
 #define ldb_dlog(...)                  \
     {                                  \
-        if(unlikely(ldb_is_test)) {              \
+        if(unlikely(ldb_is_test)) {    \
             elog(DEBUG5, __VA_ARGS__); \
         }                              \
     }
