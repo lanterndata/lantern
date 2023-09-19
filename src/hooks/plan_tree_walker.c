@@ -4,6 +4,7 @@
 
 #include <miscadmin.h>
 #include <nodes/nodeFuncs.h>
+#include <nodes/nodes.h>
 #include <nodes/parsenodes.h>
 #include <nodes/plannodes.h>
 
@@ -22,7 +23,6 @@ bool plan_tree_walker(Plan *plan, bool (*walker_func)(Node *plan, void *context)
     check_stack_depth();
 
     switch(nodeTag(plan)) {
-        // Scan nodes
         case T_SeqScan:
         {
             SeqScan *seqscan = (SeqScan *)plan;
@@ -63,7 +63,7 @@ bool plan_tree_walker(Plan *plan, bool (*walker_func)(Node *plan, void *context)
             if(base_plan_walker(&(ctescan->scan.plan), walker_func, context)) return true;
             break;
         }
-        // Join nodes
+#if PG_VERSION_NUM < 160000
         case T_Join:
         {
             Join *join = (Join *)plan;
@@ -71,7 +71,7 @@ bool plan_tree_walker(Plan *plan, bool (*walker_func)(Node *plan, void *context)
             if(walker_func((Node *)join->joinqual, context)) return true;
             break;
         }
-        // Nodes dealing with aggregation / grouping / sorting
+#endif
         case T_Agg:
         {
             Agg *agg = (Agg *)plan;
@@ -102,7 +102,6 @@ bool plan_tree_walker(Plan *plan, bool (*walker_func)(Node *plan, void *context)
             if(base_plan_walker((Plan *)&(nestloop->join), walker_func, context)) return true;
             break;
         }
-        // Singleton Nodes
         case T_Result:
         {
             Result *result = (Result *)plan;

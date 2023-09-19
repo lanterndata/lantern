@@ -1,17 +1,61 @@
 SET client_min_messages=debug5;
+\ir utils/sift10k_array.sql
+CREATE TABLE IF NOT EXISTS sift_base10k (
+     id SERIAL PRIMARY KEY,
+     v REAL[128]
+);
+\copy sift_base10k (v) FROM '/tmp/lantern/vector_datasets/siftsmall_base_arrays.csv' with csv;
+-- This function executes the given SQL query and returns its estimated total cost.
+-- It parses the EXPLAIN output to retrieve the outermost (top-level) cost estimation.
+-- Example EXPLAIN line: "Limit  (cost=0.00..0.47 rows=10 width=40)"
+-- The regex captures the cost range and returns the higher end.
+-- Returns NULL if no cost is found or if the provided query doesn't match the expected format.
+CREATE OR REPLACE FUNCTION get_cost_estimate(explain_query text) RETURNS real AS $$
+DECLARE
+    explain_output text;
+    cost_match text;
+    line text;
+BEGIN
+    EXECUTE explain_query INTO explain_output;
+    FOR line IN (
+        SELECT
+            unnest(string_to_array(explain_output, E'\n')))
+        LOOP
+            IF position(' ' IN
+            LEFT (line, 1)) = 0 AND line LIKE '%cost=%' THEN
+                cost_match :=(regexp_matches(line, 'cost=\d+\.\d+..\d+\.\d+'))[1];
+                -- Adjust regex to capture both costs
+                RETURN split_part(split_part(cost_match, '=', 2), '..', 2)::real;
+                -- Extract the total cost
+            END IF;
+        END LOOP;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+-- This function checks if val2 is within some error margin of val1.
+CREATE OR REPLACE FUNCTION is_within_error(val1 real, val2 real, error_margin real) RETURNS boolean AS $$
+BEGIN
+    RETURN val2 BETWEEN val1 * (1 - error_margin) AND val1 * (1 + error_margin);
+END;
+$$ LANGUAGE plpgsql;
+-- This function checks if the cost estimate for the given query is within some error margin of the expected cost.
+CREATE OR REPLACE FUNCTION is_cost_estimate_within_error(explain_query text, expected_cost real, error_margin real DEFAULT 0.05) RETURNS boolean AS $$
+BEGIN
+    RETURN is_within_error(get_cost_estimate(explain_query), expected_cost, error_margin);    
+END;
+$$ LANGUAGE plpgsql;
 -- Goal: make sure query cost estimate is accurate
 -- when index is created with varying costruction parameters.
+SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
+\set explain_query_template 'EXPLAIN SELECT * FROM sift_base10k ORDER BY v <-> ''%s'' LIMIT 10'
+\set enable_seqscan = off;
 -- Case 0, sanity check. No data.
-CREATE TABLE sift_base10k_0 (
-     id SERIAL PRIMARY KEY,
-     v real[128]
-);
-CREATE INDEX hnsw_idx ON sift_base10k_0 USING hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=2, dim=2);
+CREATE TABLE empty_table(id SERIAL PRIMARY KEY, v REAL[2]);
+CREATE INDEX empty_idx ON empty_table USING hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=2, dim=2);
 INFO:  done init usearch index
 INFO:  inserted 0 elements
 INFO:  done saving 0 vectors
-EXPLAIN (ANALYZE,TIMING FALSE) SELECT * FROM sift_base10k_0 order by v <-> '{1, 2}'
-LIMIT 10;
+SELECT is_cost_estimate_within_error('EXPLAIN SELECT * FROM empty_table ORDER BY v <-> ''{1,2}'' LIMIT 10', 0.47);
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
 DEBUG:  LANTERN - Total cost: 4.225000
@@ -19,28 +63,19 @@ DEBUG:  LANTERN - Selectivity: 1.000000
 DEBUG:  LANTERN - Num pages: 1.000000
 DEBUG:  LANTERN - Num tuples: 30.000000
 DEBUG:  LANTERN - ---------------------
-                                                    QUERY PLAN                                                    
-------------------------------------------------------------------------------------------------------------------
- Limit  (cost=0.00..0.47 rows=10 width=40) (actual rows=0 loops=1)
-   ->  Index Scan using hnsw_idx on sift_base10k_0  (cost=0.00..60.10 rows=1270 width=40) (actual rows=0 loops=1)
-         Order By: (v <-> '{1,2}'::real[])
-(5 rows)
+ is_cost_estimate_within_error 
+-------------------------------
+ t
+(1 row)
 
-DROP INDEX hnsw_idx;
+DROP INDEX empty_idx;
 -- Case 1, more data in index.
 -- Should see higher cost than Case 0.
-CREATE TABLE sift_base10k_1 (
-     id SERIAL PRIMARY KEY,
-     v real[128]
-);
-\copy sift_base10k_1 (v) FROM '/tmp/lantern/vector_datasets/siftsmall_base_arrays.csv' with csv;
-CREATE INDEX hnsw_idx ON sift_base10k_1 USING hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=4, dim=128);
+CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=4, dim=128);
 INFO:  done init usearch index
 INFO:  inserted 10000 elements
 INFO:  done saving 10000 vectors
-SELECT V AS v4444  FROM sift_base10k_1 WHERE id = 4444 \gset
-EXPLAIN (ANALYZE,TIMING FALSE) SELECT * FROM sift_base10k_1 order by v <-> :'v4444'
-LIMIT 10;
+SELECT is_cost_estimate_within_error(format(:'explain_query_template', :'v4444'), 3.00);
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
 DEBUG:  LANTERN - Total cost: 16.345000
@@ -48,28 +83,19 @@ DEBUG:  LANTERN - Selectivity: 1.000000
 DEBUG:  LANTERN - Num pages: 4.000000
 DEBUG:  LANTERN - Num tuples: 46.000000
 DEBUG:  LANTERN - ---------------------
-                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                           
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Limit  (cost=0.00..3.00 rows=10 width=40) (actual rows=10 loops=1)
-   ->  Index Scan using hnsw_idx on sift_base10k_1  (cost=0.00..3001.34 rows=10000 width=40) (actual rows=10 loops=1)
-         Order By: (v <-> '{55,61,11,4,5,2,13,24,65,49,13,9,23,37,94,38,54,11,14,14,40,31,50,44,53,4,0,0,27,17,8,34,12,10,4,4,22,52,68,53,9,2,0,0,2,116,119,64,119,2,0,0,2,30,119,119,116,5,0,8,47,9,5,60,7,7,10,23,56,50,23,5,28,68,6,18,24,65,50,9,119,75,3,0,1,8,12,85,119,11,4,6,8,9,5,74,25,11,8,20,18,12,2,21,11,90,25,32,33,15,2,9,84,67,8,4,22,31,11,33,119,30,3,6,0,0,0,26}'::real[])
-(5 rows)
+ is_cost_estimate_within_error 
+-------------------------------
+ t
+(1 row)
 
 DROP INDEX hnsw_idx;
 -- Case 2, higher M.
 -- Should see higher cost than Case 1.
-CREATE TABLE sift_base10k_2 (
-     id SERIAL PRIMARY KEY,
-     v real[128]
-);
-\copy sift_base10k_2 (v) FROM '/tmp/lantern/vector_datasets/siftsmall_base_arrays.csv' with csv;
-CREATE INDEX hnsw_idx ON sift_base10k_2 USING hnsw (v dist_l2sq_ops) WITH (M=20, ef_construction=10, ef=4, dim=128);
+CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v dist_l2sq_ops) WITH (M=20, ef_construction=10, ef=4, dim=128);
 INFO:  done init usearch index
 INFO:  inserted 10000 elements
 INFO:  done saving 10000 vectors
-SELECT V AS v4444  FROM sift_base10k_2 WHERE id = 4444 \gset
-EXPLAIN (ANALYZE,TIMING FALSE) SELECT * FROM sift_base10k_2 order by v <-> :'v4444'
-LIMIT 10;
+SELECT is_cost_estimate_within_error(format(:'explain_query_template', :'v4444'), 3.27);
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
 DEBUG:  LANTERN - Total cost: 289.797500
@@ -77,28 +103,19 @@ DEBUG:  LANTERN - Selectivity: 1.000000
 DEBUG:  LANTERN - Num pages: 71.000000
 DEBUG:  LANTERN - Num tuples: 773.000000
 DEBUG:  LANTERN - ---------------------
-                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                           
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Limit  (cost=0.00..3.27 rows=10 width=40) (actual rows=10 loops=1)
-   ->  Index Scan using hnsw_idx on sift_base10k_2  (cost=0.00..3274.80 rows=10000 width=40) (actual rows=10 loops=1)
-         Order By: (v <-> '{55,61,11,4,5,2,13,24,65,49,13,9,23,37,94,38,54,11,14,14,40,31,50,44,53,4,0,0,27,17,8,34,12,10,4,4,22,52,68,53,9,2,0,0,2,116,119,64,119,2,0,0,2,30,119,119,116,5,0,8,47,9,5,60,7,7,10,23,56,50,23,5,28,68,6,18,24,65,50,9,119,75,3,0,1,8,12,85,119,11,4,6,8,9,5,74,25,11,8,20,18,12,2,21,11,90,25,32,33,15,2,9,84,67,8,4,22,31,11,33,119,30,3,6,0,0,0,26}'::real[])
-(5 rows)
+ is_cost_estimate_within_error 
+-------------------------------
+ t
+(1 row)
 
 DROP INDEX hnsw_idx;
 -- Case 3, higher ef.
 -- Should see higher cost than Case 2.
-CREATE TABLE sift_base10k_3 (
-     id SERIAL PRIMARY KEY,
-     v real[128]
-);
-\copy sift_base10k_3 (v) FROM '/tmp/lantern/vector_datasets/siftsmall_base_arrays.csv' with csv;
-CREATE INDEX hnsw_idx ON sift_base10k_3 USING hnsw (v dist_l2sq_ops) WITH (M=20, ef_construction=10, ef=16, dim=128);
+CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v dist_l2sq_ops) WITH (M=20, ef_construction=10, ef=16, dim=128);
 INFO:  done init usearch index
 INFO:  inserted 10000 elements
 INFO:  done saving 10000 vectors
-SELECT V AS v4444  FROM sift_base10k_3 WHERE id = 4444 \gset
-EXPLAIN (ANALYZE,TIMING FALSE) SELECT * FROM sift_base10k_3 order by v <-> :'v4444'
-LIMIT 10;
+SELECT is_cost_estimate_within_error(format(:'explain_query_template', :'v4444'), 3.91);
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
 DEBUG:  LANTERN - Total cost: 922.406057
@@ -106,11 +123,9 @@ DEBUG:  LANTERN - Selectivity: 1.000000
 DEBUG:  LANTERN - Num pages: 226.000000
 DEBUG:  LANTERN - Num tuples: 2465.000000
 DEBUG:  LANTERN - ---------------------
-                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                           
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Limit  (cost=0.00..3.91 rows=10 width=40) (actual rows=10 loops=1)
-   ->  Index Scan using hnsw_idx on sift_base10k_3  (cost=0.00..3907.41 rows=10000 width=40) (actual rows=10 loops=1)
-         Order By: (v <-> '{55,61,11,4,5,2,13,24,65,49,13,9,23,37,94,38,54,11,14,14,40,31,50,44,53,4,0,0,27,17,8,34,12,10,4,4,22,52,68,53,9,2,0,0,2,116,119,64,119,2,0,0,2,30,119,119,116,5,0,8,47,9,5,60,7,7,10,23,56,50,23,5,28,68,6,18,24,65,50,9,119,75,3,0,1,8,12,85,119,11,4,6,8,9,5,74,25,11,8,20,18,12,2,21,11,90,25,32,33,15,2,9,84,67,8,4,22,31,11,33,119,30,3,6,0,0,0,26}'::real[])
-(5 rows)
+ is_cost_estimate_within_error 
+-------------------------------
+ t
+(1 row)
 
 DROP INDEX hnsw_idx;

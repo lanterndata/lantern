@@ -89,12 +89,12 @@ FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
  100 | 2.00
 (7 rows)
 
-EXPLAIN SELECT id, ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+EXPLAIN (COSTS FALSE) SELECT id, ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
-                                         QUERY PLAN                                         
---------------------------------------------------------------------------------------------
- Limit  (cost=0.00..7.17 rows=7 width=56)
-   ->  Index Scan using small_world_v_idx on small_world  (cost=0.00..8.20 rows=8 width=56)
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Limit
+   ->  Index Scan using small_world_v_idx on small_world
          Order By: (v <-> '[0,1,0]'::vector)
 (3 rows)
 
@@ -111,12 +111,12 @@ FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
  100 | 2.00
 (7 rows)
 
-EXPLAIN SELECT id, ROUND(vector_l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+EXPLAIN (COSTS FALSE) SELECT id, ROUND(vector_l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
-                                         QUERY PLAN                                         
---------------------------------------------------------------------------------------------
- Limit  (cost=0.00..7.15 rows=7 width=56)
-   ->  Index Scan using small_world_v_idx on small_world  (cost=0.00..8.18 rows=8 width=56)
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Limit
+   ->  Index Scan using small_world_v_idx on small_world
          Order By: (v <-> '[0,1,0]'::vector)
 (3 rows)
 
@@ -138,7 +138,7 @@ INFO:  done init usearch index
 INFO:  inserted 10000 elements
 INFO:  done saving 10000 vectors
 SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
-EXPLAIN SELECT * FROM sift_base10k ORDER BY v <-> :'v4444' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT * FROM sift_base10k ORDER BY v <-> :'v4444' LIMIT 10;
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
 DEBUG:  LANTERN - Total cost: 1192.827449
@@ -148,8 +148,8 @@ DEBUG:  LANTERN - Num tuples: 3333.000000
 DEBUG:  LANTERN - ---------------------
                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                           
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Limit  (cost=0.00..4.18 rows=10 width=44)
-   ->  Index Scan using hnsw_idx on sift_base10k  (cost=0.00..4177.83 rows=10000 width=44)
+ Limit
+   ->  Index Scan using hnsw_idx on sift_base10k
          Order By: (v <-> '[55,61,11,4,5,2,13,24,65,49,13,9,23,37,94,38,54,11,14,14,40,31,50,44,53,4,0,0,27,17,8,34,12,10,4,4,22,52,68,53,9,2,0,0,2,116,119,64,119,2,0,0,2,30,119,119,116,5,0,8,47,9,5,60,7,7,10,23,56,50,23,5,28,68,6,18,24,65,50,9,119,75,3,0,1,8,12,85,119,11,4,6,8,9,5,74,25,11,8,20,18,12,2,21,11,90,25,32,33,15,2,9,84,67,8,4,22,31,11,33,119,30,3,6,0,0,0,26]'::vector)
 (3 rows)
 
