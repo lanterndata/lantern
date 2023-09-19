@@ -217,11 +217,11 @@ void _PG_init(void)
                             NULL,
                             NULL);
 
-    DefineCustomBoolVariable("_lanterndb_internals.is_test",
+    DefineCustomBoolVariable("_lantern_internal.is_test",
                              "is this a lanterndb regression test",
                              "set this to 1 to enable extra logging for use in lanterndb regression tests",
                              &ldb_is_test,
-                             true,
+                             false,
                              PGC_USERSET,
                              0,
                              NULL,

@@ -30,11 +30,9 @@ static inline void ldb_invariant(bool condition, const char *msg, ...)
 // search operations.
 // For this reason on hot codepaths we should avoid elog all together.
 // To print debug or test output on these hot codepaths, use ldb_dlog.
-// ldb_dlog has assert() semantics - it will be removed completely on release builds
-// so has no performance impact
 #define ldb_dlog(...)                  \
     {                                  \
-        if(ldb_is_test) {              \
+        if(unlikely(ldb_is_test)) {              \
             elog(DEBUG5, __VA_ARGS__); \
         }                              \
     }

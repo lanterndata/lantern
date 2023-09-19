@@ -60,7 +60,7 @@ CREATE TABLE sift_base10k (
 \COPY sift_base10k (v) FROM '/tmp/lantern/vector_datasets/siftsmall_base.csv' WITH CSV;
 CREATE INDEX hnsw_idx ON sift_base10k USING lantern_hnsw (v);
 SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
-SET _lanterndb_internals.is_test = true;
+SET _lantern_internal.is_test = true;
 EXPLAIN SELECT * FROM sift_base10k ORDER BY v <-> :'v4444' LIMIT 10;
 
 -- Ensure we can query an index for more elements than the value of init_k
@@ -73,7 +73,7 @@ WITH neighbors AS (
 ) SELECT COUNT(*) from neighbors;
 RESET client_min_messages;
 
-SET _lanterndb_internals.is_test = false;
+SET _lantern_internal.is_test = false;
 \set ON_ERROR_STOP off
 
 -- Expect error due to improper use of the <-> operator outside of its supported context

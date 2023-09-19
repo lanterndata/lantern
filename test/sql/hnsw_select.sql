@@ -22,7 +22,7 @@ SELECT 0 + 1;
 SELECT 1 FROM test1 WHERE id = 0 + 1;
 
 -- Verify that the index is being used
-SET _lanterndb_internals.is_test = true;
+SET _lantern_internal.is_test = true;
 EXPLAIN (COSTS FALSE) SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 1;
 
 -- Verify that this does not use the index
@@ -46,7 +46,7 @@ WITH neighbors AS (
 ) SELECT COUNT(*) from neighbors;
 RESET client_min_messages;
 
-SET _lanterndb_internals.is_test = false;
+SET _lantern_internal.is_test = false;
 -- Verify where condition works properly and still uses index
 SELECT has_index_scan('EXPLAIN SELECT * FROM small_world WHERE b IS TRUE ORDER BY v <-> ''{0,0,0}''');
 

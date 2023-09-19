@@ -138,7 +138,7 @@ INFO:  done init usearch index
 INFO:  inserted 10000 elements
 INFO:  done saving 10000 vectors
 SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
-SET _lanterndb_internals.is_test = true;
+SET _lantern_internal.is_test = true;
 EXPLAIN SELECT * FROM sift_base10k ORDER BY v <-> :'v4444' LIMIT 10;
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
@@ -191,7 +191,7 @@ DEBUG:  LANTERN - querying index for 16 elements
 (1 row)
 
 RESET client_min_messages;
-SET _lanterndb_internals.is_test = false;
+SET _lantern_internal.is_test = false;
 \set ON_ERROR_STOP off
 -- Expect error due to improper use of the <-> operator outside of its supported context
 SELECT ARRAY[1,2,3] <-> ARRAY[3,2,1];
