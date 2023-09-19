@@ -29,6 +29,8 @@ static relopt_kind ldb_hnsw_index_withopts;
 
 int ldb_hnsw_init_k;
 
+bool ldb_is_test;
+
 int ldb_HnswGetDim(Relation index)
 {
     ldb_HnswOptions *opts = (ldb_HnswOptions *)index->rd_options;
@@ -214,6 +216,17 @@ void _PG_init(void)
                             NULL,
                             NULL,
                             NULL);
+
+    DefineCustomBoolVariable("_lanterndb_internals.is_test",
+                             "is this a lanterndb regression test",
+                             "set this to 1 to enable extra logging for use in lanterndb regression tests",
+                             &ldb_is_test,
+                             true,
+                             PGC_USERSET,
+                             0,
+                             NULL,
+                             NULL,
+                             NULL);
 }
 
 // Called with extension unload.

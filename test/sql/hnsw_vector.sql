@@ -34,14 +34,14 @@ INSERT INTO small_world (v) VALUES ('[99,99,2]');
 INSERT INTO small_world (v) VALUES (NULL);
 
 -- Distance functions
-SELECT ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+SELECT id, ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
-EXPLAIN (COSTS FALSE) SELECT ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+EXPLAIN SELECT id, ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
 
-SELECT ROUND(vector_l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+SELECT id, ROUND(vector_l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
-EXPLAIN (COSTS FALSE) SELECT ROUND(vector_l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+EXPLAIN SELECT id, ROUND(vector_l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
 
 -- Verify that index creation on a large vector produces an error
@@ -51,6 +51,8 @@ CREATE INDEX ON large_vector USING lantern_hnsw (v);
 \set ON_ERROR_STOP on
 
 -- Validate that index creation works with a larger number of vectors
+SET client_min_messages=debug5;
+
 CREATE TABLE sift_base10k (
     id SERIAL PRIMARY KEY,
     v VECTOR(128)
@@ -58,7 +60,8 @@ CREATE TABLE sift_base10k (
 \COPY sift_base10k (v) FROM '/tmp/lantern/vector_datasets/siftsmall_base.csv' WITH CSV;
 CREATE INDEX hnsw_idx ON sift_base10k USING lantern_hnsw (v);
 SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
-EXPLAIN (COSTS FALSE) SELECT * FROM sift_base10k ORDER BY v <-> :'v4444' LIMIT 10;
+SET _lanterndb_internals.is_test = true;
+EXPLAIN SELECT * FROM sift_base10k ORDER BY v <-> :'v4444' LIMIT 10;
 
 -- Ensure we can query an index for more elements than the value of init_k
 SET hnsw.init_k = 4;
@@ -70,6 +73,7 @@ WITH neighbors AS (
 ) SELECT COUNT(*) from neighbors;
 RESET client_min_messages;
 
+SET _lanterndb_internals.is_test = false;
 \set ON_ERROR_STOP off
 
 -- Expect error due to improper use of the <-> operator outside of its supported context

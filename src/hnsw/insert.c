@@ -122,7 +122,7 @@ bool ldb_aminsert(Relation         index,
 #endif
 
     assert(hdr->magicNumber == LDB_WAL_MAGIC_NUMBER);
-    elog(DEBUG5, "Insert: at start num vectors is %d", hdr->num_vectors);
+    ldb_dlog("Insert: at start num vectors is %d", hdr->num_vectors);
 
     usearch_reserve(uidx, hdr->num_vectors + 1, &error);
     uint32 level = usearch_newnode_level(uidx, &error);

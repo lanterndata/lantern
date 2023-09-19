@@ -2,6 +2,7 @@
 #define LDB_HNSW_UTILS_H
 #include <access/amapi.h>
 
+#include "options.h"
 #include "usearch.h"
 
 void            LogUsearchOptions(usearch_init_options_t *opts);
@@ -31,11 +32,11 @@ static inline void ldb_invariant(bool condition, const char *msg, ...)
 // To print debug or test output on these hot codepaths, use ldb_dlog.
 // ldb_dlog has assert() semantics - it will be removed completely on release builds
 // so has no performance impact
-#ifdef LANTERNDB_DEBUG_LOGS
-#define ldb_dlog(elevel, ...) elog(elevel, errmsg_internal(__VA_ARGS__))
-#else
-#define ldb_dlog(elevel, ...) /*empty*/
-
-#endif  // LANTERNDB_DEBUG_LOGS
+#define ldb_dlog(...)                  \
+    {                                  \
+        if(ldb_is_test) {              \
+            elog(DEBUG5, __VA_ARGS__); \
+        }                              \
+    }
 
 #endif  // LDB_HNSW_UTILS_H

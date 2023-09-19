@@ -28,6 +28,7 @@
 
 #define LDB_HNSW_DEFAULT_K 10
 #define LDB_HNSW_MAX_K     1000
+
 /* HNSW index options */
 typedef struct ldb_HnswOptions
 {
@@ -50,6 +51,7 @@ usearch_metric_kind_t ldb_HnswGetMetricKind(Relation index);
 
 bytea* ldb_amoptions(Datum reloptions, bool validate);
 
-extern int ldb_hnsw_init_k;
+extern int  ldb_hnsw_init_k;
+extern bool ldb_is_test;
 
 #endif  // LDB_HNSW_OPTIONS_H
