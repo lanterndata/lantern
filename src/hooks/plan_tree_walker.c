@@ -8,15 +8,6 @@
 #include <nodes/parsenodes.h>
 #include <nodes/plannodes.h>
 
-bool is_plan_tree_node(Node *node)
-{
-#if PG_VERSION_NUM >= 160000
-    return nodeTag(node) >= T_Result && nodeTag(node) <= T_PlanInvalItem;
-#else
-    return nodeTag(node) >= T_Plan && nodeTag(node) < T_PlanState;
-#endif
-}
-
 bool base_plan_walker(Plan *plan, bool (*walker_func)(Node *plan, void *context), void *context)
 {
     if(walker_func((Node *)plan->targetlist, context)) return true;

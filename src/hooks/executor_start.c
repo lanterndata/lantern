@@ -45,7 +45,7 @@ static bool operator_used_incorrectly_walker(Node *node, void *context)
         return false;
     }
 
-    if(is_plan_tree_node(node)) {
+    if(is_plan_node(node)) {
         return plan_tree_walker((Plan *)node, operator_used_incorrectly_walker, (void *)context);
     } else {
         return expression_tree_walker(node, operator_used_incorrectly_walker, (void *)context);
