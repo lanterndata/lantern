@@ -4,6 +4,8 @@ SET client_min_messages=debug5;
 
 -- This function executes the given SQL query and returns its estimated total cost.
 -- It parses the EXPLAIN output to retrieve the outermost (top-level) cost estimation.
+-- Example EXPLAIN line: "Limit  (cost=0.00..0.47 rows=10 width=40)"
+-- The regex captures the cost range and returns the higher end.
 -- Returns NULL if no cost is found or if the provided query doesn't match the expected format.
 CREATE OR REPLACE FUNCTION get_cost_estimate(explain_query text) RETURNS real AS $$
 DECLARE
