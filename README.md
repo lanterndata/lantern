@@ -1,7 +1,7 @@
 # 💡 Lantern
 
-[![build](https://github.com/lanterndata/lantern/actions/workflows/build-linux.yaml/badge.svg?branch=main)](https://github.com/lanterndata/lantern/actions/workflows/build-linux.yaml)
-[![test](https://github.com/lanterndata/lantern/actions/workflows/test-linux.yaml/badge.svg?branch=main)](https://github.com/lanterndata/lantern/actions/workflows/test-linux.yaml)
+[![build](https://github.com/lanterndata/lantern/actions/workflows/build.yaml/badge.svg?branch=main)](https://github.com/lanterndata/lantern/actions/workflows/build.yaml)
+[![test](https://github.com/lanterndata/lantern/actions/workflows/test.yaml/badge.svg?branch=main)](https://github.com/lanterndata/lantern/actions/workflows/test.yaml)
 [![codecov](https://codecov.io/github/lanterndata/lanterndb/branch/main/graph/badge.svg)](https://codecov.io/github/lanterndata/lanterndb)
 [![Run on Replit](https://img.shields.io/badge/Run%20on-Replit-blue?logo=replit)](https://replit.com/@lanterndata/lantern-playground#.replit)
 
