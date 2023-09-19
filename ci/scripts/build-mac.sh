@@ -24,6 +24,7 @@ function package_if_necessary() {
 }
 
 function cleanup_environment() {
-  : # nop
+  # Add permission to for running tests from runner user
+  chmod -R 777 /tmp/lantern
 }
 
