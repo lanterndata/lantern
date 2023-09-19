@@ -33,7 +33,7 @@ for f in $(find "." -name "*.tar"); do
     fi
 
     mkdir -p $current_dest_folder
-    cp $current_archive_name/src/*.so $current_dest_folder/
+    cp $current_archive_name/src/*.{so,dylib} $current_dest_folder/ 2>/dev/null || true
 done
 
 if [ ! -z "$PACKAGE_EXTRAS" ]

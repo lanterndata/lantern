@@ -7,7 +7,11 @@ PACKAGE_NAME=lantern-${EXT_VERSION}-postgres-${PG_VERSION}-${PLATFORM}-${ARCH}
 
 mkdir -p ${BUILD_DIR}/${PACKAGE_NAME}/src
 cp ${SOURCE_DIR}/scripts/packaging/* ${BUILD_DIR}/${PACKAGE_NAME}/
-cp ${BUILD_DIR}/*.so ${BUILD_DIR}/${PACKAGE_NAME}/src
+
+# For Mac OS and Postgres 16 the module will have .dylib extension
+# Instead of .so, so any of the files may not exist
+# So we will ignore the error from cp command
+cp ${BUILD_DIR}/*.{so,dylib} ${BUILD_DIR}/${PACKAGE_NAME}/src 2>/dev/null || true
 cp ${BUILD_DIR}/*.sql ${BUILD_DIR}/${PACKAGE_NAME}/src
 
 for f in $(find "${SOURCE_DIR}/sql/updates/" -name "*.sql"); do

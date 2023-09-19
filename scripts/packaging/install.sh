@@ -54,7 +54,7 @@ then
   exit
 fi
 
-cp -r src/${ARCH}/${PLATFORM}/${PG_VERSION}/*.so $PG_LIBRARY_DIR
+cp -r src/${ARCH}/${PLATFORM}/${PG_VERSION}/*.{so,dylib} $PG_LIBRARY_DIR 2>/dev/null || true
 cp -r shared/*.sql $PG_EXTENSION_DIR
 cp -r shared/*.control $PG_EXTENSION_DIR
 
