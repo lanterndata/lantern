@@ -3,9 +3,9 @@ set -e
 
 WORKDIR=/tmp/lantern
 GITHUB_OUTPUT=${GITHUB_OUTPUT:-/dev/null}
-PG_VERSION=${PG_VERSION:-/dev/null}
+PG_VERSION=${PG_VERSION:-15}
 
-export PGDATA=/etc/postgresql/$PG_VERSION/main/
+export PGDATA=/etc/postgresql/$PG_VERSION/main
 
 wait_for_pg(){
  tries=0
@@ -22,7 +22,7 @@ wait_for_pg(){
 }
 
 # Set port
-echo "port = 5432" >> ${PGDATA}postgresql.conf
+echo "port = 5432" >> ${PGDATA}/postgresql.conf
 # Run postgres database
 GCOV_PREFIX=$WORKDIR/build/CMakeFiles/lantern.dir/ GCOV_PREFIX_STRIP=5 POSTGRES_HOST_AUTH_METHOD=trust /usr/lib/postgresql/$PG_VERSION/bin/postgres 1>/tmp/pg-out.log 2>/tmp/pg-error.log &
 # Wait for start and run tests

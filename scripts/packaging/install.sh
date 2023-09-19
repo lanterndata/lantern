@@ -28,9 +28,6 @@ unameOut="$(uname -s)"
 case "${unameOut}" in
     Linux*)     PLATFORM=linux;;
     Darwin*)    PLATFORM=mac;;
-    CYGWIN*)    PLATFORM=cygwin;;
-    MINGW*)     PLATFORM=mingw;;
-    MSYS_NT*)   PLATFORM=git;;
     *)          PLATFORM=${unameOut}
 esac
 

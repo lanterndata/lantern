@@ -18,9 +18,9 @@ wait_for_pg(){
 export WORKDIR=/tmp/lantern
 export PG_VERSION=15
 export GITHUB_OUTPUT=/dev/null
-export PGDATA=/etc/postgresql/$PG_VERSION/main/
+export PGDATA=/etc/postgresql/$PG_VERSION/main
 
-echo "port = 5432" >> ${PGDATA}postgresql.conf
+echo "port = 5432" >> ${PGDATA}/postgresql.conf
 # Enable auth without password
 echo "local   all             all                                     trust" >  $PGDATA/pg_hba.conf
 echo "host    all             all             127.0.0.1/32            trust" >>  $PGDATA/pg_hba.conf

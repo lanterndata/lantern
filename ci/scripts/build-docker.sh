@@ -1,11 +1,7 @@
 #!/bin/bash
 
 get_cmake_flags(){
- # TODO:: remove after test
  echo "-DUSEARCH_NO_MARCH_NATIVE=ON"
- # if [[ $ARCH == *"arm"* ]]; then
- #   echo "-DUSEARCH_NO_MARCH_NATIVE=ON"
- # fi
 }
 
 export DEBIAN_FRONTEND=noninteractive
