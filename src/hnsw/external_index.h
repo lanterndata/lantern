@@ -9,10 +9,9 @@
 #include <storage/bufmgr.h>  // Buffer
 #include <utils/relcache.h>  // Relation
 
-#include "block_number_cache.h"
 #include "extra_dirtied.h"
 #include "hnsw.h"
-#include "node_cache.h"
+#include "htab_cache.h"
 #include "options.h"
 #include "usearch.h"
 
@@ -79,7 +78,7 @@ typedef struct
 
 typedef struct
 {
-    BlockNumberCache block_numbers_cache;
+    HTABCache block_numbers_cache;
 
     Relation index_rel;
 
@@ -90,7 +89,7 @@ typedef struct
 
     ExtraDirtiedBufs *extra_dirted;
 
-    NodeCache node_cache;
+    HTABCache node_cache;
 
     dlist_head takenbuffers;
 } RetrieverCtx;
