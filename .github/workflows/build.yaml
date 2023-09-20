@@ -81,12 +81,12 @@ jobs:
           files: ${{ steps.package.outputs.package_path }}
           generate_release_notes: true
       - name: Homebrew release
-        uses: Justintime50/homebrew-releaser@v1
+        uses: mislav/bump-homebrew-formula-action@v2
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_release }}
         with:
           formula-name: lantern
-          formula-path: Formula/l/lantern.rb
-          homebrew-tap: lanterndata/brew-releases
+          formula-path: Formula/lantern.rb
+          homebrew-tap: ezra-varady/lantern
           base-branch: main
         env:
-          COMMITTER_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMITTER_TOKEN: ${{ secrets.COMMITTER_TOKEN }}
