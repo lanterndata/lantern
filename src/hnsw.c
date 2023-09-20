@@ -47,38 +47,38 @@ static char *hnswbuildphasename(int64 phasenum)
 #endif
 
 /*
- * Helper to compute number of levels we expect to see in our index with N vectors.
- * We could just pull this out of the hnsw header and get rid of this function.
- * However, before doing so, we should benchmark that implementation and compare with
- * this implementation first that computes an expectation.
+ * An element will given a level by random variable`floor(-ln(unif(0, 1)) * mL)`, based on the paper.
+ * Link to paper: https://arxiv.org/pdf/1603.09320.pdf
+ * 
+ * Let the N draws be X_1, ..., X_N where each X_i is unif(0, 1). Let X = min(X_1, ..., X_N).
+ * The total number of levels is floor(-ln(X) * mL) + 1. We want E[floor(-ln(X) * mL) + 1]. 
+ * We will estimate E[-ln(X) * mL + 1]. It can be easily verified that 
+ * E[-ln(X) * mL + 1] - E[floor(-ln(X) * mL) + 1] < 1. Also, we will use n = N.
+ * 
+ * Let Y = ln(X). Then P[Y < z] = P[X < e^z] = 1 - (1 - e^z)^n. 
+ * To see this, note that (1 - x)^n is the probability all n draws are greater than x.
+ * Then, using the fact that E[X] = int_0^inf (1 - P[X < z]) dz - int_-inf^0 P[X < z] dz, (*)
+ * we get E[Y] = -1 * int_-inf^0 (1 - (1 - e^z)^n) dz. We can find equation (*) in the 
+ * Properties section of this page: https://en.wikipedia.org/wiki/Expected_value
+ * 
+ * Substituting y = e^z, we get int_-inf^0 (1 - (1 - e^z)^n) dz = int_0^1 (1 - (1 - y)^n)/y dy.
+ * Substituting t = 1-y, we get int_0^1 (1 - (1 - y)^n)/y dy = int_0^1 (1 - t^n)/(1 - t) dt.
+ * Factoring, we get int_0^1 (1 - t^n)/(1 - t) dt = int_0^1 1 + t + t^2 + ... + t^(n-1) dt
+ * which is equal to 1 + 1/2 + ... + 1/n = H(n). 
+ * 
+ * A well-known approximation for H(n) is ln(n) + 1/2n + 1/12n^2 + g where g = 0.5772156649 is the Euler-Mascheroni constant.
+ * See here: https://math.stackexchange.com/questions/496116/is-there-a-partial-sum-formula-for-the-harmonic-series 
+ * 
+ * We approximate E[-ln(X) * mL + 1] = (ln(n) + 1/2n + 1/12n^2 + g) * mL + 1.
  *
- * An element will be in level given by random variable`floor(-ln(unif(0, 1)) * mL)`, based on the paper.
- * Every time an element is inserted into the index, we "draw" from this random variable.
- *
- * The Expected Value of this distribtion is mL, as the author says in 4.2.2.
- * I.e. when we "draw" a number, we expect it to be mL.
- *
- * However, this is not what we care about. We care about what happens when we do
- * `num_tuples_in_index` "draw"s from this distribution--the expected maximum of
- * all the draws. This is an order statistic.
- * https://en.wikipedia.org/wiki/Order_statistic
- *
- * In particular, let D be a random variable given by `-ln(unif(0, 1)) * mL`.
- * We care about E[Max_N{D}], where Max_N{D} means Maximum out of N draws from D.
- *
- * Let's strip out the constants and irrelevant transformations.
- * E[Max_N{D}] = -ln(E[Min_N{unif(0,1)}]) * mL
- *
- * So we need to compute E[Min_N{unif(0,1)}]. This is well understood, and based on wiki above
- * is 1/(1+n).
- *
- * -ln(1/(1+n)) * mL = ln(1+n)*mL
- *
- * This is O(log(N)), which is what the author claims the scaling with dateset is in 4.2.1 and 4.2.2.
+ * This takes O(log(N)) to calculate, which is what the author claims the scaling with dateset is in 4.2.1 and 4.2.2.
  */
-static uint64 expected_numer_of_levels(double num_tuples_in_index, double mL)
+static uint64 estimate_expected_number_of_levels(double num_tuples_in_index, double mL)
 {
-    return ceil(log(1.0 + num_tuples_in_index) * mL);
+    const double g = 0.5772156649;
+    return floor((log(num_tuples_in_index) + 
+                  1.0 / (2.0 * num_tuples_in_index) + 
+                  1.0 / (12.0 * num_tuples_in_index * num_tuples_in_index) + g) * mL) + 1;
 }
 
 /*
@@ -107,7 +107,7 @@ static uint64 estimate_number_tuples_accessed(Oid index_relation, double num_tup
     const uint64 tuples_visited_for_base_level = ef * S * M * 2;
 
     // this scales logarithmically based on the number of elements in the index
-    const uint64 expected_number_of_levels = expected_numer_of_levels(num_tuples_in_index, mL);
+    const uint64 expected_number_of_levels = estimate_expected_number_of_levels(num_tuples_in_index, mL);
 
     uint64 total_tuple_visits = tuples_visited_per_non_base_level * (expected_number_of_levels - 1);
     total_tuple_visits += expected_number_of_levels > 0 ? tuples_visited_for_base_level : 0;

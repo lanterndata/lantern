@@ -58,10 +58,10 @@ INFO:  done saving 0 vectors
 SELECT is_cost_estimate_within_error('EXPLAIN SELECT * FROM empty_table ORDER BY v <-> ''{1,2}'' LIMIT 10', 0.47);
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 4.225000
+DEBUG:  LANTERN - Total cost: 4.240000
 DEBUG:  LANTERN - Selectivity: 1.000000
 DEBUG:  LANTERN - Num pages: 1.000000
-DEBUG:  LANTERN - Num tuples: 30.000000
+DEBUG:  LANTERN - Num tuples: 32.000000
 DEBUG:  LANTERN - ---------------------
  is_cost_estimate_within_error 
 -------------------------------
@@ -78,10 +78,10 @@ INFO:  done saving 10000 vectors
 SELECT is_cost_estimate_within_error(format(:'explain_query_template', :'v4444'), 3.00);
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 16.345000
+DEBUG:  LANTERN - Total cost: 16.360000
 DEBUG:  LANTERN - Selectivity: 1.000000
 DEBUG:  LANTERN - Num pages: 4.000000
-DEBUG:  LANTERN - Num tuples: 46.000000
+DEBUG:  LANTERN - Num tuples: 48.000000
 DEBUG:  LANTERN - ---------------------
  is_cost_estimate_within_error 
 -------------------------------
