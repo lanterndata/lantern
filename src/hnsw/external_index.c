@@ -517,7 +517,7 @@ BlockNumber getDataBlockNumber(RetrieverCtx *ctx, int id, bool add_to_extra_dirt
                                                  ? ctx->header_page_under_wal->blockmap_page_group_index
                                                  : ctx->blockmap_page_group_index_cache;
     BlockNumber       blockmapno = getBlockMapPageBlockNumber(blockmap_group_index, id);
-    BlockNumber       blockno, blockno_from_cache;
+    BlockNumber       blockno;
     HnswBlockmapPage *blockmap_page;
     Page              page;
     Buffer            buf;
@@ -539,9 +539,9 @@ BlockNumber getDataBlockNumber(RetrieverCtx *ctx, int id, bool add_to_extra_dirt
     // clang-format on
 #endif
 
-    blockno_from_cache = cache_get_item(cache, &id, InvalidBlockNumber);
-    if(blockno_from_cache != InvalidBlockNumber) {
-        return blockno_from_cache;
+    void *blockno_from_cache_p = cache_get_item(cache, &id);
+    if(blockno_from_cache_p != NULL) {
+        return *((BlockNumber *)blockno_from_cache_p);
     }
 
     // it is necessary to first check the extra dirtied pages for the blockmap page, in case we are in the
@@ -566,7 +566,7 @@ BlockNumber getDataBlockNumber(RetrieverCtx *ctx, int id, bool add_to_extra_dirt
 
     offset = id % HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
     blockno = blockmap_page->blocknos[ offset ];
-    cache_set_item(cache, &id, blockmap_page->blocknos[ offset ]);
+    cache_set_item(cache, &id, &blockmap_page->blocknos[ offset ]);
     if(!idx_pagemap_prelocked) {
         UnlockReleaseBuffer(buf);
     }
@@ -583,7 +583,8 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
     OffsetNumber    offset, max_offset;
     Buffer          buf = InvalidBuffer;
     bool            idx_page_prelocked = false;
-    void           *cached_node = cache_get_item(&ctx->node_cache, &id, NULL);
+    void           *cached_node = cache_get_item(&ctx->node_cache, &id);
+
     if(cached_node != NULL) {
         return cached_node;
     }
@@ -651,7 +652,7 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, int id)
     OffsetNumber    offset, max_offset;
     Buffer          buf = InvalidBuffer;
     bool            idx_page_prelocked = false;
-    void           *cached_node = cache_get_item(&ctx->node_cache, &id, NULL);
+    void           *cached_node = cache_get_item(&ctx->node_cache, &id);
 
     if(cached_node != NULL) {
         return cached_node;

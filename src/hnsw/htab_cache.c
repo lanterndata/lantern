@@ -23,14 +23,14 @@ bool cache_remove(HTABCache *cache, HTABCacheKey *key)
     return status;
 }
 
-void *cache_get_item(HTABCache *cache, HTABCacheKey *key, void *defaultval)
+void *cache_get_item(HTABCache *cache, HTABCacheKey *key)
 {
     bool status;
 
     HTABCacheEntry *item = (HTABCacheEntry *)hash_search(cache->htab, key, HASH_FIND, &status);
 
     if(!status) {
-        return defaultval;
+        return NULL;
     }
 
     return item->value;

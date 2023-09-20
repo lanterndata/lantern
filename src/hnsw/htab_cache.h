@@ -20,7 +20,7 @@ typedef struct HTABCache
 
 HTABCache cache_create(char *name, MemoryContext ctx);
 bool      cache_remove(HTABCache *cache, HTABCacheKey *key);
-void     *cache_get_item(HTABCache *cache, HTABCacheKey *key, void *defaultval);
+void     *cache_get_item(HTABCache *cache, HTABCacheKey *key);
 void      cache_set_item(HTABCache *cache, HTABCacheKey *key, void *entry);
 void      cache_destroy(HTABCache *cache);
 
