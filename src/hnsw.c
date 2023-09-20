@@ -71,14 +71,14 @@ static char *hnswbuildphasename(int64 phasenum)
  * Factoring, we get int_0^1 (1 - t^n)/(1 - t) dt = int_0^1 1 + t + t^2 + ... + t^(n-1) dt
  * which is equal to 1 + 1/2 + ... + 1/n = H(n). 
  * 
- * A well-known approximation for H(n) is ln(n) + 1/2n + 1/12n^2 + g where g is the Euler-Mascheroni constant.
+ * A well-known approximation for H(n) is ln(n) + 1/2n + 1/12n^2 + g where g = 0.5772156649 is the Euler-Mascheroni constant.
  * See here: https://math.stackexchange.com/questions/496116/is-there-a-partial-sum-formula-for-the-harmonic-series 
  * 
  * We approximate E[-ln(X) * mL + 1] = (ln(n) + 1/2n + 1/12n^2 + g) * mL + 1.
  *
  * This takes O(log(N)) time to calculate, which is what the author claims the scaling with dateset is in 4.2.1 and 4.2.2.
  */
-static uint64 expected_number_of_levels(double num_tuples_in_index, double mL)
+static uint64 estimate_expected_number_of_levels(double num_tuples_in_index, double mL)
 {
     const double g = 0.5772156649;
     return floor((log(num_tuples_in_index) + 1.0 / (2.0 * n) + 1.0 / (12.0 * n * n) + g) * mL) + 1;
@@ -110,7 +110,7 @@ static uint64 estimate_number_tuples_accessed(Oid index_relation, double num_tup
     const uint64 tuples_visited_for_base_level = ef * S * M * 2;
 
     // this scales logarithmically based on the number of elements in the index
-    const uint64 expected_number_of_levels = expected_number_of_levels(num_tuples_in_index, mL);
+    const uint64 expected_number_of_levels = estimate_expected_number_of_levels(num_tuples_in_index, mL);
 
     uint64 total_tuple_visits = tuples_visited_per_non_base_level * (expected_number_of_levels - 1);
     total_tuple_visits += expected_number_of_levels > 0 ? tuples_visited_for_base_level : 0;
