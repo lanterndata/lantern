@@ -1,12 +1,10 @@
-use std::{
-    cmp,
-    sync::{Arc, Barrier},
-};
-use threadpool::ThreadPool;
+use std::sync::mpsc;
+use std::sync::mpsc::{Receiver, Sender};
+use std::sync::{Arc, Mutex};
 
 use clap::Parser;
 use cxx::UniquePtr;
-use postgres::{Client, NoTls};
+use postgres::{Client, NoTls, Row};
 use postgres_types::FromSql;
 use usearch::ffi::*;
 
@@ -50,21 +48,10 @@ impl<'a> FromSql<'a> for Tid {
 }
 
 fn index_chunk(
-    offset: usize,
-    limit: usize,
+    rows: Vec<Row>,
     thread_n: usize,
-    client: &mut postgres::Client,
     index: Arc<ThreadSafeIndex>,
-    args: Arc<cli::Args>,
 ) -> Result<(), anyhow::Error> {
-    let rows = client.query(
-        &format!(
-            "SELECT ctid, {} FROM {} ORDER BY ctid LIMIT {} OFFSET {};",
-            args.column, args.table, limit, offset
-        ),
-        &[],
-    )?;
-
     let row_count = rows.len();
 
     for row in rows {
@@ -106,75 +93,77 @@ fn create_usearch_index(args: cli::Args) -> Result<(), anyhow::Error> {
     };
 
     let num_cores: usize = std::thread::available_parallelism().unwrap().into();
-    let pool = ThreadPool::new(num_cores);
     println!("[*] Number of available CPU cores: {}", num_cores);
 
     let index = new_index(&options)?;
     // get all row count
-    let mut main_client = Client::connect(&args.uri, NoTls).unwrap();
-    let rows = main_client.query(&format!("SELECT COUNT(*) FROM {};", args.table), &[])?;
+    let mut client = Client::connect(&args.uri, NoTls).unwrap();
+    let mut transaction = client.transaction()?;
+    let rows = transaction.query(&format!("SELECT COUNT(*) FROM {};", args.table), &[])?;
 
     let count: i64 = rows[0].get(0);
-    let count: usize = count as usize;
     // reserve enough memory on index
     index.reserve(count as usize)?;
-
-    // data that each thread will process
-    let data_per_thread = if num_cores > count {
-        count
-    } else {
-        (num_cores + count - 1) / num_cores
-    };
-
     let thread_safe_index = ThreadSafeIndex { inner: index };
-
-    let index_arc = Arc::new(thread_safe_index);
-    let args_arc = Arc::new(args);
 
     println!("[*] Items to index {}", count);
 
-    let barrier = Arc::new(Barrier::new(num_cores + 1));
+    let index_arc = Arc::new(thread_safe_index);
+
+    // Create a vector to store thread handles
+    let mut handles = vec![];
+
+    let (tx, rx): (Sender<Vec<Row>>, Receiver<Vec<Row>>) = mpsc::channel();
+    let rx_arc = Arc::new(Mutex::new(rx));
+
     for n in 0..num_cores {
-        let barrier = barrier.clone();
         // spawn thread
         let index_ref = index_arc.clone();
-        let args_ref = args_arc.clone();
-        pool.execute(move || {
-            // chunk count that each thread will process
-            // if data for each thread is more than chunks
-            // it will be devided into sub chunks and processed sequentially inside the thread
-            // this is done to not consume too much memory
-            let chunks = cmp::min(data_per_thread, 10000);
+        let receiver = rx_arc.clone();
 
-            let iterations = if data_per_thread < chunks {
-                1
-            } else {
-                (chunks + data_per_thread - 1) / chunks
-            };
+        let handle = std::thread::spawn(move || loop {
+            let rx = receiver.lock().unwrap();
+            let rows = rx.recv();
+            // release the lock so other threads can take rows
+            drop(rx);
 
-            let thread_offset = n * data_per_thread;
-            let mut client = Client::connect(&args_ref.uri, NoTls).unwrap();
-
-            for i in 0..iterations {
-                let offset = thread_offset + i * chunks;
-                index_chunk(
-                    offset,
-                    chunks,
-                    n,
-                    &mut client,
-                    index_ref.clone(),
-                    args_ref.clone(),
-                )
-                .unwrap();
+            if rows.is_err() {
+                // channel has been closed
+                break;
             }
-
-            barrier.wait();
+            let rows = rows.unwrap();
+            index_chunk(rows, n, index_ref.clone()).unwrap();
         });
+        handles.push(handle);
     }
-    barrier.wait();
 
-    index_arc.save(&args_arc.out);
-    println!("[*] Index saved under {}", &args_arc.out);
+    // With portal we can execute a query and poll values from it in chunks
+    let portal = transaction
+        .bind(
+            &format!("SELECT ctid, {} FROM {};", &args.column, &args.table),
+            &[],
+        )
+        .unwrap();
+
+    loop {
+        // poll 2000 rows from portal and send it to worker threads via channel
+        let rows = transaction.query_portal(&portal, 2000).unwrap();
+        if rows.len() == 0 {
+            break;
+        }
+        tx.send(rows).unwrap();
+    }
+
+    // Exit all channels
+    drop(tx);
+
+    // Wait for all threads to finish processing
+    for handle in handles {
+        handle.join().unwrap();
+    }
+
+    index_arc.save(&args.out);
+    println!("[*] Index saved under {}", &args.out);
     Ok(())
 }
 
@@ -184,5 +173,6 @@ fn main() {
         "[*] Creating index with parameters dimensions={} m={} ef={} ef_construction={}",
         args.dims, args.m, args.ef, args.efc
     );
+
     create_usearch_index(args).unwrap();
 }

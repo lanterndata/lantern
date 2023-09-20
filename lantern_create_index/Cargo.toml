@@ -19,5 +19,4 @@ clap = { version = "4.4.0", features = ["derive"] }
 cxx = "1.0.106"
 postgres = "0.19.7"
 postgres-types = { version = "0.2.6", features = ["derive"] }
-threadpool = "1.8.1"
 usearch = { git = "https://github.com/Ngalstyan4/usearch.git", branch = "pg-rebase" }
