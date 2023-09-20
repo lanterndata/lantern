@@ -52,6 +52,8 @@ jobs:
     needs: [build]
     steps:
       - uses: actions/checkout@v3
+        with:
+          submodules: "recursive"
       - uses: actions/download-artifact@v3
         with:
           name: lantern-package
@@ -78,3 +80,13 @@ jobs:
           tag_name: v${{ steps.package.outputs.package_version }}
           files: ${{ steps.package.outputs.package_path }}
           generate_release_notes: true
+      - name: Homebrew release
+        uses: Justintime50/homebrew-releaser@v1
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_release }}
+        with:
+          formula-name: lantern
+          formula-path: Formula/l/lantern.rb
+          homebrew-tap: lanterndata/brew-releases
+          base-branch: main
+        env:
+          COMMITTER_TOKEN: ${{ secrets.GITHUB_TOKEN }}
