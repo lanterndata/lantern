@@ -82,8 +82,8 @@ static uint64 estimate_expected_number_of_levels(double num_tuples_in_index, dou
 {
     const double g = 0.5772156649;
     return floor((log(num_tuples_in_index) + 
-                      1.0 / (2.0 * num_tuples_in_index) + 
-                      1.0 / (12.0 * num_tuples_in_index * num_tuples_in_index) + g) * mL) + 1;
+                  1.0 / (2.0 * num_tuples_in_index) + 
+                  1.0 / (12.0 * num_tuples_in_index * num_tuples_in_index) + g) * mL) + 1;
 }
 
 /*
