@@ -6,7 +6,7 @@ SCRIPT=$(realpath "$0")
 THIS_DIR=$(dirname "$SCRIPT")
 
 # get all the symbols our shared library assumes are externally provided
-MAYBE_EXTERN=$(nm -u $1 | awk '{print $2}' | sed  -e 's/@/@@/')
+MAYBE_EXTERN=$(nm -D $1 | grep ' U ' | awk '{print $2}' | sed -e 's/@.*//')
 
 # get all the symbols that are externally provided
 EXTERN_PROVIDED=$($THIS_DIR/extern_defined.sh)
