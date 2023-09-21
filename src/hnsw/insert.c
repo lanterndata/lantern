@@ -4,7 +4,9 @@
 
 #include <access/generic_xlog.h>
 #include <assert.h>
+#include <common/pg_prng.h>
 #include <float.h>
+#include <math.h>
 #include <storage/bufmgr.h>
 #include <utils/array.h>
 #include <utils/rel.h>
@@ -18,6 +20,20 @@
 #include "usearch.h"
 #include "utils.h"
 #include "vector.h"
+
+/*
+ * Generate a random level for a new externally stored vector
+ * Rewrite of usearch_newnode_level from usearch, but using a Postgres' rng in <common/pg_prng.h> and its global state
+ * as the source of randomness
+ */
+static uint32 hnsw_generate_new_level(size_t connectivity)
+{
+    // todo:: we can precompute inverse_log_connectivity since it is constant
+    double inverse_log_connectivity = 1.0 / log((double)connectivity);
+    double rand_num = pg_prng_double(&pg_global_prng_state);
+    double level = -1 * log(rand_num) * inverse_log_connectivity;
+    return (uint32)level;
+}
 
 /*
  * Insert a tuple into the index
@@ -125,7 +141,7 @@ bool ldb_aminsert(Relation         index,
     elog(DEBUG5, "Insert: at start num vectors is %d", hdr->num_vectors);
 
     usearch_reserve(uidx, hdr->num_vectors + 1, &error);
-    uint32 level = usearch_newnode_level(uidx, &error);
+    uint32 level = hnsw_generate_new_level(meta.connectivity);
     if(error != NULL) {
         elog(ERROR, "usearch newnode error: %s", error);
     }
