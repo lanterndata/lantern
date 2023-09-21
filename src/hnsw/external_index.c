@@ -21,6 +21,60 @@
 
 static BlockNumber getBlockMapPageBlockNumber(uint32 *blockmap_page_group_index, int id);
 
+// If additional columns have been included retrieve them from the heap and add them to the index tuple
+static size_t AddIncludesToTuple(Relation heap, AttrNumber *attrs, ItemPointer tid, HnswIndexTuple *index_tuple) {
+    HeapTuple tuple;
+    bool isNull;
+    Datum datum;
+    size_t offset = 0;
+    size_t includes_size = 0;
+    int16 attrlen;
+    Form_pg_attribute attrInfo;
+    AttrNumber attr;
+
+    // TODO are these pallocs in an arena? index_tuple isnt freed in the calling context
+    // Get a tuple using the usearch label 
+    tuple = GetTupleFromItemPointer(heap, tid);
+    if (index_tuple->n_additional_attrs) {
+
+        index_tuple->attr_size = (int16*)palloc(index_tuple->n_additional_attrs * sizeof(uint16));
+
+        // Loop over included attributes and record the sum of their size
+        for (size_t i = 0; i < index_tuple->n_additional_attrs; i++) {
+            // We already ensure there is only 1 key column
+            attr = attrs[ 1 + i ];
+
+            // Get attribute description and verify it has positive length
+            attrInfo = TupleDescAttr(RelationGetDescr(heap), attr - 1);
+            attrlen = attrInfo->attlen;
+            if (attrlen <= 0 ) {
+                elog(ERROR, "Lantern only supports INCLUDE on columns of fixed size");
+            }
+            index_tuple->attr_size[ i ] = attrlen;
+            includes_size += attrlen;
+        }
+        index_tuple->include_attrs = (char*)palloc(includes_size);
+        // Loop over included attributes again and copy their value into our buffer
+        for (size_t i = 0; i < index_tuple->n_additional_attrs; i++) {
+            attr = attrs[ 1 + i ];
+            attrlen = index_tuple->attr_size[ i ];
+
+            // TODO check isNull
+            datum = heap_getattr(tuple, attr, RelationGetDescr(heap), &isNull);
+            // typecast is safe because all integers are confirmed positive above
+            if ((unsigned long int)attrlen <= sizeof(Datum)) {
+                elog(INFO, "array size=%ld offset=%ld datum=%ld, len=%d", includes_size, offset, datum, attrlen);
+                memcpy(index_tuple->include_attrs + offset, &datum, attrlen);
+            } else {
+                elog(INFO, "array size=%ld offset=%ld datum=%ld, len=%d", includes_size, offset, datum, attrlen);
+                memcpy(index_tuple->include_attrs + offset, (void*)datum, attrlen);
+            }
+            offset += attrlen;
+        }
+    }
+    return includes_size;
+}
+
 static uint32 UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, int level)
 {
     const int NODE_HEAD_BYTES = sizeof(usearch_label_t) + 4 /*sizeof dim */ + 4 /*sizeof level*/;
@@ -103,6 +157,8 @@ int CreateBlockMapGroup(
 }
 
 void StoreExternalIndexBlockMapGroup(Relation             index,
+                                     Relation             heap,
+                                     IndexInfo           *indexInfo,
                                      usearch_index_t      external_index,
                                      HnswIndexHeaderPage *headerp,
                                      ForkNumber           forkNum,
@@ -165,6 +221,15 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
             memset(bufferpage, 0, BLCKSZ);
             /************* extract node from usearch index************/
 
+            // We use an itempointer as our label, and the label is the first 8 bytes of a serialized node
+            usearch_label_t label = 0;
+            memcpy((unsigned long*)&label, data + *progress, sizeof(usearch_label_t));
+            ItemPointer tid = GetTidFromLabel(label);
+
+            // number of columns INCLUDEd
+            bufferpage->n_additional_attrs = indexInfo->ii_NumIndexAttrs - indexInfo->ii_NumIndexKeyAttrs;
+            size_t include_size = AddIncludesToTuple(heap, indexInfo->ii_IndexAttrNumbers, tid, bufferpage);
+
             node = extract_node(data,
                                 *progress,
                                 dimension,
@@ -184,7 +249,8 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
             // node should not be larger than the 8k bufferpage
             // invariant holds because of dimension <2000 check in index creation
             // once quantization is enabled, we can allow larger overall dims
-            assert(bufferpage + offsetof(HnswIndexTuple, node) + node_size < bufferpage + BLCKSZ);
+            // TODO this will fail large vectors with includes, need to update this
+            assert(bufferpage + offsetof(HnswIndexTuple, node) + node_size + include_size < bufferpage + BLCKSZ);
             memcpy(bufferpage->node, node, node_size);
 
             if(PageAddItem(
@@ -192,6 +258,14 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
                == InvalidOffsetNumber) {
                 // break to get a fresh page
                 // todo:: properly test this case
+                break;
+            }else if(PageAddItem(
+                   page, (Item)bufferpage->attr_size, 2 * bufferpage->n_additional_attrs, InvalidOffsetNumber, false, false)
+               == InvalidOffsetNumber) {
+                break;
+            } else if(PageAddItem(
+                   page, (Item)bufferpage->include_attrs, include_size, InvalidOffsetNumber, false, false)
+               == InvalidOffsetNumber) {
                 break;
             }
 
@@ -238,6 +312,8 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
 }
 
 void StoreExternalIndex(Relation                index,
+                        Relation                heap,
+                        IndexInfo              *indexInfo,
                         usearch_index_t         external_index,
                         ForkNumber              forkNum,
                         char                   *data,
@@ -282,6 +358,8 @@ void StoreExternalIndex(Relation                index,
     int batch_size = HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
     while(num_added_vectors_remaining > 0) {
         StoreExternalIndexBlockMapGroup(index,
+                                        heap,
+                                        indexInfo,
                                         external_index,
                                         headerp,
                                         forkNum,

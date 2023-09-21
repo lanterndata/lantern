@@ -188,7 +188,7 @@ int GetHnswIndexDimensions(Relation index)
             ldb_HnswOptions *opts;
             int              attrNum;
 
-            assert(index->rd_index->indnatts == 1);
+            assert(index->rd_index->indnkeyatts == 1);
             attrNum = index->rd_index->indkey.values[ 0 ];
 #if PG_VERSION_NUM < 120000
             heap = heap_open(index->rd_index->indrelid, AccessShareLock);
@@ -403,7 +403,7 @@ static void BuildIndex(
 
     //****************************** saving to WAL BEGIN ******************************//
     UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_LOAD);
-    StoreExternalIndex(index, buildstate->usearch_index, forkNum, result_buf, &opts, num_added_vectors);
+    StoreExternalIndex(index, heap, indexInfo, buildstate->usearch_index, forkNum, result_buf, &opts, num_added_vectors);
 
     //****************************** saving to WAL END ******************************//
 

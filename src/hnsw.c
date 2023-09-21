@@ -243,7 +243,7 @@ Datum       hnsw_handler(PG_FUNCTION_ARGS __attribute__((unused)))
     amroutine->amclusterable = false;
     amroutine->ampredlocks = false;
     amroutine->amcanparallel = false;
-    amroutine->amcaninclude = false;
+    amroutine->amcaninclude = true;
 #if PG_VERSION_NUM >= 130000
     amroutine->amusemaintenanceworkmem = false; /* not used during VACUUM */
     amroutine->amparallelvacuumoptions = VACUUM_OPTION_PARALLEL_BULKDEL;

@@ -8,6 +8,7 @@
 #include <lib/ilist.h>       // Dlist
 #include <storage/bufmgr.h>  // Buffer
 #include <utils/relcache.h>  // Relation
+#include <nodes/execnodes.h>
 
 #include "extra_dirtied.h"
 #include "hnsw.h"
@@ -62,6 +63,10 @@ typedef struct HnswIndexTuple
 {
     uint32 id;
     uint32 level;
+    // infromation about INCLUDEd columns
+    uint32 n_additional_attrs;
+    int16    *attr_size;
+    char   *include_attrs;
     // stores size of the flexible array member
     uint32 size;
     char   node[ FLEXIBLE_ARRAY_MEMBER ];
@@ -112,6 +117,8 @@ typedef struct
 } HnswInsertState;
 
 void StoreExternalIndex(Relation                index,
+                        Relation                heap,
+                        IndexInfo              *indexInfo,
                         usearch_index_t         external_index,
                         ForkNumber              forkNum,
                         char                   *data,
