@@ -652,11 +652,6 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, int id)
     OffsetNumber    offset, max_offset;
     Buffer          buf = InvalidBuffer;
     bool            idx_page_prelocked = false;
-    void           *cached_node = cache_get_item(&ctx->node_cache, &id);
-
-    if(cached_node != NULL) {
-        return cached_node;
-    }
 
     // here, we don't bother looking up the fully associative cache because
     // given the current usage of _mut, it is never going to be in the chache
