@@ -39,6 +39,8 @@ SED_PATTERN='s/@/@/p' # noop pattern
 nm -D --with-symbol-versions $PG_BIN | grep " T " | awk '{print $3}' | sed -e "$SED_PATTERN"
 # global bss symbol in postgres
 nm -D --with-symbol-versions $PG_BIN | grep " B " | awk '{print $3}' | sed -e "$SED_PATTERN"
+# postgres Initialized data (bbs), global symbols
+nm -D --with-symbol-versions $PG_BIN | grep " D " | awk '{print $3}' | sed -e "$SED_PATTERN"
 # postgres weak symbols
 nm -D --with-symbol-versions $PG_BIN | grep " w " | awk '{print $2}' | sed -e "$SED_PATTERN"
 

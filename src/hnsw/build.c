@@ -159,7 +159,11 @@ static int GetArrayLengthFromExpression(Expr *expression, Relation heap, HeapTup
     // Build the expression state for your expression
     exprstate = ExecPrepareExpr(expression, estate);
 
-    ExecStoreHeapTuple(tuple, slot, true);
+#if PG_VERSION_NUM >= 120000
+    ExecStoreHeapTuple(tuple, slot, false);
+#else
+    ExecStoreTuple(tuple, slot, InvalidBuffer, false);
+#endif
     // Set up the tuple for the expression evaluation
     econtext->ecxt_scantuple = slot;
 
