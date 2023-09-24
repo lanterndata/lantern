@@ -98,7 +98,7 @@ FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
          Order By: (v <-> '[0,1,0]'::vector)
 (3 rows)
 
-SELECT ROUND(vector_l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+SELECT ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
  dist 
 ------
@@ -111,7 +111,7 @@ FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
  2.00
 (7 rows)
 
-EXPLAIN (COSTS FALSE) SELECT ROUND(vector_l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+EXPLAIN (COSTS FALSE) SELECT ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
                        QUERY PLAN                        
 ---------------------------------------------------------
@@ -171,5 +171,5 @@ ERROR:  Operator <-> has no standalone meaning and is reserved for use in vector
 -- Expect error due to mismatching vector dimensions
 SELECT 1 FROM small_world ORDER BY v <-> '[0,1,0,1]' LIMIT 1;
 ERROR:  Expected vector with dimension 3, got 4
-SELECT vector_l2sq_dist('[1,1]'::vector, '[0,1,0]'::vector);
+SELECT l2sq_dist('[1,1]'::vector, '[0,1,0]'::vector);
 ERROR:  expected equally sized vectors but got vectors with dimensions 2 and 3
