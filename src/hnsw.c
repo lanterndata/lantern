@@ -18,6 +18,7 @@
 #include "hnsw/insert.h"
 #include "hnsw/options.h"
 #include "hnsw/scan.h"
+#include "hnsw/utils.h"
 #include "hnsw/vector.h"
 #include "usearch.h"
 
@@ -187,13 +188,13 @@ static void hnswcostestimate(PlannerInfo *root,
     *indexCorrelation = 0;
     *indexPages = num_blocks_accessed;
 
-    elog(DEBUG5, "LANTERN - Query cost estimator");
-    elog(DEBUG5, "LANTERN - ---------------------");
-    elog(DEBUG5, "LANTERN - Total cost: %lf", *indexTotalCost);
-    elog(DEBUG5, "LANTERN - Selectivity: %lf", *indexSelectivity);
-    elog(DEBUG5, "LANTERN - Num pages: %lf", *indexPages);
-    elog(DEBUG5, "LANTERN - Num tuples: %lf", costs.numIndexTuples);
-    elog(DEBUG5, "LANTERN - ---------------------");
+    ldb_dlog("LANTERN - Query cost estimator");
+    ldb_dlog("LANTERN - ---------------------");
+    ldb_dlog("LANTERN - Total cost: %lf", *indexTotalCost);
+    ldb_dlog("LANTERN - Selectivity: %lf", *indexSelectivity);
+    ldb_dlog("LANTERN - Num pages: %lf", *indexPages);
+    ldb_dlog("LANTERN - Num tuples: %lf", costs.numIndexTuples);
+    ldb_dlog("LANTERN - ---------------------");
 }
 
 /*

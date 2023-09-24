@@ -54,6 +54,7 @@ SELECT 1 FROM test1 WHERE id = 0 + 1;
 (1 row)
 
 -- Verify that the index is being used
+SET _lantern_internal.is_test = true;
 EXPLAIN (COSTS FALSE) SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 1;
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
@@ -88,6 +89,7 @@ DEBUG:  LANTERN - Selectivity: 1.000000
 DEBUG:  LANTERN - Num pages: 1.000000
 DEBUG:  LANTERN - Num tuples: 2.000000
 DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN querying index for 10 elements
  count 
 -------
      3
@@ -103,6 +105,7 @@ DEBUG:  LANTERN - Selectivity: 1.000000
 DEBUG:  LANTERN - Num pages: 1.000000
 DEBUG:  LANTERN - Num tuples: 2.000000
 DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN querying index for 10 elements
  count 
 -------
      8
@@ -120,6 +123,7 @@ DEBUG:  LANTERN - Selectivity: 1.000000
 DEBUG:  LANTERN - Num pages: 1.000000
 DEBUG:  LANTERN - Num tuples: 2.000000
 DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN querying index for 4 elements
  count 
 -------
      3
@@ -135,12 +139,15 @@ DEBUG:  LANTERN - Selectivity: 1.000000
 DEBUG:  LANTERN - Num pages: 1.000000
 DEBUG:  LANTERN - Num tuples: 2.000000
 DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN querying index for 4 elements
+DEBUG:  LANTERN - querying index for 8 elements
  count 
 -------
      8
 (1 row)
 
 RESET client_min_messages;
+SET _lantern_internal.is_test = false;
 -- Verify where condition works properly and still uses index
 SELECT has_index_scan('EXPLAIN SELECT * FROM small_world WHERE b IS TRUE ORDER BY v <-> ''{0,0,0}''');
  has_index_scan 
