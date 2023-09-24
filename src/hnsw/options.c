@@ -29,6 +29,11 @@ static relopt_kind ldb_hnsw_index_withopts;
 
 int ldb_hnsw_init_k;
 
+// this variable is only set during testing and controls whether
+// certain elog() calls are made
+// see ldb_dlog() definition and callsites for details
+bool ldb_is_test;
+
 int ldb_HnswGetDim(Relation index)
 {
     ldb_HnswOptions *opts = (ldb_HnswOptions *)index->rd_options;
@@ -214,6 +219,17 @@ void _PG_init(void)
                             NULL,
                             NULL,
                             NULL);
+
+    DefineCustomBoolVariable("_lantern_internal.is_test",
+                             "Whether or not the DB is in a regression test",
+                             "set this to 1 to enable extra logging for use in lanterndb regression tests",
+                             &ldb_is_test,
+                             false,
+                             PGC_USERSET,
+                             0,
+                             NULL,
+                             NULL,
+                             NULL);
 }
 
 // Called with extension unload.

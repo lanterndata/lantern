@@ -64,8 +64,7 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     opts.retriever = ldb_wal_index_node_retriever;
     opts.retriever_mut = ldb_wal_index_node_retriever_mut;
 
-    ldb_dlog(INFO,
-             "starting scan with dimensions=%d M=%ld efConstruction=%ld ef=%ld",
+    ldb_dlog("starting scan with dimensions=%d M=%ld efConstruction=%ld ef=%ld",
              dimensions,
              opts.connectivity,
              opts.expansion_add,
@@ -193,7 +192,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
             scanstate->labels = palloc(k * sizeof(usearch_label_t));
         }
 
-        ldb_dlog(DEBUG5, "LANTERN querying index for %d elements", k);
+        ldb_dlog("LANTERN querying index for %d elements", k);
         num_returned = usearch_search(
             scanstate->usearch_index, vec, usearch_scalar_f32_k, k, scanstate->labels, scanstate->distances, &error);
         ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);
@@ -228,7 +227,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         scanstate->distances = repalloc(scanstate->distances, k * sizeof(float));
         scanstate->labels = repalloc(scanstate->labels, k * sizeof(usearch_label_t));
 
-        ldb_dlog(DEBUG5, "LANTERN - querying index for %d elements", k);
+        ldb_dlog("LANTERN - querying index for %d elements", k);
         num_returned = usearch_search(
             scanstate->usearch_index, vec, usearch_scalar_f32_k, k, scanstate->labels, scanstate->distances, &error);
         ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);
