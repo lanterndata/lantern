@@ -7,6 +7,8 @@
 #include <catalog/index.h>
 #include <catalog/namespace.h>
 #include <catalog/pg_type.h>
+#include <executor/executor.h>
+#include <nodes/execnodes.h>
 #include <storage/bufmgr.h>
 #include <utils/array.h>
 #include <utils/lsyscache.h>
@@ -132,7 +134,55 @@ static void BuildCallback(
     MemoryContextReset(buildstate->tmpCtx);
 }
 
-static int GetArrayLengthFromHeap(Relation heap, int indexCol)
+static int GetArrayLengthFromExpression(Expr *expression, Relation heap, HeapTuple tuple)
+{
+    ExprContext    *econtext;
+    ExprState      *exprstate;
+    EState         *estate;
+    Datum           result;
+    bool            isNull;
+    ArrayType      *array;
+    int             n_items = HNSW_DEFAULT_DIM;
+    TupleTableSlot *slot;
+    TupleDesc       tupdesc = RelationGetDescr(heap);
+
+#if PG_VERSION_NUM >= 120000
+    slot = MakeSingleTupleTableSlot(tupdesc, &TTSOpsHeapTuple);
+#else
+    slot = MakeSingleTupleTableSlot(tupdesc);
+#endif
+
+    // Create an expression context
+    econtext = CreateStandaloneExprContext();
+    estate = CreateExecutorState();
+
+    // Build the expression state for your expression
+    exprstate = ExecPrepareExpr(expression, estate);
+
+    ExecStoreHeapTuple(tuple, slot, true);
+    // Set up the tuple for the expression evaluation
+    econtext->ecxt_scantuple = slot;
+
+    // Evaluate the expression for the first row
+    result = ExecEvalExprSwitchContext(exprstate, econtext, &isNull);
+
+    // Release tuple descriptor
+    ReleaseTupleDesc(tupdesc);
+
+    // Check if the result is not null
+    if(!isNull) {
+        // todo check if datum is array
+        array = DatumGetArrayTypePCopy(result);
+        n_items = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
+        return n_items;
+    } else {
+        elog(ERROR, "Expression did not result in an array");
+    }
+
+    return n_items;
+}
+
+static int GetArrayLengthFromHeap(Relation heap, int indexCol, IndexInfo *indexInfo)
 {
 #if PG_VERSION_NUM < 120000
     HeapScanDesc scan;
@@ -161,11 +211,16 @@ static int GetArrayLengthFromHeap(Relation heap, int indexCol)
         return n_items;
     }
 
-    // Get the indexed column out of the row and return it's dimensions
-    datum = heap_getattr(tuple, indexCol, RelationGetDescr(heap), &isNull);
-    if(!isNull) {
-        array = DatumGetArrayTypePCopy(datum);
-        n_items = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
+    if(indexInfo->ii_Expressions != NULL) {
+        Expr *indexpr_item = lfirst(list_head(indexInfo->ii_Expressions));
+        n_items = GetArrayLengthFromExpression(indexpr_item, heap, tuple);
+    } else {
+        // Get the indexed column out of the row and return it's dimensions
+        datum = heap_getattr(tuple, indexCol, RelationGetDescr(heap), &isNull);
+        if(!isNull) {
+            array = DatumGetArrayTypePCopy(datum);
+            n_items = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
+        }
     }
 
     heap_endscan(scan);
@@ -173,7 +228,7 @@ static int GetArrayLengthFromHeap(Relation heap, int indexCol)
     return n_items;
 }
 
-int GetHnswIndexDimensions(Relation index)
+int GetHnswIndexDimensions(Relation index, IndexInfo *indexInfo)
 {
     HnswColumnType columnType = GetIndexColumnType(index);
 
@@ -195,7 +250,7 @@ int GetHnswIndexDimensions(Relation index)
 #else
             heap = table_open(index->rd_index->indrelid, AccessShareLock);
 #endif
-            opt_dim = GetArrayLengthFromHeap(heap, attrNum);
+            opt_dim = GetArrayLengthFromHeap(heap, attrNum, indexInfo);
             opts = (ldb_HnswOptions *)index->rd_options;
             if(opts != NULL) {
                 opts->dim = opt_dim;
@@ -248,7 +303,7 @@ static int InferDimension(Relation heap, IndexInfo *indexInfo)
     }
 
     indexCol = indexInfo->ii_IndexAttrNumbers[ 0 ];
-    return GetArrayLengthFromHeap(heap, indexCol);
+    return GetArrayLengthFromHeap(heap, indexCol, indexInfo);
 }
 
 /*
@@ -260,7 +315,7 @@ static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation i
     buildstate->index = index;
     buildstate->indexInfo = indexInfo;
     buildstate->columnType = GetIndexColumnType(index);
-    buildstate->dimensions = GetHnswIndexDimensions(index);
+    buildstate->dimensions = GetHnswIndexDimensions(index, indexInfo);
     buildstate->index_file_path = ldb_HnswGetIndexFilePath(index);
 
     // If a dimension wasn't specified try to infer it
