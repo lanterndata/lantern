@@ -21,53 +21,142 @@
 
 static BlockNumber getBlockMapPageBlockNumber(uint32 *blockmap_page_group_index, int id);
 
+char *serializeHnswIndexTuple(const HnswIndexTuple *tuple)
+{
+    // TODO nullity checks
+    // Calculate total size required for include_attrs
+    uint32 include_attrs_size = 0;
+    for(uint32 i = 0; i < tuple->n_additional_attrs; i++) {
+        include_attrs_size += tuple->attr_size[ i ];
+    }
+
+    uint32 output_length = sizeof(uint32) * 4 +                         // id, level, n_additional, size
+                           tuple->n_additional_attrs * sizeof(int16) +  // attr_size
+                           include_attrs_size + tuple->size;
+
+    elog(INFO, "output_len=%u size=%u include_attrs_size=%u", output_length, tuple->size, include_attrs_size);
+    char *buffer = (char *)palloc(output_length);
+
+    char *head = buffer;
+
+    memcpy(head, &(tuple->id), sizeof(tuple->id));
+    head += sizeof(tuple->id);
+
+    memcpy(head, &(tuple->level), sizeof(tuple->level));
+    head += sizeof(tuple->level);
+
+    memcpy(head, &(tuple->size), sizeof(tuple->size));
+    head += sizeof(tuple->size);
+
+    memcpy(head, &(tuple->n_additional_attrs), sizeof(tuple->n_additional_attrs));
+    head += sizeof(tuple->n_additional_attrs);
+
+    memcpy(head, tuple->attr_size, tuple->n_additional_attrs * sizeof(uint16));
+    head += tuple->n_additional_attrs * sizeof(uint16);
+
+    memcpy(head, tuple->include_attrs, include_attrs_size);
+    head += include_attrs_size;
+
+    memcpy(head, tuple->node, tuple->size);
+    //    elog(INFO, "node in serialize: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+    //	  tuple->node[0], tuple->node[1], tuple->node[2],
+    //	  tuple->node[3], tuple->node[4], tuple->node[5],
+    //	  tuple->node[6], tuple->node[7], tuple->node[8],
+    //	  tuple->node[9]);
+
+    return buffer;
+}
+
+HnswIndexTuple *deserializeHnswIndexTuple(char *buffer)
+{
+    //    elog(INFO, "Bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+    //	  (unsigned char)buffer[0], (unsigned char)buffer[1], (unsigned char)buffer[2],
+    //	  (unsigned char)buffer[3], (unsigned char)buffer[4], (unsigned char)buffer[5],
+    //	  (unsigned char)buffer[6], (unsigned char)buffer[7], (unsigned char)buffer[8],
+    //	  (unsigned char)buffer[9]);
+    HnswIndexTuple *tuple = (HnswIndexTuple *)palloc(sizeof(HnswIndexTuple));
+
+    const char *head = buffer;
+
+    memcpy(&(tuple->id), head, sizeof(tuple->id));
+    head += sizeof(tuple->id);
+
+    memcpy(&(tuple->level), head, sizeof(tuple->level));
+    head += sizeof(tuple->level);
+
+    memcpy(&(tuple->size), head, sizeof(tuple->size));
+    head += sizeof(tuple->size);
+
+    memcpy(&(tuple->n_additional_attrs), head, sizeof(tuple->n_additional_attrs));
+    head += sizeof(tuple->n_additional_attrs);
+
+    // tuple->attr_size = (int16*) palloc(tuple->n_additional_attrs * sizeof(uint16));
+    // memcpy(tuple->attr_size, head, tuple->n_additional_attrs * sizeof(uint16));
+    tuple->attr_size = head;
+    head += tuple->n_additional_attrs * sizeof(uint16);
+
+    uint32 include_attrs_size = 0;
+    for(uint32 i = 0; i < tuple->n_additional_attrs; i++) {
+        include_attrs_size += tuple->attr_size[ i ];
+    }
+
+    // tuple->include_attrs = (char*) palloc(include_attrs_size);
+    // memcpy(tuple->include_attrs, head, include_attrs_size);
+    tuple->include_attrs = head;
+    head += include_attrs_size;
+
+    // tuple->node = (char*) palloc(tuple->size);
+    tuple->node = head;
+    // memcpy(tuple->node, head, tuple->size);
+
+    return tuple;
+}
+
 // If additional columns have been included retrieve them from the heap and add them to the index tuple
-static size_t AddIncludesToTuple(Relation heap, AttrNumber *attrs, ItemPointer tid, HnswIndexTuple *index_tuple) {
-    HeapTuple tuple;
-    bool isNull;
-    Datum datum;
-    size_t offset = 0;
-    size_t includes_size = 0;
-    int16 attrlen;
+static size_t AddIncludesToTuple(Relation heap, AttrNumber *attrs, ItemPointer tid, HnswIndexTuple *index_tuple)
+{
+    HeapTuple         tuple;
+    bool              isNull;
+    Datum             datum;
+    size_t            offset = 0;
+    size_t            includes_size = 0;
+    int16             attrlen;
     Form_pg_attribute attrInfo;
-    AttrNumber attr;
+    AttrNumber        attr;
 
     // TODO are these pallocs in an arena? index_tuple isnt freed in the calling context
-    // Get a tuple using the usearch label 
+    // Get a tuple using the usearch label
     tuple = GetTupleFromItemPointer(heap, tid);
-    if (index_tuple->n_additional_attrs) {
-
-        index_tuple->attr_size = (int16*)palloc(index_tuple->n_additional_attrs * sizeof(uint16));
+    if(index_tuple->n_additional_attrs) {
+        index_tuple->attr_size = (int16 *)palloc(index_tuple->n_additional_attrs * sizeof(uint16));
 
         // Loop over included attributes and record the sum of their size
-        for (size_t i = 0; i < index_tuple->n_additional_attrs; i++) {
+        for(size_t i = 0; i < index_tuple->n_additional_attrs; i++) {
             // We already ensure there is only 1 key column
             attr = attrs[ 1 + i ];
 
             // Get attribute description and verify it has positive length
             attrInfo = TupleDescAttr(RelationGetDescr(heap), attr - 1);
             attrlen = attrInfo->attlen;
-            if (attrlen <= 0 ) {
+            if(attrlen <= 0) {
                 elog(ERROR, "Lantern only supports INCLUDE on columns of fixed size");
             }
             index_tuple->attr_size[ i ] = attrlen;
             includes_size += attrlen;
         }
-        index_tuple->include_attrs = (char*)palloc(includes_size);
+        index_tuple->include_attrs = (char *)palloc(includes_size);
         // Loop over included attributes again and copy their value into our buffer
-        for (size_t i = 0; i < index_tuple->n_additional_attrs; i++) {
+        for(size_t i = 0; i < index_tuple->n_additional_attrs; i++) {
             attr = attrs[ 1 + i ];
             attrlen = index_tuple->attr_size[ i ];
 
             // TODO check isNull
             datum = heap_getattr(tuple, attr, RelationGetDescr(heap), &isNull);
-            // typecast is safe because all integers are confirmed positive above
-            if ((unsigned long int)attrlen <= sizeof(Datum)) {
-                elog(INFO, "array size=%ld offset=%ld datum=%ld, len=%d", includes_size, offset, datum, attrlen);
+            // elog(INFO, "array size=%ld offset=%ld datum=%ld, len=%d", includes_size, offset, datum, attrlen);
+            if((unsigned long int)attrlen <= sizeof(Datum)) {
                 memcpy(index_tuple->include_attrs + offset, &datum, attrlen);
             } else {
-                elog(INFO, "array size=%ld offset=%ld datum=%ld, len=%d", includes_size, offset, datum, attrlen);
-                memcpy(index_tuple->include_attrs + offset, (void*)datum, attrlen);
+                memcpy(index_tuple->include_attrs + offset, (void *)datum, attrlen);
             }
             offset += attrlen;
         }
@@ -223,12 +312,8 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
 
             // We use an itempointer as our label, and the label is the first 8 bytes of a serialized node
             usearch_label_t label = 0;
-            memcpy((unsigned long*)&label, data + *progress, sizeof(usearch_label_t));
+            memcpy((unsigned long *)&label, data + *progress, sizeof(usearch_label_t));
             ItemPointer tid = GetTidFromLabel(label);
-
-            // number of columns INCLUDEd
-            bufferpage->n_additional_attrs = indexInfo->ii_NumIndexAttrs - indexInfo->ii_NumIndexKeyAttrs;
-            size_t include_size = AddIncludesToTuple(heap, indexInfo->ii_IndexAttrNumbers, tid, bufferpage);
 
             node = extract_node(data,
                                 *progress,
@@ -239,6 +324,27 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
             bufferpage->id = node_id;
             bufferpage->level = node_level;
             bufferpage->size = node_size;
+            bufferpage->node = (char *)palloc(bufferpage->size);
+            memcpy(bufferpage->node, node, node_size);
+            elog(INFO,
+                 "raw node: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                 node[ 0 ],
+                 node[ 1 ],
+                 node[ 2 ],
+                 node[ 3 ],
+                 node[ 4 ],
+                 node[ 5 ],
+                 node[ 6 ],
+                 node[ 7 ],
+                 node[ 8 ],
+                 node[ 9 ]);
+
+            // Allocate space for INCLUDEd columns and attach them to the index tuple
+            bufferpage->n_additional_attrs = indexInfo->ii_NumIndexAttrs - indexInfo->ii_NumIndexKeyAttrs;
+            size_t include_size = AddIncludesToTuple(heap, indexInfo->ii_IndexAttrNumbers, tid, bufferpage);
+            size_t sizes_size = 2 * bufferpage->n_additional_attrs;
+            // elog(INFO, "includesize=%lu sizessize=%lu", include_size, sizes_size);
+
             ldb_invariant(node_level < 100,
                           "node level is too large. at id %d"
                           "this is likely a bug in usearch. "
@@ -251,26 +357,72 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
             // once quantization is enabled, we can allow larger overall dims
             // TODO this will fail large vectors with includes, need to update this
             assert(bufferpage + offsetof(HnswIndexTuple, node) + node_size + include_size < bufferpage + BLCKSZ);
-            memcpy(bufferpage->node, node, node_size);
 
-            if(PageAddItem(
-                   page, (Item)bufferpage, sizeof(HnswIndexTuple) + node_size, InvalidOffsetNumber, false, false)
+            char *item;
+            if(sizes_size > 0) {
+                item = serializeHnswIndexTuple(bufferpage);
+                elog(INFO, "tuple id=%u size=%u level=%u", bufferpage->id, bufferpage->size, bufferpage->level);
+                // elog(INFO, "Bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                //       (unsigned char)item[0], (unsigned char)item[1], (unsigned char)item[2],
+                //       (unsigned char)item[3], (unsigned char)item[4], (unsigned char)item[5],
+                //       (unsigned char)item[6], (unsigned char)item[7], (unsigned char)item[8],
+                //       (unsigned char)item[9]);
+                // HnswIndexTuple* tup = deserializeHnswIndexTuple(item);
+                // item = (char*)palloc(sizeof(HnswIndexTuple) + node_size + sizes_size + include_size +
+                // sizeof(size_t));
+                //((size_t*)item)[0] = sizes_size + include_size + sizeof(size_t);
+                // memcpy(item + sizeof(size_t), bufferpage->attr_size, sizes_size);
+                // memcpy(item + sizeof(size_t) + sizes_size, bufferpage->include_attrs, include_size);
+                // memcpy(bufferpage->node, node, node_size);
+                // memcpy(item + sizeof(size_t) + sizes_size + include_size, bufferpage, sizeof(HnswIndexTuple) +
+                // node_size);
+                elog(INFO,
+                     "%hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu",
+                     item[ 0 ],
+                     item[ 1 ],
+                     item[ 2 ],
+                     item[ 3 ],
+                     item[ 4 ],
+                     item[ 5 ],
+                     item[ 6 ],
+                     item[ 7 ],
+                     item[ 8 ],
+                     item[ 9 ],
+                     item[ 10 ],
+                     item[ 11 ],
+                     item[ 12 ],
+                     item[ 13 ],
+                     item[ 14 ],
+                     item[ 15 ]);
+                char *offsetp = item + sizeof(size_t) + sizes_size + include_size;
+                elog(INFO, "id=%u item=%p node=%p offset=%ld", bufferpage->id, item, offsetp, offsetp - item);
+                elog(INFO, "written id=%u", ((uint32 *)offsetp)[ 0 ]);
+
+                // memcpy(item, bufferpage, sizeof(HnswIndexTuple));
+                // memcpy(item + sizeof(HnswIndexTuple), node, node_size);
+                // memcpy(item + sizeof(HnswIndexTuple) + node_size, bufferpage->attr_size, sizes_size);
+                // memcpy(item + sizeof(HnswIndexTuple) + node_size + sizes_size, bufferpage->include_attrs,
+                // include_size);
+            } else {
+                memcpy(bufferpage->node, node, node_size);
+                item = (char *)bufferpage;
+            }
+
+            if(PageAddItem(page,
+                           (Item)item,
+                           sizeof(HnswIndexTuple) + node_size + sizes_size + include_size,
+                           InvalidOffsetNumber,
+                           false,
+                           false)
                == InvalidOffsetNumber) {
                 // break to get a fresh page
                 // todo:: properly test this case
-                break;
-            }else if(PageAddItem(
-                   page, (Item)bufferpage->attr_size, 2 * bufferpage->n_additional_attrs, InvalidOffsetNumber, false, false)
-               == InvalidOffsetNumber) {
-                break;
-            } else if(PageAddItem(
-                   page, (Item)bufferpage->include_attrs, include_size, InvalidOffsetNumber, false, false)
-               == InvalidOffsetNumber) {
                 break;
             }
 
             // we successfully recorded the node. move to the next one
             l_wal_retriever_block_numbers[ node_id - first_node_index ] = BufferGetBlockNumber(buf);
+            // elog(INFO, "inserted block no: %u", BufferGetBlockNumber(buf));
             *progress += node_size;
             node_id++;
         }
@@ -282,6 +434,7 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
             predicted_next_block = InvalidBlockNumber;
         }
         special->lastId = node_id - 1;
+        elog(INFO, "lastid=%u", node_id - 1);
         special->nextblockno = predicted_next_block;
 
         MarkBufferDirty(buf);
@@ -295,7 +448,8 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
         // When the blockmap page group was created, header block was updated accordingly in CreateBlockMapGroup
         // call above.
         const BlockNumber blockmapno = blockmap_id + headerp->blockmap_page_group_index[ blockmap_groupno ];
-        Buffer            buf = ReadBufferExtended(index, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
+        elog(INFO, "blockmapno on create=%u", blockmapno);
+        Buffer buf = ReadBufferExtended(index, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
         LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 
         GenericXLogState *state = GenericXLogStart(index);
@@ -387,8 +541,9 @@ static OffsetNumber HnswIndexPageAddVector(Page page, HnswIndexTuple *new_vector
     HnswIndexPageSpecialBlock *special_block;
     OffsetNumber               inserted_at;
 
-    inserted_at = PageAddItem(
-        page, (Item)new_vector_data, sizeof(HnswIndexTuple) + new_vector_size, InvalidOffsetNumber, false, false);
+    char *item = serializeHnswIndexTuple(new_vector_data);
+    inserted_at
+        = PageAddItem(page, (Item)item, sizeof(HnswIndexTuple) + new_vector_size, InvalidOffsetNumber, false, false);
     ldb_invariant(inserted_at != InvalidOffsetNumber, "unexpectedly could not add item to the last existing page");
     special_block = (HnswIndexPageSpecialBlock *)PageGetSpecialPointer(page);
 
@@ -416,6 +571,9 @@ static OffsetNumber HnswIndexPageAddVector(Page page, HnswIndexTuple *new_vector
 // hnsw index for the external indexer to start using the tuple (or node-entry) via
 // appropriate mutable external retriever
 HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
+                                  Relation             heap,
+                                  IndexInfo           *indexInfo,
+                                  ItemPointer          heap_tid,
                                   GenericXLogState    *state,
                                   HnswIndexHeaderPage *hdr,
                                   usearch_metadata_t  *metadata,
@@ -441,10 +599,15 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
     // allocate buffer to construct the new node
     // note that we allocate more than sizeof(HnswIndexTuple) since the struct has a flexible array member
     // which depends on parameters passed into UsearchNodeBytes above
-    alloced_tuple = (HnswIndexTuple *)palloc0(sizeof(HnswIndexTuple) + new_tuple_size);
+    alloced_tuple = (HnswIndexTuple *)palloc0(sizeof(HnswIndexTuple));
     alloced_tuple->id = new_tuple_id;
     alloced_tuple->level = new_tuple_level;
     alloced_tuple->size = new_tuple_size;
+    alloced_tuple->node = (char *)palloc0(new_tuple_size);
+
+    // Allocate space for INCLUDEd columns and attach them to the index tuple
+    alloced_tuple->n_additional_attrs = indexInfo->ii_NumIndexAttrs - indexInfo->ii_NumIndexKeyAttrs;
+    AddIncludesToTuple(heap, indexInfo->ii_IndexAttrNumbers, heap_tid, alloced_tuple);
 
     /*** Add a new tuple corresponding to the added vector to the list of tuples in the index
      *  (create new page if necessary) ***/
@@ -537,7 +700,8 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
     }
 
     /*** extract the inserted tuple ref to return so usearch can do further work on it ***/
-    new_tup_ref = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, new_tup_at));
+    char *item = (char *)PageGetItem(page, PageGetItemId(page, new_tup_at));
+    new_tup_ref = deserializeHnswIndexTuple(item);
     assert(new_tup_ref->id == new_tuple_id);
     assert(new_tup_ref->level == new_tuple_level);
     assert(new_tup_ref->size == new_tuple_size);
@@ -579,12 +743,14 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
 
 static BlockNumber getBlockMapPageBlockNumber(uint32 *blockmap_page_group_index, int id)
 {
+    elog(INFO, "head=%u id=%u", blockmap_page_group_index[ 0 ], id);
     assert(id >= 0);
     // Trust me, I'm an engineer!
     id = id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE + 1;
     int k;
     for(k = 0; id >= (1 << k); ++k) {
     }
+    elog(INFO, "k=%d", k);
     return blockmap_page_group_index[ k - 1 ] + (id - (1 << (k - 1)));
 }
 
@@ -654,6 +820,7 @@ BlockNumber getDataBlockNumber(RetrieverCtx *ctx, int id, bool add_to_extra_dirt
 
 void *ldb_wal_index_node_retriever(void *ctxp, int id)
 {
+    elog(INFO, "entering node retriever");
     RetrieverCtx   *ctx = (RetrieverCtx *)ctxp;
     BlockNumber     data_block_no;
     HnswIndexTuple *nodepage;
@@ -664,10 +831,12 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
     void           *cached_node = cache_get_item(&ctx->node_cache, &id);
 
     if(cached_node != NULL) {
+        elog(INFO, "cached");
         return cached_node;
     }
 
     data_block_no = getDataBlockNumber(ctx, id, false);
+    elog(INFO, "block_no=%d", data_block_no);
 
     page = extra_dirtied_get(ctx->extra_dirted, data_block_no, NULL);
     if(page == NULL) {
@@ -679,8 +848,35 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
     }
 
     max_offset = PageGetMaxOffsetNumber(page);
+    elog(INFO, "max offset=%u", max_offset);
+    char *buffer;
     for(offset = FirstOffsetNumber; offset <= max_offset; offset = OffsetNumberNext(offset)) {
-        nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
+        buffer = (char *)PageGetItem(page, PageGetItemId(page, offset));
+        elog(INFO,
+             "%hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu",
+             buffer[ 0 ],
+             buffer[ 1 ],
+             buffer[ 2 ],
+             buffer[ 3 ],
+             buffer[ 4 ],
+             buffer[ 5 ],
+             buffer[ 6 ],
+             buffer[ 7 ],
+             buffer[ 8 ],
+             buffer[ 9 ],
+             buffer[ 10 ],
+             buffer[ 11 ],
+             buffer[ 12 ],
+             buffer[ 13 ],
+             buffer[ 14 ],
+             buffer[ 15 ]);
+        nodepage = deserializeHnswIndexTuple(buffer);
+        elog(INFO,
+             "tuple id=%u size=%u level=%u node=%p",
+             nodepage->id,
+             nodepage->size,
+             nodepage->level,
+             nodepage->node);
         if(nodepage->id == (uint32)id) {
 #if LANTERNDB_USEARCH_LEVEL_DISTRIBUTION
             levels[ nodepage->level ]++;
@@ -689,6 +885,7 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
             BufferNode *buffNode;
             buffNode = (BufferNode *)palloc(sizeof(BufferNode));
             buffNode->buf = (char *)palloc(nodepage->size);
+            // TODO expand alloc for included cols
             memcpy(buffNode->buf, nodepage->node, nodepage->size);
             if(!idx_page_prelocked) {
                 UnlockReleaseBuffer(buf);
@@ -709,6 +906,19 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
 
             cache_set_item(&ctx->node_cache, &id, nodepage->node);
 
+            elog(INFO, "node=%p", nodepage->node);
+            elog(INFO,
+                 "Bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                 (unsigned char)nodepage->node[ 0 ],
+                 (unsigned char)nodepage->node[ 1 ],
+                 (unsigned char)nodepage->node[ 2 ],
+                 (unsigned char)nodepage->node[ 3 ],
+                 (unsigned char)nodepage->node[ 4 ],
+                 (unsigned char)nodepage->node[ 5 ],
+                 (unsigned char)nodepage->node[ 6 ],
+                 (unsigned char)nodepage->node[ 7 ],
+                 (unsigned char)nodepage->node[ 8 ],
+                 (unsigned char)nodepage->node[ 9 ]);
             return nodepage->node;
 #endif
         }
@@ -746,8 +956,10 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, int id)
     }
 
     max_offset = PageGetMaxOffsetNumber(page);
+    char *buffer;
     for(offset = FirstOffsetNumber; offset <= max_offset; offset = OffsetNumberNext(offset)) {
-        nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
+        buffer = (char *)PageGetItem(page, PageGetItemId(page, offset));
+        nodepage = deserializeHnswIndexTuple(buffer);
         if(nodepage->id == (uint32)id) {
             cache_set_item(&ctx->node_cache, &id, nodepage->node);
 

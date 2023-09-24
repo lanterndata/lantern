@@ -22,6 +22,7 @@
 #include "usearch.h"
 #include "utils.h"
 #include "vector.h"
+// typecast is safe because all integers are confirmed positive above
 
 /*
  * Generate a random level for a new externally stored vector
@@ -158,7 +159,8 @@ bool ldb_aminsert(Relation         index,
     // 3) (sometimes) the page that used to be last page of the index
     // 4) The blockmap page for the block in which the vector was added
     // Generic XLog supports up to 4 pages in a single commit, so we are good.
-    new_tuple = PrepareIndexTuple(index, state, hdr, &meta, new_tuple_id, level, insertstate);
+    new_tuple
+        = PrepareIndexTuple(index, heap, indexInfo, heap_tid, state, hdr, &meta, new_tuple_id, level, insertstate);
 
     usearch_add_external(
         uidx, *(unsigned long *)heap_tid, vector, new_tuple->node, usearch_scalar_f32_k, level, &error);
