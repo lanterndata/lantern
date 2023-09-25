@@ -50,6 +50,6 @@ void cache_destroy(HTABCache *cache)
 {
     MemoryContext old_context = MemoryContextSwitchTo(cache->hctl.hcxt);
     hash_destroy(cache->htab);
-    MemoryContextDelete(cache->hctl.hcxt);
     MemoryContextSwitchTo(old_context);
+    MemoryContextDelete(cache->hctl.hcxt);
 }
