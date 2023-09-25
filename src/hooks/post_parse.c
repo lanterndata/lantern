@@ -74,6 +74,22 @@ typedef struct
     bool  usedCorrectly;
 } OperatorUsedCorrectlyContext;
 
+static bool is_var_or_func_of_vars(Node *node)
+{
+    if(IsA(node, Var)) {
+        return true;
+    } else if(IsA(node, FuncExpr)) {
+        List     *args = ((FuncExpr *)node)->args;
+        ListCell *cell;
+        foreach(cell, args) {
+            if(is_var_or_func_of_vars(lfirst(cell))) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 static bool operator_used_incorrectly_walker(Node *node, OperatorUsedCorrectlyContext *context)
 {
     if(node == NULL) return false;
@@ -90,12 +106,19 @@ static bool operator_used_incorrectly_walker(Node *node, OperatorUsedCorrectlyCo
                     bool  isVar2 = IsA(arg2, Var);
                     if(isVar1 && isVar2) {
                         return false;
-                    } else if(!isVar1 && !isVar2) {
-                        return true;
-                    } else if(isVar1) {
+                    } else if(isVar1 && !isVar2) {
                         return operator_used_incorrectly_walker(arg2, context);
-                    } else {
+                    } else if(!isVar1 && isVar2) {
                         return operator_used_incorrectly_walker(arg1, context);
+                    } else {
+                        bool isFuncOfVars1 = is_var_or_func_of_vars(arg1);
+                        bool isFuncOfVars2 = is_var_or_func_of_vars(arg2);
+                        if(!isFuncOfVars1 && !isFuncOfVars2) {
+                            return true;
+                        } else {
+                            return operator_used_incorrectly_walker(arg1, context)
+                                   || operator_used_incorrectly_walker(arg2, context);
+                        }
                     }
                 }
             }
@@ -140,7 +163,7 @@ void post_parse_analyze_hook_with_operator_check(ParseState *pstate,
     if(is_operator_used(query_as_node, oidList)) {
         List *sort_group_refs = get_sort_group_refs(query_as_node);
         if(is_operator_used_incorrectly(query_as_node, oidList, sort_group_refs)) {
-            elog(ERROR, "Operator <-> has no standalone meaning and is reserved for use in vector index lookups only");
+            elog(ERROR, "Operator <-> is invalid outside of ORDER BY context");
         }
         list_free(sort_group_refs);
     }
