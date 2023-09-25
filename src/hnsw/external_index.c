@@ -20,6 +20,7 @@
 #include "utils.h"
 
 static BlockNumber getBlockMapPageBlockNumber(uint32 *blockmap_page_group_index, int id);
+static void map_tid_to_key(RetrieverCtx* ctx, unsigned long key, HnswIndexTuple *value);
 
 char *serializeHnswIndexTuple(HnswIndexTuple *tuple)
 {
@@ -34,7 +35,6 @@ char *serializeHnswIndexTuple(HnswIndexTuple *tuple)
                            tuple->n_additional_attrs * sizeof(int16) +  // attr_size
                            include_attrs_size + tuple->size;
 
-    //elog(INFO, "output_len=%u size=%u include_attrs_size=%u", output_length, tuple->size, include_attrs_size);
     char *buffer = (char *)palloc(output_length);
 
     char *head = buffer;
@@ -51,29 +51,22 @@ char *serializeHnswIndexTuple(HnswIndexTuple *tuple)
     memcpy(head, &(tuple->n_additional_attrs), sizeof(tuple->n_additional_attrs));
     head += sizeof(tuple->n_additional_attrs);
 
-    memcpy(head, tuple->attr_size, tuple->n_additional_attrs * sizeof(uint16));
-    head += tuple->n_additional_attrs * sizeof(uint16);
+    memcpy(head, tuple->attr_size, tuple->n_additional_attrs * sizeof(int16));
+    head += tuple->n_additional_attrs * sizeof(int16);
+
+    memcpy(head, tuple->attr_numbers, tuple->n_additional_attrs * sizeof(int16));
+    head += tuple->n_additional_attrs * sizeof(int16);
 
     memcpy(head, tuple->include_attrs, include_attrs_size);
     head += include_attrs_size;
 
     memcpy(head, tuple->node, tuple->size);
-    //    elog(INFO, "node in serialize: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
-    //	  tuple->node[0], tuple->node[1], tuple->node[2],
-    //	  tuple->node[3], tuple->node[4], tuple->node[5],
-    //	  tuple->node[6], tuple->node[7], tuple->node[8],
-    //	  tuple->node[9]);
 
     return buffer;
 }
 
 HnswIndexTuple *deserializeHnswIndexTuple(char *buffer)
 {
-    //    elog(INFO, "Bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
-    //	  (unsigned char)buffer[0], (unsigned char)buffer[1], (unsigned char)buffer[2],
-    //	  (unsigned char)buffer[3], (unsigned char)buffer[4], (unsigned char)buffer[5],
-    //	  (unsigned char)buffer[6], (unsigned char)buffer[7], (unsigned char)buffer[8],
-    //	  (unsigned char)buffer[9]);
     HnswIndexTuple *tuple = (HnswIndexTuple *)palloc(sizeof(HnswIndexTuple));
 
     char *head = buffer;
@@ -93,7 +86,9 @@ HnswIndexTuple *deserializeHnswIndexTuple(char *buffer)
     // tuple->attr_size = (int16*) palloc(tuple->n_additional_attrs * sizeof(uint16));
     // memcpy(tuple->attr_size, head, tuple->n_additional_attrs * sizeof(uint16));
     tuple->attr_size = head;
-    head += tuple->n_additional_attrs * sizeof(uint16);
+    head += tuple->n_additional_attrs * sizeof(int16);
+    tuple->attr_numbers = head;
+    head += tuple->n_additional_attrs * sizeof(int16);
 
     uint32 include_attrs_size = 0;
     for(uint32 i = 0; i < tuple->n_additional_attrs; i++) {
@@ -112,6 +107,39 @@ HnswIndexTuple *deserializeHnswIndexTuple(char *buffer)
     return tuple;
 }
 
+RowDatums DatumsFromIndex(RetrieverCtx *ctx, unsigned long label, int n_attrs) {
+    bool found;
+    BufferHash *entry = (BufferHash *) hash_search(ctx->taken_hash, (void *)&label, HASH_ENTER, &found);
+
+    if (entry == NULL || !found) {
+        elog(ERROR, "hash_search failed on insertion");
+    }
+
+    if (!found) {
+        elog(ERROR, "hash_search failed on insertion");
+    }
+    
+    Datum* attrs = (Datum*)palloc0(n_attrs * sizeof(Datum));
+    bool *is_null = (bool*)palloc(n_attrs * sizeof(bool));
+    memset(is_null, true, n_attrs * sizeof(bool));
+    char *head = entry->value->include_attrs;
+    for (size_t i = 0; i < entry->value->n_additional_attrs; i++) {
+        // TODO we copy rn, we might be able to extend relevant lifetimes
+        AttrNumber attrno = entry->value->attr_numbers[ i ];
+        elog(INFO, "attrno = %d", attrno);
+        is_null[ attrno ] = false;
+        if(entry->value->attr_size[ i ] <= sizeof(Datum)) {
+            memcpy(&attrs[ attrno  ], head, entry->value->attr_size[ i ]);
+        } else {
+            attrs[ attrno  ] = (Datum)palloc(entry->value->attr_size[ i ]);
+	    memcpy((char*)attrs[ attrno  ], head, entry->value->attr_size[ i ]);
+        }
+	head += entry->value->attr_size[ i ];
+    }
+    RowDatums ret = { attrs, is_null };
+    return ret;
+}
+
 // If additional columns have been included retrieve them from the heap and add them to the index tuple
 static size_t AddIncludesToTuple(Relation heap, AttrNumber *attrs, ItemPointer tid, HnswIndexTuple *index_tuple)
 {
@@ -128,12 +156,15 @@ static size_t AddIncludesToTuple(Relation heap, AttrNumber *attrs, ItemPointer t
     // Get a tuple using the usearch label
     tuple = GetTupleFromItemPointer(heap, tid);
     if(index_tuple->n_additional_attrs) {
+        index_tuple->attr_numbers = (int16 *)palloc(index_tuple->n_additional_attrs * sizeof(uint16));
         index_tuple->attr_size = (int16 *)palloc(index_tuple->n_additional_attrs * sizeof(uint16));
 
         // Loop over included attributes and record the sum of their size
         for(size_t i = 0; i < index_tuple->n_additional_attrs; i++) {
             // We already ensure there is only 1 key column
-            attr = attrs[ 1 + i ];
+            attr = attrs[ i + 1 ];
+            // TODO I think I can remove this altogether actually
+            index_tuple->attr_numbers[i] = i + 2;
 
             // Get attribute description and verify it has positive length
             attrInfo = TupleDescAttr(RelationGetDescr(heap), attr - 1);
@@ -152,7 +183,6 @@ static size_t AddIncludesToTuple(Relation heap, AttrNumber *attrs, ItemPointer t
 
             // TODO check isNull
             datum = heap_getattr(tuple, attr, RelationGetDescr(heap), &isNull);
-            // elog(INFO, "array size=%ld offset=%ld datum=%ld, len=%d", includes_size, offset, datum, attrlen);
             if((unsigned long int)attrlen <= sizeof(Datum)) {
                 memcpy(index_tuple->include_attrs + offset, &datum, attrlen);
             } else {
@@ -326,24 +356,11 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
             bufferpage->size = node_size;
             bufferpage->node = (char *)palloc(bufferpage->size);
             memcpy(bufferpage->node, node, node_size);
-            //elog(INFO,
-            //     "raw node: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
-            //     node[ 0 ],
-            //     node[ 1 ],
-            //     node[ 2 ],
-            //     node[ 3 ],
-            //     node[ 4 ],
-            //     node[ 5 ],
-            //     node[ 6 ],
-            //     node[ 7 ],
-            //     node[ 8 ],
-            //     node[ 9 ]);
 
             // Allocate space for INCLUDEd columns and attach them to the index tuple
             bufferpage->n_additional_attrs = indexInfo->ii_NumIndexAttrs - indexInfo->ii_NumIndexKeyAttrs;
             size_t include_size = AddIncludesToTuple(heap, indexInfo->ii_IndexAttrNumbers, tid, bufferpage);
             size_t sizes_size = 2 * bufferpage->n_additional_attrs;
-            // elog(INFO, "includesize=%lu sizessize=%lu", include_size, sizes_size);
 
             ldb_invariant(node_level < 100,
                           "node level is too large. at id %d"
@@ -359,48 +376,6 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
             assert(bufferpage + offsetof(HnswIndexTuple, node) + node_size + include_size < bufferpage + BLCKSZ);
 
             char *item = serializeHnswIndexTuple(bufferpage);
-            //elog(INFO, "tuple id=%u size=%u level=%u", bufferpage->id, bufferpage->size, bufferpage->level);
-            // elog(INFO, "Bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
-            //       (unsigned char)item[0], (unsigned char)item[1], (unsigned char)item[2],
-            //       (unsigned char)item[3], (unsigned char)item[4], (unsigned char)item[5],
-            //       (unsigned char)item[6], (unsigned char)item[7], (unsigned char)item[8],
-            //       (unsigned char)item[9]);
-            // HnswIndexTuple* tup = deserializeHnswIndexTuple(item);
-            // item = (char*)palloc(sizeof(HnswIndexTuple) + node_size + sizes_size + include_size +
-            // sizeof(size_t));
-            //((size_t*)item)[0] = sizes_size + include_size + sizeof(size_t);
-            // memcpy(item + sizeof(size_t), bufferpage->attr_size, sizes_size);
-            // memcpy(item + sizeof(size_t) + sizes_size, bufferpage->include_attrs, include_size);
-            // memcpy(bufferpage->node, node, node_size);
-            // memcpy(item + sizeof(size_t) + sizes_size + include_size, bufferpage, sizeof(HnswIndexTuple) +
-            // node_size);
-            //elog(INFO,
-            //     "%hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu",
-            //     item[ 0 ],
-            //     item[ 1 ],
-            //     item[ 2 ],
-            //     item[ 3 ],
-            //     item[ 4 ],
-            //     item[ 5 ],
-            //     item[ 6 ],
-            //     item[ 7 ],
-            //     item[ 8 ],
-            //     item[ 9 ],
-            //     item[ 10 ],
-            //     item[ 11 ],
-            //     item[ 12 ],
-            //     item[ 13 ],
-            //     item[ 14 ],
-            //     item[ 15 ]);
-            char *offsetp = item + sizeof(size_t) + sizes_size + include_size;
-            //elog(INFO, "id=%u item=%p node=%p offset=%ld", bufferpage->id, item, offsetp, offsetp - item);
-            //elog(INFO, "written id=%u", ((uint32 *)offsetp)[ 0 ]);
-
-            // memcpy(item, bufferpage, sizeof(HnswIndexTuple));
-            // memcpy(item + sizeof(HnswIndexTuple), node, node_size);
-            // memcpy(item + sizeof(HnswIndexTuple) + node_size, bufferpage->attr_size, sizes_size);
-            // memcpy(item + sizeof(HnswIndexTuple) + node_size + sizes_size, bufferpage->include_attrs,
-            // include_size);
 
             if(PageAddItem(page,
                            (Item)item,
@@ -416,7 +391,6 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
 
             // we successfully recorded the node. move to the next one
             l_wal_retriever_block_numbers[ node_id - first_node_index ] = BufferGetBlockNumber(buf);
-            // elog(INFO, "inserted block no: %u", BufferGetBlockNumber(buf));
             *progress += node_size;
             node_id++;
         }
@@ -428,7 +402,6 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
             predicted_next_block = InvalidBlockNumber;
         }
         special->lastId = node_id - 1;
-        //elog(INFO, "lastid=%u", node_id - 1);
         special->nextblockno = predicted_next_block;
 
         MarkBufferDirty(buf);
@@ -442,7 +415,6 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
         // When the blockmap page group was created, header block was updated accordingly in CreateBlockMapGroup
         // call above.
         const BlockNumber blockmapno = blockmap_id + headerp->blockmap_page_group_index[ blockmap_groupno ];
-        //elog(INFO, "blockmapno on create=%u", blockmapno);
         Buffer buf = ReadBufferExtended(index, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
         LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 
@@ -737,14 +709,12 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
 
 static BlockNumber getBlockMapPageBlockNumber(uint32 *blockmap_page_group_index, int id)
 {
-    //elog(INFO, "head=%u id=%u", blockmap_page_group_index[ 0 ], id);
     assert(id >= 0);
     // Trust me, I'm an engineer!
     id = id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE + 1;
     int k;
     for(k = 0; id >= (1 << k); ++k) {
     }
-    //elog(INFO, "k=%d", k);
     return blockmap_page_group_index[ k - 1 ] + (id - (1 << (k - 1)));
 }
 
@@ -814,7 +784,6 @@ BlockNumber getDataBlockNumber(RetrieverCtx *ctx, int id, bool add_to_extra_dirt
 
 void *ldb_wal_index_node_retriever(void *ctxp, int id)
 {
-    //elog(INFO, "entering node retriever");
     RetrieverCtx   *ctx = (RetrieverCtx *)ctxp;
     BlockNumber     data_block_no;
     HnswIndexTuple *nodepage;
@@ -825,12 +794,10 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
     void           *cached_node = cache_get_item(&ctx->node_cache, &id);
 
     if(cached_node != NULL) {
-        //elog(INFO, "cached");
         return cached_node;
     }
 
     data_block_no = getDataBlockNumber(ctx, id, false);
-    //elog(INFO, "block_no=%d", data_block_no);
 
     page = extra_dirtied_get(ctx->extra_dirted, data_block_no, NULL);
     if(page == NULL) {
@@ -842,35 +809,10 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
     }
 
     max_offset = PageGetMaxOffsetNumber(page);
-    //elog(INFO, "max offset=%u", max_offset);
     char *buffer;
     for(offset = FirstOffsetNumber; offset <= max_offset; offset = OffsetNumberNext(offset)) {
         buffer = (char *)PageGetItem(page, PageGetItemId(page, offset));
-        //elog(INFO,
-        //     "%hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu",
-        //     buffer[ 0 ],
-        //     buffer[ 1 ],
-        //     buffer[ 2 ],
-        //     buffer[ 3 ],
-        //     buffer[ 4 ],
-        //     buffer[ 5 ],
-        //     buffer[ 6 ],
-        //     buffer[ 7 ],
-        //     buffer[ 8 ],
-        //     buffer[ 9 ],
-        //     buffer[ 10 ],
-        //     buffer[ 11 ],
-        //     buffer[ 12 ],
-        //     buffer[ 13 ],
-        //     buffer[ 14 ],
-        //     buffer[ 15 ]);
         nodepage = deserializeHnswIndexTuple(buffer);
-        //elog(INFO,
-        //     "tuple id=%u size=%u level=%u node=%p",
-        //     nodepage->id,
-        //     nodepage->size,
-        //     nodepage->level,
-        //     nodepage->node);
         if(nodepage->id == (uint32)id) {
 #if LANTERNDB_USEARCH_LEVEL_DISTRIBUTION
             levels[ nodepage->level ]++;
@@ -885,6 +827,7 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
                 UnlockReleaseBuffer(buf);
             }
             dlist_push_tail(&ctx->takenbuffers, &buffNode->node);
+            map_tid_to_key(ctx, ((unsigned long*)nodepage->node)[0], nodepage);
             return buffNode->buf;
 #else
             if(!idx_page_prelocked) {
@@ -898,21 +841,9 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
                 LockBuffer(buf, BUFFER_LOCK_UNLOCK);
             }
 
+            map_tid_to_key(ctx, ((unsigned long*)nodepage->node)[0], nodepage);
             cache_set_item(&ctx->node_cache, &id, nodepage->node);
 
-            //elog(INFO, "node=%p", nodepage->node);
-            //elog(INFO,
-            //     "Bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
-            //     (unsigned char)nodepage->node[ 0 ],
-            //     (unsigned char)nodepage->node[ 1 ],
-            //     (unsigned char)nodepage->node[ 2 ],
-            //     (unsigned char)nodepage->node[ 3 ],
-            //     (unsigned char)nodepage->node[ 4 ],
-            //     (unsigned char)nodepage->node[ 5 ],
-            //     (unsigned char)nodepage->node[ 6 ],
-            //     (unsigned char)nodepage->node[ 7 ],
-            //     (unsigned char)nodepage->node[ 8 ],
-            //     (unsigned char)nodepage->node[ 9 ]);
             return nodepage->node;
 #endif
         }
@@ -956,6 +887,7 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, int id)
         nodepage = deserializeHnswIndexTuple(buffer);
         if(nodepage->id == (uint32)id) {
             cache_set_item(&ctx->node_cache, &id, nodepage->node);
+            map_tid_to_key(ctx, ((unsigned long *)nodepage->node)[0], nodepage);
 
             return nodepage->node;
         }
@@ -967,4 +899,20 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, int id)
     }
     ldb_invariant(false, "node with id %d not found", id);
     pg_unreachable();
+}
+
+static void map_tid_to_key(RetrieverCtx* ctx, unsigned long key, HnswIndexTuple *value)
+{
+    BufferHash *entry;
+    bool found;
+
+    entry = (BufferHash *) hash_search(ctx->taken_hash, (void *)&key, HASH_ENTER, &found);
+
+    if (entry == NULL) {
+        elog(ERROR, "hash_search failed on insertion");
+    }
+
+    if (!found) {
+        entry->value = value;
+    }
 }

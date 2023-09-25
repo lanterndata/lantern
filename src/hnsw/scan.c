@@ -61,6 +61,12 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     scanstate->retriever_ctx = opts.retriever_ctx = retriever_ctx;
     scanstate->columnType = GetIndexColumnType(index);
     scanstate->dimensions = opts.dimensions = dimensions;
+
+    scanstate->memory_ctx = AllocSetContextCreate(
+        TopMemoryContext,
+        "scan ctx",
+        ALLOCSET_DEFAULT_SIZES
+    );
     opts.retriever = ldb_wal_index_node_retriever;
     opts.retriever_mut = ldb_wal_index_node_retriever_mut;
 
@@ -118,6 +124,7 @@ void ldb_amendscan(IndexScanDesc scan)
     if(scanstate->distances) pfree(scanstate->distances);
 
     if(scanstate->labels) pfree(scanstate->labels);
+    MemoryContextDelete(scanstate->memory_ctx);
 
     pfree(scanstate);
     scan->opaque = NULL;
@@ -195,7 +202,9 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         ldb_dlog("LANTERN querying index for %d elements", k);
         num_returned = usearch_search(
             scanstate->usearch_index, vec, usearch_scalar_f32_k, k, scanstate->labels, scanstate->distances, &error);
-        ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);
+        if (!scan->xs_want_itup) {
+            ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);
+        }
 
         scanstate->count = num_returned;
         scanstate->current = 0;
@@ -204,6 +213,8 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
 
         /* Clean up if we allocated a new value */
         if(value != scan->orderByData->sk_argument) pfree(DatumGetPointer(value));
+
+
     }
 
     if(scanstate->current == scanstate->count) {
@@ -215,6 +226,8 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         int             index_size = usearch_size(scanstate->usearch_index, &error);
         assert(error == NULL);
 
+	// free up memory from last search, it's all been copied
+	ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);
         if(index_size == scanstate->current) {
             return false;
         }
@@ -230,7 +243,9 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         ldb_dlog("LANTERN - querying index for %d elements", k);
         num_returned = usearch_search(
             scanstate->usearch_index, vec, usearch_scalar_f32_k, k, scanstate->labels, scanstate->distances, &error);
-        ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);
+        if (!scan->xs_want_itup) {
+            ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);
+        }
 
         scanstate->count = num_returned;
 
@@ -241,7 +256,6 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
     if(scanstate->current < scanstate->count) {
         unsigned long int label = scanstate->labels[ scanstate->current ];
         scanstate->iptr = (ItemPointer)&label;
-
         tid = scanstate->iptr;
 
 #if PG_VERSION_NUM >= 120000
@@ -249,6 +263,22 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
 #else
         scan->xs_ctup.t_self = *tid;
 #endif
+        if (scan->xs_want_itup) {
+            //TupleDesc descr = RelationGetDescr(scan->heapRelation);
+            TupleDesc indexTupDesc = RelationGetDescr(scan->indexRelation);
+            
+            MemoryContext oldContext = MemoryContextSwitchTo(scanstate->memory_ctx);
+	    RowDatums row = DatumsFromIndex(scanstate->retriever_ctx, label, indexTupDesc->natts);
+            IndexTuple indexTuple = index_form_tuple(indexTupDesc, row.attrs, row.is_null);
+            scan->xs_itup = indexTuple;
+            scan->xs_itupdesc = indexTupDesc;
+            //HeapTuple htup = heap_form_tuple(descr, row.attrs, row.is_null);
+            //scan->xs_hitup = htup;
+            //scan->xs_hitupdesc = descr;
+            //pfree(htup);
+            MemoryContextSwitchTo(oldContext);
+        }
+
 
         // todo:: there is a mid-sized designed issue with index storage
         // labels must be large enought to store relblockno+ indexblockno

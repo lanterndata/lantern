@@ -9,6 +9,7 @@
 #include <storage/bufmgr.h>  // Buffer
 #include <utils/relcache.h>  // Relation
 #include <nodes/execnodes.h>
+#include <utils/dynahash.h>
 
 #include "extra_dirtied.h"
 #include "hnsw.h"
@@ -65,6 +66,7 @@ typedef struct HnswIndexTuple
     uint32 level;
     // infromation about INCLUDEd columns
     uint32 n_additional_attrs;
+    int16  *attr_numbers;
     int16    *attr_size;
     char   *include_attrs;
     // stores size of the flexible array member
@@ -96,6 +98,8 @@ typedef struct
 
     HTABCache node_cache;
 
+    HTAB  *taken_hash; // map of heap tid to index tuple
+
     dlist_head takenbuffers;
 } RetrieverCtx;
 
@@ -111,11 +115,24 @@ typedef struct
 
 typedef struct
 {
+        unsigned long key;
+        HnswIndexTuple *value;
+} BufferHash;
+
+
+typedef struct
+{
     usearch_index_t uidx;
     RetrieverCtx   *retriever_ctx;
     HnswColumnType  columnType;
 } HnswInsertState;
 
+typedef struct RowDatums {
+    Datum *attrs;
+    bool  *is_null;
+} RowDatums;
+
+RowDatums DatumsFromIndex(RetrieverCtx *ctx, unsigned long label, int n_attrs);
 void StoreExternalIndex(Relation                index,
                         Relation                heap,
                         IndexInfo              *indexInfo,

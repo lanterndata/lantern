@@ -17,6 +17,8 @@ typedef struct HnswScanState
     float           *distances;
     usearch_label_t *labels;
     HnswColumnType   columnType;
+    // For index only scans
+    MemoryContext memory_ctx;
     int              dimensions;
     // indicates whether we are retrieving the first tuple
     // actual vector-search is run when the first tuple is requested

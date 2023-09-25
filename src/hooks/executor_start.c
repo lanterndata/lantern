@@ -30,6 +30,12 @@ static bool operator_used_incorrectly_walker(Node *node, void *context)
         context_typed->isIndexScan = false;
         return status;
     }
+    if(IsA(node, IndexOnlyScan)) {
+        context_typed->isIndexScan = true;
+        bool status = plan_tree_walker((Plan *)node, operator_used_incorrectly_walker, context);
+        context_typed->isIndexScan = false;
+        return status;
+    }
     if(IsA(node, OpExpr)) {
         OpExpr *opExpr = (OpExpr *)node;
         if(list_member_oid(context_typed->oidList, opExpr->opno) && !context_typed->isIndexScan) {
