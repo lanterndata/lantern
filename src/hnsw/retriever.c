@@ -19,14 +19,13 @@ RetrieverCtx *ldb_wal_retriever_area_init(Relation index_rel, HnswIndexHeaderPag
     ctx->index_rel = index_rel;
     ctx->header_page_under_wal = header_page_under_wal;
     ctx->extra_dirted = extra_dirtied_new();
-    ctx->node_cache
-        = cache_create("NodeCache", AllocSetContextCreate(CacheMemoryContext, "NodeCache", ALLOCSET_DEFAULT_SIZES));
+
+    ctx->node_cache = cache_create("NodeCache");
 
     dlist_init(&ctx->takenbuffers);
 
     /* fill in a buffer with blockno index information, before spilling it to disk */
-    ctx->block_numbers_cache = cache_create(
-        "BlockNumberCache", AllocSetContextCreate(CacheMemoryContext, "BlockNumberCache", ALLOCSET_DEFAULT_SIZES));
+    ctx->block_numbers_cache = cache_create("BlockNumberCache");
 
     return ctx;
 }
