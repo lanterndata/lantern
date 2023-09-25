@@ -142,7 +142,6 @@ static int GetArrayLengthFromExpression(Expr *expression, Relation heap, HeapTup
     Datum           result;
     bool            isNull;
     ArrayType      *array;
-    int             n_items = HNSW_DEFAULT_DIM;
     TupleTableSlot *slot;
     TupleDesc       tupdesc = RelationGetDescr(heap);
 
@@ -169,21 +168,34 @@ static int GetArrayLengthFromExpression(Expr *expression, Relation heap, HeapTup
 
     // Evaluate the expression for the first row
     result = ExecEvalExprSwitchContext(exprstate, econtext, &isNull);
+    array = DatumGetArrayTypeP(result);
 
     // Release tuple descriptor
     ReleaseTupleDesc(tupdesc);
 
-    // Check if the result is not null
-    if(!isNull) {
-        // todo check if datum is array
-        array = DatumGetArrayTypePCopy(result);
-        n_items = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
-        return n_items;
-    } else {
-        elog(ERROR, "Expression did not result in an array");
-    }
+    Oid oid = get_array_type(array->elemtype);
 
-    return n_items;
+    if(!OidIsValid(oid)) {
+        // Oid 0 can only be in a case when the datum will be vector type
+        // As postgres will guard that arbitrary data type won't be returned
+        // from the function expression
+        // so we should be safe here to case result into vector in this case
+        Vector *vector = DatumGetVector(result);
+        // if the vector will not have dimensions or somehow it
+        // won't be casted the code will go to ldb_invariant case
+        if(vector->dim > 0) {
+            return vector->dim;
+        }
+    }
+    // Check if the result is not null and is supported type
+    // There is a guard in postgres that wont' allow passing
+    // Anything else from the defined operator class types
+    // Throwing an error like: ERROR:  data type text has no default operator class for access method "hnsw"
+    // So this case will be marked as invariant
+    ldb_invariant(!isNull && GetColumnTypeFromOid(oid) != UNKNOWN,
+                  "Expression used in CREATE INDEX statement did not result in hnsw-index compatible array");
+
+    return ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
 }
 
 static int GetArrayLengthFromHeap(Relation heap, int indexCol, IndexInfo *indexInfo)
@@ -216,6 +228,11 @@ static int GetArrayLengthFromHeap(Relation heap, int indexCol, IndexInfo *indexI
     }
 
     if(indexInfo->ii_Expressions != NULL) {
+        // We don't suport multicolumn indexes
+        // So trying to pass multiple expressions on index creation
+        // Will result an error before getting here
+        ldb_invariant(indexInfo->ii_Expressions->length == 1,
+                      "Index expressions can not be greater than 1 as multicolumn indexes are not supported");
         Expr *indexpr_item = lfirst(list_head(indexInfo->ii_Expressions));
         n_items = GetArrayLengthFromExpression(indexpr_item, heap, tuple);
     } else {

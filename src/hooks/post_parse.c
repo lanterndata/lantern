@@ -104,6 +104,18 @@ static bool operator_used_incorrectly_walker(Node *node, OperatorUsedCorrectlyCo
                     Node *arg2 = (Node *)lsecond(opExpr->args);
                     bool  isVar1 = IsA(arg1, Var);
                     bool  isVar2 = IsA(arg2, Var);
+                    /* There is a case when operator is used with index
+                     * that was created via expression (CREATE INDEX ON t USING hnsw (func(id)) WITH (M=2))
+                     * in this case the query may look like this
+                     * SELECT id FROM test ORDER BY func(id) <-> ARRAY[0,0,0] LIMIT 2
+                     * or like this
+                     * SELECT id FROM test ORDER BY func(id) <-> func(n) LIMIT 2
+                     * we should check if IsA(arg1, FuncExpr) || IsA(arg2, FuncExpr)
+                     * if true we may go and check the oid of function result to see if it is an array type
+                     * we also can check that the argument of FuncExpr is at least one of the arg1 and arg2
+                     * will contain column of the table (e.g iterate over list and check IsA(arg, Var))
+                     * so the function will not be called with constant arguments on both sides
+                     */
                     if(isVar1 && isVar2) {
                         return false;
                     } else if(isVar1 && !isVar2) {
