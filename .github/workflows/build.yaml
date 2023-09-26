@@ -71,7 +71,7 @@ jobs:
       - name: Create source code archive with submodules
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_release }}
         run: |
-          find ./ -name '.git*' -exec rm -rv {} \; || true
+          find ./ -name '.git*' -exec rm -r {} \; || true
           tar -czf /tmp/lantern-v${{ steps.package.outputs.package_version }}-source.tar.gz .
       - uses: geekyeggo/delete-artifact@v2
         with:
@@ -81,9 +81,23 @@ jobs:
         id: create_release
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_release }}
         with:
-          name: LanternDB v${{ steps.package.outputs.package_version }}
+          name: Lantern v${{ steps.package.outputs.package_version }}
           tag_name: v${{ steps.package.outputs.package_version }}
           files: |
             ${{ steps.package.outputs.package_path }}
             /tmp/lantern-v${{ steps.package.outputs.package_version }}-source.tar.gz
           generate_release_notes: true
+      - name: Homebrew release
+        uses: var77/bump-homebrew-formula-action@main
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_release }}
+        with:
+          formula-name: lantern
+          formula-path: Formula/lantern.rb
+          tag-name: v${{ steps.package.outputs.package_version }}
+          download-url: https://github.com/lanterndata/lantern/releases/download/v${{ steps.package.outputs.package_version }}/lantern-v${{ steps.package.outputs.package_version }}-source.tar.gz
+          homebrew-tap: lanterndata/homebrew-lantern
+          commit-message: |
+            {{formulaName}} {{version}}
+          base-branch: main
+        env:
+          COMMITTER_TOKEN: ${{ secrets.HOMEBREW_COMMITTER_TOKEN }}
