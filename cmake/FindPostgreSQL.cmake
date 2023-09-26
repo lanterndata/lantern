@@ -48,10 +48,14 @@
 # Define additional search paths for root directories.
 set(PostgreSQL_ROOT_DIRECTORIES ENV PGROOT ENV PGPATH ${PostgreSQL_ROOT})
 
-find_program(
-  PG_CONFIG pg_config
-  PATHS ${PostgreSQL_ROOT_DIRECTORIES}
-  PATH_SUFFIXES bin)
+if (DEFINED ENV{PG_CONFIG})
+  set(PG_CONFIG "$ENV{PG_CONFIG}")
+else()
+  find_program(
+    PG_CONFIG pg_config
+    PATHS ${PostgreSQL_ROOT_DIRECTORIES}
+    PATH_SUFFIXES bin)
+endif()
 
 if(NOT PG_CONFIG)
   message(FATAL_ERROR "Could not find pg_config")
