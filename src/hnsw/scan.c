@@ -265,13 +265,13 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
 #endif
         if (scan->xs_want_itup) {
             //TupleDesc descr = RelationGetDescr(scan->heapRelation);
-            TupleDesc indexTupDesc = RelationGetDescr(scan->indexRelation);
+            TupleDesc desc = RelationGetDescr(scan->indexRelation);
             
             MemoryContext oldContext = MemoryContextSwitchTo(scanstate->memory_ctx);
-	    RowDatums row = DatumsFromIndex(scanstate->retriever_ctx, label, indexTupDesc->natts);
-            IndexTuple indexTuple = index_form_tuple(indexTupDesc, row.attrs, row.is_null);
-            scan->xs_itup = indexTuple;
-            scan->xs_itupdesc = indexTupDesc;
+	    RowDatums row = DatumsFromIndex(scanstate, desc, label);
+            IndexTuple itup = index_form_tuple(desc, row.attrs, row.is_null);
+            scan->xs_itup = itup;
+            scan->xs_itupdesc = desc;
             //HeapTuple htup = heap_form_tuple(descr, row.attrs, row.is_null);
             //scan->xs_hitup = htup;
             //scan->xs_hitupdesc = descr;

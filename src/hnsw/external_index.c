@@ -10,14 +10,16 @@
 #include <storage/bufmgr.h>  // Buffer
 #include <utils/hsearch.h>
 #include <utils/relcache.h>
+#include <utils/array.h> //arraytype
+#include <catalog/namespace.h>
 
 #include "extra_dirtied.h"
 #include "htab_cache.h"
 #include "insert.h"
 #include "options.h"
 #include "retriever.h"
-#include "usearch.h"
 #include "utils.h"
+#include "scan.h"
 
 static BlockNumber getBlockMapPageBlockNumber(uint32 *blockmap_page_group_index, int id);
 static void map_tid_to_key(RetrieverCtx* ctx, unsigned long key, HnswIndexTuple *value);
@@ -54,9 +56,6 @@ char *serializeHnswIndexTuple(HnswIndexTuple *tuple)
     memcpy(head, tuple->attr_size, tuple->n_additional_attrs * sizeof(int16));
     head += tuple->n_additional_attrs * sizeof(int16);
 
-    memcpy(head, tuple->attr_numbers, tuple->n_additional_attrs * sizeof(int16));
-    head += tuple->n_additional_attrs * sizeof(int16);
-
     memcpy(head, tuple->include_attrs, include_attrs_size);
     head += include_attrs_size;
 
@@ -87,8 +86,6 @@ HnswIndexTuple *deserializeHnswIndexTuple(char *buffer)
     // memcpy(tuple->attr_size, head, tuple->n_additional_attrs * sizeof(uint16));
     tuple->attr_size = head;
     head += tuple->n_additional_attrs * sizeof(int16);
-    tuple->attr_numbers = head;
-    head += tuple->n_additional_attrs * sizeof(int16);
 
     uint32 include_attrs_size = 0;
     for(uint32 i = 0; i < tuple->n_additional_attrs; i++) {
@@ -107,8 +104,48 @@ HnswIndexTuple *deserializeHnswIndexTuple(char *buffer)
     return tuple;
 }
 
-RowDatums DatumsFromIndex(RetrieverCtx *ctx, unsigned long label, int n_attrs) {
+Datum VectorFromIndexTuple(HnswScanState *scanstate, HnswIndexTuple *tuple, TupleDesc desc, unsigned long label) {
+    // TODO assuming 32 bit width cause its hardcoded elsewhere, need to determine from attrinfo
+    ArrayType *data;
+    Datum *datum;
+    uint32  dim = *(uint32*)(tuple->node + sizeof(unsigned long)) / sizeof(float4);
+    datum = (Datum*)palloc(dim * sizeof(Datum));
+    uint32 *vector = (uint32*)palloc(dim * sizeof(float4));
+
+    usearch_error_t        error = NULL;
+    //usearch_get(scanstate->usearch_index, (usearch_label_t)label, (void*)vector, usearch_scalar_f32_k, &error);
+
+    if (error != NULL) {
+        elog(ERROR, "failed retrieving vector from usearch");
+    }
+
+    for (size_t i = 0; i < dim; i++) {
+        datum[ i ] = Float4GetDatum(vector[ i * sizeof(float4) ]);
+    }
+
+    if (desc->attrs[ 0 ].atttypid == FLOAT4ARRAYOID) {
+        data = construct_array(datum, dim, FLOAT4OID, sizeof(float4), true, 'i');
+    }
+    if (desc->attrs[ 0 ].atttypid == INT4ARRAYOID) {
+        data = construct_array(datum, dim, INT4OID, sizeof(float4), true, 'i');
+    }
+    if (desc->attrs[ 0 ].atttypid == TypenameGetTypid("vector")) {
+        data = construct_array(datum, dim, FLOAT4OID, sizeof(float4), true, 'i');
+    } else {
+        // key column is guaranteed to be a supported type at this point
+        pg_unreachable();
+    }
+    pfree(datum);
+
+    return PointerGetDatum(data);
+}
+
+
+RowDatums DatumsFromIndex(HnswScanState *scanstate, TupleDesc desc, unsigned long label) {
     bool found;
+    int n_attrs = desc->natts;
+    RetrieverCtx *ctx = scanstate->retriever_ctx;
+
     BufferHash *entry = (BufferHash *) hash_search(ctx->taken_hash, (void *)&label, HASH_ENTER, &found);
 
     if (entry == NULL || !found) {
@@ -124,19 +161,23 @@ RowDatums DatumsFromIndex(RetrieverCtx *ctx, unsigned long label, int n_attrs) {
     memset(is_null, true, n_attrs * sizeof(bool));
     char *head = entry->value->include_attrs;
     for (size_t i = 0; i < entry->value->n_additional_attrs; i++) {
-        // TODO we copy rn, we might be able to extend relevant lifetimes
-        AttrNumber attrno = entry->value->attr_numbers[ i ];
-        elog(INFO, "attrno = %d", attrno);
-        is_null[ attrno ] = false;
+        // TODO can we avoid copies?
+        is_null[ i + 1 ] = false;
         if(entry->value->attr_size[ i ] <= sizeof(Datum)) {
-            memcpy(&attrs[ attrno  ], head, entry->value->attr_size[ i ]);
+            memcpy(&attrs[ i + 1 ], head, entry->value->attr_size[ i ]);
         } else {
-            attrs[ attrno  ] = (Datum)palloc(entry->value->attr_size[ i ]);
-	    memcpy((char*)attrs[ attrno  ], head, entry->value->attr_size[ i ]);
+            attrs[ i + 1 ] = (Datum)palloc(entry->value->attr_size[ i ]);
+	    memcpy((char*)attrs[ i + 1 ], head, entry->value->attr_size[ i ]);
         }
 	head += entry->value->attr_size[ i ];
     }
     RowDatums ret = { attrs, is_null };
+    
+    // do the array itself
+    //Datum vector = VectorFromIndexTuple(scanstate, entry->value, desc, label);
+    //attrs[ 0 ] = vector;
+    //is_null[ 0 ] = false;
+
     return ret;
 }
 
@@ -156,15 +197,12 @@ static size_t AddIncludesToTuple(Relation heap, AttrNumber *attrs, ItemPointer t
     // Get a tuple using the usearch label
     tuple = GetTupleFromItemPointer(heap, tid);
     if(index_tuple->n_additional_attrs) {
-        index_tuple->attr_numbers = (int16 *)palloc(index_tuple->n_additional_attrs * sizeof(uint16));
         index_tuple->attr_size = (int16 *)palloc(index_tuple->n_additional_attrs * sizeof(uint16));
 
         // Loop over included attributes and record the sum of their size
         for(size_t i = 0; i < index_tuple->n_additional_attrs; i++) {
             // We already ensure there is only 1 key column
             attr = attrs[ i + 1 ];
-            // TODO I think I can remove this altogether actually
-            index_tuple->attr_numbers[i] = i + 2;
 
             // Get attribute description and verify it has positive length
             attrInfo = TupleDescAttr(RelationGetDescr(heap), attr - 1);

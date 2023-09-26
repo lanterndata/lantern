@@ -66,7 +66,6 @@ typedef struct HnswIndexTuple
     uint32 level;
     // infromation about INCLUDEd columns
     uint32 n_additional_attrs;
-    int16  *attr_numbers;
     int16    *attr_size;
     char   *include_attrs;
     // stores size of the flexible array member
@@ -132,7 +131,6 @@ typedef struct RowDatums {
     bool  *is_null;
 } RowDatums;
 
-RowDatums DatumsFromIndex(RetrieverCtx *ctx, unsigned long label, int n_attrs);
 void StoreExternalIndex(Relation                index,
                         Relation                heap,
                         IndexInfo              *indexInfo,
