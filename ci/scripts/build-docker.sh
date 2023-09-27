@@ -14,7 +14,7 @@ fi
 # Set Locale
 apt update && apt-mark hold locales && \
 # Install required packages for build
-apt install -y --no-install-recommends build-essential cmake postgresql-server-dev-$PG_VERSION postgresql-$PG_VERSION-pgvector && \
+apt install -y --no-install-recommends build-essential cmake postgresql-server-dev-$PG_VERSION && \
 # Build lantern
 cd /tmp/lantern && mkdir build && cd build && \
 # Run cmake
