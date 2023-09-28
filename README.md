@@ -27,6 +27,13 @@ cd build
 cmake ..
 make install
 ```
+
+To install Lantern using `homebrew`:
+```
+brew tap lanterndata/lantern
+brew install lantern && lantern_install
+```
+
 You can also install Lantern on top of PostgreSQL from our [precompiled binaries](https://github.com/lanterndata/lantern/releases) via a single `make install`.
 
 Alternatively, you can use Lantern in one click using [Replit](https://replit.com/@lanterndata/lantern-playground#.replit).
