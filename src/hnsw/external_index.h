@@ -6,10 +6,10 @@
 #include <access/generic_xlog.h>
 #include <common/relpath.h>  // ForkNumber
 #include <lib/ilist.h>       // Dlist
-#include <storage/bufmgr.h>  // Buffer
-#include <utils/relcache.h>  // Relation
 #include <nodes/execnodes.h>
+#include <storage/bufmgr.h>  // Buffer
 #include <utils/dynahash.h>
+#include <utils/relcache.h>  // Relation
 
 #include "extra_dirtied.h"
 #include "hnsw.h"
@@ -60,17 +60,19 @@ typedef struct HnswIndexPageSpecialBlock
 
 } HnswIndexPageSpecialBlock;
 
+// NOTE if you modify this struct you will need to modify serializeHnswIndexTuple and deserializeHnswIndexTuple
 typedef struct HnswIndexTuple
 {
     uint32 id;
     uint32 level;
     // infromation about INCLUDEd columns
     uint32 n_additional_attrs;
-    int16    *attr_size;
-    char   *include_attrs;
+    bool  *is_null;
+    int16 *attr_size;
+    char  *include_attrs;
     // stores size of the flexible array member
     uint32 size;
-    char*   node;
+    char  *node;
 } HnswIndexTuple;
 
 typedef struct
@@ -97,7 +99,7 @@ typedef struct
 
     HTABCache node_cache;
 
-    HTAB  *taken_hash; // map of heap tid to index tuple
+    HTAB *taken_hash;  // map of heap tid to index tuple
 
     dlist_head takenbuffers;
 } RetrieverCtx;
@@ -114,10 +116,9 @@ typedef struct
 
 typedef struct
 {
-        unsigned long key;
-        HnswIndexTuple *value;
+    unsigned long   key;
+    HnswIndexTuple *value;
 } BufferHash;
-
 
 typedef struct
 {
@@ -126,7 +127,8 @@ typedef struct
     HnswColumnType  columnType;
 } HnswInsertState;
 
-typedef struct RowDatums {
+typedef struct RowDatums
+{
     Datum *attrs;
     bool  *is_null;
 } RowDatums;

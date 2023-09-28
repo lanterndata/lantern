@@ -5,28 +5,29 @@
 
 #include <access/generic_xlog.h>  // GenericXLog
 #include <assert.h>
+#include <catalog/namespace.h>
 #include <common/relpath.h>
 #include <pg_config.h>       // BLCKSZ
 #include <storage/bufmgr.h>  // Buffer
+#include <utils/array.h>     //arraytype
 #include <utils/hsearch.h>
 #include <utils/relcache.h>
-#include <utils/array.h> //arraytype
-#include <catalog/namespace.h>
 
 #include "extra_dirtied.h"
 #include "htab_cache.h"
 #include "insert.h"
 #include "options.h"
 #include "retriever.h"
-#include "utils.h"
 #include "scan.h"
+#include "utils.h"
 
 static BlockNumber getBlockMapPageBlockNumber(uint32 *blockmap_page_group_index, int id);
-static void map_tid_to_key(RetrieverCtx* ctx, unsigned long key, HnswIndexTuple *value);
+static void        map_tid_to_key(RetrieverCtx *ctx, unsigned long key, HnswIndexTuple *value);
 
+// Serialize an HnswIndexTuple into a buffer that will be written to a postgres page
+// todo:: we can use is_null to save a bit of space
 char *serializeHnswIndexTuple(HnswIndexTuple *tuple)
 {
-    // TODO nullity checks
     // Calculate total size required for include_attrs
     uint32 include_attrs_size = 0;
     for(uint32 i = 0; i < tuple->n_additional_attrs; i++) {
@@ -56,6 +57,9 @@ char *serializeHnswIndexTuple(HnswIndexTuple *tuple)
     memcpy(head, tuple->attr_size, tuple->n_additional_attrs * sizeof(int16));
     head += tuple->n_additional_attrs * sizeof(int16);
 
+    memcpy(head, tuple->is_null, tuple->n_additional_attrs * sizeof(bool));
+    head += tuple->n_additional_attrs * sizeof(bool);
+
     memcpy(head, tuple->include_attrs, include_attrs_size);
     head += include_attrs_size;
 
@@ -64,6 +68,8 @@ char *serializeHnswIndexTuple(HnswIndexTuple *tuple)
     return buffer;
 }
 
+// Build an HnswIndexTuple referencing the postgres buffer/page. This is not doing a move, it counts
+// on the buffer remaining pinned in the taken_buffers list to ensure that the data is alive for its scope
 HnswIndexTuple *deserializeHnswIndexTuple(char *buffer)
 {
     HnswIndexTuple *tuple = (HnswIndexTuple *)palloc(sizeof(HnswIndexTuple));
@@ -82,61 +88,59 @@ HnswIndexTuple *deserializeHnswIndexTuple(char *buffer)
     memcpy(&(tuple->n_additional_attrs), head, sizeof(tuple->n_additional_attrs));
     head += sizeof(tuple->n_additional_attrs);
 
-    // tuple->attr_size = (int16*) palloc(tuple->n_additional_attrs * sizeof(uint16));
-    // memcpy(tuple->attr_size, head, tuple->n_additional_attrs * sizeof(uint16));
     tuple->attr_size = head;
     head += tuple->n_additional_attrs * sizeof(int16);
+
+    tuple->is_null = head;
+    head += tuple->n_additional_attrs * sizeof(bool);
 
     uint32 include_attrs_size = 0;
     for(uint32 i = 0; i < tuple->n_additional_attrs; i++) {
         include_attrs_size += tuple->attr_size[ i ];
     }
 
-    // tuple->include_attrs = (char*) palloc(include_attrs_size);
-    // memcpy(tuple->include_attrs, head, include_attrs_size);
     tuple->include_attrs = head;
     head += include_attrs_size;
 
-    // tuple->node = (char*) palloc(tuple->size);
     tuple->node = head;
-    // memcpy(tuple->node, head, tuple->size);
 
     return tuple;
 }
 
-Datum VectorFromIndexTuple(HnswScanState *scanstate, HnswIndexTuple *tuple, TupleDesc desc) {
-    // TODO assuming 32 bit width cause its hardcoded elsewhere, need to determine from attrinfo
+// Gvien a description of the columns in the index, and an index tuple retrieve the vector as a postgres array.
+// This is necessary because the tuple holds the usearch node which includes extra information and because we
+// cast integers to floats atm
+Datum VectorFromIndexTuple(HnswIndexTuple *tuple, TupleDesc desc)
+{
     ArrayType *data;
-    Datum *datum;
-    uint32  dim = *(uint32*)(tuple->node + sizeof(unsigned long)) / sizeof(float4);
-    datum = (Datum*)palloc(dim * sizeof(Datum));
-    float4 *vector = (float4*)palloc(dim * sizeof(float4));
+    Datum     *datum;
+    uint32     dim = *(uint32 *)(tuple->node + sizeof(unsigned long)) / sizeof(float4);
+    datum = (Datum *)palloc(dim * sizeof(Datum));
+    float4 *vector = (float4 *)palloc(dim * sizeof(float4));
 
     memcpy(vector, tuple->node + tuple->size - dim * sizeof(float4), dim * sizeof(float4));
 
-    if (desc->attrs[ 0 ].atttypid == INT4ARRAYOID) {
-      for (size_t i = 0; i < dim; i++) {
-          // Right now integers are converted to floats in usearch
-          float4 val = vector[ i ];
-          int ival = (int)val;
-          datum[ i ] = Int32GetDatum(ival);
-      }
-    }
-    else{
-        for (size_t i = 0; i < dim; i++) {
+    if(desc->attrs[ 0 ].atttypid == INT4ARRAYOID) {
+        for(size_t i = 0; i < dim; i++) {
+            // Right now integers are converted to floats in usearch
+            float4 val = vector[ i ];
+            int    ival = (int)val;
+            datum[ i ] = Int32GetDatum(ival);
+        }
+    } else {
+        for(size_t i = 0; i < dim; i++) {
             datum[ i ] = Float4GetDatum(vector[ i ]);
         }
     }
-    if (desc->attrs[ 0 ].atttypid == FLOAT4ARRAYOID) {
+    if(desc->attrs[ 0 ].atttypid == FLOAT4ARRAYOID) {
         data = construct_array(datum, dim, FLOAT4OID, sizeof(float4), true, 'i');
     }
-    if (desc->attrs[ 0 ].atttypid == INT4ARRAYOID) {
+    if(desc->attrs[ 0 ].atttypid == INT4ARRAYOID) {
         data = construct_array(datum, dim, INT4OID, sizeof(float4), true, 'i');
     }
-    if (desc->attrs[ 0 ].atttypid == TypenameGetTypid("vector")) {
+    if(desc->attrs[ 0 ].atttypid == TypenameGetTypid("vector")) {
         data = construct_array(datum, dim, FLOAT4OID, sizeof(float4), true, 'i');
-    }
-    else {
+    } else {
         // we should be covering all the types that can get allowed through
         pg_unreachable();
     }
@@ -145,41 +149,56 @@ Datum VectorFromIndexTuple(HnswScanState *scanstate, HnswIndexTuple *tuple, Tupl
     return PointerGetDatum(data);
 }
 
+// Return the contents of our index tuple as an array of datums, as well as whether or not they're null
+// this is used in index only scans to create a postgres IndexTuple out of our internal HnswIndexTuple
+// todo:: A cursory look at form_index_tuple makes me think it will copy, we maybe can avoid copies here
+// this depends on whether VARATT_IS_EXTERNAL will be true for our datums (see heaptuple.c:fill_val)
+RowDatums DatumsFromIndex(HnswScanState *scanstate, TupleDesc desc, unsigned long label)
+{
+    bool            found;
+    int             n_attrs = desc->natts;
+    char           *head;
+    bool           *is_null;
+    Datum           vector;
+    Datum          *attrs;
+    HnswIndexTuple *tuple;
 
-RowDatums DatumsFromIndex(HnswScanState *scanstate, TupleDesc desc, unsigned long label) {
-    bool found;
-    int n_attrs = desc->natts;
     RetrieverCtx *ctx = scanstate->retriever_ctx;
 
-    BufferHash *entry = (BufferHash *) hash_search(ctx->taken_hash, (void *)&label, HASH_ENTER, &found);
+    // Retrieve the index tuple that corresponds to the given label
+    BufferHash *entry = (BufferHash *)hash_search(ctx->taken_hash, (void *)&label, HASH_ENTER, &found);
+    tuple = entry->value;
 
-    if (entry == NULL || !found) {
-        elog(ERROR, "hash_search failed on insertion");
+    if(entry == NULL || !found) {
+        elog(ERROR, "Failed retrieving tuple with label %lu from hash", label);
     }
 
-    if (!found) {
-        elog(ERROR, "hash_search failed on insertion");
-    }
-    
-    Datum* attrs = (Datum*)palloc0(n_attrs * sizeof(Datum));
-    bool *is_null = (bool*)palloc(n_attrs * sizeof(bool));
-    memset(is_null, true, n_attrs * sizeof(bool));
-    char *head = entry->value->include_attrs;
-    for (size_t i = 0; i < entry->value->n_additional_attrs; i++) {
-        // TODO can we avoid copies?
-        is_null[ i + 1 ] = false;
-        if(entry->value->attr_size[ i ] <= sizeof(Datum)) {
-            memcpy(&attrs[ i + 1 ], head, entry->value->attr_size[ i ]);
-        } else {
-            attrs[ i + 1 ] = (Datum)palloc(entry->value->attr_size[ i ]);
-	    memcpy((char*)attrs[ i + 1 ], head, entry->value->attr_size[ i ]);
+    attrs = (Datum *)palloc0(n_attrs * sizeof(Datum));
+    // allocate 1 extra for the vector which we know is non-null
+    is_null = (bool *)palloc(n_attrs * sizeof(bool));
+    memcpy(is_null + sizeof(bool), tuple->is_null, (n_attrs - 1) * sizeof(bool));
+
+    // Go through attributes, if they're non-null copy them into a datum to be returned
+    head = tuple->include_attrs;
+    for(size_t i = 0; i < tuple->n_additional_attrs; i++) {
+        if(is_null[ i + 1 ]) {
+            elog(INFO, "we're triggering on retrieve");
+            head += tuple->attr_size[ i ];
+            attrs[ i + 1 ] = NULL;
         }
-	head += entry->value->attr_size[ i ];
+        // Attrs whose size is < sizeof(Datum) are passed by value
+        if(tuple->attr_size[ i ] <= sizeof(Datum)) {
+            memcpy(&attrs[ i + 1 ], head, tuple->attr_size[ i ]);
+        } else {
+            attrs[ i + 1 ] = (Datum)palloc(tuple->attr_size[ i ]);
+            memcpy((char *)attrs[ i + 1 ], head, tuple->attr_size[ i ]);
+        }
+        head += tuple->attr_size[ i ];
     }
-    RowDatums ret = { attrs, is_null };
-    
-     // process the array itself
-    Datum vector = VectorFromIndexTuple(scanstate, entry->value, desc);
+    RowDatums ret = {attrs, is_null};
+
+    // process the array itself
+    vector = VectorFromIndexTuple(tuple, desc);
     attrs[ 0 ] = vector;
     is_null[ 0 ] = false;
 
@@ -187,49 +206,54 @@ RowDatums DatumsFromIndex(HnswScanState *scanstate, TupleDesc desc, unsigned lon
 }
 
 // If additional columns have been included retrieve them from the heap and add them to the index tuple
-static size_t AddIncludesToTuple(Relation heap, AttrNumber *attrs, ItemPointer tid, HnswIndexTuple *index_tuple)
+static int AddIncludesToIndexTuple(Relation heap, AttrNumber *attrs, ItemPointer tid, HnswIndexTuple *tuple)
 {
-    HeapTuple         tuple;
+    HeapTuple         heapTuple;
     bool              isNull;
     Datum             datum;
-    size_t            offset = 0;
-    size_t            includes_size = 0;
+    int               offset = 0;
+    int               includes_size = 0;
     int16             attrlen;
     Form_pg_attribute attrInfo;
     AttrNumber        attr;
 
-    // TODO are these pallocs in an arena? index_tuple isnt freed in the calling context
-    // Get a tuple using the usearch label
-    tuple = GetTupleFromItemPointer(heap, tid);
-    if(index_tuple->n_additional_attrs) {
-        index_tuple->attr_size = (int16 *)palloc(index_tuple->n_additional_attrs * sizeof(uint16));
+    // Get a tuple using the usearch label/heap tid
+    heapTuple = GetTupleFromItemPointer(heap, tid);
+    if(tuple->n_additional_attrs) {
+        tuple->attr_size = (int16 *)palloc(tuple->n_additional_attrs * sizeof(uint16));
 
         // Loop over included attributes and record the sum of their size
-        for(size_t i = 0; i < index_tuple->n_additional_attrs; i++) {
+        for(size_t i = 0; i < tuple->n_additional_attrs; i++) {
             // We already ensure there is only 1 key column
             attr = attrs[ i + 1 ];
 
-            // Get attribute description and verify it has positive length
+            // Get attribute description and verify it has positive length (-1 indicates variable length types like
+            // arrays)
             attrInfo = TupleDescAttr(RelationGetDescr(heap), attr - 1);
             attrlen = attrInfo->attlen;
             if(attrlen <= 0) {
                 elog(ERROR, "Lantern only supports INCLUDE on columns of fixed size");
             }
-            index_tuple->attr_size[ i ] = attrlen;
+            tuple->attr_size[ i ] = attrlen;
             includes_size += attrlen;
         }
-        index_tuple->include_attrs = (char *)palloc(includes_size);
-        // Loop over included attributes again and copy their value into our buffer
-        for(size_t i = 0; i < index_tuple->n_additional_attrs; i++) {
-            attr = attrs[ 1 + i ];
-            attrlen = index_tuple->attr_size[ i ];
+        tuple->include_attrs = (char *)palloc(includes_size);
+        tuple->is_null = (bool *)palloc((tuple->n_additional_attrs) * sizeof(bool));
+        memset(tuple->is_null, false, (tuple->n_additional_attrs) * sizeof(bool));
+        // Loop over included attributes again and copy their value into the now allocated buffer
+        for(size_t i = 0; i < tuple->n_additional_attrs; i++) {
+            attr = attrs[ i + 1 ];
+            attrlen = tuple->attr_size[ i ];
 
-            // TODO check isNull
-            datum = heap_getattr(tuple, attr, RelationGetDescr(heap), &isNull);
+            datum = heap_getattr(heapTuple, attr, RelationGetDescr(heap), &isNull);
+            if(isNull) {
+                tuple->is_null[ i ] = true;
+                continue;
+            }
             if((unsigned long int)attrlen <= sizeof(Datum)) {
-                memcpy(index_tuple->include_attrs + offset, &datum, attrlen);
+                memcpy(tuple->include_attrs + offset, &datum, attrlen);
             } else {
-                memcpy(index_tuple->include_attrs + offset, (void *)datum, attrlen);
+                memcpy(tuple->include_attrs + offset, (void *)datum, attrlen);
             }
             offset += attrlen;
         }
@@ -340,6 +364,9 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
     int          node_level = 0;
     uint32       predicted_next_block = InvalidBlockNumber;
     uint32       last_block = -1;
+    int          include_size;
+    int          sizes_size;
+    int          tuple_size;
     BlockNumber *l_wal_retriever_block_numbers
         = palloc0(sizeof(BlockNumber) * number_of_blockmaps_in_group * HNSW_BLOCKMAP_BLOCKS_PER_PAGE);
 
@@ -402,8 +429,8 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
 
             // Allocate space for INCLUDEd columns and attach them to the index tuple
             bufferpage->n_additional_attrs = indexInfo->ii_NumIndexAttrs - indexInfo->ii_NumIndexKeyAttrs;
-            size_t include_size = AddIncludesToTuple(heap, indexInfo->ii_IndexAttrNumbers, tid, bufferpage);
-            size_t sizes_size = 2 * bufferpage->n_additional_attrs;
+            include_size = AddIncludesToIndexTuple(heap, indexInfo->ii_IndexAttrNumbers, tid, bufferpage);
+            sizes_size = 2 * bufferpage->n_additional_attrs;
 
             ldb_invariant(node_level < 100,
                           "node level is too large. at id %d"
@@ -415,18 +442,25 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
             // node should not be larger than the 8k bufferpage
             // invariant holds because of dimension <2000 check in index creation
             // once quantization is enabled, we can allow larger overall dims
-            // TODO this will fail large vectors with includes, need to update this
-            assert(bufferpage + offsetof(HnswIndexTuple, node) + node_size + include_size < bufferpage + BLCKSZ);
+            // TODO This logic is fine for now, vectors are fixed size so we won't allocate
+            tuple_size = sizeof(HnswIndexTuple) + node_size + sizes_size + include_size;
+            if(bufferpage + tuple_size >= bufferpage + BLCKSZ) {
+                usearch_error_t error;
+                UnlockReleaseBuffer(buf);
+                usearch_free(indexInfo, &error);
+
+                int allowed_size = (BLCKSZ - tuple_size + node_size) / sizeof(float4);
+                elog(ERROR,
+                     "Attempting to create index with tuple size greater than  the page size of %u bytes. You have "
+                     "included columns whose total size is %u bytes allowing a maximum vector dimension of %u",
+                     BLCKSZ,
+                     include_size + sizes_size,
+                     allowed_size);
+            }
 
             char *item = serializeHnswIndexTuple(bufferpage);
 
-            if(PageAddItem(page,
-                           (Item)item,
-                           sizeof(HnswIndexTuple) + node_size + sizes_size + include_size,
-                           InvalidOffsetNumber,
-                           false,
-                           false)
-               == InvalidOffsetNumber) {
+            if(PageAddItem(page, (Item)item, tuple_size, InvalidOffsetNumber, false, false) == InvalidOffsetNumber) {
                 // break to get a fresh page
                 // todo:: properly test this case
                 break;
@@ -458,7 +492,7 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
         // When the blockmap page group was created, header block was updated accordingly in CreateBlockMapGroup
         // call above.
         const BlockNumber blockmapno = blockmap_id + headerp->blockmap_page_group_index[ blockmap_groupno ];
-        Buffer buf = ReadBufferExtended(index, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
+        Buffer            buf = ReadBufferExtended(index, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
         LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 
         GenericXLogState *state = GenericXLogStart(index);
@@ -616,7 +650,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
 
     // Allocate space for INCLUDEd columns and attach them to the index tuple
     alloced_tuple->n_additional_attrs = indexInfo->ii_NumIndexAttrs - indexInfo->ii_NumIndexKeyAttrs;
-    AddIncludesToTuple(heap, indexInfo->ii_IndexAttrNumbers, heap_tid, alloced_tuple);
+    AddIncludesToIndexTuple(heap, indexInfo->ii_IndexAttrNumbers, heap_tid, alloced_tuple);
 
     /*** Add a new tuple corresponding to the added vector to the list of tuples in the index
      *  (create new page if necessary) ***/
@@ -864,13 +898,12 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
             BufferNode *buffNode;
             buffNode = (BufferNode *)palloc(sizeof(BufferNode));
             buffNode->buf = (char *)palloc(nodepage->size);
-            // TODO expand alloc for included cols
             memcpy(buffNode->buf, nodepage->node, nodepage->size);
             if(!idx_page_prelocked) {
                 UnlockReleaseBuffer(buf);
             }
             dlist_push_tail(&ctx->takenbuffers, &buffNode->node);
-            map_tid_to_key(ctx, ((unsigned long*)nodepage->node)[0], nodepage);
+            map_tid_to_key(ctx, ((unsigned long *)nodepage->node)[ 0 ], nodepage);
             return buffNode->buf;
 #else
             if(!idx_page_prelocked) {
@@ -944,18 +977,23 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, int id)
     pg_unreachable();
 }
 
-static void map_tid_to_key(RetrieverCtx* ctx, unsigned long key, HnswIndexTuple *value)
+// Insert a label->tuple pair into the RetrieverCtx for use during an index only scan
+// this is because the only information that usearch has is the label/heap TID so to
+// get included columns we need to relate this to the index tuple
+// todo:: can we use this instead of takenbuffers to pin buffers?
+// todo:: add logic to only set up a map on index only scans
+static void map_tid_to_key(RetrieverCtx *ctx, unsigned long key, HnswIndexTuple *value)
 {
     BufferHash *entry;
-    bool found;
+    bool        found;
 
-    entry = (BufferHash *) hash_search(ctx->taken_hash, (void *)&key, HASH_ENTER, &found);
+    entry = (BufferHash *)hash_search(ctx->taken_hash, (void *)&key, HASH_ENTER, &found);
 
-    if (entry == NULL) {
+    if(entry == NULL) {
         elog(ERROR, "hash_search failed on insertion");
     }
 
-    if (!found) {
+    if(!found) {
         entry->value = value;
     }
 }

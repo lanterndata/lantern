@@ -1,15 +1,15 @@
 #include <postgres.h>
-#include <access/htup_details.h>
-#include <access/htup.h>
-#include <access/relscan.h>
-#include <storage/bufmgr.h>
-#include <utils/rel.h>
 
 #include "utils.h"
 
+#include <access/htup.h>
+#include <access/htup_details.h>
+#include <access/relscan.h>
 #include <assert.h>
 #include <regex.h>
+#include <storage/bufmgr.h>
 #include <string.h>
+#include <utils/rel.h>
 
 #include "hnsw.h"
 #include "options.h"
@@ -56,7 +56,7 @@ usearch_label_t GetUsearchLabel(ItemPointer itemPtr)
 
 ItemPointer GetTidFromLabel(usearch_label_t label)
 {
-    ItemPointer tid = (ItemPointer) palloc(sizeof(ItemPointerData));
+    ItemPointer tid = (ItemPointer)palloc(sizeof(ItemPointerData));
     assert(tid != NULL);
     memcpy(tid, &label, 6);
     return tid;
@@ -65,11 +65,11 @@ ItemPointer GetTidFromLabel(usearch_label_t label)
 // See heapam_scan_analyze_next_tuple for reference
 HeapTuple GetTupleFromItemPointer(Relation rel, ItemPointer tid)
 {
-    Buffer buf;
-    Page page;
+    Buffer        buf;
+    Page          page;
     HeapTupleData tuple;
-    OffsetNumber offset;
-    ItemId itemId;
+    OffsetNumber  offset;
+    ItemId        itemId;
 
     // Get block number from the item pointer
     BlockNumber blocknum = ItemPointerGetBlockNumber(tid);
@@ -83,12 +83,12 @@ HeapTuple GetTupleFromItemPointer(Relation rel, ItemPointer tid)
     page = BufferGetPage(buf);
 
     // Check if the offset is valid for the given page
-    if (offset <= PageGetMaxOffsetNumber(page)) {
+    if(offset <= PageGetMaxOffsetNumber(page)) {
         itemId = PageGetItemId(page, offset);
 
         // Check if the item is valid
-        if (ItemIdIsNormal(itemId)) {
-            tuple.t_data = (HeapTupleHeader) PageGetItem(page, itemId);
+        if(ItemIdIsNormal(itemId)) {
+            tuple.t_data = (HeapTupleHeader)PageGetItem(page, itemId);
             tuple.t_len = ItemIdGetLength(itemId);
             tuple.t_tableOid = RelationGetRelid(rel);
             tuple.t_self = *tid;
@@ -102,7 +102,7 @@ HeapTuple GetTupleFromItemPointer(Relation rel, ItemPointer tid)
     UnlockReleaseBuffer(buf);
 
     // Return a copy since we no longer own a lock
-    if (tuple.t_data != NULL) {
+    if(tuple.t_data != NULL) {
         return heap_copytuple(&tuple);
     } else {
         return NULL;

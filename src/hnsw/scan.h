@@ -19,7 +19,7 @@ typedef struct HnswScanState
     HnswColumnType   columnType;
     // For index only scans
     MemoryContext memory_ctx;
-    int              dimensions;
+    int           dimensions;
     // indicates whether we are retrieving the first tuple
     // actual vector-search is run when the first tuple is requested
     bool first;
@@ -33,9 +33,9 @@ typedef struct HnswScanState
     RetrieverCtx *retriever_ctx;
 } HnswScanState;
 
-IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys);
-void          ldb_amrescan(IndexScanDesc scan, ScanKey keys, int nkeys, ScanKey orderbys, int norderbys);
-bool          ldb_amgettuple(IndexScanDesc scan, ScanDirection dir);
-void          ldb_amendscan(IndexScanDesc scan);
+IndexScanDesc    ldb_ambeginscan(Relation index, int nkeys, int norderbys);
+void             ldb_amrescan(IndexScanDesc scan, ScanKey keys, int nkeys, ScanKey orderbys, int norderbys);
+bool             ldb_amgettuple(IndexScanDesc scan, ScanDirection dir);
+void             ldb_amendscan(IndexScanDesc scan);
 extern RowDatums DatumsFromIndex(HnswScanState *scanstate, TupleDesc desc, unsigned long label);
 #endif  // LDB_HNSW_SCAN_H

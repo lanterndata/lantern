@@ -9,7 +9,7 @@ void            LogUsearchOptions(usearch_init_options_t *opts);
 void            PopulateUsearchOpts(Relation index, usearch_init_options_t *opts);
 usearch_label_t GetUsearchLabel(ItemPointer itemPtr);
 ItemPointer     GetTidFromLabel(usearch_label_t label);
-HeapTuple GetTupleFromItemPointer(Relation rel, ItemPointer tid);
+HeapTuple       GetTupleFromItemPointer(Relation rel, ItemPointer tid);
 
 static inline void ldb_invariant(bool condition, const char *msg, ...)
 {

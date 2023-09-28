@@ -403,7 +403,8 @@ static void BuildIndex(
 
     //****************************** saving to WAL BEGIN ******************************//
     UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_LOAD);
-    StoreExternalIndex(index, heap, indexInfo, buildstate->usearch_index, forkNum, result_buf, &opts, num_added_vectors);
+    StoreExternalIndex(
+        index, heap, indexInfo, buildstate->usearch_index, forkNum, result_buf, &opts, num_added_vectors);
 
     //****************************** saving to WAL END ******************************//
 

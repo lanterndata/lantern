@@ -173,8 +173,9 @@ static void hnswcostestimate(PlannerInfo *root,
     uint64 num_blocks_accessed
         = estimate_number_blocks_accessed(num_tuples_in_index, path->indexinfo->pages, costs.numIndexTuples);
 
-    // TODO this is super wrong but pretending we access the same number of blocks on the heap as we do in the index doesn't feel like an insane estimate
-    if (path->path.pathtype == T_IndexOnlyScan) {
+    // TODO this is super wrong but pretending we access the same number of blocks on the heap as we do in the index
+    // doesn't feel like an insane estimate
+    if(path->path.pathtype == T_IndexOnlyScan) {
         num_blocks_accessed = num_blocks_accessed / 2;
     }
 
@@ -403,19 +404,26 @@ float4 *DatumGetSizedFloatArray(Datum datum, HnswColumnType type, int dimensions
     }
 }
 
+// Logic to determin whether a given column can be returned by an inex only scan
+// currently we only support fixed size columns
 bool ldb_canreturn(Relation index, int attr)
 {
-    return true;
-    // TODO the index doesn't appear to list included columns
-    if (attr > 0 && attr <= RelationGetNumberOfAttributes(index))
-    {
+    // attributes are indexed separately within the index, 1 is the key, our vector
+    if(attr <= RelationGetNumberOfAttributes(index)) {
         Form_pg_attribute attrDesc = TupleDescAttr(index->rd_att, attr - 1);
 
-        /* If attribute has a fixed size, then we can return from the index */
-        if (attrDesc->attlen > 0)
-        {
+        // First element can be an an array type but for now not a vector
+        if(attr == 1) {
+            if(attrDesc->atttypid == TypenameGetTypid("vector")) {
+                return false;
+            }
+            return true;
+        }
+
+        // If attribute has a fixed size, then we can return from the index
+        if(attrDesc->attlen > 0) {
             return true;
         }
     }
     return false;
-} 
+}
