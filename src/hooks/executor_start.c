@@ -9,6 +9,7 @@
 #include <nodes/plannodes.h>
 
 #include "../hnsw/utils.h"
+#include "op_rewrite.h"
 #include "plan_tree_walker.h"
 #include "utils.h"
 
@@ -73,12 +74,12 @@ void ExecutorStart_hook_with_operator_check(QueryDesc *queryDesc, int eflags)
     if(oidList != NULL) {
         // oidList will be NULL if LanternDB extension is not fully initialized
         // e.g. in statements executed as a result of CREATE EXTENSION ... statement
-        ldb_rewrite_ops(queryDesc->plannedstmt->planTree, oidList);
+        ldb_rewrite_ops(queryDesc->plannedstmt->planTree, oidList, queryDesc->plannedstmt->rtable);
         validate_operator_usage(queryDesc->plannedstmt->planTree, oidList);
         ListCell *lc;
         foreach(lc, queryDesc->plannedstmt->subplans) {
             Plan *subplan = (Plan *)lfirst(lc);
-        ldb_rewrite_ops(subplan, oidList);
+        ldb_rewrite_ops(subplan, oidList, queryDesc->plannedstmt->rtable);
             validate_operator_usage(subplan, oidList);
         }
         list_free(oidList);

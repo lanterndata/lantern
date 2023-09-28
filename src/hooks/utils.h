@@ -7,4 +7,6 @@
 
 List *ldb_get_operator_oids();
 
+List *ldb_get_operator_class_oids(Oid amId);
+
 #endif  // LDB_HOOKS_UTILS_H

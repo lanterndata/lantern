@@ -1,12 +1,76 @@
 #include <postgres.h>
 #include <nodes/primnodes.h>
 #include <nodes/nodeFuncs.h>
+#include <utils/syscache.h>
+#include <utils/rel.h>
+#include <catalog/pg_amop.h>
+#include <catalog/pg_amop_d.h>
+#include <catalog/pg_amproc.h>
+#include <catalog/pg_opclass.h>
+#include <catalog/pg_am.h>
+#include <utils/syscache.h>
+#include <access/htup_details.h>
+#include <access/genam.h>
+#include <access/relation.h>
+#include <commands/defrem.h>
+#include <parser/parsetree.h>
 
 #include <stdbool.h>
+#include <assert.h>
 
 #include "utils.h"
 #include "plan_tree_walker.h"
 #include "op_rewrite.h"
+
+// To write syscache calls look for the 'static const struct cachedesc cacheinfo[]' in utils/cache/syscache.c
+// These describe the different caches that will be initialized into SysCache and the keys they support in searches
+// The anums tell you the table and the column that the key will be compared to this is afaict the only way to match them to SQL 
+// for example pg_am.oid -> Anum_pg_am_oid the keys must be in order but they need not all be included
+// the comment next to the top label is the name of the #defined cacheid that you should use as your first argument
+// you can destructure the tuple int a From_(table_name) with GETSTRUCT to pull individual rows out
+static Oid get_func_id_from_index(Relation index) {
+    Oid hnswamoid = get_index_am_oid("hnsw", false);
+    if (index->rd_rel->relam != hnswamoid) return InvalidOid;  
+
+
+    //indclass is inaccessible on the form data 
+    //https://www.postgresql.org/docs/current/system-catalog-declarations.html
+    bool isNull;
+    Oid idxopclassoid;
+    Datum classDatum = SysCacheGetAttr(INDEXRELID, index->rd_indextuple, Anum_pg_index_indclass, &isNull);
+    if (!isNull) {
+        oidvector *indclass = (oidvector *)DatumGetPointer(classDatum);
+        assert(indclass->dim1 == 1);
+        idxopclassoid = indclass->values[0];
+    } else {
+        index_close(index, AccessShareLock);
+        elog(ERROR, "Failed to retrieve indclass oid from index class");
+    }
+
+    //SELECT * FROM pg_opclass WHERE opcmethod=hnswamoid AND opcname=dist_cos_ops
+    HeapTuple opclassTuple = SearchSysCache1(CLAOID, ObjectIdGetDatum(idxopclassoid));
+    if (!HeapTupleIsValid(opclassTuple))
+    {
+	index_close(index, AccessShareLock);
+	elog(ERROR, "Failed to find operator class for key column");
+    }
+
+    Oid opclassOid = ((Form_pg_opclass) GETSTRUCT(opclassTuple))->opcfamily;
+    ReleaseSysCache(opclassTuple);
+
+    // SELECT * FROM pg_amproc WHERE amprocfamily=opclassOid
+    HeapTuple opTuple = SearchSysCache1(AMPROCNUM,
+					ObjectIdGetDatum(opclassOid));
+    if (!HeapTupleIsValid(opTuple))
+    {
+	index_close(index, AccessShareLock);
+	elog(ERROR, "Failed to find the function for operator class");
+    }
+    Oid functionId = ((Form_pg_amproc) GETSTRUCT(opTuple))->amproc;
+    ReleaseSysCache(opTuple);
+
+    return functionId;
+}
 
 static Node *operator_rewriting_mutator(Node *node, void *ctx) {
     OpRewriterContext *context = (OpRewriterContext *)ctx;
@@ -17,7 +81,6 @@ static Node *operator_rewriting_mutator(Node *node, void *ctx) {
         OpExpr *opExpr = (OpExpr *)node;
         if(list_member_oid(context->ldb_ops, opExpr->opno)) {
             FuncExpr *fnExpr = makeNode(FuncExpr);
-            fnExpr->funcid = opExpr->opfuncid;
             fnExpr->funcresulttype = opExpr->opresulttype;
             fnExpr->funcretset = opExpr->opretset;
             fnExpr->funccollid = opExpr->opcollid;
@@ -30,12 +93,48 @@ static Node *operator_rewriting_mutator(Node *node, void *ctx) {
             // print it as a function
             fnExpr->funcformat = COERCE_EXPLICIT_CALL;
 
+            if (context->indices == NULL) {
+                fnExpr->funcid = opExpr->opfuncid;
+            } else {
+                ListCell *lc;
+                foreach(lc, context->indices) {
+                    Oid indexid = (Oid)lfirst(lc);
+                    Relation index = index_open(indexid, AccessShareLock);
+                    Oid indexfunc = get_func_id_from_index(index);
+                    if (OidIsValid(indexfunc)) {
+                        fnExpr->funcid = indexfunc;
+                        index_close(index, AccessShareLock);
+                        return (Node *)fnExpr;
+                    }
+                    index_close(index, AccessShareLock);
+                }
+            }
             return (Node *)fnExpr;
         }
     }
 
     if (IsA(node, IndexScan) || IsA(node, IndexOnlyScan)) {
         return node;
+    }
+    if (IsA(node, SeqScan)) {
+        SeqScan *seqscan = (SeqScan *)node;
+#if PG_VERSION_NUM >= 150000
+        Plan *seqscanplan = &seqscan->scan.plan;
+        Oid rtrelid = seqscan->scan.scanrelid;
+#else
+        Plan *seqscanplan = &seqscan->plan;
+        Oid rtrelid = secscan->scanrelid;
+#endif
+        RangeTblEntry *rte = rt_fetch(rtrelid, context->rtable);
+        Oid relid = rte->relid;
+        Relation rel = relation_open(relid, AccessShareLock);
+        if (rel->rd_indexvalid) {
+            context->indices = RelationGetIndexList(rel);
+        }
+        relation_close(rel, AccessShareLock);
+
+        base_plan_mutator(seqscanplan, operator_rewriting_mutator, context);
+        return (Node *)seqscan;
     }
 
     if (is_plan_node(node)) {
@@ -45,12 +144,13 @@ static Node *operator_rewriting_mutator(Node *node, void *ctx) {
     }
 }
 
-bool ldb_rewrite_ops(Plan *plan, List *oidList) {
+bool ldb_rewrite_ops(Plan *plan, List *oidList, List* rtable) {
     Node *node = (Node *)plan;
 
     OpRewriterContext context;
     context.ldb_ops = oidList;
     context.indices = NULL;
+    context.rtable = rtable;
 
     if (IsA(node, IndexScan) || IsA(node, IndexOnlyScan)) {
         return false;

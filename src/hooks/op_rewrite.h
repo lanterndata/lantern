@@ -6,7 +6,8 @@
 typedef struct OpRewriterContext {
     List *ldb_ops;
     List *indices;
+    List *rtable;
 } OpRewriterContext;
 
-bool ldb_rewrite_ops(Plan *plan, List *oidList);
+bool ldb_rewrite_ops(Plan *plan, List *oidList, List* rtable);
 #endif
