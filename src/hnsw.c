@@ -7,7 +7,6 @@
 #include <catalog/namespace.h>
 #include <commands/vacuum.h>
 #include <float.h>
-#include <hnsw/utils.h>
 #include <math.h>
 #include <utils/guc.h>
 #include <utils/lsyscache.h>

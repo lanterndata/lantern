@@ -8,11 +8,13 @@
 #include <catalog/namespace.h>
 #include <catalog/pg_type.h>
 #include <executor/executor.h>
+#include <funcapi.h>
 #include <nodes/execnodes.h>
 #include <storage/bufmgr.h>
 #include <utils/array.h>
 #include <utils/lsyscache.h>
 #include <utils/memutils.h>
+
 #ifdef _WIN32
 #define access _access
 #else
@@ -141,7 +143,7 @@ static int GetArrayLengthFromExpression(Expr *expression, Relation heap, HeapTup
     EState         *estate;
     Datum           result;
     bool            isNull;
-    ArrayType      *array;
+    Oid             resultOid;
     TupleTableSlot *slot;
     TupleDesc       tupdesc = RelationGetDescr(heap);
 
@@ -168,34 +170,32 @@ static int GetArrayLengthFromExpression(Expr *expression, Relation heap, HeapTup
 
     // Evaluate the expression for the first row
     result = ExecEvalExprSwitchContext(exprstate, econtext, &isNull);
-    array = DatumGetArrayTypeP(result);
 
     // Release tuple descriptor
     ReleaseTupleDesc(tupdesc);
 
-    Oid oid = get_array_type(array->elemtype);
+    // Get the return type information
+    get_expr_result_type((Node *)exprstate->expr, &resultOid, NULL);
 
-    if(!OidIsValid(oid)) {
-        // Oid 0 can only be in a case when the datum will be vector type
-        // As postgres will guard that arbitrary data type won't be returned
-        // from the function expression
-        // so we should be safe here to case result into vector in this case
+    HnswColumnType columnType = GetColumnTypeFromOid(resultOid);
+
+    if(columnType == REAL_ARRAY || columnType == INT_ARRAY) {
+        ArrayType *array = DatumGetArrayTypeP(result);
+        return ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
+    } else if(columnType == VECTOR) {
         Vector *vector = DatumGetVector(result);
-        // if the vector will not have dimensions or somehow it
-        // won't be casted the code will go to ldb_invariant case
-        if(vector->dim > 0) {
-            return vector->dim;
-        }
+        return vector->dim;
+    } else {
+        // Check if the result is not null and is supported type
+        // There is a guard in postgres that wont' allow passing
+        // Anything else from the defined operator class types
+        // Throwing an error like: ERROR:  data type text has no default operator class for access method "hnsw"
+        // So this case will be marked as invariant
+        ldb_invariant(!isNull && columnType != UNKNOWN,
+                      "Expression used in CREATE INDEX statement did not result in hnsw-index compatible array");
     }
-    // Check if the result is not null and is supported type
-    // There is a guard in postgres that wont' allow passing
-    // Anything else from the defined operator class types
-    // Throwing an error like: ERROR:  data type text has no default operator class for access method "hnsw"
-    // So this case will be marked as invariant
-    ldb_invariant(!isNull && GetColumnTypeFromOid(oid) != UNKNOWN,
-                  "Expression used in CREATE INDEX statement did not result in hnsw-index compatible array");
 
-    return ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
+    return HNSW_DEFAULT_DIM;
 }
 
 static int GetArrayLengthFromHeap(Relation heap, int indexCol, IndexInfo *indexInfo)

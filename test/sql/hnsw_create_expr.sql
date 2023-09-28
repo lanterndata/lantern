@@ -1,3 +1,10 @@
+/*
+This function, int_to_fixed_binary_real_array(n INT), will create a 3-dimensional float array (REAL[]).
+It fills the array with the first 3 bits of the passed integer 'n' by converting 'n' to binary, 
+left-padding it to 3 digits, and then converting each digit to a REAL value.
+For example, int_to_fixed_binary_real_array(1); will result in the array {0,0,1},
+and int_to_fixed_binary_real_array(2); will result in {0,1,0}.
+*/
 CREATE OR REPLACE FUNCTION int_to_fixed_binary_real_array(n INT) RETURNS REAL[] AS $$
 DECLARE
     binary_string TEXT;
@@ -13,6 +20,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
+/*
+This function, int_to_dynamic_binary_real_array(n INT), will create a 3+n dimensional float array (REAL[]).
+It first fills the first 3 elements of the array with the first 3 bits of the passed integer 'n' 
+(using a similar binary conversion as the previous function), and then adds elements sequentially from 4 to 'n+3'.
+For example, int_to_dynamic_binary_real_array(3); will result in the array {0,1,1,1,2,3},
+and int_to_dynamic_binary_real_array(4); will result in the array {1,0,0,1,2,3,4}.
+*/
 CREATE OR REPLACE FUNCTION int_to_dynamic_binary_real_array(n INT) RETURNS REAL[] AS $$
 DECLARE
     binary_string TEXT;
@@ -38,6 +52,11 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
+/*
+This simple function, int_to_string(n INT), converts the integer 'n' to a 3-character text representation 
+by converting 'n' to binary and left-padding it to 3 digits with '0's.
+For example, int_to_string(1); will return '001', and int_to_string(2); will return '010'.
+*/
 CREATE OR REPLACE FUNCTION int_to_string(n INT) RETURNS TEXT AS $$
 BEGIN
     RETURN lpad(CAST(n::BIT(3) AS TEXT), 3, '0');
@@ -65,4 +84,4 @@ CREATE INDEX ON test_table USING hnsw (int_to_fixed_binary_real_array(id), int_t
 
 -- This currently results in an error about using the operator outside of index
 -- This case should be fixed
-SELECT id FROM test_table ORDER BY int_to_fixed_binary_real_array(id) <-> int_to_fixed_binary_real_array(0) LIMIT 2;
+SELECT id FROM test_table ORDER BY int_to_fixed_binary_real_array(id) <-> '{0,0,0}'::REAL[] LIMIT 2;
