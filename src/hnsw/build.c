@@ -7,10 +7,14 @@
 #include <catalog/index.h>
 #include <catalog/namespace.h>
 #include <catalog/pg_type.h>
+#include <executor/executor.h>
+#include <funcapi.h>
+#include <nodes/execnodes.h>
 #include <storage/bufmgr.h>
 #include <utils/array.h>
 #include <utils/lsyscache.h>
 #include <utils/memutils.h>
+
 #ifdef _WIN32
 #define access _access
 #else
@@ -132,7 +136,69 @@ static void BuildCallback(
     MemoryContextReset(buildstate->tmpCtx);
 }
 
-static int GetArrayLengthFromHeap(Relation heap, int indexCol)
+static int GetArrayLengthFromExpression(Expr *expression, Relation heap, HeapTuple tuple)
+{
+    ExprContext    *econtext;
+    ExprState      *exprstate;
+    EState         *estate;
+    Datum           result;
+    bool            isNull;
+    Oid             resultOid;
+    TupleTableSlot *slot;
+    TupleDesc       tupdesc = RelationGetDescr(heap);
+
+#if PG_VERSION_NUM >= 120000
+    slot = MakeSingleTupleTableSlot(tupdesc, &TTSOpsHeapTuple);
+#else
+    slot = MakeSingleTupleTableSlot(tupdesc);
+#endif
+
+    // Create an expression context
+    econtext = CreateStandaloneExprContext();
+    estate = CreateExecutorState();
+
+    // Build the expression state for your expression
+    exprstate = ExecPrepareExpr(expression, estate);
+
+#if PG_VERSION_NUM >= 120000
+    ExecStoreHeapTuple(tuple, slot, false);
+#else
+    ExecStoreTuple(tuple, slot, InvalidBuffer, false);
+#endif
+    // Set up the tuple for the expression evaluation
+    econtext->ecxt_scantuple = slot;
+
+    // Evaluate the expression for the first row
+    result = ExecEvalExprSwitchContext(exprstate, econtext, &isNull);
+
+    // Release tuple descriptor
+    ReleaseTupleDesc(tupdesc);
+
+    // Get the return type information
+    get_expr_result_type((Node *)exprstate->expr, &resultOid, NULL);
+
+    HnswColumnType columnType = GetColumnTypeFromOid(resultOid);
+
+    if(columnType == REAL_ARRAY || columnType == INT_ARRAY) {
+        ArrayType *array = DatumGetArrayTypeP(result);
+        return ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
+    } else if(columnType == VECTOR) {
+        Vector *vector = DatumGetVector(result);
+        return vector->dim;
+    } else {
+        // Check if the result is not null and is supported type
+        // There is a guard in postgres that wont' allow passing
+        // Anything else from the defined operator class types
+        // Throwing an error like: ERROR:  data type text has no default operator class for access method "hnsw"
+        // So this case will be marked as invariant
+        ldb_invariant(!isNull && columnType != UNKNOWN,
+                      "Expression used in CREATE INDEX statement did not result in hnsw-index compatible array");
+    }
+
+    return HNSW_DEFAULT_DIM;
+}
+
+static int GetArrayLengthFromHeap(Relation heap, int indexCol, IndexInfo *indexInfo)
 {
 #if PG_VERSION_NUM < 120000
     HeapScanDesc scan;
@@ -161,11 +227,21 @@ static int GetArrayLengthFromHeap(Relation heap, int indexCol)
         return n_items;
     }
 
-    // Get the indexed column out of the row and return it's dimensions
-    datum = heap_getattr(tuple, indexCol, RelationGetDescr(heap), &isNull);
-    if(!isNull) {
-        array = DatumGetArrayTypePCopy(datum);
-        n_items = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
+    if(indexInfo->ii_Expressions != NULL) {
+        // We don't suport multicolumn indexes
+        // So trying to pass multiple expressions on index creation
+        // Will result an error before getting here
+        ldb_invariant(indexInfo->ii_Expressions->length == 1,
+                      "Index expressions can not be greater than 1 as multicolumn indexes are not supported");
+        Expr *indexpr_item = lfirst(list_head(indexInfo->ii_Expressions));
+        n_items = GetArrayLengthFromExpression(indexpr_item, heap, tuple);
+    } else {
+        // Get the indexed column out of the row and return it's dimensions
+        datum = heap_getattr(tuple, indexCol, RelationGetDescr(heap), &isNull);
+        if(!isNull) {
+            array = DatumGetArrayTypePCopy(datum);
+            n_items = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
+        }
     }
 
     heap_endscan(scan);
@@ -173,7 +249,7 @@ static int GetArrayLengthFromHeap(Relation heap, int indexCol)
     return n_items;
 }
 
-int GetHnswIndexDimensions(Relation index)
+int GetHnswIndexDimensions(Relation index, IndexInfo *indexInfo)
 {
     HnswColumnType columnType = GetIndexColumnType(index);
 
@@ -195,7 +271,7 @@ int GetHnswIndexDimensions(Relation index)
 #else
             heap = table_open(index->rd_index->indrelid, AccessShareLock);
 #endif
-            opt_dim = GetArrayLengthFromHeap(heap, attrNum);
+            opt_dim = GetArrayLengthFromHeap(heap, attrNum, indexInfo);
             opts = (ldb_HnswOptions *)index->rd_options;
             if(opts != NULL) {
                 opts->dim = opt_dim;
@@ -248,7 +324,7 @@ static int InferDimension(Relation heap, IndexInfo *indexInfo)
     }
 
     indexCol = indexInfo->ii_IndexAttrNumbers[ 0 ];
-    return GetArrayLengthFromHeap(heap, indexCol);
+    return GetArrayLengthFromHeap(heap, indexCol, indexInfo);
 }
 
 /*
@@ -260,7 +336,7 @@ static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation i
     buildstate->index = index;
     buildstate->indexInfo = indexInfo;
     buildstate->columnType = GetIndexColumnType(index);
-    buildstate->dimensions = GetHnswIndexDimensions(index);
+    buildstate->dimensions = GetHnswIndexDimensions(index, indexInfo);
     buildstate->index_file_path = ldb_HnswGetIndexFilePath(index);
 
     // If a dimension wasn't specified try to infer it

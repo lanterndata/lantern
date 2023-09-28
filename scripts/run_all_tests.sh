@@ -71,13 +71,14 @@ pgvector_installed=$($PSQL -U $DB_USER -d postgres -c "SELECT 1 FROM pg_availabl
 rm -rf $TMP_OUTDIR/schedule.txt
 if [ -n "$FILTER" ]; then
     if [[ "$pgvector_installed" == "1" ]]; then
-        TEST_FILES=$(cat schedule.txt | grep -E '^(test:|test_pgvector:)' | sed -e 's/^\(test:\|test_pgvector:\)//' | tr " " "\n" | sed -e '/^$/d')
+        TEST_FILES=$(cat schedule.txt | grep -E '^(test:|test_pgvector:)' | sed -E -e 's/^test:|test_pgvector://' | tr " " "\n" | sed -e '/^$/d')
     else
         TEST_FILES=$(cat schedule.txt | grep '^test:' | sed -e 's/^test://' | tr " " "\n" | sed -e '/^$/d')
     fi
 
     while IFS= read -r f; do
         if [[ $f == *"$FILTER"* ]]; then
+            echo "HERE $f"
             echo "test: $f" >> $TMP_OUTDIR/schedule.txt
         fi
     done <<< "$TEST_FILES"
