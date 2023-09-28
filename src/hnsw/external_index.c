@@ -104,25 +104,29 @@ HnswIndexTuple *deserializeHnswIndexTuple(char *buffer)
     return tuple;
 }
 
-Datum VectorFromIndexTuple(HnswScanState *scanstate, HnswIndexTuple *tuple, TupleDesc desc, unsigned long label) {
+Datum VectorFromIndexTuple(HnswScanState *scanstate, HnswIndexTuple *tuple, TupleDesc desc) {
     // TODO assuming 32 bit width cause its hardcoded elsewhere, need to determine from attrinfo
     ArrayType *data;
     Datum *datum;
     uint32  dim = *(uint32*)(tuple->node + sizeof(unsigned long)) / sizeof(float4);
     datum = (Datum*)palloc(dim * sizeof(Datum));
-    uint32 *vector = (uint32*)palloc(dim * sizeof(float4));
+    float4 *vector = (float4*)palloc(dim * sizeof(float4));
 
-    usearch_error_t        error = NULL;
-    //usearch_get(scanstate->usearch_index, (usearch_label_t)label, (void*)vector, usearch_scalar_f32_k, &error);
+    memcpy(vector, tuple->node + tuple->size - dim * sizeof(float4), dim * sizeof(float4));
 
-    if (error != NULL) {
-        elog(ERROR, "failed retrieving vector from usearch");
+    if (desc->attrs[ 0 ].atttypid == INT4ARRAYOID) {
+      for (size_t i = 0; i < dim; i++) {
+          // Right now integers are converted to floats in usearch
+          float4 val = vector[ i ];
+          int ival = (int)val;
+          datum[ i ] = Int32GetDatum(ival);
+      }
     }
-
-    for (size_t i = 0; i < dim; i++) {
-        datum[ i ] = Float4GetDatum(vector[ i * sizeof(float4) ]);
+    else{
+        for (size_t i = 0; i < dim; i++) {
+            datum[ i ] = Float4GetDatum(vector[ i ]);
+        }
     }
-
     if (desc->attrs[ 0 ].atttypid == FLOAT4ARRAYOID) {
         data = construct_array(datum, dim, FLOAT4OID, sizeof(float4), true, 'i');
     }
@@ -131,8 +135,9 @@ Datum VectorFromIndexTuple(HnswScanState *scanstate, HnswIndexTuple *tuple, Tupl
     }
     if (desc->attrs[ 0 ].atttypid == TypenameGetTypid("vector")) {
         data = construct_array(datum, dim, FLOAT4OID, sizeof(float4), true, 'i');
-    } else {
-        // key column is guaranteed to be a supported type at this point
+    }
+    else {
+        // we should be covering all the types that can get allowed through
         pg_unreachable();
     }
     pfree(datum);
@@ -173,10 +178,10 @@ RowDatums DatumsFromIndex(HnswScanState *scanstate, TupleDesc desc, unsigned lon
     }
     RowDatums ret = { attrs, is_null };
     
-    // do the array itself
-    //Datum vector = VectorFromIndexTuple(scanstate, entry->value, desc, label);
-    //attrs[ 0 ] = vector;
-    //is_null[ 0 ] = false;
+     // process the array itself
+    Datum vector = VectorFromIndexTuple(scanstate, entry->value, desc);
+    attrs[ 0 ] = vector;
+    is_null[ 0 ] = false;
 
     return ret;
 }
