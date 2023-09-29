@@ -79,7 +79,7 @@ void ExecutorStart_hook_with_operator_check(QueryDesc *queryDesc, int eflags)
         ListCell *lc;
         foreach(lc, queryDesc->plannedstmt->subplans) {
             Plan *subplan = (Plan *)lfirst(lc);
-        ldb_rewrite_ops(subplan, oidList, queryDesc->plannedstmt->rtable);
+            ldb_rewrite_ops(subplan, oidList, queryDesc->plannedstmt->rtable);
             validate_operator_usage(subplan, oidList);
         }
         list_free(oidList);

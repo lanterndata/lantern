@@ -324,8 +324,7 @@ static float8 vector_dist(Vector *a, Vector *b, usearch_metric_kind_t metric_kin
 }
 
 PGDLLEXPORT PG_FUNCTION_INFO_V1(ldb_generic_dist);
-// PG_FUNCTION_ARGS is #defined as FunctionCallInfo fcinfo
-Datum       ldb_generic_dist(PG_FUNCTION_ARGS) { l2sq_dist(fcinfo); }
+Datum       ldb_generic_dist(PG_FUNCTION_ARGS) { PG_RETURN_NULL(); }
 
 PGDLLEXPORT PG_FUNCTION_INFO_V1(l2sq_dist);
 Datum       l2sq_dist(PG_FUNCTION_ARGS)
