@@ -409,16 +409,12 @@ float4 *DatumGetSizedFloatArray(Datum datum, HnswColumnType type, int dimensions
 bool ldb_canreturn(Relation index, int attr)
 {
     // attributes are indexed separately within the index, 1 is the key, our vector
+    if(attr == 1) {
+        return true;
+    }
+
     if(attr <= RelationGetNumberOfAttributes(index)) {
         Form_pg_attribute attrDesc = TupleDescAttr(index->rd_att, attr - 1);
-
-        // First element can be an an array type but for now not a vector
-        if(attr == 1) {
-            if(attrDesc->atttypid == TypenameGetTypid("vector")) {
-                return false;
-            }
-            return true;
-        }
 
         // If attribute has a fixed size, then we can return from the index
         if(attrDesc->attlen > 0) {

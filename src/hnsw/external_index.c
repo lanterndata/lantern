@@ -21,6 +21,8 @@
 #include "scan.h"
 #include "utils.h"
 
+#include "vector.h"
+
 static BlockNumber getBlockMapPageBlockNumber(uint32 *blockmap_page_group_index, int id);
 static void        map_tid_to_key(RetrieverCtx *ctx, unsigned long key, HnswIndexTuple *value);
 
@@ -120,6 +122,12 @@ Datum VectorFromIndexTuple(HnswIndexTuple *tuple, TupleDesc desc)
 
     memcpy(vector, tuple->node + tuple->size - dim * sizeof(float4), dim * sizeof(float4));
 
+    if(desc->attrs[ 0 ].atttypid == FLOAT4ARRAYOID) {
+        for(size_t i = 0; i < dim; i++) {
+            datum[ i ] = Float4GetDatum(vector[ i ]);
+        }
+        data = construct_array(datum, dim, FLOAT4OID, sizeof(float4), true, 'i');
+    }
     if(desc->attrs[ 0 ].atttypid == INT4ARRAYOID) {
         for(size_t i = 0; i < dim; i++) {
             // Right now integers are converted to floats in usearch
@@ -127,19 +135,15 @@ Datum VectorFromIndexTuple(HnswIndexTuple *tuple, TupleDesc desc)
             int    ival = (int)val;
             datum[ i ] = Int32GetDatum(ival);
         }
-    } else {
-        for(size_t i = 0; i < dim; i++) {
-            datum[ i ] = Float4GetDatum(vector[ i ]);
-        }
-    }
-    if(desc->attrs[ 0 ].atttypid == FLOAT4ARRAYOID) {
-        data = construct_array(datum, dim, FLOAT4OID, sizeof(float4), true, 'i');
-    }
-    if(desc->attrs[ 0 ].atttypid == INT4ARRAYOID) {
         data = construct_array(datum, dim, INT4OID, sizeof(float4), true, 'i');
     }
     if(desc->attrs[ 0 ].atttypid == TypenameGetTypid("vector")) {
-        data = construct_array(datum, dim, FLOAT4OID, sizeof(float4), true, 'i');
+        //data = construct_array(datum, dim, FLOAT4OID, sizeof(float4), true, 'i');
+        Vector *vec = InitVector(dim);
+        for(size_t i = 0; i < dim; i++) {
+            vec->x[ i ] = DatumGetFloat4(vector[ i ]);
+        }
+        data = (Datum)vec;
     } else {
         // we should be covering all the types that can get allowed through
         pg_unreachable();
