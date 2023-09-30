@@ -85,10 +85,10 @@ FROM
 ORDER BY
     v <-> '{0,0,0}'
 LIMIT 10;
-                       QUERY PLAN                        
----------------------------------------------------------
+                          QUERY PLAN                          
+--------------------------------------------------------------
  Limit
-   ->  Index Scan using small_world_v_idx on small_world
+   ->  Index Only Scan using small_world_v_idx on small_world
          Order By: (v <-> '{0,0,0}'::real[])
 (3 rows)
 

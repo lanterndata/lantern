@@ -99,9 +99,9 @@ INFO:  done saving 10000 vectors
 SELECT is_cost_estimate_within_error(format(:'explain_query_template', :'v4444'), 3.27);
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 289.797500
+DEBUG:  LANTERN - Total cost: 317.797500
 DEBUG:  LANTERN - Selectivity: 1.000000
-DEBUG:  LANTERN - Num pages: 71.000000
+DEBUG:  LANTERN - Num pages: 78.000000
 DEBUG:  LANTERN - Num tuples: 773.000000
 DEBUG:  LANTERN - ---------------------
  is_cost_estimate_within_error 
@@ -119,9 +119,9 @@ INFO:  done saving 10000 vectors
 SELECT is_cost_estimate_within_error(format(:'explain_query_template', :'v4444'), 3.91);
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 922.406057
+DEBUG:  LANTERN - Total cost: 1010.413253
 DEBUG:  LANTERN - Selectivity: 1.000000
-DEBUG:  LANTERN - Num pages: 226.000000
+DEBUG:  LANTERN - Num pages: 248.000000
 DEBUG:  LANTERN - Num tuples: 2465.000000
 DEBUG:  LANTERN - ---------------------
  is_cost_estimate_within_error 
