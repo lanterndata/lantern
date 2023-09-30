@@ -99,3 +99,16 @@ END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
 CREATE INDEX ON test_table USING lantern_hnsw (int_to_fixed_binary_vector(id)) WITH (M=2);
+
+-- Make sure that lantern_hnsw is working correctly alongside pgvector
+CREATE TABLE small_world_arr (id SERIAL PRIMARY KEY, v REAL[]);
+INSERT INTO small_world_arr (v) VALUES ('{0,0,0}'), ('{0,0,1}'), ('{0,0,2}');
+CREATE INDEX l2_idx ON small_world_arr USING lantern_hnsw(v) WITH (dim=3, m=2);
+EXPLAIN (COSTS FALSE) SELECT id FROM small_world_arr ORDER BY v <-> ARRAY[0,0,0];
+SELECT id FROM small_world_arr ORDER BY v <-> ARRAY[0,0,0];
+DROP INDEX l2_idx;
+CREATE INDEX cos_idx ON small_world_arr USING lantern_hnsw(v) WITH (m=2);
+SELECT id FROM small_world_arr ORDER BY v <-> ARRAY[0,0,0];
+DROP INDEX cos_idx;
+CREATE INDEX ham_idx ON small_world_arr USING lantern_hnsw(v) WITH (m=3);
+SELECT id FROM small_world_arr ORDER BY v <-> ARRAY[0,0,0];

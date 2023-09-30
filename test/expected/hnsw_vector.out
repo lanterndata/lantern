@@ -194,3 +194,51 @@ CREATE INDEX ON test_table USING lantern_hnsw (int_to_fixed_binary_vector(id)) W
 INFO:  done init usearch index
 INFO:  inserted 3 elements
 INFO:  done saving 3 vectors
+-- Make sure that lantern_hnsw is working correctly alongside pgvector
+CREATE TABLE small_world_arr (id SERIAL PRIMARY KEY, v REAL[]);
+INSERT INTO small_world_arr (v) VALUES ('{0,0,0}'), ('{0,0,1}'), ('{0,0,2}');
+CREATE INDEX l2_idx ON small_world_arr USING lantern_hnsw(v) WITH (dim=3, m=2);
+INFO:  done init usearch index
+INFO:  inserted 3 elements
+INFO:  done saving 3 vectors
+EXPLAIN (COSTS FALSE) SELECT id FROM small_world_arr ORDER BY v <-> ARRAY[0,0,0];
+                 QUERY PLAN                 
+--------------------------------------------
+ Index Scan using l2_idx on small_world_arr
+   Order By: (v <-> '{0,0,0}'::real[])
+(2 rows)
+
+SELECT id FROM small_world_arr ORDER BY v <-> ARRAY[0,0,0];
+ id 
+----
+  1
+  2
+  3
+(3 rows)
+
+DROP INDEX l2_idx;
+CREATE INDEX cos_idx ON small_world_arr USING lantern_hnsw(v) WITH (m=2);
+INFO:  done init usearch index
+INFO:  inserted 3 elements
+INFO:  done saving 3 vectors
+SELECT id FROM small_world_arr ORDER BY v <-> ARRAY[0,0,0];
+ id 
+----
+  1
+  2
+  3
+(3 rows)
+
+DROP INDEX cos_idx;
+CREATE INDEX ham_idx ON small_world_arr USING lantern_hnsw(v) WITH (m=3);
+INFO:  done init usearch index
+INFO:  inserted 3 elements
+INFO:  done saving 3 vectors
+SELECT id FROM small_world_arr ORDER BY v <-> ARRAY[0,0,0];
+ id 
+----
+  1
+  2
+  3
+(3 rows)
+
