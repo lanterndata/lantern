@@ -120,6 +120,8 @@ void ldb_amendscan(IndexScanDesc scan)
     if(scanstate->distances) pfree(scanstate->distances);
 
     if(scanstate->labels) pfree(scanstate->labels);
+
+    if(scanstate->labels) pfree(scanstate->index_tuples);
     MemoryContextDelete(scanstate->memory_ctx);
 
     pfree(scanstate);
@@ -195,9 +197,13 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
             scanstate->labels = palloc(k * sizeof(usearch_label_t));
         }
 
+        if(scanstate->index_tuples == NULL) {
+            scanstate->index_tuples = palloc(k * sizeof(size_t));
+        }
+
         ldb_dlog("LANTERN querying index for %d elements", k);
         num_returned = usearch_search(
-            scanstate->usearch_index, vec, usearch_scalar_f32_k, k, scanstate->labels, scanstate->distances, &error);
+            scanstate->usearch_index, vec, usearch_scalar_f32_k, k, scanstate->labels, scanstate->distances, scanstate->index_tuples, &error);
         if(!scan->xs_want_itup) {
             ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);
         }
@@ -233,10 +239,11 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         /* double k and reallocate arrays to account for increased size */
         scanstate->distances = repalloc(scanstate->distances, k * sizeof(float));
         scanstate->labels = repalloc(scanstate->labels, k * sizeof(usearch_label_t));
+        scanstate->index_tuples = repalloc(scanstate->index_tuples, k * sizeof(size_t));
 
         ldb_dlog("LANTERN - querying index for %d elements", k);
         num_returned = usearch_search(
-            scanstate->usearch_index, vec, usearch_scalar_f32_k, k, scanstate->labels, scanstate->distances, &error);
+            scanstate->usearch_index, vec, usearch_scalar_f32_k, k, scanstate->labels, scanstate->distances, scanstate->index_tuples, &error);
         // If we're doing an index only scan pinned buffers need to stay alive while we iterate
         if(!scan->xs_want_itup) {
             ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);
@@ -262,7 +269,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
             // We're doing an index only scan, get the data from the index and return it as an index tuple
             MemoryContext oldContext = MemoryContextSwitchTo(scanstate->memory_ctx);
             TupleDesc     desc = RelationGetDescr(scan->indexRelation);
-            RowDatums     row = DatumsFromIndex(scanstate, desc, label);
+            RowDatums     row = DatumsFromIndex(scanstate->index_tuples[ scanstate->current ], desc);
             IndexTuple    itup = index_form_tuple(desc, row.attrs, row.is_null);
             scan->xs_itup = itup;
             scan->xs_itupdesc = desc;

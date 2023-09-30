@@ -20,11 +20,10 @@
 #include "retriever.h"
 #include "scan.h"
 #include "utils.h"
-
 #include "vector.h"
 
 static BlockNumber getBlockMapPageBlockNumber(uint32 *blockmap_page_group_index, int id);
-static void        map_tid_to_key(RetrieverCtx *ctx, unsigned long key, HnswIndexTuple *value);
+static void        node_set_index_tuple(char *node, HnswIndexTuple *tuple);
 
 // Serialize an HnswIndexTuple into a buffer that will be written to a postgres page
 // todo:: we can use is_null to save a bit of space
@@ -138,10 +137,10 @@ Datum VectorFromIndexTuple(HnswIndexTuple *tuple, TupleDesc desc)
         data = construct_array(datum, dim, INT4OID, sizeof(float4), true, 'i');
     }
     if(desc->attrs[ 0 ].atttypid == TypenameGetTypid("vector")) {
-        //data = construct_array(datum, dim, FLOAT4OID, sizeof(float4), true, 'i');
+        // data = construct_array(datum, dim, FLOAT4OID, sizeof(float4), true, 'i');
         Vector *vec = InitVector(dim);
         for(size_t i = 0; i < dim; i++) {
-            vec->x[ i ] = DatumGetFloat4(vector[ i ]);
+            vec->x[ i ] = Float4GetDatum(vector[ i ]);
         }
         data = (Datum)vec;
     } else {
@@ -157,9 +156,8 @@ Datum VectorFromIndexTuple(HnswIndexTuple *tuple, TupleDesc desc)
 // this is used in index only scans to create a postgres IndexTuple out of our internal HnswIndexTuple
 // todo:: A cursory look at form_index_tuple makes me think it will copy, we maybe can avoid copies here
 // this depends on whether VARATT_IS_EXTERNAL will be true for our datums (see heaptuple.c:fill_val)
-RowDatums DatumsFromIndex(HnswScanState *scanstate, TupleDesc desc, unsigned long label)
+RowDatums DatumsFromIndex(size_t tuple_ref, TupleDesc desc)
 {
-    bool            found;
     int             n_attrs = desc->natts;
     char           *head;
     bool           *is_null;
@@ -167,15 +165,7 @@ RowDatums DatumsFromIndex(HnswScanState *scanstate, TupleDesc desc, unsigned lon
     Datum          *attrs;
     HnswIndexTuple *tuple;
 
-    RetrieverCtx *ctx = scanstate->retriever_ctx;
-
-    // Retrieve the index tuple that corresponds to the given label
-    BufferHash *entry = (BufferHash *)hash_search(ctx->taken_hash, (void *)&label, HASH_ENTER, &found);
-    tuple = entry->value;
-
-    if(entry == NULL || !found) {
-        elog(ERROR, "Failed retrieving tuple with label %lu from hash", label);
-    }
+    tuple = (HnswIndexTuple *)tuple_ref;
 
     attrs = (Datum *)palloc0(n_attrs * sizeof(Datum));
     // allocate 1 extra for the vector which we know is non-null
@@ -267,8 +257,9 @@ static int AddIncludesToIndexTuple(Relation heap, AttrNumber *attrs, ItemPointer
 
 static uint32 UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, int level)
 {
-    const int NODE_HEAD_BYTES = sizeof(usearch_label_t) + 4 /*sizeof dim */ + 4 /*sizeof level*/;
-    uint32    node_bytes = 0;
+    const int NODE_HEAD_BYTES
+        = sizeof(usearch_label_t) + 4 /*sizeof dim */ + 4 /*sizeof level*/ + sizeof(size_t) /*index tuple pointer*/;
+    uint32 node_bytes = 0;
     node_bytes += NODE_HEAD_BYTES + metadata->neighbors_base_bytes;
     node_bytes += metadata->neighbors_bytes * level;
     node_bytes += vector_bytes;
@@ -906,8 +897,9 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
             if(!idx_page_prelocked) {
                 UnlockReleaseBuffer(buf);
             }
+            node_set_index_tuple(nodepage->node, nodepage);
             dlist_push_tail(&ctx->takenbuffers, &buffNode->node);
-            map_tid_to_key(ctx, ((unsigned long *)nodepage->node)[ 0 ], nodepage);
+            // map_tid_to_key(ctx, ((unsigned long *)nodepage->node)[ 0 ], nodepage);
             return buffNode->buf;
 #else
             if(!idx_page_prelocked) {
@@ -921,7 +913,8 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
                 LockBuffer(buf, BUFFER_LOCK_UNLOCK);
             }
 
-            map_tid_to_key(ctx, ((unsigned long*)nodepage->node)[0], nodepage);
+            node_set_index_tuple(nodepage->node, nodepage);
+            // map_tid_to_key(ctx, ((unsigned long*)nodepage->node)[0], nodepage);
             cache_set_item(&ctx->node_cache, &id, nodepage->node);
 
             return nodepage->node;
@@ -966,8 +959,9 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, int id)
         buffer = (char *)PageGetItem(page, PageGetItemId(page, offset));
         nodepage = deserializeHnswIndexTuple(buffer);
         if(nodepage->id == (uint32)id) {
+            node_set_index_tuple(nodepage->node, nodepage);
             cache_set_item(&ctx->node_cache, &id, nodepage->node);
-            map_tid_to_key(ctx, ((unsigned long *)nodepage->node)[0], nodepage);
+            // map_tid_to_key(ctx, ((unsigned long *)nodepage->node)[0], nodepage);
 
             return nodepage->node;
         }
@@ -981,23 +975,8 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, int id)
     pg_unreachable();
 }
 
-// Insert a label->tuple pair into the RetrieverCtx for use during an index only scan
-// this is because the only information that usearch has is the label/heap TID so to
-// get included columns we need to relate this to the index tuple
-// todo:: can we use this instead of takenbuffers to pin buffers?
-// todo:: add logic to only set up a map on index only scans
-static void map_tid_to_key(RetrieverCtx *ctx, unsigned long key, HnswIndexTuple *value)
+static void node_set_index_tuple(char *node, HnswIndexTuple *tuple)
 {
-    BufferHash *entry;
-    bool        found;
-
-    entry = (BufferHash *)hash_search(ctx->taken_hash, (void *)&key, HASH_ENTER, &found);
-
-    if(entry == NULL) {
-        elog(ERROR, "hash_search failed on insertion");
-    }
-
-    if(!found) {
-        entry->value = value;
-    }
+    size_t offset = sizeof(usearch_label_t) + 4 + 4;
+    memcpy(node + offset, &tuple, sizeof(size_t));
 }

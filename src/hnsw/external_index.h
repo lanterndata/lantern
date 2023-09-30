@@ -8,7 +8,6 @@
 #include <lib/ilist.h>       // Dlist
 #include <nodes/execnodes.h>
 #include <storage/bufmgr.h>  // Buffer
-#include <utils/dynahash.h>
 #include <utils/relcache.h>  // Relation
 
 #include "extra_dirtied.h"
@@ -99,8 +98,6 @@ typedef struct
 
     HTABCache node_cache;
 
-    HTAB *taken_hash;  // map of heap tid to index tuple
-
     dlist_head takenbuffers;
 } RetrieverCtx;
 
@@ -116,12 +113,6 @@ typedef struct
 
 typedef struct
 {
-    unsigned long   key;
-    HnswIndexTuple *value;
-} BufferHash;
-
-typedef struct
-{
     usearch_index_t uidx;
     RetrieverCtx   *retriever_ctx;
     HnswColumnType  columnType;
@@ -132,6 +123,8 @@ typedef struct RowDatums
     Datum *attrs;
     bool  *is_null;
 } RowDatums;
+
+RowDatums DatumsFromIndex(size_t tuple_ref, TupleDesc desc);
 
 void StoreExternalIndex(Relation                index,
                         Relation                heap,
