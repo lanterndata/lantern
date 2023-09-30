@@ -173,12 +173,6 @@ static void hnswcostestimate(PlannerInfo *root,
     uint64 num_blocks_accessed
         = estimate_number_blocks_accessed(num_tuples_in_index, path->indexinfo->pages, costs.numIndexTuples);
 
-    // TODO this is super wrong but pretending we access the same number of blocks on the heap as we do in the index
-    // doesn't feel like an insane estimate
-    if(path->path.pathtype == T_IndexOnlyScan) {
-        num_blocks_accessed = num_blocks_accessed / 2;
-    }
-
 #if PG_VERSION_NUM >= 120000
     genericcostestimate(root, path, loop_count, &costs);
 #else
