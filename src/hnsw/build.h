@@ -21,6 +21,8 @@ typedef struct HnswBuildState
     HnswColumnType columnType;
     char          *index_file_path;
 
+    TupleDesc      nonkey_tuple_desc;
+
     /* Statistics */
     double tuples_indexed;
     double reltuples;
@@ -31,6 +33,7 @@ typedef struct HnswBuildState
 
     /* Memory */
     MemoryContext tmpCtx;
+    MemoryContext nonkeyTupleCtx;
 } HnswBuildState;
 
 IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInfo);

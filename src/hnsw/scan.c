@@ -15,6 +15,13 @@
 #include "utils.h"
 #include "vector.h"
 
+bool ldb_amcanreturn(Relation indexRelation, int attno)
+{
+    elog(LOG, "ldb_amcanreturn(..., %d)", attno);
+    LDB_UNUSED(indexRelation);
+    return true;
+}
+
 /*
  * Prepare for an index scan
  */
@@ -27,6 +34,7 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     usearch_init_options_t opts;
     RetrieverCtx          *retriever_ctx = ldb_wal_retriever_area_init(index, NULL);
 
+    elog(LOG, "ldb_ambeginscan()");
     scan = RelationGetIndexScan(index, nkeys, norderbys);
 
     // ** initialize usearch data structures and set up external retriever
@@ -61,6 +69,8 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     scanstate->retriever_ctx = opts.retriever_ctx = retriever_ctx;
     scanstate->columnType = GetIndexColumnType(index);
     scanstate->dimensions = opts.dimensions = dimensions;
+    scanstate->nonkey_tuple_desc = MakeNonkeyIndexTupleDesc(index);
+    scanstate->current_arr_datum = palloc_array(Datum, scanstate->dimensions);
     opts.retriever = ldb_wal_index_node_retriever;
     opts.retriever_mut = ldb_wal_index_node_retriever_mut;
 
@@ -101,6 +111,7 @@ void ldb_amendscan(IndexScanDesc scan)
     //  on the buffer we have last returned.
     //  make sure to release that pin here
 
+    elog(LOG, "ldb_amendscan()");
 #ifdef LANTERN_USE_LIBHNSW
     if(scanstate->hnsw) hnsw_destroy(scanstate->hnsw);
 #endif
@@ -119,6 +130,10 @@ void ldb_amendscan(IndexScanDesc scan)
 
     if(scanstate->labels) pfree(scanstate->labels);
 
+    if(scanstate->item_pointer_data) pfree(scanstate->item_pointer_data);
+
+    pfree(scanstate->current_arr_datum);
+    FreeTupleDesc(scanstate->nonkey_tuple_desc);
     pfree(scanstate);
     scan->opaque = NULL;
 }
@@ -149,7 +164,6 @@ void ldb_amrescan(IndexScanDesc scan, ScanKey keys, int nkeys, ScanKey orderbys,
 bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
 {
     HnswScanState *scanstate = (HnswScanState *)scan->opaque;
-    ItemPointer    tid;
     LDB_UNUSED(dir);
 
     // posgres does not allow backwards scan on operators
@@ -159,6 +173,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
     // about the furtheest neighbors
     Assert(ScanDirectionIsForward(dir));
 
+    elog(LOG, "ldb_amgettuple() xs_want_itup=%d", !!scan->xs_want_itup);
     if(scanstate->first) {
         int             num_returned;
         Datum           value;
@@ -191,11 +206,17 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         if(scanstate->labels == NULL) {
             scanstate->labels = palloc(k * sizeof(usearch_label_t));
         }
+        if(scanstate->item_pointer_data == NULL) {
+            scanstate->item_pointer_data = palloc(k * sizeof(ItemPointerData));
+        }
 
         ldb_dlog("LANTERN querying index for %d elements", k);
         num_returned = usearch_search(
             scanstate->usearch_index, vec, usearch_scalar_f32_k, k, scanstate->labels, scanstate->distances, &error);
         ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);
+
+        for (int i = 0; i < num_returned; ++i)
+            UsearchLabel2ItemPointer(scanstate->labels[i], &scanstate->item_pointer_data[i]);
 
         scanstate->count = num_returned;
         scanstate->current = 0;
@@ -226,11 +247,15 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         /* double k and reallocate arrays to account for increased size */
         scanstate->distances = repalloc(scanstate->distances, k * sizeof(float));
         scanstate->labels = repalloc(scanstate->labels, k * sizeof(usearch_label_t));
+        scanstate->item_pointer_data = repalloc(scanstate->item_pointer_data, k * sizeof(ItemPointerData));
 
         ldb_dlog("LANTERN - querying index for %d elements", k);
         num_returned = usearch_search(
             scanstate->usearch_index, vec, usearch_scalar_f32_k, k, scanstate->labels, scanstate->distances, &error);
         ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);
+
+        for (int i = 0; i < k; ++i)
+            UsearchLabel2ItemPointer(scanstate->labels[i], &scanstate->item_pointer_data[i]);
 
         scanstate->count = num_returned;
 
@@ -239,16 +264,64 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
     }
 
     if(scanstate->current < scanstate->count) {
-        unsigned long int label = scanstate->labels[ scanstate->current ];
-        scanstate->iptr = (ItemPointer)&label;
+        ItemPointer      item_ptr = &scanstate->item_pointer_data[ scanstate->current ];
+        IndexTuple       itup;
+        TupleDesc        itup_desc = scanstate->nonkey_tuple_desc;
+        Buffer           buf;
+        Page             page;
+        HnswIndexTuple  *storage_tup;
+        TupleDesc        tupleDesc = RelationGetDescr(scan->indexRelation);
+        ItemPointerData  current_iptr_data;
+        uint64           label;
+        bool             first_isnull;
 
-        tid = scanstate->iptr;
+
+        elog(LOG, "ldb_amgettuple(): item_ptr=(%u, %hu)",
+             ItemPointerGetBlockNumber(item_ptr), ItemPointerGetOffsetNumber(item_ptr));
+        assert(itup_desc->natts == tupleDesc->natts);
+
+        buf = ReadBuffer(scan->indexRelation, BlockIdGetBlockNumber(&item_ptr->ip_blkid));
+        assert(buf != InvalidBuffer);
+        LockBuffer(buf, BUFFER_LOCK_SHARE);
+        page = BufferGetPage(buf);
+
+        storage_tup = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, item_ptr->ip_posid));
+        itup = (IndexTuple)&storage_tup->node[storage_tup->size];
+
+        if (scan->xs_want_itup) {
+            Datum  *values;
+            bool   *isnull;
+            float4 *float_arr;
+
+            // the array is at the end of the serialized node
+            float_arr = (float4 *)&storage_tup->node[storage_tup->size - sizeof(float4) * scanstate->dimensions];
+
+            values = palloc_array(Datum, itup_desc->natts);
+            isnull = palloc_array(bool, itup_desc->natts);
+            for (int i = 0; i < itup_desc->natts; ++i)
+                values[i] = index_getattr(itup, i + 1, itup_desc, &isnull[i]);
+            assert(!isnull[0]);
+            values[0] = GetArrayFromFloats(float_arr, scanstate->current_arr_datum,
+                                           scanstate->columnType, scanstate->dimensions);
+            scan->xs_hitupdesc = tupleDesc;
+            scan->xs_hitup = heap_form_tuple(scan->xs_hitupdesc, values, isnull);
+            pfree(isnull);
+            pfree(values);
+        }
+
+        label = DatumGetUInt64(index_getattr(itup, 1, itup_desc, &first_isnull));
+        assert(!first_isnull);
+        UsearchLabel2ItemPointer(label, &current_iptr_data);
+        elog(LOG, "ldb_amgettuple(): current_iptr_data=(%u, %hu)",
+             ItemPointerGetBlockNumber(&current_iptr_data), ItemPointerGetOffsetNumber(&current_iptr_data));
 
 #if PG_VERSION_NUM >= 120000
-        scan->xs_heaptid = *tid;
+        scan->xs_heaptid = current_iptr_data;
 #else
-        scan->xs_ctup.t_self = *tid;
+        scan->xs_ctup.t_self = current_iptr_data;
 #endif
+        UnlockReleaseBuffer(buf);
+
 
         // todo:: there is a mid-sized designed issue with index storage
         // labels must be large enought to store relblockno+ indexblockno

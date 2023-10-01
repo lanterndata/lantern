@@ -121,11 +121,15 @@ void StoreExternalIndex(Relation                index,
 // add the fully constructed index tuple to the index via wal
 // hdr is passed in so num_vectors, first_block_no, last_block_no can be updated
 HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
+                                  Datum               *values,
+                                  bool                *isnull,
+                                  ItemPointer          heap_tid,
                                   GenericXLogState    *state,
                                   HnswIndexHeaderPage *hdr,
                                   usearch_metadata_t  *metadata,
                                   uint32               new_tuple_id,
                                   uint32               new_tuple_level,
-                                  HnswInsertState     *insertstate);
+                                  HnswInsertState     *insertstate,
+                /* OUT ---> */    ItemPointer          new_tuple_item_pointer);
 
 #endif  // LDB_HNSW_EXTERNAL_INDEX_H

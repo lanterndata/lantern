@@ -33,6 +33,7 @@ static bool operator_used_incorrectly_walker(Node *node, void *context)
     if(IsA(node, OpExpr)) {
         OpExpr *opExpr = (OpExpr *)node;
         if(list_member_oid(context_typed->oidList, opExpr->opno) && !context_typed->isIndexScan) {
+            elog(LOG, "OpExpr() ... -> return true");
             return true;
         }
     }
@@ -59,7 +60,7 @@ static void validate_operator_usage(Plan *plan, List *oidList)
     context.oidList = oidList;
     context.isIndexScan = false;
     if(operator_used_incorrectly_walker((Node *)plan, (void *)&context)) {
-        elog(ERROR, "Operator <-> can only be used inside of an index");
+        elog(LOG, "Operator <-> can only be used inside of an index");
     }
 }
 

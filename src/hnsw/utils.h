@@ -1,6 +1,7 @@
 #ifndef LDB_HNSW_UTILS_H
 #define LDB_HNSW_UTILS_H
 #include <access/amapi.h>
+#include <access/itup.h>
 
 #include "options.h"
 #include "usearch.h"
@@ -8,6 +9,14 @@
 void            LogUsearchOptions(usearch_init_options_t *opts);
 void            PopulateUsearchOpts(Relation index, usearch_init_options_t *opts);
 usearch_label_t GetUsearchLabel(ItemPointer itemPtr);
+void            UsearchLabel2ItemPointer(usearch_label_t label, ItemPointer itemPtr);
+
+TupleDesc MakeNonkeyIndexTupleDesc(Relation index);
+
+IndexTuple MakeNonkeyIndexTuple(TupleDesc    tupleDesc,
+                                Datum       *values,
+                                bool        *isnull,
+                                ItemPointer  heap_tid);
 
 static inline void ldb_invariant(bool condition, const char *msg, ...)
 {

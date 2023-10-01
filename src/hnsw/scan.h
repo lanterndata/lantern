@@ -13,9 +13,9 @@
 typedef struct HnswScanState
 {
     Buffer           buf;
-    ItemPointer      iptr;
     float           *distances;
     usearch_label_t *labels;
+    ItemPointerData *item_pointer_data;
     HnswColumnType   columnType;
     int              dimensions;
     // indicates whether we are retrieving the first tuple
@@ -27,10 +27,13 @@ typedef struct HnswScanState
     int             count;
     hnsw_t          hnsw;
     usearch_index_t usearch_index;
+    TupleDesc       nonkey_tuple_desc;
+    Datum          *current_arr_datum;
 
     RetrieverCtx *retriever_ctx;
 } HnswScanState;
 
+bool ldb_amcanreturn(Relation indexRelation, int attno);
 IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys);
 void          ldb_amrescan(IndexScanDesc scan, ScanKey keys, int nkeys, ScanKey orderbys, int norderbys);
 bool          ldb_amgettuple(IndexScanDesc scan, ScanDirection dir);

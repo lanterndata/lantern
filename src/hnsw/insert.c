@@ -70,6 +70,8 @@ bool ldb_aminsert(Relation         index,
     uint32                 new_tuple_id;
     HnswIndexTuple        *new_tuple;
     usearch_init_options_t opts = {0};
+    ItemPointerData	   	   new_tuple_item_pointer_data;
+    ItemPointer		       new_tuple_item_pointer = &new_tuple_item_pointer_data;
     LDB_UNUSED(heap);
 #if PG_VERSION_NUM >= 140000
     LDB_UNUSED(indexUnchanged);
@@ -157,10 +159,11 @@ bool ldb_aminsert(Relation         index,
     // 3) (sometimes) the page that used to be last page of the index
     // 4) The blockmap page for the block in which the vector was added
     // Generic XLog supports up to 4 pages in a single commit, so we are good.
-    new_tuple = PrepareIndexTuple(index, state, hdr, &meta, new_tuple_id, level, insertstate);
+    new_tuple = PrepareIndexTuple(index, values, isnull, heap_tid, state, hdr, &meta,
+                                  new_tuple_id, level, insertstate, new_tuple_item_pointer);
 
-    usearch_add_external(
-        uidx, *(unsigned long *)heap_tid, vector, new_tuple->node, usearch_scalar_f32_k, level, &error);
+    usearch_add_external(uidx, GetUsearchLabel(new_tuple_item_pointer),
+                         vector, new_tuple->node, usearch_scalar_f32_k, level, &error);
     if(error != NULL) {
         elog(ERROR, "usearch insert error: %s", error);
     }

@@ -59,13 +59,15 @@
 #define UpdateProgress(index, val) ((void)val)
 #endif
 
-static void AddTupleToUsearchIndex(ItemPointer tid, Datum *values, HnswBuildState *buildstate)
+static void AddTupleToUsearchIndex(ItemPointer tid, Datum *values, bool *isnull, HnswBuildState *buildstate)
 {
     /* Detoast once for all calls */
     usearch_error_t       error = NULL;
     Datum                 value = PointerGetDatum(PG_DETOAST_DATUM(values[ 0 ]));
     usearch_scalar_kind_t usearch_scalar;
     float4               *vector = DatumGetSizedFloatArray(value, buildstate->columnType, buildstate->dimensions);
+    IndexTuple            itup;
+    MemoryContext         saveCtx;
 
     switch(buildstate->columnType) {
         case REAL_ARRAY:
@@ -81,9 +83,14 @@ static void AddTupleToUsearchIndex(ItemPointer tid, Datum *values, HnswBuildStat
             pg_unreachable();
     }
 
-    // casting tid structure to a number to be used as value in vector search
-    // tid has info about disk location of this item and is 6 bytes long
-    usearch_label_t label = GetUsearchLabel(tid);
+    // we need the tuple memory available during StoreExternalIndex()
+    saveCtx = MemoryContextSwitchTo(buildstate->nonkeyTupleCtx);
+    itup = MakeNonkeyIndexTuple(buildstate->nonkey_tuple_desc, values, isnull, tid);
+    MemoryContextSwitchTo(saveCtx);
+
+    // during the build usearch label points to in-memory non-key IndexTuple for the vector
+    usearch_label_t label = (usearch_label_t)itup;
+    elog(LOG, "AddTupleToUsearchIndex(): label=0x%lx tid=(%u, %hu)", label, ItemPointerGetBlockNumber(tid), ItemPointerGetOffsetNumber(tid));
 #ifdef LANTERN_USE_LIBHNSW
     if(buildstate->hnsw != NULL) hnsw_add(buildstate->hnsw, vector, label);
 #endif
@@ -129,7 +136,7 @@ static void BuildCallback(
 
     // todo:: the argument values is assumed to be a real[] or vector (they have the same layout)
     // do proper type checking instead of this assumption and test int int arrays and others
-    AddTupleToUsearchIndex(tid, values, buildstate);
+    AddTupleToUsearchIndex(tid, values, isnull, buildstate);
 
     /* Reset memory context */
     MemoryContextSwitchTo(oldCtx);
@@ -264,7 +271,7 @@ int GetHnswIndexDimensions(Relation index, IndexInfo *indexInfo)
             ldb_HnswOptions *opts;
             int              attrNum;
 
-            assert(index->rd_index->indnatts == 1);
+            assert(index->rd_index->indnkeyatts == 1);
             attrNum = index->rd_index->indkey.values[ 0 ];
 #if PG_VERSION_NUM < 120000
             heap = heap_open(index->rd_index->indrelid, AccessShareLock);
@@ -317,9 +324,9 @@ static int InferDimension(Relation heap, IndexInfo *indexInfo)
 {
     int indexCol;
 
-    // If NumIndexAttrs isn't 1 the index has been instantiated on multiple keys and there's no clear way to infer
-    // the dim
-    if(indexInfo->ii_NumIndexAttrs != 1) {
+    // If NumIndexKeyAttrs isn't 1 the index has been instantiated
+    // on multiple keys and there's no clear way to infer the dim
+    if(indexInfo->ii_NumIndexKeyAttrs != 1) {
         return HNSW_DEFAULT_DIM;
     }
 
@@ -338,6 +345,7 @@ static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation i
     buildstate->columnType = GetIndexColumnType(index);
     buildstate->dimensions = GetHnswIndexDimensions(index, indexInfo);
     buildstate->index_file_path = ldb_HnswGetIndexFilePath(index);
+    buildstate->nonkey_tuple_desc = MakeNonkeyIndexTupleDesc(index);
 
     // If a dimension wasn't specified try to infer it
     if(buildstate->dimensions < 1) {
@@ -366,6 +374,9 @@ static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation i
 
     buildstate->tmpCtx
         = AllocSetContextCreate(CurrentMemoryContext, "hnsw build temporary context", ALLOCSET_DEFAULT_SIZES);
+    // TODO increase max size if needed
+    buildstate->nonkeyTupleCtx
+        = AllocSetContextCreate(CurrentMemoryContext, "hnsw build context for non-key index tuples", ALLOCSET_DEFAULT_SIZES);
 }
 
 /*
@@ -373,6 +384,8 @@ static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation i
  */
 static void FreeBuildState(HnswBuildState *buildstate)
 {
+    FreeTupleDesc(buildstate->nonkey_tuple_desc);
+    MemoryContextDelete(buildstate->nonkeyTupleCtx);
     // todo:: in debug/or stats mode collect stats from the tmpCtx before deleting it
     MemoryContextDelete(buildstate->tmpCtx);
 }
@@ -407,6 +420,9 @@ static void BuildIndex(
     usearch_init_options_t opts;
     MemSet(&opts, 0, sizeof(opts));
 
+    elog(LOG, "BuildIndex(): index->rd_index->indnatts=%u", index->rd_index->indnatts);
+    elog(LOG, "BuildIndex(): indexInfo->ii_NumIndexAttrs=%d", indexInfo->ii_NumIndexAttrs);
+    elog(LOG, "BuildIndex(): indexInfo->ii_NumIndexKeyAttrs=%d", indexInfo->ii_NumIndexKeyAttrs);
     InitBuildState(buildstate, heap, index, indexInfo);
     opts.dimensions = buildstate->dimensions;
     PopulateUsearchOpts(index, &opts);
@@ -416,6 +432,7 @@ static void BuildIndex(
     assert(error == NULL);
 
     buildstate->hnsw = NULL;
+    elog(LOG, "BuildIndex(): buildstate->index_file_path=%s", buildstate->index_file_path);
     if(buildstate->index_file_path) {
         if(access(buildstate->index_file_path, F_OK) != 0) {
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), errmsg("Invalid index file path ")));
@@ -464,7 +481,7 @@ static void BuildIndex(
         UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_IN_MEMORY_INSERT);
         LanternBench("build hnsw index", ScanTable(buildstate));
 
-        elog(INFO, "inserted %ld elements", usearch_size(buildstate->usearch_index, &error));
+        elog(LOG, "inserted %ld elements", usearch_size(buildstate->usearch_index, &error));
         assert(error == NULL);
     }
 
@@ -475,7 +492,7 @@ static void BuildIndex(
     size_t num_added_vectors = usearch_size(buildstate->usearch_index, &error);
     assert(error == NULL);
 
-    elog(INFO, "done saving %ld vectors", num_added_vectors);
+    elog(LOG, "done saving %ld vectors", num_added_vectors);
 
     //****************************** saving to WAL BEGIN ******************************//
     UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_LOAD);
@@ -499,6 +516,8 @@ IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInf
     IndexBuildResult *result;
     HnswBuildState    buildstate;
 
+    elog(LOG, "RelationGetRelid(heap)=%u RelationGetRelid(index)=%u",
+         RelationGetRelid(heap), RelationGetRelid(index));
     BuildIndex(heap, index, indexInfo, &buildstate, MAIN_FORKNUM);
 
     result = (IndexBuildResult *)palloc(sizeof(IndexBuildResult));

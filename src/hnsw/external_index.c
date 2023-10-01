@@ -31,6 +31,15 @@ static uint32 UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, i
     return node_bytes;
 }
 
+static usearch_label_t extract_label(char *data, int progress)
+{
+    char            *tape = data + progress;
+    usearch_label_t  label;
+
+    memcpy(&label, tape, sizeof(usearch_label_t));
+    return label;
+}
+
 static char *extract_node(char               *data,
                           int                 progress,
                           int                 dim,
@@ -125,8 +134,18 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
     BlockNumber *l_wal_retriever_block_numbers
         = palloc0(sizeof(BlockNumber) * number_of_blockmaps_in_group * HNSW_BLOCKMAP_BLOCKS_PER_PAGE);
 
-    HnswIndexTuple    *bufferpage = palloc(BLCKSZ);
-    usearch_metadata_t metadata = usearch_metadata(external_index, NULL);
+    OffsetNumber    inserted_at;
+    ItemPointerData new_item_pointer_data;
+    ItemPointer     new_item_pointer = &new_item_pointer_data;
+
+
+    HnswIndexTuple     *bufferpage = palloc(BLCKSZ);
+    HnswIndexTuple     *bufferpage_inside_page;
+    usearch_metadata_t  metadata = usearch_metadata(external_index, NULL);
+    usearch_label_t     pointer_label;
+    usearch_label_t     label;
+    IndexTuple          itup;
+    Size                itup_size;
 
     /* Add all the vectors to the WAL */
     for(uint32 node_id = first_node_index; node_id < first_node_index + num_added_vectors;) {
@@ -158,10 +177,17 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
         special->firstId = node_id;
         special->nextblockno = InvalidBlockNumber;
 
-        // note: even if the condition is true, nodepage may be too large
-        // as the condition does not take into account the flexible array component
-        while(PageGetFreeSpace(page) > sizeof(HnswIndexTuple) + dimension * sizeof(float)) {
+#define EXTRA_SIZE 8
+        while (1) {
             if(node_id >= first_node_index + num_added_vectors) break;
+            pointer_label = extract_label(data, *progress);
+            elog(LOG, "pointer_label=0x%lx", pointer_label);
+            itup = (IndexTuple)pointer_label;
+            itup_size = MAXALIGN(IndexTupleSize(itup));
+            // note: even if the condition is false, nodepage may be too large
+            // as the condition does not take into account the flexible array component
+            if (PageGetFreeSpace(page) < sizeof(HnswIndexTuple) + dimension * sizeof(float) + itup_size)
+                break;
             memset(bufferpage, 0, BLCKSZ);
             /************* extract node from usearch index************/
 
@@ -171,6 +197,7 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
                                 &metadata,
                                 /*->>output*/ &node_size,
                                 &node_level);
+            elog(LOG, "progress=%d node_size=%d", *progress, node_size);
             bufferpage->id = node_id;
             bufferpage->level = node_level;
             bufferpage->size = node_size;
@@ -184,16 +211,29 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
             // node should not be larger than the 8k bufferpage
             // invariant holds because of dimension <2000 check in index creation
             // once quantization is enabled, we can allow larger overall dims
-            assert(bufferpage + offsetof(HnswIndexTuple, node) + node_size < bufferpage + BLCKSZ);
+            assert(sizeof(*bufferpage) + bufferpage->size + itup_size < BLCKSZ);
             memcpy(bufferpage->node, node, node_size);
 
-            if(PageAddItem(
-                   page, (Item)bufferpage, sizeof(HnswIndexTuple) + node_size, InvalidOffsetNumber, false, false)
-               == InvalidOffsetNumber) {
+            memcpy(&bufferpage->node[node_size], itup, itup_size);
+
+            inserted_at = PageAddItem(
+                   page, (Item)bufferpage, sizeof(*bufferpage) + bufferpage->size + itup_size,
+                   InvalidOffsetNumber, false, false);
+            if (inserted_at == InvalidOffsetNumber) {
                 // break to get a fresh page
                 // todo:: properly test this case
                 break;
             }
+
+            // replace usearch_label_t with the tuple id for the item that was just added to the page
+            ItemPointerSet(new_item_pointer, BufferGetBlockNumber(buf), inserted_at);
+            label = GetUsearchLabel(new_item_pointer);
+            // the label is at the very beginning of bufferpage->node
+            bufferpage_inside_page = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, inserted_at));
+            memcpy(&bufferpage_inside_page->node, &label, sizeof(label));
+
+            elog(LOG, "StoreExternalIndexBlockMapGroup(): new_item_pointer=(%u, %hu)",
+                 ItemPointerGetBlockNumber(new_item_pointer), ItemPointerGetOffsetNumber(new_item_pointer));
 
             // we successfully recorded the node. move to the next one
             l_wal_retriever_block_numbers[ node_id - first_node_index ] = BufferGetBlockNumber(buf);
@@ -304,13 +344,13 @@ void StoreExternalIndex(Relation                index,
 
 // adds a an item to hnsw index relation page. assumes the page has enough space for the item
 // the function also takes care of setting the special block
-static OffsetNumber HnswIndexPageAddVector(Page page, HnswIndexTuple *new_vector_data, int new_vector_size)
+static OffsetNumber HnswIndexPageAddVector(Page page, Item space, Size space_size)
 {
     HnswIndexPageSpecialBlock *special_block;
     OffsetNumber               inserted_at;
+    uint32                     new_vector_id = ((HnswIndexTuple *)space)->id;
 
-    inserted_at = PageAddItem(
-        page, (Item)new_vector_data, sizeof(HnswIndexTuple) + new_vector_size, InvalidOffsetNumber, false, false);
+    inserted_at = PageAddItem(page, space, space_size, InvalidOffsetNumber, false, false);
     ldb_invariant(inserted_at != InvalidOffsetNumber, "unexpectedly could not add item to the last existing page");
     special_block = (HnswIndexPageSpecialBlock *)PageGetSpecialPointer(page);
 
@@ -318,12 +358,12 @@ static OffsetNumber HnswIndexPageAddVector(Page page, HnswIndexTuple *new_vector
         // we added the first element to the index page!
         // update firstId
         ldb_dlog("InsertBranching: we added first element to index page");
-        special_block->firstId = new_vector_data->id;
-        special_block->lastId = new_vector_data->id;
+        special_block->firstId = new_vector_id;
+        special_block->lastId = new_vector_id;
         special_block->nextblockno = InvalidBlockNumber;
     } else {
         ldb_dlog("InsertBranching: we added (NOT FIRST) element to index page");
-        assert(special_block->lastId == new_vector_data->id - 1);
+        assert(special_block->lastId == new_vector_id - 1);
         special_block->lastId += 1;
         // we always add to the last page so nextblockno
         // of the page we add to is always InvalidBlockNumber
@@ -338,12 +378,16 @@ static OffsetNumber HnswIndexPageAddVector(Page page, HnswIndexTuple *new_vector
 // hnsw index for the external indexer to start using the tuple (or node-entry) via
 // appropriate mutable external retriever
 HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
+                                  Datum               *values,
+                                  bool                *isnull,
+                                  ItemPointer          heap_tid,
                                   GenericXLogState    *state,
                                   HnswIndexHeaderPage *hdr,
                                   usearch_metadata_t  *metadata,
                                   uint32               new_tuple_id,
                                   uint32               new_tuple_level,
-                                  HnswInsertState     *insertstate)
+                                  HnswInsertState     *insertstate,
+                /* OUT ---> */    ItemPointer          new_tuple_item_pointer)
 {
     // if any data blocks exist, the last one's buffer will be read into this
     Buffer last_dblock = InvalidBuffer;
@@ -357,16 +401,33 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
     HnswIndexPageSpecialBlock *special_block;
     BlockNumber                new_vector_blockno;
     uint32          new_tuple_size = UsearchNodeBytes(metadata, hdr->vector_dim * sizeof(float), new_tuple_level);
+    Item            space;
+    Size            space_size;
     HnswIndexTuple *alloced_tuple = NULL;
     HnswIndexTuple *new_tup_ref = NULL;
+    TupleDesc       itup_desc = MakeNonkeyIndexTupleDesc(index_rel);
+    IndexTuple      itup = MakeNonkeyIndexTuple(itup_desc, values, isnull, heap_tid);
+    Size            itup_size = MAXALIGN(IndexTupleSize(itup));
+    Size            itup_offset;
+
     // create the new node
     // allocate buffer to construct the new node
     // note that we allocate more than sizeof(HnswIndexTuple) since the struct has a flexible array member
     // which depends on parameters passed into UsearchNodeBytes above
-    alloced_tuple = (HnswIndexTuple *)palloc0(sizeof(HnswIndexTuple) + new_tuple_size);
+    // the tuple with non-key columns for index-only scans is added after the vector
+    itup_offset = sizeof(HnswIndexTuple) + new_tuple_size;
+    space_size = itup_offset + itup_size;
+    if (space_size >= BLCKSZ) {
+        elog(ERROR, "index tuple size %zu is larger than the block size %d: "
+             "usearch data size %zu, non-key index tuple size %zu",
+             space_size, BLCKSZ, itup_offset, space_size);
+    }
+    space = (Item)palloc0(space_size);
+    alloced_tuple = (HnswIndexTuple *)space;
     alloced_tuple->id = new_tuple_id;
     alloced_tuple->level = new_tuple_level;
     alloced_tuple->size = new_tuple_size;
+    memcpy(&space[itup_offset], itup, itup_size);
 
     /*** Add a new tuple corresponding to the added vector to the list of tuples in the index
      *  (create new page if necessary) ***/
@@ -385,7 +446,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
         PageInit(page, BufferGetPageSize(new_dblock), sizeof(HnswIndexPageSpecialBlock));
         extra_dirtied_add(insertstate->retriever_ctx->extra_dirted, new_vector_blockno, new_dblock, page);
 
-        new_tup_at = HnswIndexPageAddVector(page, alloced_tuple, alloced_tuple->size);
+        new_tup_at = HnswIndexPageAddVector(page, space, space_size);
 
         MarkBufferDirty(new_dblock);
     } else {
@@ -402,11 +463,11 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
 
         const uint32 blockmaps_are_enough
             = new_tuple_id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE + 1 < ((uint32)1 << (hdr->blockmap_page_groups + 1));
-        if(PageGetFreeSpace(page) > sizeof(HnswIndexTuple) + alloced_tuple->size && blockmaps_are_enough) {
+        if(PageGetFreeSpace(page) > space_size && blockmaps_are_enough) {
             // there is enough space in the last page to fit the new vector
             // so we just append it to the page
             ldb_dlog("InsertBranching: we adding element to existing page");
-            new_tup_at = HnswIndexPageAddVector(page, alloced_tuple, alloced_tuple->size);
+            new_tup_at = HnswIndexPageAddVector(page, space, space_size);
             new_vector_blockno = BufferGetBlockNumber(last_dblock);
             assert(new_vector_blockno == hdr->last_data_block);
 
@@ -452,12 +513,16 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
             PageInit(page, BufferGetPageSize(new_dblock), sizeof(HnswIndexPageSpecialBlock));
             extra_dirtied_add(insertstate->retriever_ctx->extra_dirted, new_vector_blockno, new_dblock, page);
 
-            new_tup_at = HnswIndexPageAddVector(page, alloced_tuple, alloced_tuple->size);
+            new_tup_at = HnswIndexPageAddVector(page, space, space_size);
 
             MarkBufferDirty(new_dblock);
         }
     }
 
+    ItemPointerSet(new_tuple_item_pointer, new_vector_blockno, new_tup_at);
+    elog(LOG, "PrepareIndexTuple(): heap_tid=(%u, %hu) new_tuple_item_pointer=(%u, %hu)",
+         ItemPointerGetBlockNumber(heap_tid), ItemPointerGetOffsetNumber(heap_tid),
+         ItemPointerGetBlockNumber(new_tuple_item_pointer), ItemPointerGetOffsetNumber(new_tuple_item_pointer));
     /*** extract the inserted tuple ref to return so usearch can do further work on it ***/
     new_tup_ref = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, new_tup_at));
     assert(new_tup_ref->id == new_tuple_id);
@@ -495,7 +560,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
     /*** Update header ***/
     hdr->num_vectors++;
 
-    pfree(alloced_tuple);
+    pfree(space);
     return new_tup_ref;
 }
 

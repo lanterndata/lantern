@@ -243,7 +243,7 @@ Datum       hnsw_handler(PG_FUNCTION_ARGS __attribute__((unused)))
     amroutine->amclusterable = false;
     amroutine->ampredlocks = false;
     amroutine->amcanparallel = false;
-    amroutine->amcaninclude = false;
+    amroutine->amcaninclude = true;
 #if PG_VERSION_NUM >= 130000
     amroutine->amusemaintenanceworkmem = false; /* not used during VACUUM */
     amroutine->amparallelvacuumoptions = VACUUM_OPTION_PARALLEL_BULKDEL;
@@ -255,7 +255,7 @@ Datum       hnsw_handler(PG_FUNCTION_ARGS __attribute__((unused)))
     amroutine->aminsert = ldb_aminsert;
     amroutine->ambulkdelete = ldb_ambulkdelete;
     amroutine->amvacuumcleanup = ldb_amvacuumcleanup;
-    amroutine->amcanreturn = NULL;
+    amroutine->amcanreturn = ldb_amcanreturn;
     amroutine->amcostestimate = hnswcostestimate;
     amroutine->amoptions = ldb_amoptions;
     amroutine->amproperty = NULL;
@@ -401,6 +401,24 @@ float4 *DatumGetSizedFloatArray(Datum datum, HnswColumnType type, int dimensions
         }
         // todo:: free this array
         return floatArray;
+    } else {
+        elog(ERROR, "Unsupported type");
+    }
+}
+
+Datum GetArrayFromFloats(float4 *arr_float, Datum *arr_datum, HnswColumnType type, int dimensions)
+{
+    if (type == REAL_ARRAY || type == INT_ARRAY) {
+        ArrayType *array;
+
+        for (int i = 0; i < dimensions; ++i)
+            arr_datum[i] = type == REAL_ARRAY ? Float4GetDatum(arr_float[i]) : Int32GetDatum(arr_float[i]);
+        array = construct_array_builtin(arr_datum, dimensions, type == REAL_ARRAY ? FLOAT4OID : INT4OID);
+        return PointerGetDatum(array);
+    } else if (type == VECTOR) {
+        Vector *vector = InitVector(dimensions);
+        memcpy(&vector->x, arr_float, sizeof(float4) * dimensions);
+        return PointerGetDatum(vector);
     } else {
         elog(ERROR, "Unsupported type");
     }
