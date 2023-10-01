@@ -34,6 +34,7 @@ PGDLLEXPORT Datum cos_dist(PG_FUNCTION_ARGS);
 
 HnswColumnType GetIndexColumnType(Relation index);
 float4        *DatumGetSizedFloatArray(Datum datum, HnswColumnType type, int dimensions);
+bool ldb_canreturn(Relation index, int attno);
 
 #define LDB_UNUSED(x) (void)(x)
 

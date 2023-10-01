@@ -16,6 +16,7 @@ typedef struct HnswScanState
     ItemPointer      iptr;
     float           *distances;
     usearch_label_t *labels;
+    char           **tapes;
     HnswColumnType   columnType;
     int              dimensions;
     // indicates whether we are retrieving the first tuple

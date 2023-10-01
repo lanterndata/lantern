@@ -160,6 +160,7 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
 
         // note: even if the condition is true, nodepage may be too large
         // as the condition does not take into account the flexible array component
+        // todo:: can we make this estimate for the nodepage more accurate by being conservative with the node_level? If we assume some level, we can compute the exact size of the nodepage here
         while(PageGetFreeSpace(page) > sizeof(HnswIndexTuple) + dimension * sizeof(float)) {
             if(node_id >= first_node_index + num_added_vectors) break;
             memset(bufferpage, 0, BLCKSZ);
@@ -343,6 +344,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
                                   usearch_metadata_t  *metadata,
                                   uint32               new_tuple_id,
                                   uint32               new_tuple_level,
+                                  uint32               extra_columns_size,
                                   HnswInsertState     *insertstate)
 {
     // if any data blocks exist, the last one's buffer will be read into this
@@ -363,10 +365,11 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
     // allocate buffer to construct the new node
     // note that we allocate more than sizeof(HnswIndexTuple) since the struct has a flexible array member
     // which depends on parameters passed into UsearchNodeBytes above
-    alloced_tuple = (HnswIndexTuple *)palloc0(sizeof(HnswIndexTuple) + new_tuple_size);
+    alloced_tuple = (HnswIndexTuple *)palloc0(sizeof(HnswIndexTuple) + new_tuple_size + extra_columns_size);
     alloced_tuple->id = new_tuple_id;
     alloced_tuple->level = new_tuple_level;
     alloced_tuple->size = new_tuple_size;
+    alloced_tuple->extra_columns_size = extra_columns_size;
 
     /*** Add a new tuple corresponding to the added vector to the list of tuples in the index
      *  (create new page if necessary) ***/
@@ -385,7 +388,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
         PageInit(page, BufferGetPageSize(new_dblock), sizeof(HnswIndexPageSpecialBlock));
         extra_dirtied_add(insertstate->retriever_ctx->extra_dirted, new_vector_blockno, new_dblock, page);
 
-        new_tup_at = HnswIndexPageAddVector(page, alloced_tuple, alloced_tuple->size);
+        new_tup_at = HnswIndexPageAddVector(page, alloced_tuple, alloced_tuple->size + alloced_tuple->extra_columns_size);
 
         MarkBufferDirty(new_dblock);
     } else {
@@ -402,11 +405,12 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
 
         const uint32 blockmaps_are_enough
             = new_tuple_id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE + 1 < ((uint32)1 << (hdr->blockmap_page_groups + 1));
-        if(PageGetFreeSpace(page) > sizeof(HnswIndexTuple) + alloced_tuple->size && blockmaps_are_enough) {
+        if(PageGetFreeSpace(page) > sizeof(HnswIndexTuple) + alloced_tuple->size + alloced_tuple->extra_columns_size && blockmaps_are_enough) {
+
             // there is enough space in the last page to fit the new vector
             // so we just append it to the page
             ldb_dlog("InsertBranching: we adding element to existing page");
-            new_tup_at = HnswIndexPageAddVector(page, alloced_tuple, alloced_tuple->size);
+            new_tup_at = HnswIndexPageAddVector(page, alloced_tuple, alloced_tuple->size + alloced_tuple->extra_columns_size);
             new_vector_blockno = BufferGetBlockNumber(last_dblock);
             assert(new_vector_blockno == hdr->last_data_block);
 
@@ -427,7 +431,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
             // check the count of blockmaps, see if there's place to add the block id, if yes add, if no create a
             // new group check if already existing blockmaps are not enough new_tuple_id /
             // HNSW_BLOCKMAP_BLOCKS_PER_PAGE + 1 is kth blockmap we check if k is more than already created 2^groups
-            if(new_tuple_id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE + 1 >= ((uint32)1 << (hdr->blockmap_page_groups + 1))) {
+            if(!blockmaps_are_enough) {
                 CreateBlockMapGroup(hdr, index_rel, MAIN_FORKNUM, new_tuple_id, hdr->blockmap_page_groups + 1);
             }
 
@@ -452,7 +456,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
             PageInit(page, BufferGetPageSize(new_dblock), sizeof(HnswIndexPageSpecialBlock));
             extra_dirtied_add(insertstate->retriever_ctx->extra_dirted, new_vector_blockno, new_dblock, page);
 
-            new_tup_at = HnswIndexPageAddVector(page, alloced_tuple, alloced_tuple->size);
+            new_tup_at = HnswIndexPageAddVector(page, alloced_tuple, alloced_tuple->size + alloced_tuple->extra_columns_size);
 
             MarkBufferDirty(new_dblock);
         }
@@ -463,6 +467,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
     assert(new_tup_ref->id == new_tuple_id);
     assert(new_tup_ref->level == new_tuple_level);
     assert(new_tup_ref->size == new_tuple_size);
+    assert(new_tup_ref->extra_columns_size == extra_columns_size);
     page = NULL;  // to avoid its accidental use
     /*** Update pagemap with the information of the added page ***/
     {

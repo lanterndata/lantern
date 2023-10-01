@@ -243,7 +243,7 @@ Datum       hnsw_handler(PG_FUNCTION_ARGS __attribute__((unused)))
     amroutine->amclusterable = false;
     amroutine->ampredlocks = false;
     amroutine->amcanparallel = false;
-    amroutine->amcaninclude = false;
+    amroutine->amcaninclude = true; /* supports INCLUDE clauses, for index-only scans */
 #if PG_VERSION_NUM >= 130000
     amroutine->amusemaintenanceworkmem = false; /* not used during VACUUM */
     amroutine->amparallelvacuumoptions = VACUUM_OPTION_PARALLEL_BULKDEL;
@@ -255,7 +255,7 @@ Datum       hnsw_handler(PG_FUNCTION_ARGS __attribute__((unused)))
     amroutine->aminsert = ldb_aminsert;
     amroutine->ambulkdelete = ldb_ambulkdelete;
     amroutine->amvacuumcleanup = ldb_amvacuumcleanup;
-    amroutine->amcanreturn = NULL;
+    amroutine->amcanreturn = ldb_canreturn;
     amroutine->amcostestimate = hnswcostestimate;
     amroutine->amoptions = ldb_amoptions;
     amroutine->amproperty = NULL;
@@ -396,4 +396,17 @@ float4 *DatumGetSizedFloatArray(Datum datum, HnswColumnType type, int dimensions
     } else {
         elog(ERROR, "Unsupported type");
     }
+}
+
+/*
+* Check whether we support index-only scans.
+*
+* We always do, so return true.
+*/
+bool
+ldb_canreturn(Relation index, int attno)
+{
+    LDB_UNUSED(index);
+    LDB_UNUSED(attno);
+    return true;
 }

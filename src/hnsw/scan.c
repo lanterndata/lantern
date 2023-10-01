@@ -119,6 +119,8 @@ void ldb_amendscan(IndexScanDesc scan)
 
     if(scanstate->labels) pfree(scanstate->labels);
 
+    if(scanstate->tapes) pfree(scanstate->tapes);
+
     pfree(scanstate);
     scan->opaque = NULL;
 }
@@ -191,10 +193,13 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         if(scanstate->labels == NULL) {
             scanstate->labels = palloc(k * sizeof(usearch_label_t));
         }
+        if (scanstate->tapes == NULL) {
+            scanstate->tapes = palloc(k * sizeof(char*));
+        }
 
         ldb_dlog("LANTERN querying index for %d elements", k);
-        num_returned = usearch_search(
-            scanstate->usearch_index, vec, usearch_scalar_f32_k, k, scanstate->labels, scanstate->distances, &error);
+        num_returned = usearch_search_with_tapes(
+            scanstate->usearch_index, vec, usearch_scalar_f32_k, k, scanstate->labels, scanstate->distances, scanstate->tapes, &error);
         ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);
 
         scanstate->count = num_returned;
@@ -226,10 +231,11 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         /* double k and reallocate arrays to account for increased size */
         scanstate->distances = repalloc(scanstate->distances, k * sizeof(float));
         scanstate->labels = repalloc(scanstate->labels, k * sizeof(usearch_label_t));
+        scanstate->tapes = repalloc(scanstate->tapes, k * sizeof(char*));
 
         ldb_dlog("LANTERN - querying index for %d elements", k);
-        num_returned = usearch_search(
-            scanstate->usearch_index, vec, usearch_scalar_f32_k, k, scanstate->labels, scanstate->distances, &error);
+        num_returned = usearch_search_with_tapes(
+            scanstate->usearch_index, vec, usearch_scalar_f32_k, k, scanstate->labels, scanstate->distances, scanstate->tapes, &error);
         ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);
 
         scanstate->count = num_returned;
@@ -249,6 +255,16 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
 #else
         scan->xs_ctup.t_self = *tid;
 #endif
+        // TODO: check if this is also compatible with the old version of postgres
+        // if the scan (index-only scan) requests the actual tuple, we set that information here 
+        if(scan->xs_want_itup) { 
+            char* tape = scanstate->tapes[ scanstate->current ];
+            uint32 vector_size = *(uint32*)(tape - (offsetof(HnswIndexTuple, node) - offsetof(HnswIndexTuple, size)));
+
+            scan->xs_itup = (IndexTuple)(scanstate->tapes[ scanstate->current ] + vector_size);
+            scan->xs_itupdesc = RelationGetDescr(scan->indexRelation);
+        }
+
 
         // todo:: there is a mid-sized designed issue with index storage
         // labels must be large enought to store relblockno+ indexblockno

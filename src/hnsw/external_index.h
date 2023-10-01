@@ -62,8 +62,15 @@ typedef struct HnswIndexTuple
 {
     uint32 id;
     uint32 level;
-    // stores size of the flexible array member
+
+    // stores size of the vector data
     uint32 size;
+
+    // stores size of the non-key column tuple data as well (written, sequentially, right after the vector data in the
+    // flexible array member)
+    uint32 extra_columns_size;
+
+    // note that the total size of the flexible array member is size + extra_columns_size
     char   node[ FLEXIBLE_ARRAY_MEMBER ];
 } HnswIndexTuple;
 
@@ -126,6 +133,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
                                   usearch_metadata_t  *metadata,
                                   uint32               new_tuple_id,
                                   uint32               new_tuple_level,
+                                  uint32               extra_columns_size,
                                   HnswInsertState     *insertstate);
 
 #endif  // LDB_HNSW_EXTERNAL_INDEX_H

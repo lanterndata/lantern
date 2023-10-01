@@ -70,6 +70,10 @@ bool ldb_aminsert(Relation         index,
     uint32                 new_tuple_id;
     HnswIndexTuple        *new_tuple;
     usearch_init_options_t opts = {0};
+    bool                   extra_columns_present
+        = RelationGetDescr(index)->natts > 1; /* whether we have non-key columns to insert, for index-only scans*/
+    IndexTuple itup = NULL;
+    uint32     extra_columns_size = 0;
     LDB_UNUSED(heap);
     LDB_UNUSED(indexInfo);
 #if PG_VERSION_NUM >= 140000
@@ -151,6 +155,15 @@ bool ldb_aminsert(Relation         index,
         elog(ERROR, "usearch newnode error: %s", error);
     }
 
+    // create a postgres IndexTuple containing the extra non-key column data (hence why we ignore values[0])
+    // the vector is the key column, which comes before non-key columns in this function-- we can also only have one key for now, so the vector is the 0th entry
+    if(extra_columns_present) {
+        itup = index_form_tuple(RelationGetDescr(index), values, isnull);
+
+        itup->t_tid = *heap_tid;
+        extra_columns_size = IndexTupleSize(itup);
+    }
+
     new_tuple_id = hdr->num_vectors;
     // we are adding the following pages to the Generic XLog
     // 1) the header page
@@ -158,7 +171,14 @@ bool ldb_aminsert(Relation         index,
     // 3) (sometimes) the page that used to be last page of the index
     // 4) The blockmap page for the block in which the vector was added
     // Generic XLog supports up to 4 pages in a single commit, so we are good.
-    new_tuple = PrepareIndexTuple(index, state, hdr, &meta, new_tuple_id, level, insertstate);
+    new_tuple = PrepareIndexTuple(index, state, hdr, &meta, new_tuple_id, level, extra_columns_size, insertstate);
+
+    // copy the extra non-key column data so we can store it in our tuple
+    if(extra_columns_present) {
+        char* extra_columns_tape = new_tuple->node + new_tuple->size;
+        memcpy(extra_columns_tape, itup, new_tuple->extra_columns_size);
+        pfree(itup);
+    }
 
     usearch_add_external(
         uidx, *(unsigned long *)heap_tid, vector, new_tuple->node, usearch_scalar_f32_k, level, &error);
@@ -193,6 +213,7 @@ bool ldb_aminsert(Relation         index,
 
     ldb_wal_retriever_area_fini(insertstate->retriever_ctx);
     pfree(insertstate);
+
 
     // q:: what happens when there is an error before ths and the switch back never happens?
     MemoryContextSwitchTo(oldCtx);
