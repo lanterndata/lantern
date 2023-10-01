@@ -33,7 +33,6 @@
 
 #define USEARCH_HEADER_SIZE 80
 
-typedef unsigned long long int progress_t;
 typedef struct HnswIndexHeaderPage
 {
     uint32                magicNumber;
