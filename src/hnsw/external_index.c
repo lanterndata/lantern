@@ -32,7 +32,7 @@ static uint32 UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, i
 }
 
 static char *extract_node(char               *data,
-                          int                 progress,
+                          progress_t          progress,
                           int                 dim,
                           usearch_metadata_t *metadata,
                           /*->>output*/ int  *node_size,
@@ -107,7 +107,7 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
                                      HnswIndexHeaderPage *headerp,
                                      ForkNumber           forkNum,
                                      char                *data,
-                                     int                 *progress,
+                                     progress_t          *progress,
                                      int                  dimension,
                                      int                  first_node_index,
                                      size_t               num_added_vectors,
@@ -275,11 +275,11 @@ void StoreExternalIndex(Relation                index,
     memcpy(headerp->usearch_header, data, USEARCH_HEADER_SIZE);
     ((PageHeader)header_page)->pd_lower = ((char *)headerp + sizeof(HnswIndexHeaderPage)) - (char *)header_page;
 
-    int progress = USEARCH_HEADER_SIZE;  // usearch header size
-    int blockmap_groupno = 0;
-    int group_node_first_index = 0;
-    int num_added_vectors_remaining = (int)num_added_vectors;
-    int batch_size = HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
+    progress_t progress = USEARCH_HEADER_SIZE;  // usearch header size
+    int        blockmap_groupno = 0;
+    int        group_node_first_index = 0;
+    int        num_added_vectors_remaining = (int)num_added_vectors;
+    int        batch_size = HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
     while(num_added_vectors_remaining > 0) {
         StoreExternalIndexBlockMapGroup(index,
                                         external_index,
