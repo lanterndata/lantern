@@ -140,7 +140,7 @@ void post_parse_analyze_hook_with_operator_check(ParseState *pstate,
     if(is_operator_used(query_as_node, oidList)) {
         List *sort_group_refs = get_sort_group_refs(query_as_node);
         if(is_operator_used_incorrectly(query_as_node, oidList, sort_group_refs)) {
-            //elog(ERROR, "Operator <-> has no standalone meaning and is reserved for use in vector index lookups only");
+            elog(ERROR, "Operator <-> has no standalone meaning and is reserved for use in vector index lookups only");
         }
         list_free(sort_group_refs);
     }

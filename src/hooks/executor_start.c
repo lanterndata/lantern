@@ -17,22 +17,22 @@ ExecutorStart_hook_type original_ExecutorStart_hook = NULL;
 typedef struct
 {
     List *oidList;
-    bool  isIndexScan;
+    int indexScanCount;
 } OperatorUsedCorrectlyContext;
 
 static bool operator_used_incorrectly_walker(Node *node, void *context)
 {
     OperatorUsedCorrectlyContext *context_typed = (OperatorUsedCorrectlyContext *)context;
     if(node == NULL) return false;
-    if(IsA(node, IndexScan)) {
-        context_typed->isIndexScan = true;
+    if(IsA(node, IndexScan) || IsA(node, IndexOnlyScan)) {
+        context_typed->indexScanCount++;
         bool status = plan_tree_walker((Plan *)node, operator_used_incorrectly_walker, context);
-        context_typed->isIndexScan = false;
+        context_typed->indexScanCount--;
         return status;
     }
     if(IsA(node, OpExpr)) {
         OpExpr *opExpr = (OpExpr *)node;
-        if(list_member_oid(context_typed->oidList, opExpr->opno) && !context_typed->isIndexScan) {
+        if(list_member_oid(context_typed->oidList, opExpr->opno) && context_typed->indexScanCount == 0) {
             return true;
         }
     }
@@ -57,9 +57,9 @@ static void validate_operator_usage(Plan *plan, List *oidList)
 {
     OperatorUsedCorrectlyContext context;
     context.oidList = oidList;
-    context.isIndexScan = false;
+    context.indexScanCount = 0;
     if(operator_used_incorrectly_walker((Node *)plan, (void *)&context)) {
-        //elog(ERROR, "Operator <-> has no standalone meaning and is reserved for use in vector index lookups only");
+        elog(ERROR, "Operator <-> has no standalone meaning and is reserved for use in vector index lookups only");
     }
 }
 
