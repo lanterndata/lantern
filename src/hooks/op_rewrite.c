@@ -20,6 +20,7 @@
 
 #if PG_VERSION_NUM < 120000
 #include <access/heapam.h>
+#include <access/htup_details.h>
 #else
 #include <access/relation.h>
 #endif

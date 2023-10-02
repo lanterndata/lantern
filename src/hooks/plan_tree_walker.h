@@ -15,6 +15,6 @@ static inline bool is_plan_node(Node *node)
 #endif
 }
 
-bool  plan_tree_walker(Plan *plan, bool (*walker_func)(Node *node, void *context), void *context);
+bool plan_tree_walker(Plan *plan, bool (*walker_func)(Node *node, void *context), void *context);
 
 #endif  // LDB_HOOKS_PLAN_TREE_WALKER_H
