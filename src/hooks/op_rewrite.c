@@ -7,13 +7,13 @@
 #include <catalog/pg_amproc.h>
 #include <catalog/pg_opclass.h>
 #include <commands/defrem.h>
+#include <miscadmin.h>
 #include <nodes/nodeFuncs.h>
 #include <parser/parsetree.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <utils/rel.h>
 #include <utils/syscache.h>
-#include <stdint.h>
-#include <miscadmin.h>
 
 #include "plan_tree_walker.h"
 #include "utils.h"
@@ -182,9 +182,9 @@ static Node *operator_rewriting_mutator(Node *node, void *ctx)
                 ListCell *lc;
                 foreach(lc, context->indices) {
                     uintptr_t intermediate = (uintptr_t)lfirst(lc);
-                    Oid      indexid = (Oid)intermediate;
-                    Relation index = index_open(indexid, AccessShareLock);
-                    Oid      indexfunc = get_func_id_from_index(index);
+                    Oid       indexid = (Oid)intermediate;
+                    Relation  index = index_open(indexid, AccessShareLock);
+                    Oid       indexfunc = get_func_id_from_index(index);
                     if(OidIsValid(indexfunc)) {
                         FuncExpr *fnExpr = makeNode(FuncExpr);
                         fnExpr->funcresulttype = opExpr->opresulttype;
@@ -234,7 +234,8 @@ static Node *operator_rewriting_mutator(Node *node, void *ctx)
         return (Node *)seqscan;
     }
 
-    // todo:: there is a function called query_or_expression_tree_mutator that might be able to replace the custom plan tree handling
+    // todo:: there is a function called query_or_expression_tree_mutator that might be able to replace the custom plan
+    // tree handling
     if(is_plan_node(node)) {
         return (Node *)plan_tree_mutator((Plan *)node, ctx);
     } else {
