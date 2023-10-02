@@ -17,6 +17,102 @@
 #include "plan_tree_walker.h"
 #include "utils.h"
 
+static Node *operator_rewriting_mutator(Node *node, void *ctx);
+
+void base_plan_mutator(Plan *plan, void *context)
+{
+    plan->targetlist = (List *)operator_rewriting_mutator((Node *)plan->targetlist, context);
+    plan->qual = (List *)operator_rewriting_mutator((Node *)plan->qual, context);
+    plan->lefttree = (Plan *)operator_rewriting_mutator((Node *)plan->lefttree, context);
+    plan->righttree = (Plan *)operator_rewriting_mutator((Node *)plan->righttree, context);
+    plan->initPlan = (List *)operator_rewriting_mutator((Node *)plan->initPlan, context);
+}
+
+Node *plan_tree_mutator(Plan *plan, void *context)
+{
+    check_stack_depth();
+
+    switch(nodeTag(plan)) {
+        case T_SubqueryScan:
+        {
+            SubqueryScan *subqueryscan = (SubqueryScan *)plan;
+            base_plan_mutator(&(subqueryscan->scan.plan), context);
+            subqueryscan->subplan = (Plan *)operator_rewriting_mutator((Node *)subqueryscan->subplan, context);
+            return (Node *)subqueryscan;
+        }
+        case T_CteScan:
+        {
+            CteScan *ctescan = (CteScan *)plan;
+            base_plan_mutator(&(ctescan->scan.plan), context);
+            return (Node *)ctescan;
+        }
+#if PG_VERSION_NUM < 160000
+        case T_Join:
+        {
+            Join *join = (Join *)plan;
+            base_plan_mutator(&(join->plan), context);
+            join->joinqual = (List *)operator_rewriting_mutator((Node *)join->joinqual, context);
+            return (Node *)join;
+        }
+#endif
+        case T_Agg:
+        {
+            Agg *agg = (Agg *)plan;
+            base_plan_mutator(&(agg->plan), context);
+            return (Node *)agg;
+        }
+        case T_Group:
+        {
+            Group *group = (Group *)plan;
+            base_plan_mutator(&(group->plan), context);
+            return (Node *)group;
+        }
+        case T_Sort:
+        {
+            Sort *sort = (Sort *)plan;
+            base_plan_mutator(&(sort->plan), context);
+            return (Node *)sort;
+        }
+        case T_Unique:
+        {
+            Unique *unique = (Unique *)plan;
+            base_plan_mutator(&(unique->plan), context);
+            return (Node *)unique;
+        }
+        case T_NestLoop:
+        {
+            NestLoop *nestloop = (NestLoop *)plan;
+            base_plan_mutator((Plan *)&(nestloop->join), context);
+            return (Node *)nestloop;
+        }
+        case T_Result:
+        {
+            Result *result = (Result *)plan;
+            base_plan_mutator(&(result->plan), context);
+            result->resconstantqual = operator_rewriting_mutator((Node *)result->resconstantqual, context);
+            return (Node *)result;
+        }
+        case T_Limit:
+        {
+            Limit *limit = (Limit *)plan;
+            base_plan_mutator(&(limit->plan), context);
+            limit->limitOffset = operator_rewriting_mutator((Node *)limit->limitOffset, context);
+            limit->limitCount = operator_rewriting_mutator((Node *)limit->limitCount, context);
+            return (Node *)limit;
+        }
+        case T_Append:
+        {
+            Append *append = (Append *)plan;
+            base_plan_mutator(&(append->plan), context);
+            append->appendplans = (List *)operator_rewriting_mutator((Node *)append->appendplans, context);
+            return (Node *)append;
+        }
+        default:
+            return (Node *)plan;
+    }
+    return (Node *)plan;
+}
+
 // To write syscache calls look for the 'static const struct cachedesc cacheinfo[]' in utils/cache/syscache.c
 // These describe the different caches that will be initialized into SysCache and the keys they support in searches
 // The anums tell you the table and the column that the key will be compared to this is afaict the only way to match
@@ -126,12 +222,13 @@ static Node *operator_rewriting_mutator(Node *node, void *ctx)
         }
         relation_close(rel, AccessShareLock);
 
-        base_plan_mutator(seqscanplan, operator_rewriting_mutator, context);
+        base_plan_mutator(seqscanplan, context);
         return (Node *)seqscan;
     }
 
+    // todo:: there is a function called query_or_expression_tree_mutator that might be able to replace the custom plan tree handling
     if(is_plan_node(node)) {
-        return (Node *)plan_tree_mutator((Plan *)node, operator_rewriting_mutator, ctx);
+        return (Node *)plan_tree_mutator((Plan *)node, ctx);
     } else {
         return expression_tree_mutator(node, operator_rewriting_mutator, ctx);
     }
