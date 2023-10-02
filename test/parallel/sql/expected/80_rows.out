@@ -1,0 +1,6 @@
+SELECT COUNT(*) FROM small_world;
+ count 
+-------
+    80
+(1 row)
+

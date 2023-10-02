@@ -1,0 +1,11 @@
+SELECT EXISTS (
+    SELECT FROM 
+        pg_tables
+    WHERE  
+        tablename  = 'small_world'
+    );
+ exists 
+--------
+ t
+(1 row)
+
