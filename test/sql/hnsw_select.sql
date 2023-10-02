@@ -71,6 +71,18 @@ SELECT has_index_scan('EXPLAIN (SELECT id FROM test1 ORDER BY v <-> ''{1,4}'') U
 -- Validate CTEs work and still use index
 SELECT has_index_scan('EXPLAIN WITH t AS (SELECT id FROM test1 ORDER BY v <-> ''{1,4}'') SELECT id FROM t UNION SELECT id FROM t');
 
+-- Validate <-> is replaced with the matching function when an index is present
+set enable_seqscan = true;
+EXPLAIN (COSTS false) SELECT * from small_world ORDER BY v <-> '{1,1,1}';
+SELECT * from small_world ORDER BY v <-> '{1,1,1}';
+begin;
+INSERT INTO test2 (v) VALUES ('{1,4}');
+INSERT INTO test2 (v) VALUES ('{2,4}');
+CREATE INDEX test2_cos ON test2 USING hnsw(v dist_cos_ops);
+EXPLAIN (COSTS false) SELECT * from test2 ORDER BY v <-> '{1,4}';
+rollback;
+set enable_seqscan = false;
+
 -- todo:: Verify joins work and still use index
 -- todo:: Verify incremental sorts work
 

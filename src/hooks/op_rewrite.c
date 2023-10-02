@@ -235,8 +235,6 @@ static Node *operator_rewriting_mutator(Node *node, void *ctx)
         return (Node *)seqscan;
     }
 
-    // todo:: there is a function called query_or_expression_tree_mutator that might be able to replace the custom plan
-    // tree handling
     if(is_plan_node(node)) {
         return (Node *)plan_tree_mutator((Plan *)node, ctx);
     } else {
