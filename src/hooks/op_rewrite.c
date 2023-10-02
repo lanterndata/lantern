@@ -3,7 +3,6 @@
 #include "op_rewrite.h"
 
 #include <access/genam.h>
-#include <access/relation.h>
 #include <assert.h>
 #include <catalog/pg_amproc.h>
 #include <catalog/pg_opclass.h>
@@ -13,9 +12,17 @@
 #include <stdbool.h>
 #include <utils/rel.h>
 #include <utils/syscache.h>
+#include <stdint.h>
+#include <miscadmin.h>
 
 #include "plan_tree_walker.h"
 #include "utils.h"
+
+#if PG_VERSION_NUM < 120000
+#include <access/heapam.h>
+#else
+#include <access/relation.h>
+#endif
 
 static Node *operator_rewriting_mutator(Node *node, void *ctx);
 
@@ -174,7 +181,8 @@ static Node *operator_rewriting_mutator(Node *node, void *ctx)
             } else {
                 ListCell *lc;
                 foreach(lc, context->indices) {
-                    Oid      indexid = (Oid)lfirst(lc);
+                    uintptr_t intermediate = (uintptr_t)lfirst(lc);
+                    Oid      indexid = (Oid)intermediate;
                     Relation index = index_open(indexid, AccessShareLock);
                     Oid      indexfunc = get_func_id_from_index(index);
                     if(OidIsValid(indexfunc)) {
@@ -212,7 +220,7 @@ static Node *operator_rewriting_mutator(Node *node, void *ctx)
         Oid   rtrelid = seqscan->scan.scanrelid;
 #else
         Plan *seqscanplan = &seqscan->plan;
-        Oid   rtrelid = secscan->scanrelid;
+        Oid   rtrelid = seqscan->scanrelid;
 #endif
         RangeTblEntry *rte = rt_fetch(rtrelid, context->rtable);
         Oid            relid = rte->relid;
