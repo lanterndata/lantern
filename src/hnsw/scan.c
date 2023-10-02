@@ -6,6 +6,8 @@
 #include <pgstat.h>
 #include <utils/rel.h>
 
+#include <utils/array.h>
+
 #include "bench.h"
 #include "build.h"
 #include "external_index.h"
@@ -87,6 +89,7 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     UnlockReleaseBuffer(buf);
 
     scan->opaque = scanstate;
+    scan->xs_itup = NULL;
     return scan;
 }
 
@@ -121,6 +124,8 @@ void ldb_amendscan(IndexScanDesc scan)
 
     if(scanstate->tapes) pfree(scanstate->tapes);
 
+    if(scan->xs_itup) pfree(scan->xs_itup);
+    
     pfree(scanstate);
     scan->opaque = NULL;
 }
@@ -135,6 +140,7 @@ void ldb_amrescan(IndexScanDesc scan, ScanKey keys, int nkeys, ScanKey orderbys,
 {
     HnswScanState *scanstate = (HnswScanState *)scan->opaque;
     scanstate->first = true;
+    scan->xs_itup = NULL;
     LDB_UNUSED(norderbys);
     LDB_UNUSED(nkeys);
 
@@ -258,11 +264,67 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         // TODO: check if this is also compatible with the old version of postgres
         // if the scan (index-only scan) requests the actual tuple, we set that information here 
         if(scan->xs_want_itup) { 
+
+            scan->xs_itupdesc = RelationGetDescr(scan->indexRelation);
+            uint32 num_attributes = scan->xs_itupdesc->natts;
+
             char* tape = scanstate->tapes[ scanstate->current ];
             uint32 vector_size = *(uint32*)(tape - (offsetof(HnswIndexTuple, node) - offsetof(HnswIndexTuple, size)));
 
-            scan->xs_itup = (IndexTuple)(scanstate->tapes[ scanstate->current ] + vector_size);
-            scan->xs_itupdesc = RelationGetDescr(scan->indexRelation);
+            // this is the IndexTuple we created when we inserted the row... it is missing the vector data. We need to add it here
+            IndexTuple olditup = (IndexTuple)(scanstate->tapes[ scanstate->current ] + vector_size);
+
+            Datum* new_values = (Datum*) palloc(sizeof(Datum) * num_attributes);
+            bool* new_isnull = (bool*) palloc(sizeof(bool) * num_attributes);
+
+            // copy the old values and isnulls into the rest of the array
+            if(num_attributes > 1) {
+                index_deform_tuple(olditup, scan->xs_itupdesc, new_values, new_isnull);
+            }
+
+            // set/modify the first entries, corresponding to the vector
+            new_isnull[0] = false;
+
+            // vector_size corresponds to the entire "usearch" schema of storing a vector, which includes metadata
+            // the last dim*sizeof(float) entries of this schema is the actual vector data
+            // we process the array to be float4s when inserting regardless of type, so we do the same here
+            float4* vector = (float4*)(scanstate->tapes[ scanstate->current ] + vector_size - (sizeof(float4) * scanstate->dimensions));
+
+            // we build a proper Datum from this vector
+            // can't just cast to Datum because postgres processes it internally, like using TOAST
+            uint32 array_length = scanstate->dimensions;   
+            ArrayType *array;
+            Datum *elem_datums;
+
+            elem_datums = (Datum *) palloc(array_length * sizeof(Datum));
+            for (uint32 i = 0; i < array_length; i++) {
+                elem_datums[i] = Float4GetDatum(vector[i]);
+            }
+
+            // we want a 1-D array
+            int dims[] = {array_length};
+            // lower bounds for each dimension; usually 1 for PostgreSQL arrays
+            int lbs[] = {1};
+
+            array = construct_md_array(elem_datums, NULL, 1, dims, lbs, FLOAT4OID, sizeof(float4), true, 'i');
+            Datum firstvalue = PointerGetDatum(array);
+
+            new_values[0] = firstvalue;
+
+            // todo:: are we leaking memory here?
+            IndexTuple newitup = index_form_tuple(scan->xs_itupdesc, new_values, new_isnull);
+            newitup->t_tid = olditup->t_tid;
+            
+            // clean up IndexTuple created from previous row
+            if(scan->xs_itup) {
+                pfree(scan->xs_itup);
+            }
+
+            scan->xs_itup = newitup;
+
+            pfree(elem_datums);
+            pfree(new_values);
+            pfree(new_isnull);
         }
 
 

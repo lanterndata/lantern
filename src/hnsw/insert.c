@@ -3,6 +3,7 @@
 #include "insert.h"
 
 #include <access/generic_xlog.h>
+#include <access/tupdesc.h>
 #include <assert.h>
 #if PG_VERSION_NUM >= 150000
 #include <common/pg_prng.h>
@@ -70,8 +71,10 @@ bool ldb_aminsert(Relation         index,
     uint32                 new_tuple_id;
     HnswIndexTuple        *new_tuple;
     usearch_init_options_t opts = {0};
+    TupleDesc tupdesc = RelationGetDescr(index);
+    uint32                 num_attributes = tupdesc->natts;
     bool                   extra_columns_present
-        = RelationGetDescr(index)->natts > 1; /* whether we have non-key columns to insert, for index-only scans*/
+        = num_attributes > 1; /* whether we have non-key columns to insert, for index-only scans*/
     IndexTuple itup = NULL;
     uint32     extra_columns_size = 0;
     LDB_UNUSED(heap);
@@ -139,6 +142,7 @@ bool ldb_aminsert(Relation         index,
     datum = PointerGetDatum(PG_DETOAST_DATUM(values[ 0 ]));
     float4 *vector = DatumGetSizedFloatArray(datum, insertstate->columnType, opts.dimensions);
 
+
 #if LANTERNDB_COPYNODES
     // currently not fully ported to the latest changes
     assert(false);
@@ -156,12 +160,23 @@ bool ldb_aminsert(Relation         index,
     }
 
     // create a postgres IndexTuple containing the extra non-key column data (hence why we ignore values[0])
-    // the vector is the key column, which comes before non-key columns in this function-- we can also only have one key for now, so the vector is the 0th entry
+    // the vector is the key column, which comes before non-key columns in this function-- we can also only have one key
+    // for now, so the vector must be the 0th entry
     if(extra_columns_present) {
-        itup = index_form_tuple(RelationGetDescr(index), values, isnull);
+        // ignore the first entry which is the vector, because we already store it
 
+        // make a new copy of isnull in case something else references it (as opposed to setting first entry to true and then back)
+        // todo:: this could be too cautious though... naive thing might work here as well
+        bool* fakeisnull = (bool*)palloc(sizeof(bool) * num_attributes);
+        memcpy(fakeisnull, isnull, sizeof(bool) * num_attributes);
+        fakeisnull[0] = true;
+
+        itup = index_form_tuple(tupdesc, values, fakeisnull);
         itup->t_tid = *heap_tid;
+
         extra_columns_size = IndexTupleSize(itup);
+
+        pfree(fakeisnull);
     }
 
     new_tuple_id = hdr->num_vectors;
@@ -175,7 +190,7 @@ bool ldb_aminsert(Relation         index,
 
     // copy the extra non-key column data so we can store it in our tuple
     if(extra_columns_present) {
-        char* extra_columns_tape = new_tuple->node + new_tuple->size;
+        char *extra_columns_tape = new_tuple->node + new_tuple->size;
         memcpy(extra_columns_tape, itup, new_tuple->extra_columns_size);
         pfree(itup);
     }
@@ -213,7 +228,6 @@ bool ldb_aminsert(Relation         index,
 
     ldb_wal_retriever_area_fini(insertstate->retriever_ctx);
     pfree(insertstate);
-
 
     // q:: what happens when there is an error before ths and the switch back never happens?
     MemoryContextSwitchTo(oldCtx);
