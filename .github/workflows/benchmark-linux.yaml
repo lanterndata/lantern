@@ -12,7 +12,7 @@ on:
 
 jobs:
   benchmark:
-    runs-on: self-hosted
+    runs-on: benchmark
 
     steps:
       - uses: actions/checkout@v3
