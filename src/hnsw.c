@@ -291,10 +291,36 @@ static float4 array_dist(ArrayType *a, ArrayType *b, usearch_metric_kind_t metri
         elog(ERROR, "expected equally sized arrays but got arrays with dimensions %d and %d", a_dim, b_dim);
     }
 
-    float4 *ax = (float4 *)ARR_DATA_PTR(a);
-    float4 *bx = (float4 *)ARR_DATA_PTR(b);
+    float4 *ax;
+    float4 *bx;
 
-    return usearch_dist(ax, bx, metric_kind, a_dim, usearch_scalar_f32_k);
+    bool convert_to_int = (metric_kind == usearch_metric_hamming_k);
+
+    if(convert_to_int) {
+        int32 *ax_int = (int32*) ARR_DATA_PTR(a);
+        int32 *bx_int = (int32*) ARR_DATA_PTR(b);
+
+        ax = (float4*) palloc(a_dim * sizeof(float4));
+        bx = (float4*) palloc(b_dim * sizeof(float4));
+
+        for (int i = 0; i < a_dim; i++) {
+            ax[i] = (float4) ax_int[i];
+            bx[i] = (float4) bx_int[i];
+        }
+    }
+    else {
+        ax = (float4*)ARR_DATA_PTR(a);
+        bx = (float4*)ARR_DATA_PTR(b);
+    }
+
+    float4 result = usearch_dist(ax, bx, metric_kind, a_dim, usearch_scalar_f32_k);
+
+    if(convert_to_int) {
+        pfree(ax);
+        pfree(bx);
+    }
+
+    return result;
 }
 
 static float8 vector_dist(Vector *a, Vector *b, usearch_metric_kind_t metric_kind)
@@ -330,7 +356,7 @@ Datum       hamming_dist(PG_FUNCTION_ARGS)
 {
     ArrayType *a = PG_GETARG_ARRAYTYPE_P(0);
     ArrayType *b = PG_GETARG_ARRAYTYPE_P(1);
-    PG_RETURN_INT32(array_dist(a, b, usearch_metric_hamming_k));
+    PG_RETURN_INT32((int32)array_dist(a, b, usearch_metric_hamming_k));
 }
 
 PGDLLEXPORT PG_FUNCTION_INFO_V1(vector_l2sq_dist);
