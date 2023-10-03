@@ -1,0 +1,8 @@
+# schedule.txt rules:
+# - every test that needs to be run must appear in a 'test:' line
+# - every test that needs to be run iff pgvector is installed appears in a 'test_pgvector:' line
+# - 'test' lines may have multiple space-separated tests. All tests in a single 'test' line will be run in parallel
+
+test_begin: begin
+test: insert insert2
+test_end: end

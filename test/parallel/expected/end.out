@@ -1,6 +1,7 @@
+BING BING WAHOO
 SELECT COUNT(*) FROM small_world;
  count 
 -------
-    80
+    16
 (1 row)
 

@@ -192,7 +192,13 @@ add_custom_target(
 # TEST
 add_custom_target(
   test
-  COMMAND ${CMAKE_SOURCE_DIR}/scripts/run_all_tests.sh
+  COMMAND ${CMAKE_SOURCE_DIR}/scripts/run_all_tests.sh --regression
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/test
+)
+
+add_custom_target(
+  test-parallel
+  COMMAND ${CMAKE_SOURCE_DIR}/scripts/run_all_tests.sh --parallel
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/test
 )
 

@@ -1,9 +1,3 @@
-create table small_world (
-    id varchar(3),
-    b boolean,
-    v real[3]
-);
-
 insert into small_world (id, b, v) values
     ('000', true,  '{0,0,0}'),
     ('001', true,  '{0,0,1}'),

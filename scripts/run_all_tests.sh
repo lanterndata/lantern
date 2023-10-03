@@ -67,13 +67,29 @@ fi
 # Check if pgvector is available
 pgvector_installed=$($PSQL -U $DB_USER -d postgres -c "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'" -tA | tail -n 1 | tr -d '\n')
 
+# Settings
+REGRESSION=0
+PARALLEL=0
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --regression) REGRESSION=1 ;;
+        --parallel) PARALLEL=1 ;;
+    esac
+    shift
+done
+
 # Generate schedule.txt
 rm -rf $TMP_OUTDIR/schedule.txt
-if [ -n "$FILTER" ]; then
+if [ "$PARALLEL" -eq 1 ]; then
+    SCHEDULE='parallel_schedule.txt'
+else
+    SCHEDULE='schedule.txt'
+fi
+if [ -n "$FILTER" ] && [ -z "$PARALLEL" ]; then
     if [[ "$pgvector_installed" == "1" ]]; then
-        TEST_FILES=$(cat schedule.txt | grep -E '^(test:|test_pgvector:)' | sed -E -e 's/^test:|test_pgvector://' | tr " " "\n" | sed -e '/^$/d')
+        TEST_FILES=$(cat $SCHEDULE | grep -E '^(test:|test_pgvector:)' | sed -E -e 's/^test:|test_pgvector://' | tr " " "\n" | sed -e '/^$/d')
     else
-        TEST_FILES=$(cat schedule.txt | grep '^test:' | sed -e 's/^test://' | tr " " "\n" | sed -e '/^$/d')
+        TEST_FILES=$(cat $SCHEDULE | grep '^test:' | sed -e 's/^test://' | tr " " "\n" | sed -e '/^$/d')
     fi
 
     while IFS= read -r f; do
@@ -95,11 +111,18 @@ else
             if [ "$pgvector_installed" == "1" ]; then
                 echo "test: $test_name" >> $TMP_OUTDIR/schedule.txt
             fi
+        elif [[ "$line" =~ ^test_begin: ]]; then
+            test_name=$(echo "$line" | sed -e 's/test_begin:/test:/')
+            echo "$test_name" >> $TMP_OUTDIR/schedule.txt
+        elif [[ "$line" =~ ^test_end: ]]; then
+            test_name=$(echo "$line" | sed -e 's/test_end:/test:/')
+            echo "$test_name" >> $TMP_OUTDIR/schedule.txt
         else
             echo "$line" >> $TMP_OUTDIR/schedule.txt
         fi
-    done < schedule.txt
+    done < $SCHEDULE
 fi
+unset $SCHEDULE
 SCHEDULE=$TMP_OUTDIR/schedule.txt
 
 function print_diff {
@@ -116,4 +139,9 @@ function print_diff {
 
 trap print_diff ERR
 
-DB_USER=$DB_USER $(pg_config --pkglibdir)/pgxs/src/test/regress/pg_regress --user=$DB_USER --schedule=$SCHEDULE --outputdir=$TMP_OUTDIR --launcher=./test_runner.sh
+if [ "$PARALLEL" -eq 1 ]; then
+    cd parallel
+    DB_USER=$DB_USER $(pg_config --pkglibdir)/pgxs/src/test/regress/pg_regress --user=$DB_USER --schedule=$SCHEDULE --outputdir=$TMP_OUTDIR --launcher=./parallel_test_runner.sh
+else
+    DB_USER=$DB_USER $(pg_config --pkglibdir)/pgxs/src/test/regress/pg_regress --user=$DB_USER --schedule=$SCHEDULE --outputdir=$TMP_OUTDIR --launcher=./test_runner.sh
+fi
