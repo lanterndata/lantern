@@ -29,11 +29,12 @@ static Node *operator_rewriting_mutator(Node *node, void *ctx);
 
 void base_plan_mutator(Plan *plan, void *context)
 {
-    plan->targetlist = (List *)operator_rewriting_mutator((Node *)plan->targetlist, context);
-    plan->qual = (List *)operator_rewriting_mutator((Node *)plan->qual, context);
     plan->lefttree = (Plan *)operator_rewriting_mutator((Node *)plan->lefttree, context);
     plan->righttree = (Plan *)operator_rewriting_mutator((Node *)plan->righttree, context);
     plan->initPlan = (List *)operator_rewriting_mutator((Node *)plan->initPlan, context);
+    // checking qual and target list at the end covers some edge cases, if you modify this leave them here
+    plan->qual = (List *)operator_rewriting_mutator((Node *)plan->qual, context);
+    plan->targetlist = (List *)operator_rewriting_mutator((Node *)plan->targetlist, context);
 }
 
 Node *plan_tree_mutator(Plan *plan, void *context)
@@ -63,30 +64,6 @@ Node *plan_tree_mutator(Plan *plan, void *context)
             return (Node *)join;
         }
 #endif
-        case T_Agg:
-        {
-            Agg *agg = (Agg *)plan;
-            base_plan_mutator(&(agg->plan), context);
-            return (Node *)agg;
-        }
-        case T_Group:
-        {
-            Group *group = (Group *)plan;
-            base_plan_mutator(&(group->plan), context);
-            return (Node *)group;
-        }
-        case T_Sort:
-        {
-            Sort *sort = (Sort *)plan;
-            base_plan_mutator(&(sort->plan), context);
-            return (Node *)sort;
-        }
-        case T_Unique:
-        {
-            Unique *unique = (Unique *)plan;
-            base_plan_mutator(&(unique->plan), context);
-            return (Node *)unique;
-        }
         case T_NestLoop:
         {
             NestLoop *nestloop = (NestLoop *)plan;
@@ -115,8 +92,35 @@ Node *plan_tree_mutator(Plan *plan, void *context)
             append->appendplans = (List *)operator_rewriting_mutator((Node *)append->appendplans, context);
             return (Node *)append;
         }
-        default:
+        case T_Agg:
+        case T_Group:
+        case T_Sort:
+        case T_Unique:
+        case T_SetOp:
+        case T_Hash:
+        case T_HashJoin:
+        case T_WindowAgg:
+        case T_LockRows:
+        //case T_IncrementalSort: // We will eventually support this
+        {
+            base_plan_mutator(plan, context);
             return (Node *)plan;
+        }
+        case T_ModifyTable: // No order by when modifying a table (update/delete etc)
+        case T_BitmapAnd: // We do not provide a bitmap index
+        case T_BitmapOr:
+        case T_BitmapHeapScan:
+        case T_BitmapIndexScan:
+        case T_FunctionScan: // SELECT * FROM fn(x, y, z)
+        case T_ValuesScan: // VALUES (1), (2)
+        case T_Material: // https://stackoverflow.com/questions/31410030/
+        case T_Memoize: // memoized inner loop must have an index to be memoized
+        case T_WorkTableScan: // temporary table, shouldn't have index
+        case T_ProjectSet: // "execute set returning functions" feels safe to exclude
+        case T_TableFuncScan: // scan of a function that returns a table, shouldn't have an index
+        case T_ForeignScan: // if the relation is foreign we can't determine if it has an index
+        default:
+            break;
     }
     return (Node *)plan;
 }
@@ -214,15 +218,10 @@ static Node *operator_rewriting_mutator(Node *node, void *ctx)
     if(IsA(node, IndexScan) || IsA(node, IndexOnlyScan)) {
         return node;
     }
-    if(IsA(node, SeqScan)) {
-        SeqScan *seqscan = (SeqScan *)node;
-#if PG_VERSION_NUM >= 150000
-        Plan *seqscanplan = &seqscan->scan.plan;
-        Oid   rtrelid = seqscan->scan.scanrelid;
-#else
-        Plan *seqscanplan = &seqscan->plan;
-        Oid   rtrelid = seqscan->scanrelid;
-#endif
+    if(IsA(node, SeqScan) || IsA(node, SampleScan)) {
+        Scan *scan = (Scan *)node;
+        Plan *scanPlan = &scan->plan;
+        Oid   rtrelid = scan->scanrelid;
         RangeTblEntry *rte = rt_fetch(rtrelid, context->rtable);
         Oid            relid = rte->relid;
         Relation       rel = relation_open(relid, AccessShareLock);
@@ -231,8 +230,8 @@ static Node *operator_rewriting_mutator(Node *node, void *ctx)
         }
         relation_close(rel, AccessShareLock);
 
-        base_plan_mutator(seqscanplan, context);
-        return (Node *)seqscan;
+        base_plan_mutator(scanPlan, context);
+        return (Node *)scan;
     }
 
     if(is_plan_node(node)) {
