@@ -1,7 +1,3 @@
-CREATE TABLE small_world (
-    id varchar(3),
-    b boolean,
-    v real[3]
-);
+\ir utils/sift10k_array.sql
 
-CREATE INDEX ON small_world USING HNSW (v) WITH (dim=3, M=5, ef=20, ef_construction=20);
+CREATE INDEX ON sift_base10k  USING HNSW (v) WITH (M=5, ef=20, ef_construction=20);

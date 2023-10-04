@@ -21,7 +21,6 @@ EOF
 }
 
 if [[ "$TESTFILE_NAME" =~ ^end ]]; then
-    echo "BING BING WAHOO";
     trap drop_db EXIT
 fi
 

@@ -1,9 +1,10 @@
-CREATE TABLE small_world (
-    id varchar(3),
-    b boolean,
-    v real[3]
+\ir utils/sift10k_array.sql
+CREATE TABLE IF NOT EXISTS sift_base10k (
+     id SERIAL PRIMARY KEY,
+     v REAL[128]
 );
-CREATE INDEX ON small_world USING HNSW (v) WITH (dim=3, M=5, ef=20, ef_construction=20);
+\copy sift_base10k (v) FROM '/tmp/lantern/vector_datasets/siftsmall_base_arrays.csv' with csv;
+CREATE INDEX ON sift_base10k  USING HNSW (v) WITH (M=5, ef=20, ef_construction=20);
 INFO:  done init usearch index
-INFO:  inserted 0 elements
-INFO:  done saving 0 vectors
+INFO:  inserted 10000 elements
+INFO:  done saving 10000 vectors

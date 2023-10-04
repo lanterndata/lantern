@@ -1,9 +1,7 @@
-insert into small_world (id, b, v) values
-    ('000', true,  '{0,0,0}'),
-    ('001', true,  '{0,0,1}'),
-    ('010', false, '{0,1,0}'),
-    ('011', true,  '{0,1,1}'),
-    ('100', false, '{1,0,0}'),
-    ('101', false, '{1,0,1}'),
-    ('110', false, '{1,1,0}'),
-    ('111', true,  '{1,1,1}');
+\ir utils/random_array.sql
+DO $$
+BEGIN
+    FOR i IN 1..10 LOOP
+        INSERT INTO sift_base10k (v) VALUES (random_array(128, 0, 128));
+    END LOOP;
+END; $$
