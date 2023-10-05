@@ -99,7 +99,7 @@ fn create_usearch_index(args: cli::Args) -> Result<(), anyhow::Error> {
     // get all row count
     let mut client = Client::connect(&args.uri, NoTls).unwrap();
     let mut transaction = client.transaction()?;
-    let rows = transaction.query(&format!("SELECT COUNT(*) FROM {};", args.table), &[])?;
+    let rows = transaction.query(&format!("SELECT COUNT(*) FROM \"{}\";", args.table), &[])?;
 
     let count: i64 = rows[0].get(0);
     // reserve enough memory on index
@@ -140,7 +140,7 @@ fn create_usearch_index(args: cli::Args) -> Result<(), anyhow::Error> {
     // With portal we can execute a query and poll values from it in chunks
     let portal = transaction
         .bind(
-            &format!("SELECT ctid, {} FROM {};", &args.column, &args.table),
+            &format!("SELECT ctid, {} FROM \"{}\";", &args.column, &args.table),
             &[],
         )
         .unwrap();
