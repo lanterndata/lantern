@@ -2,6 +2,8 @@
 # - every test that needs to be run must appear in a 'test:' line
 # - every test that needs to be run iff pgvector is installed appears in a 'test_pgvector:' line
 # - 'test' lines may have multiple space-separated tests. All tests in a single 'test' line will be run in parallel
+# parallel_schedule.txt notes:
+# - Begin runs before and end runs after the actual tests, they run in the same database, but begin runs before to handle the necessary setup and end runs after to check invariants.
 
 test_begin: begin
 test: insert insert2 insert3 select

@@ -2,6 +2,16 @@ SELECT v AS v1111 FROM sift_base10k WHERE id = 1111 \gset
 SELECT v AS v2222 FROM sift_base10k WHERE id = 2222 \gset
 SELECT v AS v3333 FROM sift_base10k WHERE id = 3333 \gset
 SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
+-- Make sure that our index queries will actually run against the index
+EXPLAIN (COSTS false) SELECT id FROM sift_base10k ORDER BY  v <-> :'v1111'  ASC LIMIT 1;
+                                                                                                                                                                                   QUERY PLAN                                                                                                                                                                                    
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   ->  Index Scan using sift_base10k_v_idx on sift_base10k
+         Order By: (v <-> '{21,24,5,0,0,26,22,6,16,16,10,9,0,18,114,19,13,13,9,1,2,53,111,19,39,32,5,0,4,9,10,13,6,10,8,0,2,130,77,4,2,0,0,0,3,130,130,11,130,0,0,0,0,37,130,84,130,5,0,1,17,11,4,28,17,39,3,3,30,77,28,3,20,0,0,1,49,125,13,7,130,6,0,0,0,5,11,61,130,2,0,1,12,84,48,73,1,12,2,0,31,57,9,2,16,12,1,0,32,36,0,1,63,6,3,1,0,0,24,51,9,0,0,0,0,44,88,48}'::real[])
+(3 rows)
+
+-- Do the queries
 SELECT id FROM sift_base10k ORDER BY  v <-> :'v1111'  ASC LIMIT 1;
   id  
 ------

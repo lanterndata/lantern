@@ -27,5 +27,6 @@ echo "port = 5432" >> ${PGDATA}/postgresql.conf
 GCOV_PREFIX=$WORKDIR/build/CMakeFiles/lantern.dir/ GCOV_PREFIX_STRIP=5 POSTGRES_HOST_AUTH_METHOD=trust /usr/lib/postgresql/$PG_VERSION/bin/postgres 1>/tmp/pg-out.log 2>/tmp/pg-error.log &
 # Wait for start and run tests
 wait_for_pg && cd $WORKDIR/build && make test && \
+make test-parallel && \
 killall postgres && \
 gcovr -r $WORKDIR/src/ --object-directory $WORKDIR/build/ --xml /tmp/coverage.xml

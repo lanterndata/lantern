@@ -1,3 +1,4 @@
+-- This file handles initializing the database before parallel tests are run
 \ir utils/sift10k_array.sql
 CREATE TABLE IF NOT EXISTS sift_base10k (
      id SERIAL PRIMARY KEY,
