@@ -85,11 +85,15 @@ if [ "$PARALLEL" -eq 1 ]; then
 else
     SCHEDULE='schedule.txt'
 fi
-if [ -n "$FILTER" ] && [ -z "$PARALLEL" ]; then
-    if [[ "$pgvector_installed" == "1" ]]; then
-        TEST_FILES=$(cat $SCHEDULE | grep -E '^(test:|test_pgvector:)' | sed -E -e 's/^test:|test_pgvector://' | tr " " "\n" | sed -e '/^$/d')
+if [ -n "$FILTER" ]; then
+    if [ "$PARALLEL" -eq 1 ]; then
+    	TEST_FILES=$(cat $SCHEDULE | grep -E '^(test:|test_begin:|test_end:)' | sed -E -e 's/^test:|test_begin:|test_end://' | tr " " "\n" | sed -e '/^$/d')
     else
-        TEST_FILES=$(cat $SCHEDULE | grep '^test:' | sed -e 's/^test://' | tr " " "\n" | sed -e '/^$/d')
+	    if [[ "$pgvector_installed" == "1" ]]; then
+		TEST_FILES=$(cat $SCHEDULE | grep -E '^(test:|test_pgvector:)' | sed -E -e 's/^test:|test_pgvector://' | tr " " "\n" | sed -e '/^$/d')
+	    else
+		TEST_FILES=$(cat $SCHEDULE | grep '^test:' | sed -e 's/^test://' | tr " " "\n" | sed -e '/^$/d')
+	    fi
     fi
 
     while IFS= read -r f; do

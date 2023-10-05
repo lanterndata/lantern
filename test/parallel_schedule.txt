@@ -4,5 +4,5 @@
 # - 'test' lines may have multiple space-separated tests. All tests in a single 'test' line will be run in parallel
 
 test_begin: begin
-test: insert insert2 insert3
+test: insert insert2 insert3 select
 test_end: end
