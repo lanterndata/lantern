@@ -114,7 +114,9 @@ Node *plan_tree_mutator(Plan *plan, void *context)
         case T_FunctionScan: // SELECT * FROM fn(x, y, z)
         case T_ValuesScan: // VALUES (1), (2)
         case T_Material: // https://stackoverflow.com/questions/31410030/
+#if PG_VERSION_NUM >= 140000
         case T_Memoize: // memoized inner loop must have an index to be memoized
+#endif
         case T_WorkTableScan: // temporary table, shouldn't have index
         case T_ProjectSet: // "execute set returning functions" feels safe to exclude
         case T_TableFuncScan: // scan of a function that returns a table, shouldn't have an index
