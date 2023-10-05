@@ -92,6 +92,7 @@ Node *plan_tree_mutator(Plan *plan, void *context)
             append->appendplans = (List *)operator_rewriting_mutator((Node *)append->appendplans, context);
             return (Node *)append;
         }
+        // case T_IncrementalSort: // We will eventually support this
         case T_Agg:
         case T_Group:
         case T_Sort:
@@ -101,26 +102,25 @@ Node *plan_tree_mutator(Plan *plan, void *context)
         case T_HashJoin:
         case T_WindowAgg:
         case T_LockRows:
-        //case T_IncrementalSort: // We will eventually support this
         {
             base_plan_mutator(plan, context);
             return (Node *)plan;
         }
-        case T_ModifyTable: // No order by when modifying a table (update/delete etc)
-        case T_BitmapAnd: // We do not provide a bitmap index
+        case T_ModifyTable:  // No order by when modifying a table (update/delete etc)
+        case T_BitmapAnd:    // We do not provide a bitmap index
         case T_BitmapOr:
         case T_BitmapHeapScan:
         case T_BitmapIndexScan:
-        case T_FunctionScan: // SELECT * FROM fn(x, y, z)
-        case T_ValuesScan: // VALUES (1), (2)
-        case T_Material: // https://stackoverflow.com/questions/31410030/
+        case T_FunctionScan:  // SELECT * FROM fn(x, y, z)
+        case T_ValuesScan:    // VALUES (1), (2)
+        case T_Material:      // https://stackoverflow.com/questions/31410030/
 #if PG_VERSION_NUM >= 140000
-        case T_Memoize: // memoized inner loop must have an index to be memoized
+        case T_Memoize:  // memoized inner loop must have an index to be memoized
 #endif
-        case T_WorkTableScan: // temporary table, shouldn't have index
-        case T_ProjectSet: // "execute set returning functions" feels safe to exclude
-        case T_TableFuncScan: // scan of a function that returns a table, shouldn't have an index
-        case T_ForeignScan: // if the relation is foreign we can't determine if it has an index
+        case T_WorkTableScan:  // temporary table, shouldn't have index
+        case T_ProjectSet:     // "execute set returning functions" feels safe to exclude
+        case T_TableFuncScan:  // scan of a function that returns a table, shouldn't have an index
+        case T_ForeignScan:    // if the relation is foreign we can't determine if it has an index
         default:
             break;
     }
@@ -221,9 +221,9 @@ static Node *operator_rewriting_mutator(Node *node, void *ctx)
         return node;
     }
     if(IsA(node, SeqScan) || IsA(node, SampleScan)) {
-        Scan *scan = (Scan *)node;
-        Plan *scanPlan = &scan->plan;
-        Oid   rtrelid = scan->scanrelid;
+        Scan          *scan = (Scan *)node;
+        Plan          *scanPlan = &scan->plan;
+        Oid            rtrelid = scan->scanrelid;
         RangeTblEntry *rte = rt_fetch(rtrelid, context->rtable);
         Oid            relid = rte->relid;
         Relation       rel = relation_open(relid, AccessShareLock);
