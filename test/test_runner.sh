@@ -40,20 +40,14 @@ fi
 # Change directory to sql directory so sql imports will work correctly
 cd sql/
 
-function db_init {
-    psql "$@" -U ${DB_USER} -d postgres -v ECHO=none -q -c "CREATE DATABASE ${TEST_CASE_DB};" 2>/dev/null
-    psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -c "SET client_min_messages=error; CREATE EXTENSION lantern;" 2>/dev/null
-}
-
 # install lantern extension
 # if tests are parallel we only do this for the begin tests as we won't be dropping the database until the end
 # begin will handle initialization specific to the tests but expects the database already exists
-if [ "$PARALLEL" -eq 0 ]; then
+if [ "$PARALLEL" -eq 0 ] || ( [[ "$TESTFILE_NAME" =~ ^begin ]] && [ "$PARALLEL" -eq 1 ] ); then
     psql "$@" -U ${DB_USER} -d postgres -v ECHO=none -q -c "DROP DATABASE IF EXISTS ${TEST_CASE_DB};" 2>/dev/null
-    db_init
+    psql "$@" -U ${DB_USER} -d postgres -v ECHO=none -q -c "CREATE DATABASE ${TEST_CASE_DB};" 2>/dev/null
+    psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -c "SET client_min_messages=error; CREATE EXTENSION lantern;" 2>/dev/null
     psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -f utils/common.sql 2>/dev/null
-elif [[ "$TESTFILE_NAME" =~ ^begin ]] && [ "$PARALLEL" -eq 1 ]; then
-    db_init
 fi
 
 # Exclude debug/inconsistent output from psql
