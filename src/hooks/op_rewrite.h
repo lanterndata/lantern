@@ -1,5 +1,5 @@
-#ifndef _OP_REWRITE_H_
-#define _OP_REWRITE_H_
+#ifndef LDB_HOOKS_OP_REWRITE_H
+#define LDB_HOOKS_OP_REWRITE_H
 
 #include <nodes/pg_list.h>
 #include <nodes/plannodes.h>
