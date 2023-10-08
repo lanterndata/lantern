@@ -36,7 +36,7 @@ jobs:
       # Enable tmate debugging of manually-triggered workflows if the input option was provided
       - name: Setup tmate session
         uses: mxschmitt/action-tmate@v3
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
+        if: ${{ ( github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request') && inputs.debug_enabled }}
       - name: Run tests linux
         id: test-linux
         run: sudo su postgres -c "PG_VERSION=$PG_VERSION ./ci/scripts/run-tests-linux.sh"
