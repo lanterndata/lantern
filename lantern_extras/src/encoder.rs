@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 use tokenizers::{
     PaddingDirection, PaddingParams, PaddingStrategy, Tokenizer, TruncationDirection,
     TruncationParams, TruncationStrategy,
@@ -39,7 +39,7 @@ struct ModelInfo {
 }
 
 lazy_static! {
-    static ref MODEL_INFO_MAP: Mutex<HashMap<&'static str, ModelInfo>> = Mutex::new(HashMap::from([
+    static ref MODEL_INFO_MAP: RwLock<HashMap<&'static str, ModelInfo>> = RwLock::new(HashMap::from([
         ("clip/ViT-B-32-textual", ModelInfo{encoder: None, url: "https://huggingface.co/varik77/onnx-models/resolve/main/openai/ViT-B-32/textual/model.onnx", tokenizer_url: Some("https://huggingface.co/varik77/onnx-models/resolve/main/openai/ViT-B-32/textual/tokenizer.json"), encoder_args: EncoderOptions{visual:false, pad_token_sequence: 77, use_tokenizer: true, input_image_size: None}}),
         ("clip/ViT-B-32-visual", ModelInfo{encoder: None, url: "https://huggingface.co/varik77/onnx-models/resolve/main/openai/ViT-B-32/visual/model.onnx", tokenizer_url: None, encoder_args: EncoderOptions{visual:true, input_image_size: Some(224), use_tokenizer: false, pad_token_sequence: 0} }),
         ("BAAI/bge-base-en", ModelInfo{encoder: None, url: "https://huggingface.co/varik77/onnx-models/resolve/main/BAAI/bge-base-en/model.onnx", tokenizer_url: Some("https://huggingface.co/varik77/onnx-models/resolve/main/BAAI/bge-base-en/tokenizer.json"), encoder_args: EncoderOptions{visual:false, pad_token_sequence: 512, use_tokenizer: true, input_image_size: None}}),
@@ -326,19 +326,24 @@ pub mod clip {
     }
 
     fn check_and_download_files(model_name: &str) -> Result<(), anyhow::Error> {
-        let mut map = MODEL_INFO_MAP.lock().unwrap();
-        let model_info = map.get_mut(model_name);
+        {
+            let map = MODEL_INFO_MAP.read().unwrap();
+            let model_info = map.get(model_name);
 
-        if model_info.is_none() {
-            anyhow::bail!("Model {} not found. Use 'SELECT get_available_models()' to view the list of avaialble models", model_name)
+            if model_info.is_none() {
+                anyhow::bail!("Model {} not found. Use 'SELECT get_available_models()' to view the list of avaialble models", model_name)
+            }
+
+            let model_info = model_info.unwrap();
+
+            if model_info.encoder.is_some() {
+                // if encoder exists return
+                return Ok(());
+            }
         }
-
-        let model_info = model_info.unwrap();
-
-        if model_info.encoder.is_some() {
-            // if encoder exists return
-            return Ok(());
-        }
+        
+        let mut map_write = MODEL_INFO_MAP.write().unwrap();
+        let model_info = map_write.get_mut(model_name).unwrap();
 
         let model_folder = Path::join(&Path::new(DATA_PATH), model_name);
         let model_path = Path::join(&model_folder, "model.onnx");
@@ -370,7 +375,7 @@ pub mod clip {
         match encoder {
             Ok(enc) => model_info.encoder = Some(enc),
             Err(err) => {
-                drop(map);
+                drop(map_write);
                 anyhow::bail!(err)
             }
         }
@@ -386,7 +391,7 @@ pub mod clip {
             error!("Error happened while downloading model files {:?}", err);
         }
 
-        let map = MODEL_INFO_MAP.lock().unwrap();
+        let map = MODEL_INFO_MAP.read().unwrap();
         let model_info = map.get(model_name).unwrap();
 
         let result = model_info
@@ -425,7 +430,7 @@ pub mod clip {
             f.read_to_end(&mut buffer).unwrap();
         }
 
-        let map = MODEL_INFO_MAP.lock().unwrap();
+        let map = MODEL_INFO_MAP.read().unwrap();
         let model_info = map.get(model_name).unwrap();
 
         let result = model_info
@@ -445,7 +450,7 @@ pub mod clip {
     }
 
     pub fn get_available_models() -> String {
-        let map = MODEL_INFO_MAP.lock().unwrap();
+        let map = MODEL_INFO_MAP.read().unwrap();
         let mut res = String::new();
         for (key, value) in &*map {
             let model_exists =
