@@ -74,20 +74,8 @@ Then you should export these 2 environment variables
 
 ```bash
 export ORT_STRATEGY=system
-export ORT_LIB_LOCATION=/usr/local/lib/onnxruntime
+export ORT_DYLIB_PATH=/usr/local/lib/onnxruntime
 ```
-
-And also add this configuration under `.cargo/config`
-
-```
-[target.aarch64-unknown-linux-gnu]
-rustflags = ["-C", "link-args=-Wl,-rpath,/usr/local/lib/onnxruntime/lib"]
-[target.'cfg(target_os="macos")']
-# Postgres symbols won't be available until runtime
-rustflags = ["-Clink-arg=-Wl,-undefined,dynamic_lookup"]
-```
-
-_replace `aarch64-unknown-linux-gnu` with your architecture. You can get it by running `rustc -vV | sed -n 's|host: ||p'`_
 
 This extension is written in Rust so requires Rust toolchain. Make sure Rust toolchain is installed before continuing
 The extension also uses `pgrx`. If pgrx is not already installed, use the following commands to install it:

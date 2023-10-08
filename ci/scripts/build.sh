@@ -5,7 +5,7 @@ function setup_environment() {
   export PG_VERSION=${PG_VERSION:-15}
   export GITHUB_OUTPUT=${GITHUB_OUTPUT:-/dev/null}
   export ORT_STRATEGY=system
-  export ORT_LIB_LOCATION=/usr/local/lib/onnxruntime
+  export ORT_DYLIB_PATH=/usr/local/lib/onnxruntime
 }
 
 function install_onnx_runtime(){
