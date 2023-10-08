@@ -64,6 +64,8 @@ make install
 ```
 
 ### Building from source
+<details>
+<summary> Click to expand</summary>
 
 You should have onnxruntime in your system in order to build the extension.  
 You can download the `onnxruntime` binary realease from GitHub https://github.com/microsoft/onnxruntime/releases/tag/v1.15.1 and place it somewhere in your system (e.g. /usr/lib/onnxruntime)
@@ -87,8 +89,19 @@ rustflags = ["-Clink-arg=-Wl,-undefined,dynamic_lookup"]
 
 _replace `aarch64-unknown-linux-gnu` with your architecture. You can get it by running `rustc -vV | sed -n 's|host: ||p'`_
 
-This extension is written in Rust so requires Rust toolchain. It uses `pgrx`
+This extension is written in Rust so requires Rust toolchain. Make sure Rust toolchain is installed before continuing
+The extension also uses `pgrx`. If pgrx is not already installed, use the following commands to install it:
+```
+#install pgrx prerequisites
+sudo apt install pkg-config libssl-dev zlib1g-dev libreadline-dev
+sudo apt-get install clang
 
+#install pgrx itself
+cargo install --locked cargo-pgrx=v0.9.7
+cargo pgrx init
+```
+
+Then, you can run the extension under development with the following
 ```bash
 cargo pgrx run --package lantern_extras # runs in a testing environment
 ```
@@ -98,7 +111,7 @@ To package the extension run
 ```bash
 cargo pgrx package --package lantern_extras
 ```
-
+</details>
 ### Initializing with psql
 
 Once the extension is installed, in a psql shell or in your favorite SQL environment run:
