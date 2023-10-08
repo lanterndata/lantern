@@ -116,7 +116,7 @@ impl EncoderService {
 
     fn process_text_bge(
         &self,
-        text: &Vec<String>,
+        text: &Vec<&str>,
     ) -> Result<Vec<Vec<f32>>, Box<dyn std::error::Error + Send + Sync>> {
         let session = &self.encoder;
         let preprocessed = self
@@ -180,7 +180,7 @@ impl EncoderService {
 
     fn process_text_clip(
         &self,
-        text: &Vec<String>,
+        text: &Vec<&str>,
     ) -> Result<Vec<Vec<f32>>, Box<dyn std::error::Error + Send + Sync>> {
         let session = &self.encoder;
         let preprocessed = self
@@ -232,7 +232,7 @@ impl EncoderService {
 
     fn process_text(
         &self,
-        text: &Vec<String>,
+        text: &Vec<&str>,
     ) -> Result<Vec<Vec<f32>>, Box<dyn std::error::Error + Send + Sync>> {
         match self.name.as_str() {
             "clip/ViT-B-32-textual" => self.process_text_clip(text),
@@ -393,7 +393,7 @@ pub mod clip {
             .encoder
             .as_ref()
             .unwrap()
-            .process_text(&vec![text]);
+            .process_text(&vec![&text]);
 
         match result {
             Ok(res) => res[0].clone(),
