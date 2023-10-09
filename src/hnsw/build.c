@@ -493,6 +493,36 @@ static void BuildIndex(
 }
 
 /*
+ * Build an unlogged index
+ */
+static void BuildIndexUnlogged(Relation index)
+{
+    usearch_init_options_t opts;
+    MemSet(&opts, 0, sizeof(opts));
+
+    PopulateUsearchOpts(index, &opts);
+
+    elog(INFO, "done init usearch index for unlogged table");
+
+    // Read the first block
+    Buffer buffer = ReadBufferExtended(index, INIT_FORKNUM, P_NEW, RBM_NORMAL, NULL);
+    // Lock buffer so there won't be any new writes during this operation
+    LockBuffer(buffer, BUFFER_LOCK_SHARE);
+    // This is like converting block buffer to Page struct
+    Page page = BufferGetPage(buffer);
+    // Getting the maximum tuple index on the page
+    OffsetNumber offset = PageGetMaxOffsetNumber(page);
+
+    // Reasonably accurate first guess, assuming tuples are fixed length it will err towards over allocating.
+    // In the case of under allocation the logic in AddTupleToUsearchIndex should expand it as needed
+    // estimated_row_count = offset * numBlocks;
+    // Unlock and release buffer
+    UnlockReleaseBuffer(buffer);
+
+    UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_IN_MEMORY_INSERT);
+}
+
+/*
  * Build the index for a logged table
  */
 IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInfo)
@@ -514,7 +544,5 @@ IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInf
  */
 void ldb_ambuildunlogged(Relation index)
 {
-    LDB_UNUSED(index);
-    // todo::
-    elog(ERROR, "hnsw index on unlogged tables is currently not supported");
+    BuildIndexUnlogged(index);
 }
