@@ -4,13 +4,15 @@ import getpass
 import git
 import os
 
+
+INCOMPATIBLE_VERSIONS = {
+    '16': ['0.0.4']
+}
+
 def update_from_tag(from_version: str, to_version: str):
     from_tag = "v" + from_version
-    to_tag = "v" + to_version
     repo = git.Repo(search_parent_directories=True)
     sha_before = repo.head.object.hexsha
-    print("sha_before", sha_before)
-    print("checkout to tag", from_tag)
     repo.remotes[0].fetch()
     repo.git.checkout(from_tag)
     sha_after = repo.head.object.hexsha
@@ -30,10 +32,14 @@ def update_from_tag(from_version: str, to_version: str):
     # todo:: run init() portion of parallel tests
 
     repo.git.checkout(sha_before)
-    print("sha_before", sha_before)
     res = subprocess.run(f"cd {args.builddir} ; git submodule update && cmake .. && make -j4 && make install && make test", shell=True)
     res = subprocess.run(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={to_version} make test", shell=True)
     #todo:: run query and check portion of parallel tests
+
+def incompatible_version(pg_version, version_tag):
+    if not pg_version or pg_version not in INCOMPATIBLE_VERSIONS:
+        return False
+    return version_tag in INCOMPATIBLE_VERSIONS[pg_version]
 
 if __name__ == "__main__":
 
@@ -62,11 +68,13 @@ if __name__ == "__main__":
         exit(1)
 
     # test updates from all tags
-    print([update_fname for update_fname in os.listdir("sql/updates")])
     from_tags = [update_fname.split("--")[0] for update_fname in os.listdir("sql/updates")]
-    print(from_tags)
     latest_version = "0.0.5"
+
+    pg_version = None if not 'PG_VERSION' in os.environ else os.environ['PG_VERSION']
     for from_tag in from_tags:
+        if incompatible_version(pg_version, from_tag):
+            continue
         update_from_tag(from_tag, latest_version)
 
 
