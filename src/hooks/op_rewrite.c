@@ -37,6 +37,8 @@ void base_plan_mutator(Plan *plan, void *context)
     plan->targetlist = (List *)operator_rewriting_mutator((Node *)plan->targetlist, context);
 }
 
+// recursively descend the plan tree searching for expressions with the <-> operator that are part of a non-index scan
+// src/include/nodes/plannodes.h and src/include/nodes/nodes.h contain relevant definitions
 Node *plan_tree_mutator(Plan *plan, void *context)
 {
     check_stack_depth();
