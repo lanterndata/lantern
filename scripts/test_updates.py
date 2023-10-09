@@ -11,6 +11,7 @@ def update_from_tag(from_version: str, to_version: str):
     sha_before = repo.head.object.hexsha
     print("sha_before", sha_before)
     print("checkout to tag", from_tag)
+    repo.remotes[0].fetch()
     repo.git.checkout(from_tag)
     sha_after = repo.head.object.hexsha
     print("sha_after", sha_after)
@@ -25,7 +26,7 @@ def update_from_tag(from_version: str, to_version: str):
 
     res = subprocess.run(f"psql postgres -U {args.user} -c 'DROP DATABASE IF EXISTS {args.db};'", shell=True)
     res = subprocess.run(f"psql postgres -U {args.user} -c 'CREATE DATABASE {args.db};'", shell=True)
-    res = subprocess.run(f"psql postgres -c 'DROP EXTENSION IF EXISTS lantern CASCADE; CREATE EXTENSION lantern;' -d {args.db};", shell=True)
+    res = subprocess.run(f"psql postgres -U {args.user} -c 'DROP EXTENSION IF EXISTS lantern CASCADE; CREATE EXTENSION lantern;' -d {args.db};", shell=True)
     # todo:: run init() portion of parallel tests
 
     repo.git.checkout(sha_before)
@@ -41,7 +42,7 @@ if __name__ == "__main__":
     # collect the tag from command line to upgrade from
 
     parser = argparse.ArgumentParser(description='Update from tag')
-    parser.add_argument('--from_tag', '--from_tag', metavar='from_tag', type=str,
+    parser.add_argument('-from_tag', '--from_tag', metavar='from_tag', type=str,
                         help='Tag to update from', required=False)
     parser.add_argument('-to_tag','--to_tag', metavar='to_tag', type=str,
                         help='Tag to update to', required=False)
