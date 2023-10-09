@@ -4,6 +4,7 @@ set -e
 WORKDIR=/tmp/lantern
 GITHUB_OUTPUT=${GITHUB_OUTPUT:-/dev/null}
 PG_VERSION=${PG_VERSION:-15}
+RUN_TESTS=${RUN_TESTS:-1}
 
 export PGDATA=/etc/postgresql/$PG_VERSION/main
 
@@ -21,11 +22,26 @@ wait_for_pg(){
  done
 }
 
+function run_db_tests(){
+  if [[ "$RUN_TESTS" == "1" ]]
+  then
+    cd $WORKDIR/build && \
+    make test && \
+    killall postgres && \
+    gcovr -r $WORKDIR/src/ --object-directory $WORKDIR/build/ --xml /tmp/coverage.xml
+  fi
+}
+
+echo "port = 5432" >> ${PGDATA}/postgresql.conf
+# Enable auth without password
+echo "local   all             all                                     trust" >  $PGDATA/pg_hba.conf
+echo "host    all             all             127.0.0.1/32            trust" >>  $PGDATA/pg_hba.conf
+echo "host    all             all             ::1/128                 trust" >>  $PGDATA/pg_hba.conf
+
+
 # Set port
 echo "port = 5432" >> ${PGDATA}/postgresql.conf
 # Run postgres database
 GCOV_PREFIX=$WORKDIR/build/CMakeFiles/lantern.dir/ GCOV_PREFIX_STRIP=5 POSTGRES_HOST_AUTH_METHOD=trust /usr/lib/postgresql/$PG_VERSION/bin/postgres 1>/tmp/pg-out.log 2>/tmp/pg-error.log &
 # Wait for start and run tests
-wait_for_pg && cd $WORKDIR/build && make test && \
-killall postgres && \
-gcovr -r $WORKDIR/src/ --object-directory $WORKDIR/build/ --xml /tmp/coverage.xml
+wait_for_pg && run_db_tests
