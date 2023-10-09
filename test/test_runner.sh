@@ -2,11 +2,18 @@
 
 # Get current test file name
 TESTFILE_NAME=${PGAPPNAME##pg_regress/}
-# Set different name for each test database
-# As pg_regress does not support cleaning db after each test
-TEST_CASE_DB="ldb_test_${TESTFILE_NAME}"
+
+if [ "$PARALLEL" -eq 0 ]; then
+    # Set different name for each test database
+    # As pg_regress does not support cleaning db after each test
+    TEST_CASE_DB="ldb_test_${TESTFILE_NAME}"
+else
+    # parallel tests all run in the same database
+    TEST_CASE_DB="ldb_parallel"
+fi
+
 # Set database user
-if [ -z $DB_USER ]
+if [ -z "$DB_USER" ]
 then
      echo "ERROR: DB_USER environment variable is not set before test_runner.sh is run by pg_regress"
      exit 1
@@ -20,6 +27,7 @@ function drop_db {
 EOF
 }
 
+<<<<<<< HEAD
 function run_regression_test {
      # Exclude debug/inconsistent output from psql
      # So tests will always have the same output
@@ -44,11 +52,29 @@ trap drop_db EXIT
 
 
 
-# Change directory to sql so sql imports will work correctly
+# If these aren't parallel tests always drop the db after the test
+# if they are though we only want to drop after end which is where we check invariants
+# this allows the parallel tests to be run against the same db 
+if [ "$PARALLEL" -eq 0 ]; then
+    trap drop_db EXIT
+elif [[ "$TESTFILE_NAME" =~ ^end ]]; then
+    trap drop_db EXIT
+fi
+
+
+# Change directory to sql directory so sql imports will work correctly
 cd sql/
+
 # install lantern extension
-psql "$@" -U ${DB_USER} -d postgres -v ECHO=none -q -c "DROP DATABASE IF EXISTS ${TEST_CASE_DB};" 2>/dev/null
-psql "$@" -U ${DB_USER} -d postgres -v ECHO=none -q -c "CREATE DATABASE ${TEST_CASE_DB};" 2>/dev/null
+# if tests are parallel we only do this for the begin tests as we won't be dropping the database until the end
+# begin will handle initialization specific to the tests but expects the database already exists
+if [ "$PARALLEL" -eq 0 ] || ( [[ "$TESTFILE_NAME" =~ ^begin ]] && [ "$PARALLEL" -eq 1 ] ); then
+    psql "$@" -U ${DB_USER} -d postgres -v ECHO=none -q -c "DROP DATABASE IF EXISTS ${TEST_CASE_DB};" 2>/dev/null
+    psql "$@" -U ${DB_USER} -d postgres -v ECHO=none -q -c "CREATE DATABASE ${TEST_CASE_DB};" 2>/dev/null
+    psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -c "SET client_min_messages=error; CREATE EXTENSION lantern;" 2>/dev/null
+    psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -f utils/common.sql 2>/dev/null
+fi
+
 if [ ! -z "$UPDATE_EXTENSION" ]
 then
      if [ -z "$UPDATE_FROM" ] || [ -z "$UPDATE_TO" ]
@@ -56,7 +82,6 @@ then
           echo "ERROR: UPDATE_FROM and UPDATE_TO environment variables must be set before test_runner.sh whenever UPDATE_EXTENSION is set"
           exit 1
      fi
-
      # install the old version of the extension and sanity-check that all tests pass
      psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -c "SET client_min_messages=error; CREATE EXTENSION lantern VERSION '$UPDATE_FROM';" 2>/dev/null
      psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -f utils/common.sql 2>/dev/null

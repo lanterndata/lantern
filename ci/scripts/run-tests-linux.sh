@@ -27,6 +27,7 @@ function run_db_tests(){
   then
     cd $WORKDIR/build && \
     make test && \
+    make test-parallel && \
     killall postgres && \
     gcovr -r $WORKDIR/src/ --object-directory $WORKDIR/build/ --xml /tmp/coverage.xml
   fi
