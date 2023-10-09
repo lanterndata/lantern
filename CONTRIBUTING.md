@@ -8,7 +8,11 @@ make test
 
 # only run regression tests that have $FILTER in regression sql file path
 make test FILTER=hnsw
+
+# run parallel tests
+make test-parallel
 ```
+Running `make test` will run the lantern regression tests, these run independent of one another. At the moment the tests for `make test-parallel` are under development, they can be found in `test/parallel`. The goal of the parallel tests is to generate a more realistic workload on the index to discover timing errors and other bugs dependent on more complex use, they run in the same database. 
 
 ## Running benchmarks
 This requires Python to be installed. Please check the `Dockerfile.dev` for pip requirements.
@@ -30,7 +34,7 @@ If you build Lantern in a different directory, make sure to update `.vscode` con
 
 ## Debugging the C codebase
 
-If you make changes to the C codebase, in addition to `make test`, you can also use the `livedebug.py` utility in a `tmux` session to easily attach `gdb` to the psql backend and find out what breaks.
+If you make changes to the C codebase, in addition to `make test` and `make parallel-test`, you can also use the `livedebug.py` utility in a `tmux` session to easily attach `gdb` to the psql backend and find out what breaks.
 Below is a short recording demonstrating the use of `livedebug.py`:
 
 [![asciicast](https://asciinema.org/a/jTsbWdOcTvUl4iAJlAw3Cszbt.svg)](https://asciinema.org/a/jTsbWdOcTvUl4iAJlAw3Cszbt)
