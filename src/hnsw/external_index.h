@@ -112,12 +112,13 @@ typedef struct
     HnswColumnType  columnType;
 } HnswInsertState;
 
-void StoreExternalIndex(Relation                index,
-                        usearch_index_t         external_index,
-                        ForkNumber              forkNum,
-                        char                   *data,
-                        usearch_init_options_t *opts,
-                        size_t                  num_added_vectors);
+uint32 UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, int level);
+void   StoreExternalIndex(Relation                index,
+                          usearch_index_t         external_index,
+                          ForkNumber              forkNum,
+                          char                   *data,
+                          usearch_init_options_t *opts,
+                          size_t                  num_added_vectors);
 
 // add the fully constructed index tuple to the index via wal
 // hdr is passed in so num_vectors, first_block_no, last_block_no can be updated
