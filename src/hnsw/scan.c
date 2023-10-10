@@ -162,7 +162,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
     if(scanstate->first) {
         int             num_returned;
         Datum           value;
-        void         *vec;
+        void           *vec;
         usearch_error_t error = NULL;
         int             k = ldb_hnsw_init_k;
 
@@ -209,7 +209,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
     if(scanstate->current == scanstate->count) {
         int             num_returned;
         Datum           value;
-        void         *vec;
+        void           *vec;
         usearch_error_t error = NULL;
         int             k = scanstate->count * 2;
         int             index_size = usearch_size(scanstate->usearch_index, &error);

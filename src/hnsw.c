@@ -292,15 +292,15 @@ static float4 array_dist(ArrayType *a, ArrayType *b, usearch_metric_kind_t metri
     }
 
     float4 result;
-    bool is_int_array = (metric_kind == usearch_metric_hamming_k);
+    bool   is_int_array = (metric_kind == usearch_metric_hamming_k);
 
     if(is_int_array) {
         int32 *ax_int = (int32 *)ARR_DATA_PTR(a);
         int32 *bx_int = (int32 *)ARR_DATA_PTR(b);
 
-       // calling usearch_scalar_f32_k here even though it's an integer array is fine
-       // the hamming distance in usearch actually ignores the scalar type
-       // and it will get casted appropriately in usearch even with this scalar type
+        // calling usearch_scalar_f32_k here even though it's an integer array is fine
+        // the hamming distance in usearch actually ignores the scalar type
+        // and it will get casted appropriately in usearch even with this scalar type
         result = usearch_dist(ax_int, bx_int, metric_kind, a_dim, usearch_scalar_f32_k);
 
     } else {
@@ -402,7 +402,7 @@ void *DatumGetSizedArray(Datum datum, HnswColumnType type, int dimensions)
         if(array_dim != dimensions) {
             elog(ERROR, "Expected int array with dimension %d, got %d", dimensions, array_dim);
         }
-        
+
         int32 *intArray = (int32 *)ARR_DATA_PTR(array);
         return (void *)intArray;
     } else {
