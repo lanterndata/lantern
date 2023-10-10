@@ -9,6 +9,7 @@
 #endif
 #include <float.h>
 #include <math.h>
+#include <miscadmin.h>
 #include <storage/bufmgr.h>
 #include <utils/array.h>
 #include <utils/rel.h>
@@ -143,6 +144,15 @@ bool ldb_aminsert(Relation         index,
 
     assert(hdr->magicNumber == LDB_WAL_MAGIC_NUMBER);
     ldb_dlog("Insert: at start num vectors is %d", hdr->num_vectors);
+
+    double M = ldb_HnswGetM(index);
+    double mL = 1 / log(M);
+    uint32 node_size = UsearchNodeBytes(&meta, opts.dimensions * sizeof(float), (int)(mL + .5));
+    // accuracy could be improved by not rounding mL, but otherwise this will never be fully accurate
+    if (node_size * (hdr->num_vectors + 1) > work_mem * 1024L) {
+        usearch_free(uidx, &error);
+        elog(ERROR, "index size exceeded work_mem during insert");
+    }
 
     usearch_reserve(uidx, hdr->num_vectors + 1, &error);
     uint32 level = hnsw_generate_new_level(meta.connectivity);
