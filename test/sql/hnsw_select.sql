@@ -73,3 +73,8 @@ SELECT has_index_scan('EXPLAIN WITH t AS (SELECT id FROM test1 ORDER BY v <-> ''
 
 -- todo:: Verify joins work and still use index
 -- todo:: Verify incremental sorts work
+
+-- Validate index data structures
+SELECT _lantern_internal.validate_index('small_world_v_idx');
+SELECT _lantern_internal.validate_index('sift_base1k_v_idx');
+SELECT _lantern_internal.validate_index('test1_v_idx');

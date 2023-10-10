@@ -47,3 +47,18 @@ WHERE
 ---------+---------------+------------------+-----------------+--------------------
 (0 rows)
 
+-- Validate the index data structures
+SELECT _lantern_internal.validate_index('small_world_v_idx');
+INFO:  validate_index() start for small_world_v_idx
+INFO:  index_header = HnswIndexHeaderPage(version=1 vector_dim=2 m=4 ef_construction=128 ef=64 metric_kind=1 num_vectors=4 last_data_block=2 blockmap_page_groups=0)
+INFO:  blocks_nr=3 nodes_nr=4
+INFO:  blocks for: header 1 blockmap 1 nodes 1
+INFO:  nodes per block: last block 4
+INFO:  level=0: nodes 2 directed neighbor edges 12 min neighbors 3 max neighbors 3
+INFO:  level=1: nodes 2 directed neighbor edges 2 min neighbors 1 max neighbors 1
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+

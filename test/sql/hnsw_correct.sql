@@ -45,3 +45,6 @@ JOIN
 USING (row_num)
 WHERE
     a.id != b.id;
+
+-- Validate the index data structures
+SELECT _lantern_internal.validate_index('small_world_v_idx');

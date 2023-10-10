@@ -19,3 +19,6 @@ SHOW hnsw.init_k;
 -- Reset all parameters and verify that hnsw.init_k was reset
 RESET ALL;
 SHOW hnsw.init_k;
+
+-- Validate the index data structures
+SELECT _lantern_internal.validate_index('small_world_v_idx');

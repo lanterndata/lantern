@@ -19,6 +19,7 @@
 #include "hnsw/options.h"
 #include "hnsw/scan.h"
 #include "hnsw/utils.h"
+#include "hnsw/validate_index.h"
 #include "hnsw/vector.h"
 #include "usearch.h"
 
@@ -356,6 +357,15 @@ Datum       vector_l2sq_dist(PG_FUNCTION_ARGS)
     Vector *b = PG_GETARG_VECTOR_P(1);
 
     PG_RETURN_FLOAT8((double)vector_dist(a, b, usearch_metric_l2sq_k));
+}
+
+PGDLLEXPORT PG_FUNCTION_INFO_V1(lantern_internal_validate_index);
+Datum       lantern_internal_validate_index(PG_FUNCTION_ARGS)
+{
+    Oid indrelid = PG_GETARG_OID(0);
+
+    ldb_validate_index(indrelid);
+    PG_RETURN_VOID();
 }
 
 /*

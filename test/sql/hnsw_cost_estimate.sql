@@ -55,22 +55,26 @@ CREATE TABLE empty_table(id SERIAL PRIMARY KEY, v REAL[2]);
 CREATE INDEX empty_idx ON empty_table USING hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=2, dim=2);
 SET _lantern_internal.is_test = true;
 SELECT is_cost_estimate_within_error('EXPLAIN SELECT * FROM empty_table ORDER BY v <-> ''{1,2}'' LIMIT 10', 0.47);
+SELECT _lantern_internal.validate_index('empty_idx');
 DROP INDEX empty_idx;
 
 -- Case 1, more data in index.
 -- Should see higher cost than Case 0.
 CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=4, dim=128);
 SELECT is_cost_estimate_within_error(format(:'explain_query_template', :'v4444'), 3.00);
+SELECT _lantern_internal.validate_index('hnsw_idx');
 DROP INDEX hnsw_idx;
 
 -- Case 2, higher M.
 -- Should see higher cost than Case 1.
 CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v dist_l2sq_ops) WITH (M=20, ef_construction=10, ef=4, dim=128);
 SELECT is_cost_estimate_within_error(format(:'explain_query_template', :'v4444'), 3.27);
+SELECT _lantern_internal.validate_index('hnsw_idx');
 DROP INDEX hnsw_idx;
 
 -- Case 3, higher ef.
 -- Should see higher cost than Case 2.
 CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v dist_l2sq_ops) WITH (M=20, ef_construction=10, ef=16, dim=128);
 SELECT is_cost_estimate_within_error(format(:'explain_query_template', :'v4444'), 3.91);
+SELECT _lantern_internal.validate_index('hnsw_idx');
 DROP INDEX hnsw_idx;

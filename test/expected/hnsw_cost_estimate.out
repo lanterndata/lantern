@@ -69,6 +69,19 @@ DEBUG:  LANTERN - ---------------------
  t
 (1 row)
 
+SELECT _lantern_internal.validate_index('empty_idx');
+INFO:  validate_index() start for empty_idx
+INFO:  index_header = HnswIndexHeaderPage(version=1 vector_dim=2 m=2 ef_construction=10 ef=2 metric_kind=1 num_vectors=0 last_data_block=4294967295 blockmap_page_groups=0)
+INFO:  blocks_nr=1 nodes_nr=0
+INFO:  blocks for: header 1 blockmap 0 nodes 0
+INFO:  nodes per block: 0 blocks with nodes
+INFO:  level=0: nodes 0 directed neighbor edges 0 min neighbors 0 max neighbors 0
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
 DROP INDEX empty_idx;
 -- Case 1, more data in index.
 -- Should see higher cost than Case 0.
@@ -87,6 +100,36 @@ DEBUG:  LANTERN - ---------------------
  is_cost_estimate_within_error 
 -------------------------------
  t
+(1 row)
+
+SELECT _lantern_internal.validate_index('hnsw_idx');
+INFO:  validate_index() start for hnsw_idx
+INFO:  index_header = HnswIndexHeaderPage(version=1 vector_dim=128 m=2 ef_construction=10 ef=4 metric_kind=1 num_vectors=10000 last_data_block=730 blockmap_page_groups=2)
+INFO:  blocks_nr=731 nodes_nr=10000
+INFO:  blocks for: header 1 blockmap 7 nodes 723
+INFO:  nodes per block: min (except last) 2 max (except last) 14 last 8
+INFO:  level=0: nodes 5006 directed neighbor edges 25510 min neighbors 1 max neighbors 4
+INFO:  level=1: nodes 2456 directed neighbor edges 7209 min neighbors 1 max neighbors 2
+INFO:  level=2: nodes 1327 directed neighbor edges 3685 min neighbors 1 max neighbors 2
+INFO:  level=3: nodes 613 directed neighbor edges 1847 min neighbors 1 max neighbors 2
+INFO:  level=4: nodes 292 directed neighbor edges 936 min neighbors 1 max neighbors 2
+INFO:  level=5: nodes 152 directed neighbor edges 513 min neighbors 1 max neighbors 2
+INFO:  level=6: nodes 77 directed neighbor edges 280 min neighbors 1 max neighbors 2
+INFO:  level=7: nodes 37 directed neighbor edges 140 min neighbors 1 max neighbors 2
+INFO:  level=8: nodes 14 directed neighbor edges 71 min neighbors 1 max neighbors 2
+INFO:  level=9: nodes 11 directed neighbor edges 48 min neighbors 1 max neighbors 2
+INFO:  level=10: nodes 8 directed neighbor edges 26 min neighbors 1 max neighbors 2
+INFO:  level=11: nodes 2 directed neighbor edges 10 min neighbors 1 max neighbors 2
+INFO:  level=12: nodes 2 directed neighbor edges 8 min neighbors 1 max neighbors 2
+INFO:  level=13: nodes 1 directed neighbor edges 6 min neighbors 2 max neighbors 2
+INFO:  level=14: nodes 0 directed neighbor edges 2 min neighbors 1 max neighbors 1
+INFO:  level=15: nodes 0 directed neighbor edges 2 min neighbors 1 max neighbors 1
+INFO:  level=16: nodes 0 directed neighbor edges 2 min neighbors 1 max neighbors 1
+INFO:  level=17: nodes 2 directed neighbor edges 2 min neighbors 1 max neighbors 1
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
 (1 row)
 
 DROP INDEX hnsw_idx;
@@ -109,6 +152,23 @@ DEBUG:  LANTERN - ---------------------
  t
 (1 row)
 
+SELECT _lantern_internal.validate_index('hnsw_idx');
+INFO:  validate_index() start for hnsw_idx
+INFO:  index_header = HnswIndexHeaderPage(version=1 vector_dim=128 m=20 ef_construction=10 ef=4 metric_kind=1 num_vectors=10000 last_data_block=917 blockmap_page_groups=2)
+INFO:  blocks_nr=918 nodes_nr=10000
+INFO:  blocks for: header 1 blockmap 7 nodes 910
+INFO:  nodes per block: min (except last) 7 max (except last) 11 last 7
+INFO:  level=0: nodes 9527 directed neighbor edges 171720 min neighbors 4 max neighbors 40
+INFO:  level=1: nodes 444 directed neighbor edges 6078 min neighbors 3 max neighbors 20
+INFO:  level=2: nodes 26 directed neighbor edges 417 min neighbors 3 max neighbors 20
+INFO:  level=3: nodes 2 directed neighbor edges 6 min neighbors 2 max neighbors 2
+INFO:  level=4: nodes 1 directed neighbor edges 0 min neighbors 0 max neighbors 0
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
 DROP INDEX hnsw_idx;
 -- Case 3, higher ef.
 -- Should see higher cost than Case 2.
@@ -127,6 +187,23 @@ DEBUG:  LANTERN - ---------------------
  is_cost_estimate_within_error 
 -------------------------------
  t
+(1 row)
+
+SELECT _lantern_internal.validate_index('hnsw_idx');
+INFO:  validate_index() start for hnsw_idx
+INFO:  index_header = HnswIndexHeaderPage(version=1 vector_dim=128 m=20 ef_construction=10 ef=16 metric_kind=1 num_vectors=10000 last_data_block=917 blockmap_page_groups=2)
+INFO:  blocks_nr=918 nodes_nr=10000
+INFO:  blocks for: header 1 blockmap 7 nodes 910
+INFO:  nodes per block: min (except last) 7 max (except last) 11 last 7
+INFO:  level=0: nodes 9527 directed neighbor edges 171720 min neighbors 4 max neighbors 40
+INFO:  level=1: nodes 444 directed neighbor edges 6078 min neighbors 3 max neighbors 20
+INFO:  level=2: nodes 26 directed neighbor edges 417 min neighbors 3 max neighbors 20
+INFO:  level=3: nodes 2 directed neighbor edges 6 min neighbors 2 max neighbors 2
+INFO:  level=4: nodes 1 directed neighbor edges 0 min neighbors 0 max neighbors 0
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
 (1 row)
 
 DROP INDEX hnsw_idx;

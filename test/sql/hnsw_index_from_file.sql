@@ -18,6 +18,7 @@ CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_ind
 \set ON_ERROR_STOP on
 -- Validate that creating an index from file works
 CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2.usearch');
+SELECT _lantern_internal.validate_index('hnsw_l2_index');
 SELECT * FROM ldb_get_indexes('sift_base1k');
 
 SET enable_seqscan = false;
@@ -38,6 +39,7 @@ DROP TABLE sift_base1k CASCADE;
 
 -- Validate that creating an index from file works with cosine distance function
 CREATE INDEX hnsw_cos_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-cos.usearch');
+SELECT _lantern_internal.validate_index('hnsw_cos_index');
 SELECT * FROM ldb_get_indexes('sift_base1k');
 
 SELECT v AS v777 FROM sift_base1k WHERE id = 777 \gset
@@ -55,5 +57,6 @@ DROP TABLE sift_base1k CASCADE;
 \ir utils/sift1k_array.sql
 DELETE FROM sift_base1k WHERE id=777;
 CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2.usearch');
+SELECT _lantern_internal.validate_index('hnsw_l2_index');
 -- This should not throw error, but the first result will not be 0 as vector 777 is deleted from the table
 SELECT ROUND(l2sq_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <-> :'v777' LIMIT 10;

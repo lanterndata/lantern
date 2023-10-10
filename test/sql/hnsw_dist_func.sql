@@ -98,3 +98,7 @@ CREATE TABLE extra_small_world_ham (
 INSERT INTO extra_small_world_ham (v) VALUES ('{0,0}'), ('{1,1}'), ('{2,2}'), ('{3,3}');
 CREATE INDEX ON extra_small_world_ham USING hnsw (v dist_hamming_ops) WITH (dim=2);
 SELECT ROUND(hamming_dist(v, '{0,0}')::numeric, 2) FROM extra_small_world_ham ORDER BY v <-> '{0,0}';
+
+-- validate_index() is not called for other indexes because validate_index()
+-- prints details about the index and the index build code is not deterministic
+SELECT _lantern_internal.validate_index('extra_small_world_ham_v_idx');

@@ -206,3 +206,50 @@ SELECT has_index_scan('EXPLAIN WITH t AS (SELECT id FROM test1 ORDER BY v <-> ''
 
 -- todo:: Verify joins work and still use index
 -- todo:: Verify incremental sorts work
+-- Validate index data structures
+SELECT _lantern_internal.validate_index('small_world_v_idx');
+INFO:  validate_index() start for small_world_v_idx
+INFO:  index_header = HnswIndexHeaderPage(version=1 vector_dim=3 m=5 ef_construction=20 ef=20 metric_kind=1 num_vectors=8 last_data_block=2 blockmap_page_groups=0)
+INFO:  blocks_nr=3 nodes_nr=8
+INFO:  blocks for: header 1 blockmap 1 nodes 1
+INFO:  nodes per block: last block 8
+INFO:  level=0: nodes 6 directed neighbor edges 34 min neighbors 3 max neighbors 6
+INFO:  level=1: nodes 1 directed neighbor edges 2 min neighbors 1 max neighbors 1
+INFO:  level=2: nodes 1 directed neighbor edges 0 min neighbors 0 max neighbors 0
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
+SELECT _lantern_internal.validate_index('sift_base1k_v_idx');
+INFO:  validate_index() start for sift_base1k_v_idx
+INFO:  index_header = HnswIndexHeaderPage(version=1 vector_dim=128 m=5 ef_construction=20 ef=20 metric_kind=1 num_vectors=1000 last_data_block=78 blockmap_page_groups=0)
+INFO:  blocks_nr=79 nodes_nr=1000
+INFO:  blocks for: header 1 blockmap 1 nodes 77
+INFO:  nodes per block: min (except last) 13 max (except last) 13 last 12
+INFO:  level=0: nodes 790 directed neighbor edges 6150 min neighbors 1 max neighbors 10
+INFO:  level=1: nodes 169 directed neighbor edges 850 min neighbors 1 max neighbors 5
+INFO:  level=2: nodes 30 directed neighbor edges 153 min neighbors 1 max neighbors 5
+INFO:  level=3: nodes 9 directed neighbor edges 43 min neighbors 2 max neighbors 5
+INFO:  level=4: nodes 1 directed neighbor edges 2 min neighbors 1 max neighbors 1
+INFO:  level=5: nodes 1 directed neighbor edges 0 min neighbors 0 max neighbors 0
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
+SELECT _lantern_internal.validate_index('test1_v_idx');
+INFO:  validate_index() start for test1_v_idx
+INFO:  index_header = HnswIndexHeaderPage(version=1 vector_dim=2 m=16 ef_construction=128 ef=64 metric_kind=1 num_vectors=1 last_data_block=2 blockmap_page_groups=0)
+INFO:  blocks_nr=3 nodes_nr=1
+INFO:  blocks for: header 1 blockmap 1 nodes 1
+INFO:  nodes per block: last block 1
+INFO:  level=0: nodes 1 directed neighbor edges 0 min neighbors 0 max neighbors 0
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
