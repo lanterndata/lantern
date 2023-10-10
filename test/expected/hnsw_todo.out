@@ -44,8 +44,8 @@ SELECT ROUND(hamming_dist(v, '{0,0}')::numeric, 2) FROM small_world_ham ORDER BY
 -------
   0.00
   2.00
-  4.00
   2.00
+  4.00
 (4 rows)
 
 --- Test scenarious ---

@@ -14,7 +14,7 @@ CREATE INDEX ON small_world_ham USING hnsw (v dist_hamming_ops) WITH (dim=3);
 
 INSERT INTO small_world_l2 SELECT id, v FROM small_world;
 INSERT INTO small_world_cos SELECT id, v FROM small_world;
-INSERT INTO small_world_ham SELECT id, v FROM small_world;
+INSERT INTO small_world_ham SELECT id, ARRAY[CAST(v[1] AS INTEGER), CAST(v[2] AS INTEGER), CAST(v[3] AS INTEGER)] FROM small_world;
 
 SET enable_seqscan = false;
 

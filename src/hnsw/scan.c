@@ -162,7 +162,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
     if(scanstate->first) {
         int             num_returned;
         Datum           value;
-        float4         *vec;
+        void         *vec;
         usearch_error_t error = NULL;
         int             k = ldb_hnsw_init_k;
 
@@ -183,7 +183,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         Assert(!VARATT_IS_COMPRESSED(DatumGetPointer(value)));
         Assert(!VARATT_IS_EXTENDED(DatumGetPointer(value)));
 
-        vec = DatumGetSizedFloatArray(value, scanstate->columnType, scanstate->dimensions);
+        vec = DatumGetSizedArray(value, scanstate->columnType, scanstate->dimensions);
 
         if(scanstate->distances == NULL) {
             scanstate->distances = palloc(k * sizeof(float));
@@ -209,7 +209,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
     if(scanstate->current == scanstate->count) {
         int             num_returned;
         Datum           value;
-        float4         *vec;
+        void         *vec;
         usearch_error_t error = NULL;
         int             k = scanstate->count * 2;
         int             index_size = usearch_size(scanstate->usearch_index, &error);
@@ -221,7 +221,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
 
         value = scan->orderByData->sk_argument;
 
-        vec = DatumGetSizedFloatArray(value, scanstate->columnType, scanstate->dimensions);
+        vec = DatumGetSizedArray(value, scanstate->columnType, scanstate->dimensions);
 
         /* double k and reallocate arrays to account for increased size */
         scanstate->distances = repalloc(scanstate->distances, k * sizeof(float));
