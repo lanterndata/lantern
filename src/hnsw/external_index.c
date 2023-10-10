@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <common/relpath.h>
 #include <hnsw/fa_cache.h>
+#include <miscadmin.h>
 #include <pg_config.h>       // BLCKSZ
 #include <storage/bufmgr.h>  // Buffer
 #include <utils/hsearch.h>
@@ -615,6 +616,7 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
             if(!idx_page_prelocked) {
                 UnlockReleaseBuffer(buf);
             }
+            ctx->memory += sizeof(BufferNode) + nodepage->size;
             dlist_push_tail(&ctx->takenbuffers, &buffNode->node);
             return buffNode->buf;
 #else
@@ -625,6 +627,7 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
                 buffNode->buf = buf;
 
                 // Add buffNode to list of pinned buffers
+                ctx->memory += sizeof(BufferNode) + offsetof(HnswIndexTuple, node) + nodepage->size;
                 dlist_push_tail(&ctx->takenbuffers, &buffNode->node);
                 LockBuffer(buf, BUFFER_LOCK_UNLOCK);
             }
@@ -633,6 +636,9 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
 
             return nodepage->node;
 #endif
+        }
+        if(ctx->memory >= work_mem * 1024L) {
+            elog(ERROR, "pinned more buffers during query than will fit in work_mem, consider increasing work_mem");
         }
     }
     if(!idx_page_prelocked) {

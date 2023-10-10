@@ -1,6 +1,7 @@
 ---------------------------------------------------------------------
 -- Test HNSW index inserts on empty table
 ---------------------------------------------------------------------
+set work_mem = '10MB';
 
 CREATE TABLE small_world (
     id SERIAL PRIMARY KEY,
