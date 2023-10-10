@@ -22,7 +22,7 @@
 
 static BlockNumber getBlockMapPageBlockNumber(uint32 *blockmap_page_group_index, int id);
 
-static uint32 UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, int level)
+uint32 UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, int level)
 {
     const int NODE_HEAD_BYTES = sizeof(usearch_label_t) + 4 /*sizeof dim */ + 4 /*sizeof level*/;
     uint32    node_bytes = 0;
