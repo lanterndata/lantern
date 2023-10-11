@@ -202,8 +202,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         // I think because of mem_view_lazy a max of k nodes will be held in memory by usearch
         // there are separate checks on the memory held by takenbuffers
         if (node_size * k > work_mem * 1024L) {
-            usearch_free(scanstate->usearch_index, &error);
-            elog(ERROR, "index size exceeded work_mem during insert");
+            elog(WARNING, "index size exceeded work_mem during scan");
         }
 
         ldb_dlog("LANTERN querying index for %d elements", k);
@@ -246,8 +245,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         usearch_metadata_t meta = usearch_metadata(scanstate->usearch_index, &error);
         uint32 node_size = UsearchNodeBytes(&meta, scanstate->dimensions * sizeof(float), (int)(mL + .5));
         if (node_size * k > work_mem * 1024L) {
-            usearch_free(scanstate->usearch_index, &error);
-            elog(ERROR, "index size exceeded work_mem during insert");
+            elog(WARNING, "index size exceeded work_mem during scan");
         }
 
         ldb_dlog("LANTERN - querying index for %d elements", k);
