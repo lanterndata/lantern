@@ -222,8 +222,8 @@ void _PG_init(void)
                             NULL);
 
     DefineCustomIntVariable("hnsw.ef_search",
-                            "todo-short-desc",
-                            "todo-long-desc",
+                            "Expansion factor to use during vector search in a scan",
+                            "Valid values are in range [1, 400]",
                             &ldb_hnsw_ef_search,
                             //HNSW_DEFAULT_EF,
                             0, // sentinel value
