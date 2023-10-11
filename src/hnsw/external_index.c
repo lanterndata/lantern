@@ -638,7 +638,7 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
 #endif
         }
         if(ctx->memory >= work_mem * 1024L) {
-            elog(ERROR, "pinned more buffers during query than will fit in work_mem, consider increasing work_mem");
+            elog(WARNING, "pinned more buffers during query than will fit in work_mem, consider increasing work_mem");
         }
     }
     if(!idx_page_prelocked) {
