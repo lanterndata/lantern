@@ -435,7 +435,17 @@ static void BuildIndex(
         opts.expansion_search = metadata.expansion_search;
         opts.metric_kind = metadata.metric_kind;
     } else {
-        BlockNumber numBlocks = RelationGetNumberOfBlocks(heap);
+        BlockNumber numBlocks;
+
+        // Populate numBlocks correctly by explicitly handling each possible value forkNum can take
+        switch (forkNum) {
+            case MAIN_FORKNUM:
+                numBlocks = RelationGetNumberOfBlocks(heap);
+                break;
+            default: // should be case INIT_FORKNUM, but set to default to keep compiler quiet
+                numBlocks = RelationGetNumberOfBlocksInFork(index, forkNum);
+        }
+
         uint32_t    estimated_row_count = 0;
         if(numBlocks > 0) {
             // Read the first block
@@ -463,7 +473,10 @@ static void BuildIndex(
         }
 
         UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_IN_MEMORY_INSERT);
-        LanternBench("build hnsw index", ScanTable(buildstate));
+
+        if (buildstate->heap != NULL) {
+            LanternBench("build hnsw index", ScanTable(buildstate));
+        }
 
         elog(INFO, "inserted %ld elements", usearch_size(buildstate->usearch_index, &error));
         assert(error == NULL);
@@ -493,36 +506,6 @@ static void BuildIndex(
 }
 
 /*
- * Build an unlogged index
- */
-static void BuildIndexUnlogged(Relation index)
-{
-    usearch_init_options_t opts;
-    MemSet(&opts, 0, sizeof(opts));
-
-    PopulateUsearchOpts(index, &opts);
-
-    elog(INFO, "done init usearch index for unlogged table");
-
-    // Read the first block
-    Buffer buffer = ReadBufferExtended(index, INIT_FORKNUM, P_NEW, RBM_NORMAL, NULL);
-    // Lock buffer so there won't be any new writes during this operation
-    LockBuffer(buffer, BUFFER_LOCK_SHARE);
-    // This is like converting block buffer to Page struct
-    Page page = BufferGetPage(buffer);
-    // Getting the maximum tuple index on the page
-    OffsetNumber offset = PageGetMaxOffsetNumber(page);
-
-    // Reasonably accurate first guess, assuming tuples are fixed length it will err towards over allocating.
-    // In the case of under allocation the logic in AddTupleToUsearchIndex should expand it as needed
-    // estimated_row_count = offset * numBlocks;
-    // Unlock and release buffer
-    UnlockReleaseBuffer(buffer);
-
-    UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_IN_MEMORY_INSERT);
-}
-
-/*
  * Build the index for a logged table
  */
 IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInfo)
@@ -544,5 +527,9 @@ IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInf
  */
 void ldb_ambuildunlogged(Relation index)
 {
-    BuildIndexUnlogged(index);
+    // Manually construct index info
+    IndexInfo      *indexInfo = BuildIndexInfo(index);
+    HnswBuildState  buildState;
+
+    BuildIndex(NULL, index, indexInfo, &buildState, INIT_FORKNUM);
 }
