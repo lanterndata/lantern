@@ -32,15 +32,6 @@ SELECT id, ROUND(l2sq_dist(vector_int, array[0,1,0])::numeric, 2) as dist
 FROM small_world_l2
 ORDER BY vector_int <-> array[0,1,0] LIMIT 7;
 
--- this result is not sorted correctly
-CREATE TABLE small_world_ham (
-    id SERIAL PRIMARY KEY,
-    v INT[2]
-);
-INSERT INTO small_world_ham (v) VALUES ('{0,0}'), ('{1,1}'), ('{2,2}'), ('{3,3}');
-CREATE INDEX ON small_world_ham USING hnsw (v dist_hamming_ops) WITH (dim=2);
-SELECT ROUND(hamming_dist(v, '{0,0}')::numeric, 2) FROM small_world_ham ORDER BY v <-> '{0,0}';
-
 --- Test scenarious ---
 -----------------------------------------
 -- Case:
