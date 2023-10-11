@@ -19,7 +19,9 @@ CREATE INDEX small_world4_hnsw_idx ON small_world_unlogged USING hnsw (vector) W
 INFO:  done init usearch index
 INFO:  inserted 8 elements
 INFO:  done saving 8 vectors
-INFO:  done init usearch index for unlogged table
+INFO:  done init usearch index
+INFO:  inserted 0 elements
+INFO:  done saving 0 vectors
 -- Creating the index should not prevent further insertions
 INSERT INTO small_world_unlogged (id, vector) VALUES
 ('000', '{1,0,0,0}'),
@@ -79,7 +81,9 @@ CREATE INDEX hnsw_l2_index ON sift_base1k_unlogged USING hnsw (v) WITH (_experim
 INFO:  done init usearch index
 INFO:  done loading usearch index
 INFO:  done saving 1000 vectors
-INFO:  done init usearch index for unlogged table
+INFO:  done init usearch index
+INFO:  done loading usearch index
+INFO:  done saving 1000 vectors
 SELECT * FROM ldb_get_indexes('sift_base1k_unlogged');
    indexname   |  size  |                                                                       indexdef                                                                        | total_index_size 
 ---------------+--------+-------------------------------------------------------------------------------------------------------------------------------------------------------+------------------
@@ -152,7 +156,9 @@ CREATE INDEX ON small_world_l2_unlogged USING hnsw (vector dist_l2sq_ops) WITH (
 INFO:  done init usearch index
 INFO:  inserted 0 elements
 INFO:  done saving 0 vectors
-INFO:  done init usearch index for unlogged table
+INFO:  done init usearch index
+INFO:  inserted 0 elements
+INFO:  done saving 0 vectors
 INSERT INTO small_world_l2_unlogged SELECT id, v FROM small_world_unlogged;
 SELECT ROUND(l2sq_dist(vector, '{0,1,0}')::numeric, 2) FROM small_world_l2_unlogged ORDER BY vector <-> '{0,1,0}';
  round 
