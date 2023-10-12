@@ -221,7 +221,7 @@ void _PG_init(void)
                             NULL,
                             NULL);
 
-    DefineCustomIntVariable("hnsw.ef_search",
+    DefineCustomIntVariable("hnsw.search_ef",
                             "Expansion factor to use during vector search in a scan",
                             "Valid values are in range [1, 400]",
                             &ldb_hnsw_ef_search,
