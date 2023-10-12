@@ -78,3 +78,37 @@ SELECT ARRAY[1,2,3] <-> ARRAY[3,2,1];
 -- Expect error due to mismatching vector dimensions
 SELECT 1 FROM small_world ORDER BY v <-> '[0,1,0,1]' LIMIT 1;
 SELECT l2sq_dist('[1,1]'::vector, '[0,1,0]'::vector);
+
+-- Test creating index with expression
+CREATE TABLE test_table (id INTEGER);
+INSERT INTO test_table VALUES (0), (1), (7);
+
+CREATE OR REPLACE FUNCTION int_to_fixed_binary_vector(n INT) RETURNS vector AS $$
+DECLARE
+    binary_string TEXT;
+    real_array REAL[] := '{}';
+    i INT;
+BEGIN
+    binary_string := lpad(CAST(n::BIT(3) AS TEXT), 3, '0');
+    FOR i IN 1..length(binary_string)
+    LOOP
+        real_array := array_append(real_array, CAST(substring(binary_string, i, 1) AS REAL));
+    END LOOP;
+    RETURN real_array::vector;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+CREATE INDEX ON test_table USING lantern_hnsw (int_to_fixed_binary_vector(id)) WITH (M=2);
+
+-- Make sure that lantern_hnsw is working correctly alongside pgvector
+CREATE TABLE small_world_arr (id SERIAL PRIMARY KEY, v REAL[]);
+INSERT INTO small_world_arr (v) VALUES ('{0,0,0}'), ('{0,0,1}'), ('{0,0,2}');
+CREATE INDEX l2_idx ON small_world_arr USING lantern_hnsw(v) WITH (dim=3, m=2);
+EXPLAIN (COSTS FALSE) SELECT id FROM small_world_arr ORDER BY v <-> ARRAY[0,0,0];
+SELECT id FROM small_world_arr ORDER BY v <-> ARRAY[0,0,0];
+DROP INDEX l2_idx;
+CREATE INDEX cos_idx ON small_world_arr USING lantern_hnsw(v) WITH (m=2);
+SELECT id FROM small_world_arr ORDER BY v <-> ARRAY[0,0,0];
+DROP INDEX cos_idx;
+CREATE INDEX ham_idx ON small_world_arr USING lantern_hnsw(v) WITH (m=3);
+SELECT id FROM small_world_arr ORDER BY v <-> ARRAY[0,0,0];

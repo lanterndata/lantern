@@ -71,7 +71,6 @@ bool ldb_aminsert(Relation         index,
     HnswIndexTuple        *new_tuple;
     usearch_init_options_t opts = {0};
     LDB_UNUSED(heap);
-    LDB_UNUSED(indexInfo);
 #if PG_VERSION_NUM >= 140000
     LDB_UNUSED(indexUnchanged);
 #endif
@@ -103,7 +102,7 @@ bool ldb_aminsert(Relation         index,
     hdr = (HnswIndexHeaderPage *)PageGetContents(hdr_page);
     assert(hdr->magicNumber == LDB_WAL_MAGIC_NUMBER);
 
-    opts.dimensions = GetHnswIndexDimensions(index);
+    opts.dimensions = GetHnswIndexDimensions(index, indexInfo);
     CheckHnswIndexDimensions(index, values[ 0 ], opts.dimensions);
     PopulateUsearchOpts(index, &opts);
     opts.retriever_ctx = ldb_wal_retriever_area_init(index, hdr);

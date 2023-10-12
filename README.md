@@ -2,7 +2,7 @@
 
 [![build](https://github.com/lanterndata/lantern/actions/workflows/build.yaml/badge.svg?branch=main)](https://github.com/lanterndata/lantern/actions/workflows/build.yaml)
 [![test](https://github.com/lanterndata/lantern/actions/workflows/test.yaml/badge.svg?branch=main)](https://github.com/lanterndata/lantern/actions/workflows/test.yaml)
-[![codecov](https://codecov.io/github/lanterndata/lanterndb/branch/main/graph/badge.svg)](https://codecov.io/github/lanterndata/lanterndb)
+[![codecov](https://codecov.io/github/lanterndata/lantern/branch/main/graph/badge.svg)](https://codecov.io/github/lanterndata/lantern)
 [![Run on Replit](https://img.shields.io/badge/Run%20on-Replit-blue?logo=replit)](https://replit.com/@lanterndata/lantern-playground#.replit)
 
 Lantern is an open-source PostgreSQL database extension to store vector data, generate embeddings, and handle vector search operations.
@@ -27,6 +27,13 @@ cd build
 cmake ..
 make install
 ```
+
+To install Lantern using `homebrew`:
+```
+brew tap lanterndata/lantern
+brew install lantern && lantern_install
+```
+
 You can also install Lantern on top of PostgreSQL from our [precompiled binaries](https://github.com/lanterndata/lantern/releases) via a single `make install`.
 
 Alternatively, you can use Lantern in one click using [Replit](https://replit.com/@lanterndata/lantern-playground#.replit).

@@ -34,27 +34,52 @@ IFS=$'\n\t'
 # 3. use platorm specific equivalent of nm, ldd, awk
 
 PG_BIN=$(pg_config --bindir)/postgres
-
+SED_PATTERN='s/@/@/p' # noop pattern
 # " T " - text symbol
-nm -D  $PG_BIN | grep " T " | awk '{print $3}' | sed -e 's/@.*$//p'
+nm -D --with-symbol-versions $PG_BIN | grep " T " | awk '{print $3}' | sed -e "$SED_PATTERN"
 # global bss symbol in postgres
-nm -D  $PG_BIN | grep " B " | awk '{print $3}' | sed -e 's/@.*$//p'
+nm -D --with-symbol-versions $PG_BIN | grep " B " | awk '{print $3}' | sed -e "$SED_PATTERN"
+# postgres Initialized data (bbs), global symbols
+nm -D --with-symbol-versions $PG_BIN | grep " D " | awk '{print $3}' | sed -e "$SED_PATTERN"
 # postgres weak symbols
-nm -D  $PG_BIN | grep " w " | awk '{print $2}' | sed -e 's/@.*$//p'
+nm -D --with-symbol-versions $PG_BIN | grep " w " | awk '{print $2}' | sed -e "$SED_PATTERN"
 
 # Get a list of shared library dependencies using ldd
 dependencies=$(ldd "$PG_BIN" | awk '{print $3}' | grep -v "not a dynamic executable")
 
 # Loop through the dependencies and extract symbols
 for dependency in $dependencies; do
+   SED_PATTERN='s/@/@/p' # noop pattern
+   if grep -q "libstdc++" <<< "$dependency"; then
+      # even if postgres is linked against libstdc++, we should not use those and should
+      # always have our statically linked libstdc++ as postgres may not always be linked
+      # against libstdc++
+      continue
+   fi
+
+   if grep -q "libm" <<< "$dependency"; then
+      #libm does not use symbol versioning
+	   SED_PATTERN='s/@.*$//p'
+   fi
    # " U " - undefined symbol
-   nm -D "$dependency" | awk '/ U / {print $3}' | sed -e 's/@.*$//p'
+   nm -D --with-symbol-versions "$dependency" | awk '/ U / {print $3}' | sed -e "$SED_PATTERN"
    # " i " - the symbol is an indirect reference to another symbol. This is often used for compiler-generated code
-   nm -D "$dependency" | awk '/ i / {print $3}' | sed -e 's/@.*$//p'
+   nm -D --with-symbol-versions "$dependency" | awk '/ i / {print $3}' | sed -e "$SED_PATTERN"
    # " T " - The symbol is a text (code) symbol, representing a function or code that can be executed
-   nm -D "$dependency" | awk '/ T / {print $3}' | sed -e 's/@.*$//p'
+   nm -D --with-symbol-versions "$dependency" | awk '/ T / {print $3}' | sed -e "$SED_PATTERN"
    # " V " - the symbol is a weak object
-   nm -D "$dependency" | awk '/ V / {print $3}' | sed -e 's/@.*$//p'
+   nm -D --with-symbol-versions "$dependency" | awk '/ V / {print $3}' | sed -e "$SED_PATTERN"
    # " W " - the symbol is a weak symbol that has not been specifically tagged as weak object symbol
-   nm -D "$dependency" | awk '/ W / {print $3}' | sed -e 's/@.*$//p'
+   nm -D --with-symbol-versions "$dependency" | awk '/ W / {print $3}' | sed -e "$SED_PATTERN"
+   # " B " global bss symbol. e.g. __libc_single_threaded@@GLIBC_2.32
+   nm -D --with-symbol-versions "$dependency" | awk '/ B / {print $3}' | sed -e "$SED_PATTERN"
+   # " D " weak symbol. e.g. stderr@@GLIBC_2.2.5
+   nm -D --with-symbol-versions "$dependency" | awk '/ D / {print $3}' | sed -e "$SED_PATTERN"
 done
+
+# We link libstdc++ statically and it uses the symbol below from ld-linux
+# Now we need to add ld-linux symbols to extern_defined. Since this is the only symbol we use,
+# we can just filter and add only that one
+# " T " text symbol. e.g. __tls_get_addr
+LD_LINUX=$(ldd $(pg_config --bindir)/postgres| grep ld-linux | awk '{print $1}')
+nm -D --with-symbol-versions "$LD_LINUX" | awk '/ T / {print $3}' | sed -e "$SED_PATTERN" | grep __tls_get_addr

@@ -59,7 +59,7 @@ static void validate_operator_usage(Plan *plan, List *oidList)
     context.oidList = oidList;
     context.isIndexScan = false;
     if(operator_used_incorrectly_walker((Node *)plan, (void *)&context)) {
-        elog(ERROR, "Operator <-> has no standalone meaning and is reserved for use in vector index lookups only");
+        elog(ERROR, "Operator <-> can only be used inside of an index");
     }
 }
 

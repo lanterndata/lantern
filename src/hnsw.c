@@ -359,23 +359,31 @@ Datum       vector_l2sq_dist(PG_FUNCTION_ARGS)
 }
 
 /*
+ * Get data type for give oid
+ * */
+HnswColumnType GetColumnTypeFromOid(Oid oid)
+{
+    ldb_invariant(OidIsValid(oid), "Invalid oid passed");
+
+    if(oid == FLOAT4ARRAYOID) {
+        return REAL_ARRAY;
+    } else if(oid == TypenameGetTypid("vector")) {
+        return VECTOR;
+    } else if(oid == INT4ARRAYOID) {
+        return INT_ARRAY;
+    } else {
+        return UNKNOWN;
+    }
+}
+
+/*
  * Get data type of index
  */
 HnswColumnType GetIndexColumnType(Relation index)
 {
     TupleDesc         indexTupDesc = RelationGetDescr(index);
     Form_pg_attribute attr = TupleDescAttr(indexTupDesc, 0);
-    Oid               columnType = attr->atttypid;
-
-    if(columnType == FLOAT4ARRAYOID) {
-        return REAL_ARRAY;
-    } else if(columnType == TypenameGetTypid("vector")) {
-        return VECTOR;
-    } else if(columnType == INT4ARRAYOID) {
-        return INT_ARRAY;
-    } else {
-        return UNKNOWN;
-    }
+    return GetColumnTypeFromOid(attr->atttypid);
 }
 
 /*

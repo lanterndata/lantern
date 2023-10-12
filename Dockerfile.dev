@@ -40,8 +40,9 @@ RUN rm -rf build \
     && make install
 
 # Install benchmarking tools in build folder
-RUN git clone https://github.com/lanterndata/benchmark \
-    && cd benchmark \
+RUN mkdir build/lantern \
+    && git clone https://github.com/lanterndata/benchmark build/benchmark \
+    && cd build/benchmark \
     && pip install -r core/requirements.txt --break-system-packages \
     && pip install -r external/requirements.txt --break-system-packages
 ENV DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres
