@@ -159,7 +159,8 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
     // about the furtheest neighbors
     Assert(ScanDirectionIsForward(dir));
 
-    int ef = ldb_hnsw_ef_search; // 0 if not set, but we pass it into usearch_custom_ef anyway since 0 is also a sentinel value there
+    int ef = ldb_hnsw_ef_search;  // 0 if not set, but we pass it into usearch_custom_ef anyway since 0 is also a
+                                  // sentinel value there
     if(scanstate->first) {
         int             num_returned;
         Datum           value;

@@ -225,8 +225,8 @@ void _PG_init(void)
                             "Expansion factor to use during vector search in a scan",
                             "Valid values are in range [1, 400]",
                             &ldb_hnsw_ef_search,
-                            //HNSW_DEFAULT_EF,
-                            0, // sentinel value
+                            // HNSW_DEFAULT_EF,
+                            0,  // sentinel value
                             1,
                             HNSW_MAX_EF,
                             PGC_USERSET,
