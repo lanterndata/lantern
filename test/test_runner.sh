@@ -46,17 +46,16 @@ function run_regression_test {
                perl -nle'print if !m{DEBUG:(?!.*LANTERN)}'
 }
 
-trap drop_db EXIT
-
-
 
 
 # Change directory to sql so sql imports will work correctly
 cd sql/
 
 # install lantern extension
-psql "$@" -U ${DB_USER} -d postgres -v ECHO=none -q -c "DROP DATABASE IF EXISTS ${TEST_CASE_DB};" 2>/dev/null
-psql "$@" -U ${DB_USER} -d postgres -v ECHO=none -q -c "CREATE DATABASE ${TEST_CASE_DB};" 2>/dev/null
+if [[ "$PARALLEL" -eq 0 || "$TESTFILE_NAME" == "begin" ]]; then
+     psql "$@" -U ${DB_USER} -d postgres -v ECHO=none -q -c "DROP DATABASE IF EXISTS ${TEST_CASE_DB};" 2>/dev/null
+     psql "$@" -U ${DB_USER} -d postgres -v ECHO=none -q -c "CREATE DATABASE ${TEST_CASE_DB};" 2>/dev/null
+fi
 if [ ! -z "$UPDATE_EXTENSION" ]
 then
      if [ -z "$UPDATE_FROM" ] || [ -z "$UPDATE_TO" ]
@@ -66,7 +65,7 @@ then
      fi
 
      # install the old version of the extension and sanity-check that all tests pass
-     psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -c "SET client_min_messages=error; CREATE EXTENSION lantern VERSION '$UPDATE_FROM';" 2>/dev/null
+     psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -c "SET client_min_messages=error; CREATE EXTENSION IF NOT EXISTS lantern VERSION '$UPDATE_FROM';" 2>/dev/null
      psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -f utils/common.sql 2>/dev/null
      run_regression_test $@
      # upgrade to the new version of the extension and make sure that all existing tests still pass
