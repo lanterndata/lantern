@@ -6,8 +6,14 @@ PSQL=psql
 TMP_ROOT=/tmp/lantern
 TMP_OUTDIR=$TMP_ROOT/tmp_output
 FILTER="${FILTER:-}"
+EXCLUDE="${EXCLUDE:-}"
 # $USER is not set in docker containers, so use whoami
 DEFAULT_USER=$(whoami)
+
+if [[ -n "$FILTER" && -n "$EXCLUDE" ]]; then
+    echo "-FILTER and -EXCLUDE cannot be used together, please use only one"
+    exit 1
+fi
 
 # typically default user is root in a docker container
 # and in those cases postgres is the user with appropriate permissions
@@ -78,6 +84,26 @@ while [[ "$#" -gt 0 ]]; do
     shift
 done
 
+FIRST_TEST=1
+function print_test {
+    if [ "$PARALLEL" -eq 1 ]; then
+        if [ $1 == end ]; then
+            echo -e "\ntest: $1" >> $2
+        elif [ $1 == begin ]; then
+            echo -e "\ntest: $1" >> $2
+        else
+            if [ "$FIRST_TEST" -eq 1 ]; then
+                echo -n "test: $1" >> $2
+                FIRST_TEST=0
+            else
+                echo -n " $1" >> $2
+            fi
+        fi
+    else
+        echo "test: $1" >> $2
+    fi
+}
+
 # Generate schedule.txt
 rm -rf $TMP_OUTDIR/schedule.txt
 if [ "$PARALLEL" -eq 1 ]; then
@@ -85,21 +111,28 @@ if [ "$PARALLEL" -eq 1 ]; then
 else
     SCHEDULE='schedule.txt'
 fi
-if [ -n "$FILTER" ]; then
+if [[ -n "$FILTER" || -n "$EXCLUDE" ]]; then
     if [ "$PARALLEL" -eq 1 ]; then
     	TEST_FILES=$(cat $SCHEDULE | grep -E '^(test:|test_begin:|test_end:)' | sed -E -e 's/^test:|test_begin:|test_end://' | tr " " "\n" | sed -e '/^$/d')
     else
-	    if [[ "$pgvector_installed" == "1" ]]; then
-		TEST_FILES=$(cat $SCHEDULE | grep -E '^(test:|test_pgvector:)' | sed -E -e 's/^test:|test_pgvector://' | tr " " "\n" | sed -e '/^$/d')
-	    else
-		TEST_FILES=$(cat $SCHEDULE | grep '^test:' | sed -e 's/^test://' | tr " " "\n" | sed -e '/^$/d')
-	    fi
+        if [[ "$pgvector_installed" == "1" ]]; then
+            TEST_FILES=$(cat $SCHEDULE | grep -E '^(test:|test_pgvector:)' | sed -E -e 's/^test:|test_pgvector://' | tr " " "\n" | sed -e '/^$/d')
+        else
+            TEST_FILES=$(cat $SCHEDULE | grep '^test:' | sed -e 's/^test://' | tr " " "\n" | sed -e '/^$/d')
+        fi
     fi
 
     while IFS= read -r f; do
-        if [[ $f == *"$FILTER"* ]]; then
-            echo "HERE $f"
-            echo "test: $f" >> $TMP_OUTDIR/schedule.txt
+        if [ -n "$FILTER" ]; then
+            if [[ $f == *"$FILTER"* ]]; then
+                echo "HERE $f"
+                print_test $f $TMP_OUTDIR/schedule.txt $FIRST_TEST
+            fi
+        elif [ -n "$EXCLUDE" ]; then
+            if [[ $f == *"$EXCLUDE"* ]]; then
+                continue
+            fi
+            print_test $f $TMP_OUTDIR/schedule.txt $FIRST_TEST
         fi
     done <<< "$TEST_FILES"
 

@@ -33,6 +33,8 @@ def update_from_tag(from_version: str, to_version: str):
     print("sha_before", sha_before)
     res = subprocess.run(f"cd {args.builddir} ; git submodule update && cmake .. && make -j4 && make install && make test", shell=True)
     res = subprocess.run(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={to_version} make test", shell=True)
+    res = subprocess.run(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-parallel FILTER=begin", shell=True)
+    res = subprocess.run(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={to_version} make test-parallel EXCLUDE=begin", shell=True)
     #todo:: run query and check portion of parallel tests
 
 if __name__ == "__main__":
