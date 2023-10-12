@@ -438,15 +438,16 @@ static void BuildIndex(
         BlockNumber numBlocks;
 
         // Populate numBlocks correctly by explicitly handling each possible value forkNum can take
-        switch (forkNum) {
+        switch(forkNum) {
             case MAIN_FORKNUM:
                 numBlocks = RelationGetNumberOfBlocks(heap);
                 break;
-            default: // should be case INIT_FORKNUM, but set to default to keep compiler quiet
+            default:  // should be case INIT_FORKNUM, but set to default to keep compiler quiet
                 numBlocks = RelationGetNumberOfBlocksInFork(index, forkNum);
+                break;
         }
 
-        uint32_t    estimated_row_count = 0;
+        uint32_t estimated_row_count = 0;
         if(numBlocks > 0) {
             // Read the first block
             Buffer buffer = ReadBufferExtended(heap, MAIN_FORKNUM, 0, RBM_NORMAL, NULL);
@@ -474,7 +475,7 @@ static void BuildIndex(
 
         UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_IN_MEMORY_INSERT);
 
-        if (buildstate->heap != NULL) {
+        if(buildstate->heap != NULL) {
             LanternBench("build hnsw index", ScanTable(buildstate));
         }
 
@@ -528,8 +529,8 @@ IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInf
 void ldb_ambuildunlogged(Relation index)
 {
     // Manually construct index info
-    IndexInfo      *indexInfo = BuildIndexInfo(index);
-    HnswBuildState  buildState;
+    IndexInfo     *indexInfo = BuildIndexInfo(index);
+    HnswBuildState buildState;
 
     BuildIndex(NULL, index, indexInfo, &buildState, INIT_FORKNUM);
 }

@@ -176,7 +176,7 @@ bool ldb_aminsert(Relation         index,
         XLogRecPtr ptr = GenericXLogFinish(state);
 
         // If the table is unlogged, GenericXLogFinish returns InvalidXLogRecPtr as saving to WAL is not required.
-        if (!RelationNeedsWAL(index)) {
+        if(!RelationNeedsWAL(index)) {
             assert(ptr == InvalidXLogRecPtr);
         } else {
             assert(ptr != InvalidXLogRecPtr);
