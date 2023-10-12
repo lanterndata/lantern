@@ -65,16 +65,17 @@ static void AddTupleToUsearchIndex(ItemPointer tid, Datum *values, HnswBuildStat
     usearch_error_t       error = NULL;
     Datum                 value = PointerGetDatum(PG_DETOAST_DATUM(values[ 0 ]));
     usearch_scalar_kind_t usearch_scalar;
-    float4               *vector = DatumGetSizedFloatArray(value, buildstate->columnType, buildstate->dimensions);
 
+    void *vector = DatumGetSizedArray(value, buildstate->columnType, buildstate->dimensions);
     switch(buildstate->columnType) {
         case REAL_ARRAY:
         case VECTOR:
             usearch_scalar = usearch_scalar_f32_k;
             break;
         case INT_ARRAY:
-            // q:: I think in this case we need to do a type conversion from int to float
-            // before passing the buffer to usearch
+            // this is fine, since we only use integer arrays with hamming distance metric
+            // and hamming distance in usearch doesn't care about scalar type
+            // also, usearch will appropriately cast integer arrays even with this scalar type
             usearch_scalar = usearch_scalar_f32_k;
             break;
         default:
