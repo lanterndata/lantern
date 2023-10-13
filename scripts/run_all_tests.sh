@@ -125,7 +125,6 @@ if [[ -n "$FILTER" || -n "$EXCLUDE" ]]; then
     while IFS= read -r f; do
         if [ -n "$FILTER" ]; then
             if [[ $f == *"$FILTER"* ]]; then
-                echo "HERE $f"
                 print_test $f $TMP_OUTDIR/schedule.txt $FIRST_TEST
             fi
         elif [ -n "$EXCLUDE" ]; then

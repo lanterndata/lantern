@@ -52,8 +52,10 @@ function run_regression_test {
 cd sql/
 
 # install lantern extension
-psql "$@" -U ${DB_USER} -d postgres -v ECHO=none -q -c "DROP DATABASE IF EXISTS ${TEST_CASE_DB};" 2>/dev/null
-psql "$@" -U ${DB_USER} -d postgres -v ECHO=none -q -c "CREATE DATABASE ${TEST_CASE_DB};" 2>/dev/null
+if [[ "$PARALLEL" -eq 0 || "$TESTFILE_NAME" == "begin" ]]; then
+     psql "$@" -U ${DB_USER} -d postgres -v ECHO=none -q -c "DROP DATABASE IF EXISTS ${TEST_CASE_DB};" 2>/dev/null
+     psql "$@" -U ${DB_USER} -d postgres -v ECHO=none -q -c "CREATE DATABASE ${TEST_CASE_DB};" 2>/dev/null
+fi
 if [ ! -z "$UPDATE_EXTENSION" ]
 then
      if [ -z "$UPDATE_FROM" ] || [ -z "$UPDATE_TO" ]
