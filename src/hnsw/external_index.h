@@ -10,6 +10,7 @@
 #include <utils/relcache.h>  // Relation
 
 #include "extra_dirtied.h"
+#include "fa_cache.h"
 #include "hnsw.h"
 #include "htab_cache.h"
 #include "options.h"
@@ -89,7 +90,7 @@ typedef struct
 
     ExtraDirtiedBufs *extra_dirted;
 
-    HTABCache node_cache;
+    FullyAssociativeCache fa_cache;
 
     dlist_head takenbuffers;
 } RetrieverCtx;
