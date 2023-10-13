@@ -20,7 +20,7 @@ RetrieverCtx *ldb_wal_retriever_area_init(Relation index_rel, HnswIndexHeaderPag
     ctx->header_page_under_wal = header_page_under_wal;
     ctx->extra_dirted = extra_dirtied_new();
 
-    ctx->node_cache = cache_create("NodeCache");
+    fa_cache_init(&ctx->fa_cache);
 
     dlist_init(&ctx->takenbuffers);
 
@@ -55,7 +55,6 @@ void ldb_wal_retriever_area_reset(RetrieverCtx *ctx, HnswIndexHeaderPage *header
 void ldb_wal_retriever_area_fini(RetrieverCtx *ctx)
 {
     cache_destroy(&ctx->block_numbers_cache);
-    cache_destroy(&ctx->node_cache);
     dlist_mutable_iter miter;
     dlist_foreach_modify(miter, &ctx->takenbuffers)
     {
