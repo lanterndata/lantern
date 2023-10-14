@@ -20,7 +20,7 @@
 #include "usearch.h"
 #include "utils.h"
 
-#if PG_VERSION_NUM >= 120000
+#if PG_VERSION_NUM > 120000
 #include <miscadmin.h>
 #endif
 
@@ -633,7 +633,7 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
                 LockBuffer(buf, BUFFER_LOCK_UNLOCK);
             }
 
-#if PG_VERSION_NUM >= 120000
+#if PG_VERSION_NUM > 120000
             CheckMem(work_mem,
                      NULL,
                      NULL,
