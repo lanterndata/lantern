@@ -8,7 +8,7 @@
 #include <regex.h>
 #include <string.h>
 
-#if PG_VERSION_NUM >= 120000
+#if PG_VERSION_NUM > 120000
 #include <utils/memutils.h>
 #endif
 
@@ -68,7 +68,7 @@ void CheckMem(int limit, Relation index, usearch_index_t uidx, uint32 n_nodes, c
         node_size = UsearchNodeBytes(&meta, meta.dimensions * sizeof(float), (int)round(mL + 1));
     }
     // todo:: there's figure out a way to check this in pg <= 12
-#if PG_VERSION_NUM >= 120000
+#if PG_VERSION_NUM > 120000
     Size pg_mem = MemoryContextMemAllocated(CurrentMemoryContext, true);
 #else
     Size pg_mem = 0;
