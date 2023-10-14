@@ -7,7 +7,6 @@
 #include <assert.h>
 #include <common/relpath.h>
 #include <hnsw/fa_cache.h>
-#include <miscadmin.h>
 #include <pg_config.h>       // BLCKSZ
 #include <storage/bufmgr.h>  // Buffer
 #include <utils/hsearch.h>
@@ -20,6 +19,10 @@
 #include "retriever.h"
 #include "usearch.h"
 #include "utils.h"
+
+#if PG_VERSION_NUM >= 120000
+#include <miscadmin.h>
+#endif
 
 static BlockNumber getBlockMapPageBlockNumber(uint32 *blockmap_page_group_index, int id);
 
@@ -630,13 +633,14 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
                 LockBuffer(buf, BUFFER_LOCK_UNLOCK);
             }
 
+#if PG_VERSION_NUM >= 120000
             CheckMem(work_mem,
                      NULL,
                      NULL,
                      0,
                      "Pinned more tuples during node retrieval than will fir in work_mem, cosider increasing work_mem");
+#endif
             fa_cache_insert(&ctx->fa_cache, id, nodepage->node);
-
 
             return nodepage->node;
 #endif
