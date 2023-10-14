@@ -55,18 +55,21 @@ usearch_label_t GetUsearchLabel(ItemPointer itemPtr)
 
 void CheckMem(int limit, Relation index, usearch_index_t uidx, uint32 n_nodes, char *msg)
 {
-    usearch_error_t    error;
-    double             M = ldb_HnswGetM(index);
-    double             mL = 1 / log(M);
-    usearch_metadata_t meta = usearch_metadata(uidx, &error);
-    // todo:: update sizeof(float) to correct vector size once #19 is merged
-    uint32 node_size = UsearchNodeBytes(&meta, meta.dimensions * sizeof(float), (int)round(mL + 1));
-    Size   pg_mem = MemoryContextMemAllocated(CurrentMemoryContext, true);
+    uint32 node_size = 0;
+    if(index != NULL) {
+        usearch_error_t    error;
+        double             M = ldb_HnswGetM(index);
+        double             mL = 1 / log(M);
+        usearch_metadata_t meta = usearch_metadata(uidx, &error);
+        // todo:: update sizeof(float) to correct vector size once #19 is merged
+        node_size = UsearchNodeBytes(&meta, meta.dimensions * sizeof(float), (int)round(mL + 1));
+    }
+    Size pg_mem = MemoryContextMemAllocated(CurrentMemoryContext, true);
 
     // The average number of layers for an element to be added in is mL+1 per section 4.2.2
     // Accuracy could maybe be improved by not rounding
     // This is a guess, but it's a reasonably good one
     if(pg_mem + node_size * n_nodes > (uint32)limit * 1024UL) {
-        elog(WARNING, msg);
+        elog(WARNING, "%s", msg);
     }
 }
