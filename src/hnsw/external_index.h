@@ -93,8 +93,6 @@ typedef struct
     FullyAssociativeCache fa_cache;
 
     dlist_head takenbuffers;
-
-    int memory;
 } RetrieverCtx;
 
 typedef struct

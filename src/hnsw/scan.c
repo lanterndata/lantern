@@ -3,7 +3,6 @@
 #include "scan.h"
 
 #include <access/relscan.h>
-#include <math.h>
 #include <miscadmin.h>
 #include <pgstat.h>
 #include <utils/rel.h>
@@ -194,17 +193,11 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
             scanstate->labels = palloc(k * sizeof(usearch_label_t));
         }
 
-        double             M = ldb_HnswGetM(scan->indexRelation);
-        double             mL = 1 / log(M);
-        usearch_metadata_t meta = usearch_metadata(scanstate->usearch_index, &error);
-        uint32             node_size = UsearchNodeBytes(&meta, scanstate->dimensions * sizeof(float), (int)(mL + .5));
-        // accuracy could be improved by not rounding mL, but otherwise this will never be fully accurate
-        // I think because of mem_view_lazy a max of k nodes will be held in memory by usearch
-        // there are separate checks on the memory held by takenbuffers
-        if(node_size * k > work_mem * 1024L) {
-            elog(WARNING, "index size exceeded work_mem during scan");
-        }
-
+        CheckMem(work_mem,
+                 scan->indexRelation,
+                 scanstate->usearch_index,
+                 k,
+                 "index size exceeded work_mem during scan, consider increasing work_mem");
         ldb_dlog("LANTERN querying index for %d elements", k);
         num_returned = usearch_search(
             scanstate->usearch_index, vec, usearch_scalar_f32_k, k, scanstate->labels, scanstate->distances, &error);
@@ -240,13 +233,11 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         scanstate->distances = repalloc(scanstate->distances, k * sizeof(float));
         scanstate->labels = repalloc(scanstate->labels, k * sizeof(usearch_label_t));
 
-        double             M = ldb_HnswGetM(scan->indexRelation);
-        double             mL = 1 / log(M);
-        usearch_metadata_t meta = usearch_metadata(scanstate->usearch_index, &error);
-        uint32             node_size = UsearchNodeBytes(&meta, scanstate->dimensions * sizeof(float), (int)(mL + .5));
-        if(node_size * k > work_mem * 1024L) {
-            elog(WARNING, "index size exceeded work_mem during scan");
-        }
+        CheckMem(work_mem,
+                 scan->indexRelation,
+                 scanstate->usearch_index,
+                 k,
+                 "index size exceeded work_mem during scan, consider increasing work_mem");
 
         ldb_dlog("LANTERN - querying index for %d elements", k);
         num_returned = usearch_search(
