@@ -145,13 +145,11 @@ bool ldb_aminsert(Relation         index,
     assert(hdr->magicNumber == LDB_WAL_MAGIC_NUMBER);
     ldb_dlog("Insert: at start num vectors is %d", hdr->num_vectors);
 
-    double M = ldb_HnswGetM(index);
-    double mL = 1 / log(M);
-    uint32 node_size = UsearchNodeBytes(&meta, opts.dimensions * sizeof(float), (int)(mL + .5));
-    // accuracy could be improved by not rounding mL, but otherwise this will never be fully accurate
-    if(node_size * (hdr->num_vectors + 1) > work_mem * 1024L) {
-        elog(WARNING, "index size exceeded work_mem during insert");
-    }
+    CheckMem(work_mem,
+             index,
+             uidx,
+             hdr->num_vectors,
+             "index size exceeded work_mem during insert, consider increasing work_mem");
 
     usearch_reserve(uidx, hdr->num_vectors + 1, &error);
     uint32 level = hnsw_generate_new_level(meta.connectivity);

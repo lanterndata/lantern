@@ -27,8 +27,6 @@ RetrieverCtx *ldb_wal_retriever_area_init(Relation index_rel, HnswIndexHeaderPag
     /* fill in a buffer with blockno index information, before spilling it to disk */
     ctx->block_numbers_cache = cache_create("BlockNumberCache");
 
-    ctx->memory = 0;
-
     return ctx;
 }
 
@@ -49,8 +47,6 @@ void ldb_wal_retriever_area_reset(RetrieverCtx *ctx, HnswIndexHeaderPage *header
         pfree(node);
     }
     dlist_init(&ctx->takenbuffers);
-
-    ctx->memory = 0;
 
     assert(ctx->header_page_under_wal == header_page_under_wal);
     ctx->header_page_under_wal = header_page_under_wal;
