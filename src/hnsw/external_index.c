@@ -630,17 +630,13 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
                 LockBuffer(buf, BUFFER_LOCK_UNLOCK);
             }
 
-<<<<<<< HEAD
-            fa_cache_insert(&ctx->fa_cache, id, nodepage->node);
-=======
             CheckMem(work_mem,
                      NULL,
                      NULL,
                      0,
                      "Pinned more tuples during node retrieval than will fir in work_mem, cosider increasing work_mem");
+            fa_cache_insert(&ctx->fa_cache, id, nodepage->node);
 
-            cache_set_item(&ctx->node_cache, &id, nodepage->node);
->>>>>>> 1175c02 (add test back in to external_index, fix elog in CheckMem)
 
             return nodepage->node;
 #endif
