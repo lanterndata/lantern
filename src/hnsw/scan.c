@@ -3,6 +3,7 @@
 #include "scan.h"
 
 #include <access/relscan.h>
+#include <miscadmin.h>
 #include <pgstat.h>
 #include <utils/rel.h>
 
@@ -192,6 +193,11 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
             scanstate->labels = palloc(k * sizeof(usearch_label_t));
         }
 
+        CheckMem(work_mem,
+                 scan->indexRelation,
+                 scanstate->usearch_index,
+                 k,
+                 "index size exceeded work_mem during scan, consider increasing work_mem");
         ldb_dlog("LANTERN querying index for %d elements", k);
         num_returned = usearch_search(
             scanstate->usearch_index, vec, usearch_scalar_f32_k, k, scanstate->labels, scanstate->distances, &error);
@@ -226,6 +232,12 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         /* double k and reallocate arrays to account for increased size */
         scanstate->distances = repalloc(scanstate->distances, k * sizeof(float));
         scanstate->labels = repalloc(scanstate->labels, k * sizeof(usearch_label_t));
+
+        CheckMem(work_mem,
+                 scan->indexRelation,
+                 scanstate->usearch_index,
+                 k,
+                 "index size exceeded work_mem during scan, consider increasing work_mem");
 
         ldb_dlog("LANTERN - querying index for %d elements", k);
         num_returned = usearch_search(

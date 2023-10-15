@@ -20,9 +20,13 @@
 #include "usearch.h"
 #include "utils.h"
 
+#if PG_VERSION_NUM >= 130000
+#include <miscadmin.h>
+#endif
+
 static BlockNumber getBlockMapPageBlockNumber(uint32 *blockmap_page_group_index, int id);
 
-static uint32 UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, int level)
+uint32 UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, int level)
 {
     const int NODE_HEAD_BYTES = sizeof(usearch_label_t) + 4 /*sizeof dim */ + 4 /*sizeof level*/;
     uint32    node_bytes = 0;
@@ -629,6 +633,13 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
                 LockBuffer(buf, BUFFER_LOCK_UNLOCK);
             }
 
+#if PG_VERSION_NUM >= 130000
+            CheckMem(work_mem,
+                     NULL,
+                     NULL,
+                     0,
+                     "pinned more tuples during node retrieval than will fit in work_mem, cosider increasing work_mem");
+#endif
             fa_cache_insert(&ctx->fa_cache, id, nodepage->node);
 
             return nodepage->node;

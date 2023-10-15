@@ -17,6 +17,7 @@ SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
 EXPLAIN (COSTS FALSE) SELECT * FROM sift_base10k order by v <-> :'v4444' LIMIT 10;
 
 --- Validate that M values inside the allowed range [2, 128] do not throw an error
+
 CREATE INDEX ON small_world USING hnsw (v) WITH (M=2);
 CREATE INDEX ON small_world USING hnsw (v) WITH (M=128);
 

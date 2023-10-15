@@ -5,6 +5,7 @@
 #include "options.h"
 #include "usearch.h"
 
+void            CheckMem(int limit, Relation index, usearch_index_t uidx, uint32 n_nodes, char *msg);
 void            LogUsearchOptions(usearch_init_options_t *opts);
 void            PopulateUsearchOpts(Relation index, usearch_init_options_t *opts);
 usearch_label_t GetUsearchLabel(ItemPointer itemPtr);

@@ -9,6 +9,7 @@
 #include <catalog/pg_type.h>
 #include <executor/executor.h>
 #include <funcapi.h>
+#include <miscadmin.h>
 #include <nodes/execnodes.h>
 #include <storage/bufmgr.h>
 #include <utils/array.h>
@@ -59,7 +60,7 @@
 #define UpdateProgress(index, val) ((void)val)
 #endif
 
-static void AddTupleToUsearchIndex(ItemPointer tid, Datum *values, HnswBuildState *buildstate)
+static void AddTupleToUsearchIndex(ItemPointer tid, Datum *values, HnswBuildState *buildstate, Relation index)
 {
     /* Detoast once for all calls */
     usearch_error_t       error = NULL;
@@ -92,6 +93,12 @@ static void AddTupleToUsearchIndex(ItemPointer tid, Datum *values, HnswBuildStat
     if(buildstate->usearch_index != NULL) {
         size_t capacity = usearch_capacity(buildstate->usearch_index, &error);
         if(capacity == usearch_size(buildstate->usearch_index, &error)) {
+            CheckMem(maintenance_work_mem,
+                     index,
+                     buildstate->usearch_index,
+                     2 * usearch_size(buildstate->usearch_index, &error),
+                     "index size exceeded maintenance_work_mem during index construction, consider increasing "
+                     "maintenance_work_mem");
             usearch_reserve(buildstate->usearch_index, 2 * capacity, &error);
             assert(error == NULL);
         }
@@ -130,7 +137,7 @@ static void BuildCallback(
 
     // todo:: the argument values is assumed to be a real[] or vector (they have the same layout)
     // do proper type checking instead of this assumption and test int int arrays and others
-    AddTupleToUsearchIndex(tid, values, buildstate);
+    AddTupleToUsearchIndex(tid, values, buildstate, index);
 
     /* Reset memory context */
     MemoryContextSwitchTo(oldCtx);
@@ -453,6 +460,12 @@ static void BuildIndex(
             // Unlock and release buffer
             UnlockReleaseBuffer(buffer);
         }
+        CheckMem(maintenance_work_mem,
+                 index,
+                 buildstate->usearch_index,
+                 estimated_row_count,
+                 "index size exceeded maintenance_work_mem during index construction, consider increasing "
+                 "maintenance_work_mem");
         usearch_reserve(buildstate->usearch_index, estimated_row_count, &error);
         if(error != NULL) {
             // There's not much we can do if free throws an error, but we want to preserve the contents of the first one
