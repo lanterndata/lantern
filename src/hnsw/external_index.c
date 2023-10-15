@@ -638,7 +638,7 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
                      NULL,
                      NULL,
                      0,
-                     "Pinned more tuples during node retrieval than will fir in work_mem, cosider increasing work_mem");
+                     "pinned more tuples during node retrieval than will fit in work_mem, cosider increasing work_mem");
 #endif
             fa_cache_insert(&ctx->fa_cache, id, nodepage->node);
 

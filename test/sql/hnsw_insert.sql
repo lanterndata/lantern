@@ -1,7 +1,12 @@
 ---------------------------------------------------------------------
 -- Test HNSW index inserts on empty table
 ---------------------------------------------------------------------
-set work_mem = '10MB';
+-- set an artificially low work_mem to make sure work_mem exceeded warnings are printed
+set work_mem = '64kB';
+-- We do not actually print the warnings generated for exceeding work_mem because the work_mem
+-- check does not work for postgres 13 and lower.So, if we printed the warnings, we would get a regression
+-- failure in older postgres versions. We still reduce workmem to exercise relevant codepaths for coverage
+set client_min_messages = 'ERROR';
 
 CREATE TABLE small_world (
     id SERIAL PRIMARY KEY,
@@ -19,6 +24,10 @@ INSERT INTO small_world (v) VALUES ('{1,1,1,1}');
 \set ON_ERROR_STOP on
 
 DROP TABLE small_world;
+
+-- set work_mem to a value that is enough for the tests
+set client_min_messages = 'WARNING';
+set work_mem = '10MB';
 
 ---------------------------------------------------------------------
 -- Test HNSW index inserts on non-empty table
