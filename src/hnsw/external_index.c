@@ -6,6 +6,7 @@
 #include <access/generic_xlog.h>  // GenericXLog
 #include <assert.h>
 #include <common/relpath.h>
+#include <hnsw/fa_cache.h>
 #include <pg_config.h>       // BLCKSZ
 #include <storage/bufmgr.h>  // Buffer
 #include <utils/hsearch.h>
@@ -19,9 +20,13 @@
 #include "usearch.h"
 #include "utils.h"
 
+#if PG_VERSION_NUM >= 130000
+#include <miscadmin.h>
+#endif
+
 static BlockNumber getBlockMapPageBlockNumber(uint32 *blockmap_page_group_index, int id);
 
-static uint32 UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, int level)
+uint32 UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, int level)
 {
     const int NODE_HEAD_BYTES = sizeof(usearch_label_t) + 4 /*sizeof dim */ + 4 /*sizeof level*/;
     uint32    node_bytes = 0;
@@ -583,8 +588,7 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
     OffsetNumber    offset, max_offset;
     Buffer          buf = InvalidBuffer;
     bool            idx_page_prelocked = false;
-    void           *cached_node = cache_get_item(&ctx->node_cache, &id);
-
+    void           *cached_node = fa_cache_get(&ctx->fa_cache, id);
     if(cached_node != NULL) {
         return cached_node;
     }
@@ -629,7 +633,14 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
                 LockBuffer(buf, BUFFER_LOCK_UNLOCK);
             }
 
-            cache_set_item(&ctx->node_cache, &id, nodepage->node);
+#if PG_VERSION_NUM >= 130000
+            CheckMem(work_mem,
+                     NULL,
+                     NULL,
+                     0,
+                     "pinned more tuples during node retrieval than will fit in work_mem, cosider increasing work_mem");
+#endif
+            fa_cache_insert(&ctx->fa_cache, id, nodepage->node);
 
             return nodepage->node;
 #endif
@@ -671,7 +682,7 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, int id)
     for(offset = FirstOffsetNumber; offset <= max_offset; offset = OffsetNumberNext(offset)) {
         nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
         if(nodepage->id == (uint32)id) {
-            cache_set_item(&ctx->node_cache, &id, nodepage->node);
+            fa_cache_insert(&ctx->fa_cache, id, nodepage->node);
 
             return nodepage->node;
         }

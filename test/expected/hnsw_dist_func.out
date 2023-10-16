@@ -33,7 +33,7 @@ INFO:  inserted 0 elements
 INFO:  done saving 0 vectors
 INSERT INTO small_world_l2 SELECT id, v FROM small_world;
 INSERT INTO small_world_cos SELECT id, v FROM small_world;
-INSERT INTO small_world_ham SELECT id, v FROM small_world;
+INSERT INTO small_world_ham SELECT id, ARRAY[CAST(v[1] AS INTEGER), CAST(v[2] AS INTEGER), CAST(v[3] AS INTEGER)] FROM small_world;
 SET enable_seqscan = false;
 -- Verify that the distance functions work (check distances)
 SELECT ROUND(l2sq_dist(v, '{0,1,0}')::numeric, 2) FROM small_world_l2 ORDER BY v <-> '{0,1,0}';
@@ -220,3 +220,22 @@ WITH t AS (SELECT id FROM test1 ORDER BY v <-> '{1,2}' LIMIT 1) SELECT id, COUNT
 ERROR:  Operator <-> can only be used inside of an index
 WITH t AS (SELECT id FROM test1 ORDER BY v <-> '{1,2}') SELECT id FROM t UNION SELECT id FROM t;
 ERROR:  Operator <-> can only be used inside of an index
+-- Check that hamming distance query results are sorted correctly
+CREATE TABLE extra_small_world_ham (
+    id SERIAL PRIMARY KEY,
+    v INT[2]
+);
+INSERT INTO extra_small_world_ham (v) VALUES ('{0,0}'), ('{1,1}'), ('{2,2}'), ('{3,3}');
+CREATE INDEX ON extra_small_world_ham USING hnsw (v dist_hamming_ops) WITH (dim=2);
+INFO:  done init usearch index
+INFO:  inserted 4 elements
+INFO:  done saving 4 vectors
+SELECT ROUND(hamming_dist(v, '{0,0}')::numeric, 2) FROM extra_small_world_ham ORDER BY v <-> '{0,0}';
+ round 
+-------
+  0.00
+  2.00
+  2.00
+  4.00
+(4 rows)
+

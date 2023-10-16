@@ -29,8 +29,9 @@ CREATE OPERATOR <-> (
 	COMMUTATOR = '<->'
 );
 
+CREATE SCHEMA _lantern_internal;
 -- operator classes
-CREATE OR REPLACE FUNCTION _create_ldb_operator_classes(access_method_name TEXT) RETURNS BOOLEAN AS $$
+CREATE OR REPLACE FUNCTION _lantern_internal._create_ldb_operator_classes(access_method_name TEXT) RETURNS BOOLEAN AS $$
 DECLARE
     dist_l2sq_ops TEXT;
     dist_cos_ops TEXT;
@@ -107,13 +108,13 @@ BEGIN
 
 
 	IF hnsw_am_exists THEN
-		PERFORM _create_ldb_operator_classes('lantern_hnsw');
+		PERFORM _lantern_internal._create_ldb_operator_classes('lantern_hnsw');
 		RAISE WARNING 'Access method(index type) "hnsw" already exists. Creating lantern_hnsw access method';
 	ELSE
 		-- create access method
 		CREATE ACCESS METHOD hnsw TYPE INDEX HANDLER hnsw_handler;
 		COMMENT ON ACCESS METHOD hnsw IS 'LanternDB access method for vector embeddings, based on the hnsw algorithm';
-		PERFORM _create_ldb_operator_classes('hnsw');
+		PERFORM _lantern_internal._create_ldb_operator_classes('hnsw');
 	END IF;
 END;
 $BODY$

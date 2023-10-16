@@ -291,10 +291,26 @@ static float4 array_dist(ArrayType *a, ArrayType *b, usearch_metric_kind_t metri
         elog(ERROR, "expected equally sized arrays but got arrays with dimensions %d and %d", a_dim, b_dim);
     }
 
-    float4 *ax = (float4 *)ARR_DATA_PTR(a);
-    float4 *bx = (float4 *)ARR_DATA_PTR(b);
+    float4 result;
+    bool   is_int_array = (metric_kind == usearch_metric_hamming_k);
 
-    return usearch_dist(ax, bx, metric_kind, a_dim, usearch_scalar_f32_k);
+    if(is_int_array) {
+        int32 *ax_int = (int32 *)ARR_DATA_PTR(a);
+        int32 *bx_int = (int32 *)ARR_DATA_PTR(b);
+
+        // calling usearch_scalar_f32_k here even though it's an integer array is fine
+        // the hamming distance in usearch actually ignores the scalar type
+        // and it will get casted appropriately in usearch even with this scalar type
+        result = usearch_dist(ax_int, bx_int, metric_kind, a_dim, usearch_scalar_f32_k);
+
+    } else {
+        float4 *ax = (float4 *)ARR_DATA_PTR(a);
+        float4 *bx = (float4 *)ARR_DATA_PTR(b);
+
+        result = usearch_dist(ax, bx, metric_kind, a_dim, usearch_scalar_f32_k);
+    }
+
+    return result;
 }
 
 static float8 vector_dist(Vector *a, Vector *b, usearch_metric_kind_t metric_kind)
@@ -330,7 +346,7 @@ Datum       hamming_dist(PG_FUNCTION_ARGS)
 {
     ArrayType *a = PG_GETARG_ARRAYTYPE_P(0);
     ArrayType *b = PG_GETARG_ARRAYTYPE_P(1);
-    PG_RETURN_INT32(array_dist(a, b, usearch_metric_hamming_k));
+    PG_RETURN_INT32((int32)array_dist(a, b, usearch_metric_hamming_k));
 }
 
 PGDLLEXPORT PG_FUNCTION_INFO_V1(vector_l2sq_dist);
@@ -371,36 +387,32 @@ HnswColumnType GetIndexColumnType(Relation index)
 }
 
 /*
- * Given vector data and vector type, convert it to a float4 array
+ * Given vector data and vector type, read it as either a float4 or int32 array and return as void*
  */
-float4 *DatumGetSizedFloatArray(Datum datum, HnswColumnType type, int dimensions)
+void *DatumGetSizedArray(Datum datum, HnswColumnType type, int dimensions)
 {
     if(type == VECTOR) {
         Vector *vector = DatumGetVector(datum);
         if(vector->dim != dimensions) {
             elog(ERROR, "Expected vector with dimension %d, got %d", dimensions, vector->dim);
         }
-        return vector->x;
+        return (void *)vector->x;
     } else if(type == REAL_ARRAY) {
         ArrayType *array = DatumGetArrayTypePCopy(datum);
         int        array_dim = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
         if(array_dim != dimensions) {
             elog(ERROR, "Expected real array with dimension %d, got %d", dimensions, array_dim);
         }
-        return (float4 *)ARR_DATA_PTR(array);
+        return (void *)((float4 *)ARR_DATA_PTR(array));
     } else if(type == INT_ARRAY) {
         ArrayType *array = DatumGetArrayTypePCopy(datum);
         int        array_dim = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
         if(array_dim != dimensions) {
             elog(ERROR, "Expected int array with dimension %d, got %d", dimensions, array_dim);
         }
-        int    *intArray = (int *)ARR_DATA_PTR(array);
-        float4 *floatArray = (float4 *)palloc(sizeof(float) * array_dim);
-        for(int i = 0; i < array_dim; i++) {
-            floatArray[ i ] = (float)intArray[ i ];
-        }
-        // todo:: free this array
-        return floatArray;
+
+        int32 *intArray = (int32 *)ARR_DATA_PTR(array);
+        return (void *)intArray;
     } else {
         elog(ERROR, "Unsupported type");
     }
