@@ -22,9 +22,12 @@ INSERT INTO sift_base1k (id, v) VALUES
 (1002, array_fill(2, ARRAY[128]));
 -- Validate error on invalid ef_search values
 \set ON_ERROR_STOP off
---SET lantern_hnsw.ef_search = -1;
---SET lantern_hnsw.ef_search = 0;
---SET lantern_hnsw.ef_search = 401;
+SET lantern_hnsw.ef_search = -1;
+ERROR:  -1 is outside the valid range for parameter "lantern_hnsw.ef_search" (1 .. 400)
+SET lantern_hnsw.ef_search = 0;
+ERROR:  0 is outside the valid range for parameter "lantern_hnsw.ef_search" (1 .. 400)
+SET lantern_hnsw.ef_search = 401;
+ERROR:  401 is outside the valid range for parameter "lantern_hnsw.ef_search" (1 .. 400)
 \set ON_ERROR_STOP on
 -- Repeat the same query while varying ef parameter
 -- NOTE: it is not entirely known if the results of these are deterministic

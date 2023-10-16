@@ -13,9 +13,9 @@ INSERT INTO sift_base1k (id, v) VALUES
 
 -- Validate error on invalid ef_search values
 \set ON_ERROR_STOP off
---SET lantern_hnsw.ef_search = -1;
---SET lantern_hnsw.ef_search = 0;
---SET lantern_hnsw.ef_search = 401;
+SET lantern_hnsw.ef_search = -1;
+SET lantern_hnsw.ef_search = 0;
+SET lantern_hnsw.ef_search = 401;
 \set ON_ERROR_STOP on
 
 -- Repeat the same query while varying ef parameter
