@@ -75,6 +75,9 @@ INFO:  done saving 8 vectors
 -- Postgres will not allow it to support this since its objects span over more than one schema
 ALTER EXTENSION lantern SET SCHEMA schema2;
 ERROR:  extension "lantern" does not support SET SCHEMA
+-- this will fail because functions from extension lantern in schema1 are in search path and will conflict
+CREATE EXTENSION lantern WITH SCHEMA schema2;
+ERROR:  extension "lantern" already exists
 \set ON_ERROR_STOP on
 SELECT ne.nspname AS extschema, op.oprname, np.nspname AS proschema
 FROM pg_catalog.pg_extension AS e

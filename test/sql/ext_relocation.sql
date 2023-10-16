@@ -42,6 +42,8 @@ CREATE INDEX hnsw_index ON small_world USING hnsw(v) WITH (dim=3);
 -- lantern does not support relocation.
 -- Postgres will not allow it to support this since its objects span over more than one schema
 ALTER EXTENSION lantern SET SCHEMA schema2;
+-- this will fail because functions from extension lantern in schema1 are in search path and will conflict
+CREATE EXTENSION lantern WITH SCHEMA schema2;
 \set ON_ERROR_STOP on
 
 SELECT ne.nspname AS extschema, op.oprname, np.nspname AS proschema
