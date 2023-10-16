@@ -195,14 +195,14 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         }
 
         ldb_dlog("LANTERN querying index for %d elements", k);
-        num_returned = usearch_search_custom_ef(scanstate->usearch_index,
-                                                vec,
-                                                usearch_scalar_f32_k,
-                                                k,
-                                                ef,
-                                                scanstate->labels,
-                                                scanstate->distances,
-                                                &error);
+        num_returned = usearch_search(scanstate->usearch_index,
+                                      vec,
+                                      usearch_scalar_f32_k,
+                                      k,
+                                      ef,
+                                      scanstate->labels,
+                                      scanstate->distances,
+                                      &error);
         ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);
 
         scanstate->count = num_returned;
@@ -236,14 +236,14 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         scanstate->labels = repalloc(scanstate->labels, k * sizeof(usearch_label_t));
 
         ldb_dlog("LANTERN - querying index for %d elements", k);
-        num_returned = usearch_search_custom_ef(scanstate->usearch_index,
-                                                vec,
-                                                usearch_scalar_f32_k,
-                                                k,
-                                                ef,
-                                                scanstate->labels,
-                                                scanstate->distances,
-                                                &error);
+        num_returned = usearch_search(scanstate->usearch_index,
+                                      vec,
+                                      usearch_scalar_f32_k,
+                                      k,
+                                      ef,
+                                      scanstate->labels,
+                                      scanstate->distances,
+                                      &error);
         ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);
 
         scanstate->count = num_returned;
