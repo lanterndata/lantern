@@ -442,8 +442,19 @@ static void BuildIndex(
         opts.expansion_search = metadata.expansion_search;
         opts.metric_kind = metadata.metric_kind;
     } else {
-        BlockNumber numBlocks = RelationGetNumberOfBlocks(heap);
-        uint32_t    estimated_row_count = 0;
+        BlockNumber numBlocks;
+
+        // Populate numBlocks correctly by explicitly handling each possible value forkNum can take
+        switch(forkNum) {
+            case MAIN_FORKNUM:
+                numBlocks = RelationGetNumberOfBlocks(heap);
+                break;
+            default:  // should be case INIT_FORKNUM, but set to default to keep compiler quiet
+                numBlocks = RelationGetNumberOfBlocksInFork(index, forkNum);
+                break;
+        }
+
+        uint32_t estimated_row_count = 0;
         if(numBlocks > 0) {
             // Read the first block
             Buffer buffer = ReadBufferExtended(heap, MAIN_FORKNUM, 0, RBM_NORMAL, NULL);
@@ -476,7 +487,10 @@ static void BuildIndex(
         }
 
         UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_IN_MEMORY_INSERT);
-        LanternBench("build hnsw index", ScanTable(buildstate));
+
+        if(buildstate->heap != NULL) {
+            LanternBench("build hnsw index", ScanTable(buildstate));
+        }
 
         elog(INFO, "inserted %ld elements", usearch_size(buildstate->usearch_index, &error));
         assert(error == NULL);
@@ -527,7 +541,9 @@ IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInf
  */
 void ldb_ambuildunlogged(Relation index)
 {
-    LDB_UNUSED(index);
-    // todo::
-    elog(ERROR, "hnsw index on unlogged tables is currently not supported");
+    // Manually construct index info
+    IndexInfo     *indexInfo = BuildIndexInfo(index);
+    HnswBuildState buildState;
+
+    BuildIndex(NULL, index, indexInfo, &buildState, INIT_FORKNUM);
 }
