@@ -64,6 +64,7 @@ make install
 ```
 
 ### Building from source
+
 <details>
 <summary> Click to expand</summary>
 
@@ -74,22 +75,28 @@ Then you should export these 2 environment variables
 
 ```bash
 export ORT_STRATEGY=system
-export ORT_DYLIB_PATH=/usr/local/lib/onnxruntime
+export ORT_DYLIB_PATH=/usr/local/lib/onnxruntime/lib/libonnxruntime.so
 ```
+
+In some systems you will need to specify `dlopen` search path, so the extension could load `ort` inside postgres.
+
+To do that create a file `/etc/ld.so.conf.d/onnx.conf` with content `/usr/local/lib/onnxruntime/lib` and run `ldconfig`
 
 This extension is written in Rust so requires Rust toolchain. Make sure Rust toolchain is installed before continuing
 The extension also uses `pgrx`. If pgrx is not already installed, use the following commands to install it:
+
 ```
 #install pgrx prerequisites
 sudo apt install pkg-config libssl-dev zlib1g-dev libreadline-dev
 sudo apt-get install clang
 
 #install pgrx itself
-cargo install --locked cargo-pgrx=v0.9.7
+cargo install --locked cargo-pgrx --version 0.9.7
 cargo pgrx init
 ```
 
 Then, you can run the extension under development with the following
+
 ```bash
 cargo pgrx run --package lantern_extras # runs in a testing environment
 ```
@@ -99,6 +106,7 @@ To package the extension run
 ```bash
 cargo pgrx package --package lantern_extras
 ```
+
 </details>
 ### Initializing with psql
 
@@ -133,22 +141,79 @@ This is a CLI application that creates an index for Lantern outside of Postgres 
 
 ### Installation
 
-Run `cargo install --path lantern_create_index` to install the binary
+Run `cargo install --path lantern_cli` to install the binary
 
 ### Usage
 
-Run `lantern-create-index --help` to show the cli options.
+Run `lantern-cli create-index --help` to show the cli options.
 
 ```bash
-Usage: lantern-create-index --uri <URI> --table <TABLE> --column <COLUMN> -m <M> --efc <EFC> --ef <EF> -d <DIMS> --metric-kind <METRIC_KIND> --out <OUT>
+Usage: lantern-cli create-index --uri <URI> --table <TABLE> --column <COLUMN> -m <M> --efc <EFC> --ef <EF> -d <DIMS> --metric-kind <METRIC_KIND> --out <OUT>
 ```
 
 ### Example
 
 ```bash
-lantern-create-index -u "postgresql://localhost/test" -t "small_world" -c "vec" -m 16 --ef 64 --efc 128 -d 3 --metric-kind cos --out /tmp/index.usearch
+lantern-cli create-index -u "postgresql://localhost/test" -t "small_world" -c "vec" -m 16 --ef 64 --efc 128 -d 3 --metric-kind cos --out /tmp/index.usearch
 ```
 
 ### Notes
 
 The index should be created from the same database on which it will be loaded, so row tids will match later.
+
+## Lantern Embeddings
+
+## Description
+
+This is a CLI application that generates vector embeddings from your postgres data.
+
+## How to use
+
+### Installation
+
+Run `cargo install --path lantern_cli` to install the binary
+
+### Usage
+
+Run `lantern-cli create-embeddings --help` to show the cli options.
+Run `lantern-cli show-models` to show available models.
+
+### Text Embedding Example
+
+1. Create table with text data
+
+```sql
+CREATE TABLE articles (id SERIAL, description TEXT, embedding REAL[]);
+INSERT INTO articles SELECT generate_series(0,999), 'My description column!';
+```
+
+> Currently it is requried for table to have id column, so it could map the embedding with row when exporting output.
+
+2. Run embedding generation
+
+```bash
+lantern-cli create-embeddings  --model 'clip/ViT-B-32-textual'  --uri 'postgresql://postgres:postgres@localhost:5432/test' --table "articles" --column "description" --out-column "embedding" --pk "id" --schema "public"
+```
+
+> The output database, table and column names can be specified via `--out-table`, `--out-uri`, `--out-column` arguments. Check `help` for more info.
+
+or you can export to csv file
+
+```bash
+lantern-cli create-embeddings  --model 'clip/ViT-B-32-textual'  --uri 'postgresql://postgres:postgres@localhost:5432/test' --table "articles" --column "description" --out-column embedding --out-csv "embeddings.csv" --pk "id" --schema "public"
+```
+
+### Image Embedding Example
+
+1. Create table with image uris data
+
+```sql
+CREATE TABLE images (id SERIAL, url TEXT, embedding REAL[]);
+INSERT INTO images (url) VALUES ('https://cdn.pixabay.com/photo/2014/11/30/14/11/cat-551554_1280.jpg'), ('https://cdn.pixabay.com/photo/2016/12/13/05/15/puppy-1903313_1280.jpg');
+```
+
+2. Run embedding generation
+
+```bash
+lantern-cli create-embeddings  --model 'clip/ViT-B-32-visual'  --uri 'postgresql://postgres:postgres@localhost:5432/test' --table "images" --column "url" --out-column "embedding" --pk "id" --schema "public" --visual
+```

@@ -25,8 +25,7 @@ impl UMetricKind {
 }
 
 #[derive(Parser, Debug)]
-#[command(version, about, long_about = None)]
-pub struct Args {
+pub struct CreateIndexArgs {
     /// Fully associated database connection string including db name
     #[arg(short, long)]
     pub uri: String,

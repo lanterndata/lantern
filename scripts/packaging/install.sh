@@ -12,19 +12,27 @@ fi
 
 if [ -z "$ARCH" ]
 then
-  if command -v dpkg &> /dev/null
+  if command -v uname &> /dev/null
+  then
+    ARCH=$(uname -m)
+  elif command -v dpkg &> /dev/null
   then
     ARCH=$(dpkg --print-architecture)
   elif command -v apk &> /dev/null
   then
     ARCH=$(apk --print-arch)
-  elif command -v uname &> /dev/null
-  then
-    ARCH=$(uname -m)
   else
     echo "Could not detect system architecture. Please specify with ARCH env variable"
-    exit
+    exit 1
   fi
+
+  # At this moment we only support mac and linux
+  unameOut="$(uname -s)"
+  case "${unameOut}" in
+      Linux*)     PLATFORM=linux;;
+      Darwin*)    PLATFORM=mac;;
+      *)          PLATFORM=${unameOut}
+  esac
 fi
 
 PG_LIBRARY_DIR=$($PG_CONFIG --pkglibdir)
@@ -38,14 +46,20 @@ then
   exit
 fi
 
-if [ ! -d src/${ARCH}/${PG_VERSION} ]
+if [ ! -d src/${ARCH}/${PLATFORM} ]
+then
+  echo "Platform $PLATFORM not supported. Try building from source"
+  exit
+fi
+
+if [ ! -d src/${ARCH}/${PLATFORM}/${PG_VERSION} ]
 then
   echo "Postgres version $PG_VERSION not supported"
   exit
 fi
 
-cp -r src/${ARCH}/${PG_VERSION}/*.so $PG_LIBRARY_DIR
+cp -r src/${ARCH}/${PLATFORM}/${PG_VERSION}/*.{so,dylib} $PG_LIBRARY_DIR 2>/dev/null || true
 cp -r shared/*.sql $PG_EXTENSION_DIR
 cp -r shared/*.control $PG_EXTENSION_DIR
 
-echo "LanternDB Extras installed successfully"
+echo "Lantern Extras installed successfully"

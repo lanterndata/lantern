@@ -41,21 +41,21 @@ jobs:
         run: sudo su -c "PG_VERSION=$PG_VERSION GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/build.sh"
         env:
           PG_VERSION: ${{ matrix.postgres }}
-      - name: Build Lantern Create Index
-        id: build_create_index
-        run: sudo su -c "PACKAGE_CREATE_INDEX=1 GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/build.sh"
+      - name: Build Lantern CLI
+        id: build_cli
+        run: sudo su -c "PACKAGE_CLI=1 GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/build.sh"
         if: ${{ matrix.postgres == 15 }} # run only once
       - name: Upload archive package artifacts
         uses: actions/upload-artifact@v3
         with:
           name: lantern-extras-package
           path: ${{ steps.build.outputs.archive_package_path }}
-      - name: Upload create index package artifacts
+      - name: Upload cli package artifacts
         uses: actions/upload-artifact@v3
         if: ${{ matrix.postgres == 15 }} # run only once
         with:
-          name: lantern-create-index-package
-          path: ${{ steps.build_create_index.outputs.create_index_package_path }}
+          name: lantern-cli-package
+          path: ${{ steps.build_cli.outputs.cli_package_path }}
   ubuntu-package:
     runs-on: ubuntu-22.04
     needs: [ubuntu-build]
@@ -67,16 +67,16 @@ jobs:
           path: /tmp/lantern-extras-package
       - uses: actions/download-artifact@v3
         with:
-          name: lantern-create-index-package
-          path: /tmp/lantern-create-index-package
+          name: lantern-cli-package
+          path: /tmp/lantern-cli-package
       - name: Create universal package
         id: package
         run: sudo su -c "GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/package.sh"
-      - name: Upload Lantern create index artifacts
+      - name: Upload Lantern CLI  artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: lantern-create-index
-          path: /tmp/lantern-create-index-package
+          name: lantern-cli-x86_64-linux
+          path: /tmp/lantern-cli-package
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
@@ -91,11 +91,11 @@ jobs:
           tag_name: ${{ steps.package.outputs.package_version }}
           files: |
             ${{ steps.package.outputs.package_path }}
-            /tmp/lantern-create-index-package/*
+            /tmp/lantern-cli-package/*
           generate_release_notes: true
       - uses: geekyeggo/delete-artifact@v2
         with:
           name: lantern-extras-package
       - uses: geekyeggo/delete-artifact@v2
         with:
-          name: lantern-create-index-package
+          name: lantern-cli-package

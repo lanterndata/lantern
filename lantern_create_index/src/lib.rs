@@ -2,14 +2,14 @@ use std::sync::mpsc;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
 
-use clap::Parser;
 use cxx::UniquePtr;
 use postgres::{Client, NoTls, Row};
 use postgres_types::FromSql;
 use usearch::ffi::*;
 
-mod cli;
 mod utils;
+
+pub mod cli;
 
 #[derive(Debug)]
 struct Tid {
@@ -82,7 +82,12 @@ impl ThreadSafeIndex {
 unsafe impl Sync for ThreadSafeIndex {}
 unsafe impl Send for ThreadSafeIndex {}
 
-fn create_usearch_index(args: cli::Args) -> Result<(), anyhow::Error> {
+pub fn create_usearch_index(args: &cli::CreateIndexArgs) -> Result<(), anyhow::Error> {
+    println!(
+        "[*] Creating index with parameters dimensions={} m={} ef={} ef_construction={}",
+        args.dims, args.m, args.ef, args.efc
+    );
+
     let options = IndexOptions {
         dimensions: args.dims,
         metric: args.metric_kind.value(),
@@ -165,14 +170,4 @@ fn create_usearch_index(args: cli::Args) -> Result<(), anyhow::Error> {
     index_arc.save(&args.out);
     println!("[*] Index saved under {}", &args.out);
     Ok(())
-}
-
-fn main() {
-    let args = cli::Args::parse();
-    println!(
-        "[*] Creating index with parameters dimensions={} m={} ef={} ef_construction={}",
-        args.dims, args.m, args.ef, args.efc
-    );
-
-    create_usearch_index(args).unwrap();
 }

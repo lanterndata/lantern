@@ -1,6 +1,6 @@
 [package]
 name = "lantern_extras"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 
 [lib]
@@ -17,30 +17,14 @@ pg_test = []
 
 [dependencies]
 pgrx = "=0.9.7"
-reqwest = { version = "0.11", default-features = false, features = ["blocking"] }
 flate2 = "1.0"
-url = "2.2"
 ftp = "3"
 tar = "0.4"
 itertools = "0.11"
 backtrace = "0.3"
-ndarray = "0.15.0"
-num_cpus = "1.15.0"
-ort = { git = "https://github.com/pykeio/ort.git", features = ["load-dynamic", "cuda", "openvino"] }
-tokenizers = "0.13.2"
-image = "0.24.6"
-lazy_static = "1.4.0"
-anyhow = "1.0.75"
+url = "2.2"
+lantern_embeddings_core = { path = "../lantern_embeddings_core" }
 
 [dev-dependencies]
 pgrx-tests = "=0.9.7"
 
-[profile.dev]
-panic = "unwind"
-
-[profile.release]
-panic = "unwind"
-opt-level = 3
-lto = "fat"
-codegen-units = 1
-strip = true

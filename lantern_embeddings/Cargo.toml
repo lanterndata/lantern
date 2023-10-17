@@ -1,16 +1,17 @@
 [package]
-name = "lantern_create_index"
+name = "lantern_embeddings"
 version = "0.0.1"
 edition = "2021"
 
 [lib]
 crate-type = ["lib"]
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.75"
 clap = { version = "4.4.0", features = ["derive"] }
-cxx = "1.0.106"
+anyhow = "1.0.75"
 postgres = "0.19.7"
-postgres-types = { version = "0.2.6", features = ["derive"] }
-usearch = { git = "https://github.com/Ngalstyan4/usearch.git", branch = "pg-rebase" }
+csv = "1.3.0"
+lantern_embeddings_core = { path = "../lantern_embeddings_core" }
+rand = "0.8.5"
