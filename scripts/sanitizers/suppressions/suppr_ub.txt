@@ -1,0 +1,26 @@
+alignment:pg_comp_crc32c_sse42
+alignment:array_cmp
+alignment:array_iter_setup
+alignment:array_out
+alignment:array_unnest
+alignment:array_eq
+alignment:AllocSetCheck
+nonnull-attribute:TransactionIdSetPageStatus
+nonnull-attribute:SerializeTransactionState
+nonnull-attribute:initscan
+nonnull-attribute:SetTransactionSnapshot
+nonnull-attribute:shm_mq_receive
+#care, gcc cannot parse the path, only the filename
+nonnull-attribute:*/src/fe_utils/print.c
+nonnull-attribute:print_aligned_text
+#PG13.3-copyfuncs.c:2374:2: runtime error: null pointer passed as argument 2, which is declared to never be null
+nonnull-attribute:_copyAppendRelInfo
+#PG13.3-copyfuncs.c:1190:2: runtime error: null pointer passed as argument 2, which is declared to never be null
+nonnull-attribute:_copyLimit
+nonnull-attribute:*/src/backend/nodes/copyfuncs.c
+#division by 0, looks like a real postgres ug
+float-divide-by-zero:_bt_vacuum_needs_cleanup
+
+# It complains about casting -nan to int in histogram_test.sql. It is in the
+# postgres code and doesn't lead to bugs, because it is caught by a check later.
+float-cast-overflow:width_bucket_float8
