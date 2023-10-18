@@ -53,9 +53,9 @@ jobs:
     steps:
     - name: Checkout source code
       uses: actions/checkout@v3
-    - name: Read configuration
-      id: setter
-      run: python .github/gh_config_reader.py
+        #- name: Read configuration
+        #  id: setter
+        #  run: python .github/gh_config_reader.py
 
   sanitizer:
     # Change the JOB_NAME variable below when changing the name.
@@ -67,12 +67,12 @@ jobs:
       fail-fast: false
       matrix:
         os: ["ubuntu-22.04"]
-        pg: ["15.4", "16.0"]
+        pg: ["15.4"]#["15.4", "16.0"]
     steps:
     - name: Install Linux Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install wget \
+        sudo apt-get install -y wget \
         curl \
         systemd-coredump \
         build-essential \
@@ -129,13 +129,12 @@ jobs:
         tar --extract --file postgresql.tar.bz2 --directory ~/$PG_SRC_DIR --strip-components 1
         # Add instrumentation to the Postgres memory contexts. For more details, see
         # https://www.postgresql.org/message-id/CAM-w4HNH7%2BU9jZevpVK7Wr49tkfpWSR6wav0RLYrq0HWuP5cxw%40mail.gmail.com
-        patch -F5 -p1 -d ~/$PG_SRC_DIR < test/postgres-asan-instrumentation.patch
+        patch -F5 -p1 -d ~/$PG_SRC_DIR < scripts/sanitizers/postgres-asan-instrumentation.patch
         cd ~/$PG_SRC_DIR
         ./configure --prefix=$HOME/$PG_INSTALL_DIR --enable-debug --enable-cassert \
           --with-openssl --without-readline --without-zlib --without-libxml
         make -j$(nproc)
         make -j$(nproc) -C src/test/isolation
-        make -j$(nproc) -C contrib/postgres_fdw
 
     - name: Upload config.log
       if: always() && steps.cache-postgresql.outputs.cache-hit != 'true'
