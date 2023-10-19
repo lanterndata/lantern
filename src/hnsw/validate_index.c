@@ -2,20 +2,19 @@
 
 #include "hnsw/validate_index.h"
 
-#include <access/relation.h>        /* relation_open */
-#include <catalog/index.h>          /* IndexGetRelation */
-#include <utils/memutils.h>         /* AllocSetContextCreate */
+#include <access/relation.h> /* relation_open */
+#include <assert.h>          /* assert */
+#include <catalog/index.h>   /* IndexGetRelation */
+#include <inttypes.h>        /* PRIu32 */
+#include <stdint.h>          /* UINT32_MAX */
+#include <string.h>          /* bzero */
+#include <utils/memutils.h>  /* AllocSetContextCreate */
 
-#include <inttypes.h>               /* PRIu32 */
-#include <stdint.h>                 /* UINT32_MAX */
-#include <string.h>                 /* bzero */
-#include <assert.h>                 /* assert */
+#include "hnsw/external_index.h" /* HnswIndexHeaderPage */
+#include "hnsw/options.h"        /* ldb_HnswGetM */
 
-#include "hnsw/external_index.h"    /* HnswIndexHeaderPage */
-#include "hnsw/options.h"           /* ldb_HnswGetM */
-
-
-enum ldb_vi_block_type {
+enum ldb_vi_block_type
+{
     LDB_VI_BLOCK_UNKNOWN,
     LDB_VI_BLOCK_HEADER,
     LDB_VI_BLOCK_BLOCKMAP,
@@ -24,21 +23,23 @@ enum ldb_vi_block_type {
 };
 
 /* represents PostgreSQL block in the index */
-struct ldb_vi_block {
+struct ldb_vi_block
+{
     enum ldb_vi_block_type vp_type;
     uint32_t               vp_nodes_nr;
 };
 
 /* represents a stored usearch node */
-struct ldb_vi_node {
-    BlockNumber       vn_block;         /* in the index */
-    OffsetNumber      vn_offset;        /* within vn_block */
-    uint32            vn_id;            /* HnswIndexTuple.id */
-    usearch_label_t   vn_label;
-    uint32            vn_dim;           /* usearch index_gt::dim_t */
-    uint32            vn_level;         /* HnswIndexTuple.level, usearch index_gt::level_t */
-    uint32           *vn_neighbors_nr;  /* number of neighbors for each level */
-    uint32          **vn_neighbors;     /* array of arrays of neighbors for each level */
+struct ldb_vi_node
+{
+    BlockNumber     vn_block;  /* in the index */
+    OffsetNumber    vn_offset; /* within vn_block */
+    uint32          vn_id;     /* HnswIndexTuple.id */
+    usearch_label_t vn_label;
+    uint32          vn_dim;          /* usearch index_gt::dim_t */
+    uint32          vn_level;        /* HnswIndexTuple.level, usearch index_gt::level_t */
+    uint32         *vn_neighbors_nr; /* number of neighbors for each level */
+    uint32        **vn_neighbors;    /* array of arrays of neighbors for each level */
 };
 
 /*
@@ -56,37 +57,55 @@ static void ldb_vi_analyze_blockmap(HnswBlockmapPage    *blockmap,
                                     struct ldb_vi_node  *vi_nodes,
                                     uint32               nodes_nr)
 {
-    for (uint32 node_id_in_blockmap = 0;
-         node_id_in_blockmap < HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
-         ++node_id_in_blockmap) {
-
-         uint32 node_id = blockmap->first_id + node_id_in_blockmap;
-         BlockNumber blockno = blockmap->blocknos[node_id_in_blockmap];
-         if (node_id < nodes_nr) {
-            if (blockno == 0) {
-                elog(ERROR, "blockmap.blocknos[%"PRIu32"] == 0 for "
-                     "node_id=%"PRIu32" nodes_nr=%"PRIu32,
-                     node_id_in_blockmap, node_id, nodes_nr);
+    for(uint32 node_id_in_blockmap = 0; node_id_in_blockmap < HNSW_BLOCKMAP_BLOCKS_PER_PAGE; ++node_id_in_blockmap) {
+        uint32      node_id = blockmap->first_id + node_id_in_blockmap;
+        BlockNumber blockno = blockmap->blocknos[ node_id_in_blockmap ];
+        if(node_id < nodes_nr) {
+            if(blockno == 0) {
+                elog(ERROR,
+                     "blockmap.blocknos[%" PRIu32
+                     "] == 0 for "
+                     "node_id=%" PRIu32 " nodes_nr=%" PRIu32,
+                     node_id_in_blockmap,
+                     node_id,
+                     nodes_nr);
             }
-            if (blockno >= blocks_nr) {
-                elog(ERROR, "blockmap.blocknos[%"PRIu32"]=%"PRIu32" >= blocks_nr=%"PRIu32" for "
-                     "node_id=%"PRIu32" nodes_nr=%"PRIu32,
-                     node_id_in_blockmap, blockno, blocks_nr, node_id, nodes_nr);
+            if(blockno >= blocks_nr) {
+                elog(ERROR,
+                     "blockmap.blocknos[%" PRIu32 "]=%" PRIu32 " >= blocks_nr=%" PRIu32
+                     " for "
+                     "node_id=%" PRIu32 " nodes_nr=%" PRIu32,
+                     node_id_in_blockmap,
+                     blockno,
+                     blocks_nr,
+                     node_id,
+                     nodes_nr);
             }
-            if (vi_blocks[blockno].vp_type == LDB_VI_BLOCK_UNKNOWN)
-                vi_blocks[blockno].vp_type = LDB_VI_BLOCK_NODES;
-            if (vi_blocks[blockno].vp_type != LDB_VI_BLOCK_NODES) {
-                elog(ERROR, "vi_blocks[%"PRIu32"].vp_type=%d != %d for "
-                     "blocks_nr=%"PRIu32" node_id_in_blockmap=%"PRIu32" node_id=%"PRIu32" nodes_nr=%"PRIu32,
-                     blockno, vi_blocks[blockno].vp_type, LDB_VI_BLOCK_NODES,
-                     blocks_nr, node_id_in_blockmap, node_id, nodes_nr);
+            if(vi_blocks[ blockno ].vp_type == LDB_VI_BLOCK_UNKNOWN) vi_blocks[ blockno ].vp_type = LDB_VI_BLOCK_NODES;
+            if(vi_blocks[ blockno ].vp_type != LDB_VI_BLOCK_NODES) {
+                elog(ERROR,
+                     "vi_blocks[%" PRIu32
+                     "].vp_type=%d != %d for "
+                     "blocks_nr=%" PRIu32 " node_id_in_blockmap=%" PRIu32 " node_id=%" PRIu32 " nodes_nr=%" PRIu32,
+                     blockno,
+                     vi_blocks[ blockno ].vp_type,
+                     LDB_VI_BLOCK_NODES,
+                     blocks_nr,
+                     node_id_in_blockmap,
+                     node_id,
+                     nodes_nr);
             }
-            vi_nodes[node_id].vn_block = blockno;
-         } else if (blockno != 0) {
-            elog(ERROR, "blockmap.blocknos[%"PRIu32"]=%"PRIu32" != 0 for "
-                 "node_id=%"PRIu32" nodes_nr=%"PRIu32,
-                 node_id_in_blockmap, blockno, node_id, nodes_nr);
-         }
+            vi_nodes[ node_id ].vn_block = blockno;
+        } else if(blockno != 0) {
+            elog(ERROR,
+                 "blockmap.blocknos[%" PRIu32 "]=%" PRIu32
+                 " != 0 for "
+                 "node_id=%" PRIu32 " nodes_nr=%" PRIu32,
+                 node_id_in_blockmap,
+                 blockno,
+                 node_id,
+                 nodes_nr);
+        }
     }
 }
 
@@ -103,59 +122,89 @@ static void ldb_vi_read_blockmaps(Relation             index,
     uint32 nodes_remaining = nodes_nr;
     int    batch_size = HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
 
-    if (blocks_nr == 0)
-        return;
-    vi_blocks[0].vp_type = LDB_VI_BLOCK_HEADER;
-    while (nodes_remaining != 0) {
-        if (blockmap_groupno > index_header->blockmap_page_groups) {
-            elog(ERROR, "blockmap_groupno=%d > index_header->blockmap_page_groups=%d",
-                 blockmap_groupno, index_header->blockmap_page_groups);
+    if(blocks_nr == 0) return;
+    vi_blocks[ 0 ].vp_type = LDB_VI_BLOCK_HEADER;
+    while(nodes_remaining != 0) {
+        if(blockmap_groupno > index_header->blockmap_page_groups) {
+            elog(ERROR,
+                 "blockmap_groupno=%d > index_header->blockmap_page_groups=%d",
+                 blockmap_groupno,
+                 index_header->blockmap_page_groups);
         }
         /* TODO see the loop in CreateBlockMapGroup() */
         BlockNumber number_of_blockmaps_in_group = 1u << blockmap_groupno;
-        BlockNumber group_start = index_header->blockmap_page_group_index[blockmap_groupno];
-        for (unsigned blockmap_id = 0; blockmap_id < number_of_blockmaps_in_group; ++blockmap_id) {
+        BlockNumber group_start = index_header->blockmap_page_group_index[ blockmap_groupno ];
+        for(unsigned blockmap_id = 0; blockmap_id < number_of_blockmaps_in_group; ++blockmap_id) {
             BlockNumber blockmap_block = group_start + blockmap_id;
             BlockNumber expected_special_nextblockno;
 
-            if (blockmap_block >= blocks_nr) {
-                elog(ERROR, "blockmap_block=%"PRIu32" >= blocks_nr=%"PRIu32" "
+            if(blockmap_block >= blocks_nr) {
+                elog(ERROR,
+                     "blockmap_block=%" PRIu32 " >= blocks_nr=%" PRIu32
+                     " "
                      "(blockmap_groupno=%d blockmap_id=%d)",
-                     blockmap_block, blocks_nr, blockmap_groupno, blockmap_id);
+                     blockmap_block,
+                     blocks_nr,
+                     blockmap_groupno,
+                     blockmap_id);
             }
-            if (vi_blocks[blockmap_block].vp_type != LDB_VI_BLOCK_UNKNOWN) {
-                elog(ERROR, "vi_blocks[%"PRIu32"].vp_type=%d (should be %d)",
-                     blockmap_block, vi_blocks[blockmap_block].vp_type, LDB_VI_BLOCK_UNKNOWN);
+            if(vi_blocks[ blockmap_block ].vp_type != LDB_VI_BLOCK_UNKNOWN) {
+                elog(ERROR,
+                     "vi_blocks[%" PRIu32 "].vp_type=%d (should be %d)",
+                     blockmap_block,
+                     vi_blocks[ blockmap_block ].vp_type,
+                     LDB_VI_BLOCK_UNKNOWN);
             }
-            vi_blocks[blockmap_block].vp_type = LDB_VI_BLOCK_BLOCKMAP;
+            vi_blocks[ blockmap_block ].vp_type = LDB_VI_BLOCK_BLOCKMAP;
             Buffer buf = ReadBuffer(index, blockmap_block);
             LockBuffer(buf, BUFFER_LOCK_SHARE);
             Page page = BufferGetPage(buf);
 
             /* see StoreExternalIndexBlockMapGroup() */
-            if (PageGetMaxOffsetNumber(page) < FirstOffsetNumber) {
-                elog(ERROR, "blockmap_block=%"PRIu32" for blockmap_groupno=%d blockmap_id=%d "
+            if(PageGetMaxOffsetNumber(page) < FirstOffsetNumber) {
+                elog(ERROR,
+                     "blockmap_block=%" PRIu32
+                     " for blockmap_groupno=%d blockmap_id=%d "
                      "doesn't have HnswBlockmapPage inside",
-                     blockmap_groupno, blockmap_id, blockmap_block);
+                     blockmap_groupno,
+                     blockmap_id,
+                     blockmap_block);
             }
             HnswBlockmapPage *blockmap = (HnswBlockmapPage *)PageGetItem(page, PageGetItemId(page, FirstOffsetNumber));
-            if (blockmap->first_id != group_node_first_index + blockmap_id * HNSW_BLOCKMAP_BLOCKS_PER_PAGE) {
-                elog(ERROR, "blockmap->first_id=%"PRIu32" != "
+            if(blockmap->first_id != group_node_first_index + blockmap_id * HNSW_BLOCKMAP_BLOCKS_PER_PAGE) {
+                elog(ERROR,
+                     "blockmap->first_id=%" PRIu32
+                     " != "
                      "group_node_first_index=%d + blockmap_id=%u * HNSW_BLOCKMAP_BLOCKS_PER_PAGE=%d",
-                     blockmap->first_id, group_node_first_index, blockmap_id, HNSW_BLOCKMAP_BLOCKS_PER_PAGE);
+                     blockmap->first_id,
+                     group_node_first_index,
+                     blockmap_id,
+                     HNSW_BLOCKMAP_BLOCKS_PER_PAGE);
             }
             HnswIndexPageSpecialBlock *special = (HnswIndexPageSpecialBlock *)PageGetSpecialPointer(page);
-            if (special->firstId != blockmap->first_id) {
-                elog(ERROR, "special->firstId=%"PRIu32" != blockmap->first_id=%"PRIu32" for "
-                     "blockmap_block=%"PRIu32" blockmap_groupno=%d blockmap_id=%d",
-                     special->firstId, blockmap->first_id, blockmap_block, blockmap_groupno, blockmap_id);
+            if(special->firstId != blockmap->first_id) {
+                elog(ERROR,
+                     "special->firstId=%" PRIu32 " != blockmap->first_id=%" PRIu32
+                     " for "
+                     "blockmap_block=%" PRIu32 " blockmap_groupno=%d blockmap_id=%d",
+                     special->firstId,
+                     blockmap->first_id,
+                     blockmap_block,
+                     blockmap_groupno,
+                     blockmap_id);
             }
-            if (special->lastId != special->firstId + HNSW_BLOCKMAP_BLOCKS_PER_PAGE - 1) {
-                elog(ERROR, "special->lastId=%"PRIu32" != (special->first_id=%"PRIu32" "
+            if(special->lastId != special->firstId + HNSW_BLOCKMAP_BLOCKS_PER_PAGE - 1) {
+                elog(ERROR,
+                     "special->lastId=%" PRIu32 " != (special->first_id=%" PRIu32
+                     " "
                      "+ HNSW_BLOCKMAP_BLOCKS_PER_PAGE=%d - 1) for "
-                     "blockmap_block=%"PRIu32" blockmap_groupno=%d blockmap_id=%d",
-                     special->lastId, special->firstId, HNSW_BLOCKMAP_BLOCKS_PER_PAGE,
-                     blockmap_block, blockmap_groupno, blockmap_id);
+                     "blockmap_block=%" PRIu32 " blockmap_groupno=%d blockmap_id=%d",
+                     special->lastId,
+                     special->firstId,
+                     HNSW_BLOCKMAP_BLOCKS_PER_PAGE,
+                     blockmap_block,
+                     blockmap_groupno,
+                     blockmap_id);
             }
             /* TODO confirm this */
             /*
@@ -163,11 +212,16 @@ static void ldb_vi_read_blockmaps(Relation             index,
                                            InvalidBlockNumber : blockmap_block + 1;
             */
             expected_special_nextblockno = blockmap_block + 1;
-            if (special->nextblockno != expected_special_nextblockno) {
-                elog(ERROR, "special->nextblockno=%"PRIu32" != expected_special_nextblockno=%"PRIu32" for "
-                     "blockmap_block=%"PRIu32" blockmap_groupno=%d blockmap_id=%d",
-                     special->nextblockno, expected_special_nextblockno,
-                     blockmap_block, blockmap_groupno, blockmap_id);
+            if(special->nextblockno != expected_special_nextblockno) {
+                elog(ERROR,
+                     "special->nextblockno=%" PRIu32 " != expected_special_nextblockno=%" PRIu32
+                     " for "
+                     "blockmap_block=%" PRIu32 " blockmap_groupno=%d blockmap_id=%d",
+                     special->nextblockno,
+                     expected_special_nextblockno,
+                     blockmap_block,
+                     blockmap_groupno,
+                     blockmap_id);
             }
             ldb_vi_analyze_blockmap(blockmap, vi_blocks, blocks_nr, vi_nodes, nodes_nr);
 
@@ -180,54 +234,57 @@ static void ldb_vi_read_blockmaps(Relation             index,
     }
 }
 
-static bool ldb_vi_read_node_chunk(void     *chunk,
-                                   size_t    chunk_size,
-                                   void     *tape,
-                                   unsigned  tape_pos,
-                                   unsigned  tape_size)
+static bool ldb_vi_read_node_chunk(void *chunk, size_t chunk_size, void *tape, unsigned tape_pos, unsigned tape_size)
 {
-    if (tape_pos + chunk_size > tape_size)
-        return false;
+    if(tape_pos + chunk_size > tape_size) return false;
     memcpy(chunk, (char *)tape + tape_pos, chunk_size);
     return true;
 }
 
-#define LDB_VI_READ_NODE_CHUNK(_chunk, _tape, _tape_pos, _tape_size)                                \
-({                                                                                                  \
-    size_t _chunk_size = sizeof(_chunk);                                                            \
-                                                                                                    \
-    if (!ldb_vi_read_node_chunk(&(_chunk), _chunk_size, (_tape), (_tape_pos), (_tape_size))) {      \
-        elog(ERROR, "Error reading " #_chunk ": tape_pos=%u + _chunk_size=%zu > tape_size=%u for "  \
-             "block=%"PRIu32" offset=%"PRIu16" node_id=%"PRIu32,                                    \
-             _tape_pos, _chunk_size, _tape_size,                                                    \
-             vi_node->vn_block, vi_node->vn_offset, vi_node->vn_id);                                \
-    }                                                                                               \
-    (_tape_pos) += _chunk_size;                                                                     \
-})
+#define LDB_VI_READ_NODE_CHUNK(_chunk, _tape, _tape_pos, _tape_size)                              \
+    ({                                                                                            \
+        size_t _chunk_size = sizeof(_chunk);                                                      \
+                                                                                                  \
+        if(!ldb_vi_read_node_chunk(&(_chunk), _chunk_size, (_tape), (_tape_pos), (_tape_size))) { \
+            elog(ERROR,                                                                           \
+                 "Error reading " #_chunk                                                         \
+                 ": tape_pos=%u + _chunk_size=%zu > tape_size=%u for "                            \
+                 "block=%" PRIu32 " offset=%" PRIu16 " node_id=%" PRIu32,                         \
+                 _tape_pos,                                                                       \
+                 _chunk_size,                                                                     \
+                 _tape_size,                                                                      \
+                 vi_node->vn_block,                                                               \
+                 vi_node->vn_offset,                                                              \
+                 vi_node->vn_id);                                                                 \
+        }                                                                                         \
+        (_tape_pos) += _chunk_size;                                                               \
+    })
 
 /* See "Load nodes one by one" loop in usearch index_gt::load() */
-static void ldb_vi_read_node_carefully(void               *node_tape,
-                                       unsigned            node_tape_size,
-                                       const uint32        M,
-                                       struct ldb_vi_node *vi_node,
-                                       uint32              nodes_nr)
+static void ldb_vi_read_node_carefully(
+    void *node_tape, unsigned node_tape_size, const uint32 M, struct ldb_vi_node *vi_node, uint32 nodes_nr)
 {
-    unsigned  tape_pos = 0;  /* is advanced by the chunk size by LDB_VI_READ_NODE_CHUNK() */
-    uint32    level_on_tape;
-    uint32    neighbors_nr;
-    uint32    neighbors_max;
-    uint32   *neighbors;
-    uint32    unused;
+    unsigned tape_pos = 0; /* is advanced by the chunk size by LDB_VI_READ_NODE_CHUNK() */
+    uint32   level_on_tape;
+    uint32   neighbors_nr;
+    uint32   neighbors_max;
+    uint32  *neighbors;
+    uint32   unused;
 
     LDB_VI_READ_NODE_CHUNK(vi_node->vn_label, node_tape, tape_pos, node_tape_size);
-    LDB_VI_READ_NODE_CHUNK(vi_node->vn_dim,   node_tape, tape_pos, node_tape_size);
-    LDB_VI_READ_NODE_CHUNK(level_on_tape,     node_tape, tape_pos, node_tape_size);
+    LDB_VI_READ_NODE_CHUNK(vi_node->vn_dim, node_tape, tape_pos, node_tape_size);
+    LDB_VI_READ_NODE_CHUNK(level_on_tape, node_tape, tape_pos, node_tape_size);
 
-    if (level_on_tape != vi_node->vn_level) {
-        elog(ERROR, "level_on_tape=%"PRIu32" != vi_node->vn_level=%"PRIu32" for "
-                 "node_id=%"PRIu32" block=%"PRIu32" offset=%"PRIu16,
-                 level_on_tape, vi_node->vn_level,
-                 vi_node->vn_id, vi_node->vn_block, vi_node->vn_offset);
+    if(level_on_tape != vi_node->vn_level) {
+        elog(ERROR,
+             "level_on_tape=%" PRIu32 " != vi_node->vn_level=%" PRIu32
+             " for "
+             "node_id=%" PRIu32 " block=%" PRIu32 " offset=%" PRIu16,
+             level_on_tape,
+             vi_node->vn_level,
+             vi_node->vn_id,
+             vi_node->vn_block,
+             vi_node->vn_offset);
     }
     /*
      * Now read lists of neighbors for each level.
@@ -241,44 +298,69 @@ static void ldb_vi_read_node_carefully(void               *node_tape,
      * base_level_multiple() in usearch is 2.
      */
     vi_node->vn_neighbors_nr = palloc_array(typeof(*(vi_node->vn_neighbors_nr)), vi_node->vn_level + 1);
-    vi_node->vn_neighbors    = palloc_array(typeof(*(vi_node->vn_neighbors)),    vi_node->vn_level + 1);
-    for (uint32 level = 0; level <= vi_node->vn_level; ++level) {
+    vi_node->vn_neighbors = palloc_array(typeof(*(vi_node->vn_neighbors)), vi_node->vn_level + 1);
+    for(uint32 level = 0; level <= vi_node->vn_level; ++level) {
         neighbors_max = level == 0 ? M * 2 : M;
         LDB_VI_READ_NODE_CHUNK(neighbors_nr, node_tape, tape_pos, node_tape_size);
 
-        if (neighbors_nr > neighbors_max) {
-            elog(ERROR, "neighbors_nr=%"PRIu32" > neighbors_max=%"PRIu32" for "
-                 "level=%"PRIu32" tape_pos=%u node_tape_size=%u "
-                 "node_id=%"PRIu32" block=%"PRIu32" offset=%"PRIu16,
-                 neighbors_nr, neighbors_max, level, tape_pos, node_tape_size,
-                 vi_node->vn_id, vi_node->vn_block, vi_node->vn_offset);
+        if(neighbors_nr > neighbors_max) {
+            elog(ERROR,
+                 "neighbors_nr=%" PRIu32 " > neighbors_max=%" PRIu32
+                 " for "
+                 "level=%" PRIu32
+                 " tape_pos=%u node_tape_size=%u "
+                 "node_id=%" PRIu32 " block=%" PRIu32 " offset=%" PRIu16,
+                 neighbors_nr,
+                 neighbors_max,
+                 level,
+                 tape_pos,
+                 node_tape_size,
+                 vi_node->vn_id,
+                 vi_node->vn_block,
+                 vi_node->vn_offset);
         }
         neighbors = palloc_array(typeof(*neighbors), neighbors_nr);
-        for (uint32 i = 0; i < neighbors_nr; ++i) {
-            LDB_VI_READ_NODE_CHUNK(neighbors[i], node_tape, tape_pos, node_tape_size);
-            if (neighbors[i] >= nodes_nr) {
-                elog(ERROR, "neighbors[%"PRIu32"]=%"PRIu32" >= nodes_nr=%"PRIu32" for "
-                 "neighbors_nr=%"PRIu32" neighbors_max=%"PRIu32" "
-                 "level=%"PRIu32" tape_pos=%u node_tape_size=%u "
-                 "node_id=%"PRIu32" block=%"PRIu32" offset=%"PRIu16,
-                 i, neighbors[i], nodes_nr,
-                 neighbors_nr, neighbors_max, level, tape_pos, node_tape_size,
-                 vi_node->vn_id, vi_node->vn_block, vi_node->vn_offset);
+        for(uint32 i = 0; i < neighbors_nr; ++i) {
+            LDB_VI_READ_NODE_CHUNK(neighbors[ i ], node_tape, tape_pos, node_tape_size);
+            if(neighbors[ i ] >= nodes_nr) {
+                elog(ERROR,
+                     "neighbors[%" PRIu32 "]=%" PRIu32 " >= nodes_nr=%" PRIu32
+                     " for "
+                     "neighbors_nr=%" PRIu32 " neighbors_max=%" PRIu32
+                     " "
+                     "level=%" PRIu32
+                     " tape_pos=%u node_tape_size=%u "
+                     "node_id=%" PRIu32 " block=%" PRIu32 " offset=%" PRIu16,
+                     i,
+                     neighbors[ i ],
+                     nodes_nr,
+                     neighbors_nr,
+                     neighbors_max,
+                     level,
+                     tape_pos,
+                     node_tape_size,
+                     vi_node->vn_id,
+                     vi_node->vn_block,
+                     vi_node->vn_offset);
             }
         }
-        for (uint32 i = neighbors_nr; i < neighbors_max; ++i)
+        for(uint32 i = neighbors_nr; i < neighbors_max; ++i)
             LDB_VI_READ_NODE_CHUNK(unused, node_tape, tape_pos, node_tape_size);
-        vi_node->vn_neighbors_nr[level] = neighbors_nr;
-        vi_node->vn_neighbors[level]    = neighbors;
+        vi_node->vn_neighbors_nr[ level ] = neighbors_nr;
+        vi_node->vn_neighbors[ level ] = neighbors;
     }
     /* the vector of floats is at the end */
     /* XXX it's not clear why vn_dim != dimensions */
     tape_pos += vi_node->vn_dim;
-    if (tape_pos != node_tape_size) {
-        elog(ERROR, "tape_pos=%u != node_tape_size=%u for "
-                 "node_id=%"PRIu32" block=%"PRIu32" offset=%"PRIu16,
-                 tape_pos, node_tape_size,
-                 vi_node->vn_id, vi_node->vn_block, vi_node->vn_offset);
+    if(tape_pos != node_tape_size) {
+        elog(ERROR,
+             "tape_pos=%u != node_tape_size=%u for "
+             "node_id=%" PRIu32 " block=%" PRIu32 " offset=%" PRIu16,
+             tape_pos,
+             node_tape_size,
+             vi_node->vn_id,
+             vi_node->vn_block,
+             vi_node->vn_offset);
     }
 }
 
@@ -292,57 +374,82 @@ static void ldb_vi_read_nodes(Relation             index,
 {
     uint32 M = ldb_HnswGetM(index);
 
-    for (uint32_t i = 0; i < nodes_nr; ++i) {
-        if (vi_nodes[i].vn_block == InvalidBlockNumber)
-            elog(ERROR, "vi_nodes[%"PRIu32"].vn_block == InvalidBlockNumber", vi_nodes[i].vn_block);
+    for(uint32_t i = 0; i < nodes_nr; ++i) {
+        if(vi_nodes[ i ].vn_block == InvalidBlockNumber)
+            elog(ERROR, "vi_nodes[%" PRIu32 "].vn_block == InvalidBlockNumber", vi_nodes[ i ].vn_block);
     }
-    for (BlockNumber block = 0; block < blocks_nr; ++block) {
-        if (vi_blocks[block].vp_type != LDB_VI_BLOCK_NODES)
-            continue;
+    for(BlockNumber block = 0; block < blocks_nr; ++block) {
+        if(vi_blocks[ block ].vp_type != LDB_VI_BLOCK_NODES) continue;
         Buffer buf = ReadBuffer(index, block);
         LockBuffer(buf, BUFFER_LOCK_SHARE);
         Page page = BufferGetPage(buf);
 
-        if (PageGetMaxOffsetNumber(page) < FirstOffsetNumber)
-            elog(ERROR, "block=%"PRIu32" is supposed to have nodes but it doesn't have any", block);
+        if(PageGetMaxOffsetNumber(page) < FirstOffsetNumber)
+            elog(ERROR, "block=%" PRIu32 " is supposed to have nodes but it doesn't have any", block);
 
-        for (OffsetNumber offset = 1; offset <= PageGetMaxOffsetNumber(page); ++offset) {
+        for(OffsetNumber offset = 1; offset <= PageGetMaxOffsetNumber(page); ++offset) {
             ItemId          item_id = PageGetItemId(page, offset);
             HnswIndexTuple *index_tuple = (HnswIndexTuple *)PageGetItem(page, item_id);
             unsigned        index_tuple_length = ItemIdGetLength(item_id);
             uint32          node_id;
 
-            if (sizeof(*index_tuple) > index_tuple_length) {
-                elog(ERROR, "sizeof(*index_tuple)=%zu > index_tuple_length=%u for "
-                     "block=%"PRIu32" offset=%"PRIu16,
-                     sizeof(*index_tuple), index_tuple_length, block, offset);
+            if(sizeof(*index_tuple) > index_tuple_length) {
+                elog(ERROR,
+                     "sizeof(*index_tuple)=%zu > index_tuple_length=%u for "
+                     "block=%" PRIu32 " offset=%" PRIu16,
+                     sizeof(*index_tuple),
+                     index_tuple_length,
+                     block,
+                     offset);
             }
             node_id = index_tuple->id;
-            if (node_id >= nodes_nr) {
-                elog(ERROR, "node_id=%"PRIu32" >= nodes_nr=%"PRIu32" for "
-                     "block=%"PRIu32" offset=%"PRIu16,
-                     node_id, nodes_nr, block, offset);
+            if(node_id >= nodes_nr) {
+                elog(ERROR,
+                     "node_id=%" PRIu32 " >= nodes_nr=%" PRIu32
+                     " for "
+                     "block=%" PRIu32 " offset=%" PRIu16,
+                     node_id,
+                     nodes_nr,
+                     block,
+                     offset);
             }
-            if (vi_nodes[node_id].vn_block != block) {
-                elog(ERROR, "vi_nodes[%"PRIu32"].vn_block=%"PRIu32" != block=%"PRIu32" for "
-                     "offset=%"PRIu16,
-                     node_id, vi_nodes[node_id].vn_block, block, offset);
+            if(vi_nodes[ node_id ].vn_block != block) {
+                elog(ERROR,
+                     "vi_nodes[%" PRIu32 "].vn_block=%" PRIu32 " != block=%" PRIu32
+                     " for "
+                     "offset=%" PRIu16,
+                     node_id,
+                     vi_nodes[ node_id ].vn_block,
+                     block,
+                     offset);
             }
-            if (vi_nodes[node_id].vn_offset != InvalidOffsetNumber) {
-                elog(ERROR, "vi_nodes[%"PRIu32"].vn_offset=%"PRIu32" != InvalidOffsetNumber=%"PRIu32" for "
-                     "block=%"PRIu32,
-                     node_id, vi_nodes[node_id].vn_offset, InvalidOffsetNumber, block);
+            if(vi_nodes[ node_id ].vn_offset != InvalidOffsetNumber) {
+                elog(ERROR,
+                     "vi_nodes[%" PRIu32 "].vn_offset=%" PRIu32 " != InvalidOffsetNumber=%" PRIu32
+                     " for "
+                     "block=%" PRIu32,
+                     node_id,
+                     vi_nodes[ node_id ].vn_offset,
+                     InvalidOffsetNumber,
+                     block);
             }
-            if (sizeof(*index_tuple) + index_tuple->size != index_tuple_length) {
-                elog(ERROR, "sizeof(*index_tuple)=%zu + index_tuple->size=%"PRIu32" != index_tuple_length=%u for "
-                     "node_id=%"PRIu32" nodes_nr=%"PRIu32" block=%"PRIu32" offset=%"PRIu16,
-                     sizeof(*index_tuple), index_tuple->size, index_tuple_length,
-                     node_id, nodes_nr, block, offset);
+            if(sizeof(*index_tuple) + index_tuple->size != index_tuple_length) {
+                elog(ERROR,
+                     "sizeof(*index_tuple)=%zu + index_tuple->size=%" PRIu32
+                     " != index_tuple_length=%u for "
+                     "node_id=%" PRIu32 " nodes_nr=%" PRIu32 " block=%" PRIu32 " offset=%" PRIu16,
+                     sizeof(*index_tuple),
+                     index_tuple->size,
+                     index_tuple_length,
+                     node_id,
+                     nodes_nr,
+                     block,
+                     offset);
             }
-            vi_nodes[node_id].vn_offset = offset;
-            vi_nodes[node_id].vn_id     = node_id;
-            vi_nodes[node_id].vn_level  = index_tuple->level;
-            ldb_vi_read_node_carefully(&index_tuple->node, index_tuple->size, M, &vi_nodes[node_id], nodes_nr);
+            vi_nodes[ node_id ].vn_offset = offset;
+            vi_nodes[ node_id ].vn_id = node_id;
+            vi_nodes[ node_id ].vn_level = index_tuple->level;
+            ldb_vi_read_node_carefully(&index_tuple->node, index_tuple->size, M, &vi_nodes[ node_id ], nodes_nr);
         }
         UnlockReleaseBuffer(buf);
     }
@@ -354,7 +461,7 @@ static void ldb_vi_print_statistics(struct ldb_vi_block *vi_blocks,
                                     uint32               nodes_nr)
 {
     BlockNumber last_block = InvalidBlockNumber;
-    uint32      blocks_per_blocktype[LDB_VI_BLOCK_NR];
+    uint32      blocks_per_blocktype[ LDB_VI_BLOCK_NR ];
     uint32      min_nodes_per_block = UINT32_MAX;
     uint32      max_nodes_per_block = 0;
     uint32      max_level = 0;
@@ -364,76 +471,85 @@ static void ldb_vi_print_statistics(struct ldb_vi_block *vi_blocks,
     uint32     *max_neighbors_per_level;
 
     bzero(&blocks_per_blocktype, sizeof(blocks_per_blocktype));
-    for (BlockNumber block = 0; block < blocks_nr; ++block)
-        ++blocks_per_blocktype[vi_blocks[block].vp_type];
-    elog(INFO, "blocks for: header %"PRIu32" blockmap %"PRIu32" nodes %"PRIu32,
-         blocks_per_blocktype[LDB_VI_BLOCK_HEADER],
-         blocks_per_blocktype[LDB_VI_BLOCK_BLOCKMAP],
-         blocks_per_blocktype[LDB_VI_BLOCK_NODES]);
+    for(BlockNumber block = 0; block < blocks_nr; ++block) ++blocks_per_blocktype[ vi_blocks[ block ].vp_type ];
+    elog(INFO,
+         "blocks for: header %" PRIu32 " blockmap %" PRIu32 " nodes %" PRIu32,
+         blocks_per_blocktype[ LDB_VI_BLOCK_HEADER ],
+         blocks_per_blocktype[ LDB_VI_BLOCK_BLOCKMAP ],
+         blocks_per_blocktype[ LDB_VI_BLOCK_NODES ]);
 
-    for (uint32 i = 0; i < nodes_nr; ++i)
-        ++vi_blocks[vi_nodes[i].vn_block].vp_nodes_nr;
+    for(uint32 i = 0; i < nodes_nr; ++i) ++vi_blocks[ vi_nodes[ i ].vn_block ].vp_nodes_nr;
     /* because in the next loop the condition is "block > 0" */
-    assert(vi_blocks[0].vp_type == LDB_VI_BLOCK_HEADER);
-    for (BlockNumber block = blocks_nr - 1; block > 0; --block) {
-        if (vi_blocks[block].vp_type == LDB_VI_BLOCK_NODES) {
+    assert(vi_blocks[ 0 ].vp_type == LDB_VI_BLOCK_HEADER);
+    for(BlockNumber block = blocks_nr - 1; block > 0; --block) {
+        if(vi_blocks[ block ].vp_type == LDB_VI_BLOCK_NODES) {
             last_block = block;
             break;
         }
     }
-    assert(blocks_per_blocktype[LDB_VI_BLOCK_NODES] == 0 || last_block != InvalidBlockNumber);
-    for (BlockNumber block = 0; block < blocks_nr; ++block) {
-        if (vi_blocks[block].vp_type == LDB_VI_BLOCK_NODES && block != last_block) {
-            min_nodes_per_block = Min(min_nodes_per_block, vi_blocks[block].vp_nodes_nr);
-            max_nodes_per_block = Max(max_nodes_per_block, vi_blocks[block].vp_nodes_nr);
+    assert(blocks_per_blocktype[ LDB_VI_BLOCK_NODES ] == 0 || last_block != InvalidBlockNumber);
+    for(BlockNumber block = 0; block < blocks_nr; ++block) {
+        if(vi_blocks[ block ].vp_type == LDB_VI_BLOCK_NODES && block != last_block) {
+            min_nodes_per_block = Min(min_nodes_per_block, vi_blocks[ block ].vp_nodes_nr);
+            max_nodes_per_block = Max(max_nodes_per_block, vi_blocks[ block ].vp_nodes_nr);
         }
     }
-    if (blocks_per_blocktype[LDB_VI_BLOCK_NODES] == 0) {
+    if(blocks_per_blocktype[ LDB_VI_BLOCK_NODES ] == 0) {
         elog(INFO, "nodes per block: 0 blocks with nodes");
-    } else if (blocks_per_blocktype[LDB_VI_BLOCK_NODES] == 1) {
-        elog(INFO, "nodes per block: last block %"PRIu32, vi_blocks[last_block].vp_nodes_nr);
+    } else if(blocks_per_blocktype[ LDB_VI_BLOCK_NODES ] == 1) {
+        elog(INFO, "nodes per block: last block %" PRIu32, vi_blocks[ last_block ].vp_nodes_nr);
     } else {
-        elog(INFO, "nodes per block: min (except last) %"PRIu32" max (except last) %"PRIu32" last %"PRIu32,
-             min_nodes_per_block, max_nodes_per_block, vi_blocks[last_block].vp_nodes_nr);
+        elog(INFO,
+             "nodes per block: min (except last) %" PRIu32 " max (except last) %" PRIu32 " last %" PRIu32,
+             min_nodes_per_block,
+             max_nodes_per_block,
+             vi_blocks[ last_block ].vp_nodes_nr);
     }
 
-    for (uint32 i = 0; i < nodes_nr; ++i)
-        max_level = Max(max_level, vi_nodes[i].vn_level);
+    for(uint32 i = 0; i < nodes_nr; ++i) max_level = Max(max_level, vi_nodes[ i ].vn_level);
 
     nodes_per_level = palloc0_array(typeof(*nodes_per_level), max_level + 1);
     edges_per_level = palloc0_array(typeof(*edges_per_level), max_level + 1);
     min_neighbors_per_level = palloc0_array(typeof(*min_neighbors_per_level), max_level + 1);
     max_neighbors_per_level = palloc0_array(typeof(*max_neighbors_per_level), max_level + 1);
-    for (uint32 level = 0; level <= max_level; ++level) {
-        min_neighbors_per_level[level] = UINT32_MAX;
-        max_neighbors_per_level[level] = 0;
+    for(uint32 level = 0; level <= max_level; ++level) {
+        min_neighbors_per_level[ level ] = UINT32_MAX;
+        max_neighbors_per_level[ level ] = 0;
     }
-    for (uint32 i = 0; i < nodes_nr; ++i) {
-        struct ldb_vi_node *node = &vi_nodes[i];
+    for(uint32 i = 0; i < nodes_nr; ++i) {
+        struct ldb_vi_node *node = &vi_nodes[ i ];
 
-        ++nodes_per_level[node->vn_level];
-        for (uint32 level = 0; level <= node->vn_level; ++level) {
-            edges_per_level[level] += node->vn_neighbors_nr[level];
-            min_neighbors_per_level[level] = Min(min_neighbors_per_level[level], node->vn_neighbors_nr[level]);
-            max_neighbors_per_level[level] = Max(max_neighbors_per_level[level], node->vn_neighbors_nr[level]);
-            if (0) {
+        ++nodes_per_level[ node->vn_level ];
+        for(uint32 level = 0; level <= node->vn_level; ++level) {
+            edges_per_level[ level ] += node->vn_neighbors_nr[ level ];
+            min_neighbors_per_level[ level ] = Min(min_neighbors_per_level[ level ], node->vn_neighbors_nr[ level ]);
+            max_neighbors_per_level[ level ] = Max(max_neighbors_per_level[ level ], node->vn_neighbors_nr[ level ]);
+            if(0) {
                 /* useful for debugging */
-                for (uint32 n = 0; n < node->vn_neighbors_nr[level]; ++n) {
-                    elog(INFO, "node %"PRIu32 " level %"PRIu32" neighbor %"PRIu32": %"PRIu32,
-                         i, level, n, node->vn_neighbors[level][n]);
+                for(uint32 n = 0; n < node->vn_neighbors_nr[ level ]; ++n) {
+                    elog(INFO,
+                         "node %" PRIu32 " level %" PRIu32 " neighbor %" PRIu32 ": %" PRIu32,
+                         i,
+                         level,
+                         n,
+                         node->vn_neighbors[ level ][ n ]);
                 }
             }
         }
     }
-    for (uint32 level = 0; level <= max_level; ++level) {
-        if (min_neighbors_per_level[level] == UINT32_MAX)
-            min_neighbors_per_level[level] = 0;
+    for(uint32 level = 0; level <= max_level; ++level) {
+        if(min_neighbors_per_level[ level ] == UINT32_MAX) min_neighbors_per_level[ level ] = 0;
     }
-    for (uint32 level = 0; level <= max_level; ++level) {
-        elog(INFO, "level=%"PRIu32": nodes %"PRIu32" directed neighbor edges %"PRIu64" "
-             "min neighbors %"PRIu32" max neighbors %"PRIu32,
-             level, nodes_per_level[level], edges_per_level[level],
-             min_neighbors_per_level[level], max_neighbors_per_level[level]);
+    for(uint32 level = 0; level <= max_level; ++level) {
+        elog(INFO,
+             "level=%" PRIu32 ": nodes %" PRIu32 " directed neighbor edges %" PRIu64
+             " "
+             "min neighbors %" PRIu32 " max neighbors %" PRIu32,
+             level,
+             nodes_per_level[ level ],
+             edges_per_level[ level ],
+             min_neighbors_per_level[ level ],
+             max_neighbors_per_level[ level ]);
     }
     pfree(max_neighbors_per_level);
     pfree(min_neighbors_per_level);
@@ -441,14 +557,12 @@ static void ldb_vi_print_statistics(struct ldb_vi_block *vi_blocks,
     pfree(nodes_per_level);
 }
 
-void ldb_vi_free_neighbors(struct ldb_vi_node *vi_nodes,
-                           uint32              nodes_nr)
+void ldb_vi_free_neighbors(struct ldb_vi_node *vi_nodes, uint32 nodes_nr)
 {
-    for (uint32 i = 0; i < nodes_nr; ++i) {
-        struct ldb_vi_node *node = &vi_nodes[i];
+    for(uint32 i = 0; i < nodes_nr; ++i) {
+        struct ldb_vi_node *node = &vi_nodes[ i ];
 
-        for (uint32 level = 0; level <= node->vn_level; ++level)
-            pfree(node->vn_neighbors[level]);
+        for(uint32 level = 0; level <= node->vn_level; ++level) pfree(node->vn_neighbors[ level ]);
         pfree(node->vn_neighbors);
         pfree(node->vn_neighbors_nr);
     }
@@ -479,36 +593,46 @@ void ldb_validate_index(Oid indrelid)
     LockBuffer(header_buf, BUFFER_LOCK_EXCLUSIVE);
     header_page = BufferGetPage(header_buf);
     index_header = (HnswIndexHeaderPage *)PageGetContents(header_page);
-    if (index_header->magicNumber != LDB_WAL_MAGIC_NUMBER) {
-        elog(ERROR, "Invalid HnswIndexHeaderPage.magicNumber (page %"PRIu32", got %x, expected %x)",
-             header_blockno, index_header->magicNumber, LDB_WAL_MAGIC_NUMBER);
+    if(index_header->magicNumber != LDB_WAL_MAGIC_NUMBER) {
+        elog(ERROR,
+             "Invalid HnswIndexHeaderPage.magicNumber (page %" PRIu32 ", got %x, expected %x)",
+             header_blockno,
+             index_header->magicNumber,
+             LDB_WAL_MAGIC_NUMBER);
     }
-    elog(INFO, "index_header = HnswIndexHeaderPage("
-         "version=%"PRIu32" vector_dim=%"PRIu32" m=%"PRIu32" "
-         "ef_construction=%"PRIu32" ef=%"PRIu32" metric_kind=%d num_vectors=%"PRIu32" "
-         "last_data_block=%"PRIu32" blockmap_page_groups=%"PRIu32")",
-         index_header->version, index_header->vector_dim, index_header->m,
-         index_header->ef_construction, index_header->ef, index_header->metric_kind,
-         index_header->num_vectors, index_header->last_data_block,
+    elog(INFO,
+         "index_header = HnswIndexHeaderPage("
+         "version=%" PRIu32 " vector_dim=%" PRIu32 " m=%" PRIu32
+         " "
+         "ef_construction=%" PRIu32 " ef=%" PRIu32 " metric_kind=%d num_vectors=%" PRIu32
+         " "
+         "last_data_block=%" PRIu32 " blockmap_page_groups=%" PRIu32 ")",
+         index_header->version,
+         index_header->vector_dim,
+         index_header->m,
+         index_header->ef_construction,
+         index_header->ef,
+         index_header->metric_kind,
+         index_header->num_vectors,
+         index_header->last_data_block,
          index_header->blockmap_page_groups);
 
     blocks_nr = RelationGetNumberOfBlocksInFork(index, MAIN_FORKNUM);
     nodes_nr = index_header->num_vectors;
-    elog(INFO, "blocks_nr=%"PRIu32" nodes_nr=%"PRIu32, blocks_nr, nodes_nr);
+    elog(INFO, "blocks_nr=%" PRIu32 " nodes_nr=%" PRIu32, blocks_nr, nodes_nr);
     /* TODO check nodes_nr against index_header->blockmap_page_groups */
 
     vi_blocks = palloc0_array(typeof(*vi_blocks), blocks_nr);
     vi_nodes = palloc0_array(typeof(*vi_nodes), nodes_nr);
-    for (uint32 i = 0; i < nodes_nr; ++i) {
-        vi_nodes[i].vn_block  = InvalidBlockNumber;
-        vi_nodes[i].vn_offset = InvalidOffsetNumber;
+    for(uint32 i = 0; i < nodes_nr; ++i) {
+        vi_nodes[ i ].vn_block = InvalidBlockNumber;
+        vi_nodes[ i ].vn_offset = InvalidOffsetNumber;
     }
 
     ldb_vi_read_blockmaps(index, index_header, vi_blocks, blocks_nr, vi_nodes, nodes_nr);
-    for (BlockNumber block = 0; block < blocks_nr; ++block) {
-        if (vi_blocks[block].vp_type == LDB_VI_BLOCK_UNKNOWN) {
-            elog(ERROR, "vi_blocks[%"PRIu32"].vp_type == LDB_VI_BLOCK_UNKNOWN (but it should be known now)",
-                 block);
+    for(BlockNumber block = 0; block < blocks_nr; ++block) {
+        if(vi_blocks[ block ].vp_type == LDB_VI_BLOCK_UNKNOWN) {
+            elog(ERROR, "vi_blocks[%" PRIu32 "].vp_type == LDB_VI_BLOCK_UNKNOWN (but it should be known now)", block);
         }
     }
     ldb_vi_read_nodes(index, vi_blocks, blocks_nr, vi_nodes, nodes_nr);
