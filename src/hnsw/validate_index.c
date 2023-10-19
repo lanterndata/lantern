@@ -140,9 +140,7 @@ static void ldb_vi_read_blockmaps(Relation             index,
 
             if(blockmap_block >= blocks_nr) {
                 elog(ERROR,
-                     "blockmap_block=%" PRIu32 " >= blocks_nr=%" PRIu32
-                     " "
-                     "(blockmap_groupno=%d blockmap_id=%d)",
+                     "blockmap_block=%" PRIu32 " >= blocks_nr=%" PRIu32 " (blockmap_groupno=%d blockmap_id=%d)",
                      blockmap_block,
                      blocks_nr,
                      blockmap_groupno,
@@ -196,8 +194,7 @@ static void ldb_vi_read_blockmaps(Relation             index,
             if(special->lastId != special->firstId + HNSW_BLOCKMAP_BLOCKS_PER_PAGE - 1) {
                 elog(ERROR,
                      "special->lastId=%" PRIu32 " != (special->first_id=%" PRIu32
-                     " "
-                     "+ HNSW_BLOCKMAP_BLOCKS_PER_PAGE=%d - 1) for "
+                     " + HNSW_BLOCKMAP_BLOCKS_PER_PAGE=%d - 1) for "
                      "blockmap_block=%" PRIu32 " blockmap_groupno=%d blockmap_id=%d",
                      special->lastId,
                      special->firstId,
@@ -326,9 +323,7 @@ static void ldb_vi_read_node_carefully(
                 elog(ERROR,
                      "neighbors[%" PRIu32 "]=%" PRIu32 " >= nodes_nr=%" PRIu32
                      " for "
-                     "neighbors_nr=%" PRIu32 " neighbors_max=%" PRIu32
-                     " "
-                     "level=%" PRIu32
+                     "neighbors_nr=%" PRIu32 " neighbors_max=%" PRIu32 " level=%" PRIu32
                      " tape_pos=%u node_tape_size=%u "
                      "node_id=%" PRIu32 " block=%" PRIu32 " offset=%" PRIu16,
                      i,
@@ -602,11 +597,8 @@ void ldb_validate_index(Oid indrelid)
     }
     elog(INFO,
          "index_header = HnswIndexHeaderPage("
-         "version=%" PRIu32 " vector_dim=%" PRIu32 " m=%" PRIu32
-         " "
-         "ef_construction=%" PRIu32 " ef=%" PRIu32 " metric_kind=%d num_vectors=%" PRIu32
-         " "
-         "last_data_block=%" PRIu32 " blockmap_page_groups=%" PRIu32 ")",
+         "version=%" PRIu32 " vector_dim=%" PRIu32 " m=%" PRIu32 " ef_construction=%" PRIu32 " ef=%" PRIu32
+         " metric_kind=%d num_vectors=%" PRIu32 " last_data_block=%" PRIu32 " blockmap_page_groups=%" PRIu32 ")",
          index_header->version,
          index_header->vector_dim,
          index_header->m,
