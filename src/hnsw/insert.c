@@ -93,14 +93,17 @@ bool ldb_aminsert(Relation         index,
     datum = PointerGetDatum(PG_DETOAST_DATUM(values[ 0 ]));
     column_type = GetIndexColumnType(index);
 
-    bool postponed = RelationGetNumberOfBlocks(index) == 0;
+    int  index_ndims = ldb_HnswGetDim(index);
+    bool index_ndims_exists = index_ndims >= 1;
+    bool index_empty = RelationGetNumberOfBlocks(index) == 0;
+    bool postponed = index_empty && !index_ndims_exists;
 
     // TODO: what if there are concurrent inserts? can that result in issues with creating this postponed index?
     if(postponed) {
         int ndims = DatumGetLength(datum, column_type);
-        int index_ndims = ldb_HnswGetDim(index);
 
-        if(index_ndims >= 1 && index_ndims != ndims) {
+        /*
+        if(index_ndims_exists && index_ndims != ndims) {
             elog(ERROR,
                  "Vector dimension %d of inserted vector does not match vector dimension %d specified during index "
                  "creation.",
@@ -108,6 +111,7 @@ bool ldb_aminsert(Relation         index,
                  index_ndims);
             return false;
         }
+        */
 
         if(ndims < 1) {
             elog(ERROR, "Could not identify dimension of inserted vector!");
@@ -130,7 +134,7 @@ bool ldb_aminsert(Relation         index,
 
         BuildIndex(heap, index, indexInfo, &buildstate, MAIN_FORKNUM);
 
-        // Building the index already inserted this vector since it was written to the heap prior to this AM method
+        // Building the index already inserted this vector since it was written to the heap prior to this function
         // being called, so we can return to avoid inserting twice
         return false;
     }

@@ -78,7 +78,7 @@ DROP INDEX small_world4_idx1;
 VACUUM small_world4;
 
 
--- dim specified and single insert
+-- dim specified and single insert (this should NOT postpone index build since dim is specified)
 CREATE INDEX small_world4_idx1 ON small_world4 USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2, dim=4);
 begin;
 INSERT INTO small_world4 (id, vector) VALUES
@@ -87,7 +87,7 @@ rollback;
 DROP INDEX small_world4_idx1;
 VACUUM small_world4;
 
--- dim specified and batch insert
+-- dim specified and batch insert (this should NOT postpone index build since dim is specified)
 CREATE INDEX small_world4_idx1 ON small_world4 USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2, dim=4);
 begin;
 INSERT INTO small_world4 (id, vector) VALUES

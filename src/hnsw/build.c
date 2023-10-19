@@ -434,7 +434,7 @@ void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, HnswBuildSt
         return;
     }
 
-    if(empty_table && !buildstate->postponed) {
+    if(empty_table && buildstate->dimensions < 1 && !buildstate->postponed) {
         // Postpone creation of the index until the first insert, where we can get the dimension from that inserted
         // vector and then build the index with that dimension
         return;

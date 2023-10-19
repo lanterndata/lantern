@@ -52,6 +52,9 @@ SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
 -- Case 0, sanity check. No data.
 CREATE TABLE empty_table(id SERIAL PRIMARY KEY, v REAL[2]);
 CREATE INDEX empty_idx ON empty_table USING hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=2, dim=2);
+INFO:  done init usearch index
+INFO:  inserted 0 elements
+INFO:  done saving 0 vectors
 SET _lantern_internal.is_test = true;
 SELECT is_cost_estimate_within_error('EXPLAIN SELECT * FROM empty_table ORDER BY v <-> ''{1,2}'' LIMIT 10', 0.47);
 DEBUG:  LANTERN - Query cost estimator
