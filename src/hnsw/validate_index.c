@@ -2,13 +2,13 @@
 
 #include "hnsw/validate_index.h"
 
-#include <access/heapam.h>   /* relation_open */
-#include <assert.h>          /* assert */
-#include <catalog/index.h>   /* IndexGetRelation */
-#include <inttypes.h>        /* PRIu32 */
-#include <stdint.h>          /* UINT32_MAX */
-#include <string.h>          /* bzero */
-#include <utils/memutils.h>  /* AllocSetContextCreate */
+#include <access/heapam.h>  /* relation_open */
+#include <assert.h>         /* assert */
+#include <catalog/index.h>  /* IndexGetRelation */
+#include <inttypes.h>       /* PRIu32 */
+#include <stdint.h>         /* UINT32_MAX */
+#include <string.h>         /* bzero */
+#include <utils/memutils.h> /* AllocSetContextCreate */
 
 #include "hnsw/external_index.h" /* HnswIndexHeaderPage */
 #include "hnsw/options.h"        /* ldb_HnswGetM */
