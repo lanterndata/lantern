@@ -75,20 +75,116 @@ CREATE TABLE small_world4 (
     id varchar(3),
     vector real[]
 );
--- If the first row is NULL we do not infer a dimension
-\set ON_ERROR_STOP off
+-- Test postponing of index creation on an empty table
+-- no options and single insert
+CREATE INDEX small_world4_idx1 ON small_world4 USING hnsw (vector);
 begin;
-CREATE INDEX ON small_world4 USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
+INSERT INTO small_world4 (id, vector) VALUES
+('000', '{0,1,2,0}');
+INFO:  done init usearch index
+INFO:  inserted 1 elements
+INFO:  done saving 1 vectors
+rollback;
+DROP INDEX small_world4_idx1;
+-- We need to vacuum or else we won't detect that the table is empty in ambuild
+VACUUM small_world4;
+SELECT * FROM small_world4;
+ id | vector 
+----+--------
+(0 rows)
+
+-- no options and batch insert
+CREATE INDEX small_world4_idx1 ON small_world4 USING hnsw (vector);
+begin;
+INSERT INTO small_world4 (id, vector) VALUES
+('000', '{0,1,2,0}'),
+('001', '{1,0,0,1}');
+INFO:  done init usearch index
+INFO:  inserted 1 elements
+INFO:  done saving 1 vectors
+rollback;
+DROP INDEX small_world4_idx1;
+VACUUM small_world4;
+-- some options but no dim and single insert
+CREATE INDEX small_world4_idx1 ON small_world4 USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
+begin;
+INSERT INTO small_world4 (id, vector) VALUES
+('000', '{0,1,2,0}');
+INFO:  done init usearch index
+INFO:  inserted 1 elements
+INFO:  done saving 1 vectors
+rollback;
+DROP INDEX small_world4_idx1;
+VACUUM small_world4;
+-- some options but no dim and batch insert
+CREATE INDEX small_world4_idx1 ON small_world4 USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
+begin;
+INSERT INTO small_world4 (id, vector) VALUES
+('000', '{0,1,2,0}'),
+('001', '{1,0,0,1}');
+INFO:  done init usearch index
+INFO:  inserted 1 elements
+INFO:  done saving 1 vectors
+rollback;
+DROP INDEX small_world4_idx1;
+VACUUM small_world4;
+-- dim specified and single insert
+CREATE INDEX small_world4_idx1 ON small_world4 USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2, dim=4);
+begin;
+INSERT INTO small_world4 (id, vector) VALUES
+('000', '{0,1,2,0}');
+INFO:  done init usearch index
+INFO:  inserted 1 elements
+INFO:  done saving 1 vectors
+rollback;
+DROP INDEX small_world4_idx1;
+VACUUM small_world4;
+-- dim specified and batch insert
+CREATE INDEX small_world4_idx1 ON small_world4 USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2, dim=4);
+begin;
+INSERT INTO small_world4 (id, vector) VALUES
+('000', '{0,1,2,0}'),
+('001', '{1,0,0,1}');
+INFO:  done init usearch index
+INFO:  inserted 1 elements
+INFO:  done saving 1 vectors
+rollback;
+DROP INDEX small_world4_idx1;
+VACUUM small_world4;
+-- Test cases where a NULL vector is inserted, and dim is not specified
+-- Create postponed index on empty table with batch insert where one vector is NULL
+-- this should ignore all NULL vectors and build index upon encountering insertion of first non-NULL entry
+CREATE INDEX small_world4_idx1 ON small_world4 USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
+begin;
 INSERT INTO small_world4 (id, vector) VALUES
 ('000', NULL),
 ('001', '{1,0,0,1}');
 INFO:  done init usearch index
 INFO:  inserted 1 elements
 INFO:  done saving 1 vectors
+rollback;
+DROP INDEX small_world4_idx1;
+VACUUM small_world4;
+-- Empty table with first insert where vector is NULL
+-- This should ignore the NULL vector and NOT build the postponed index
+CREATE INDEX small_world4_idx1 ON small_world4 USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
+begin;
+INSERT INTO small_world4 (id, vector) VALUES
+('000', NULL);
+rollback;
+DROP INDEX small_world4_idx1;
+VACUUM small_world4;
+-- If the first row is NULL and index is not postponed (non-empty table) then we can't infer dimension and this will error
+\set ON_ERROR_STOP off
+begin;
+INSERT INTO small_world4 (id, vector) VALUES
+('000', NULL),
+('001', '{1,0,0,1}');
 CREATE INDEX ON small_world4 USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
 ERROR:  Failed to infer dimensions from non-empty table, please specify one
 rollback;
 \set ON_ERROR_STOP on
+VACUUM small_world4;
 INSERT INTO small_world4 (id, vector) VALUES
 ('000', '{1,0,0,0}'),
 ('001', '{1,0,0,1}'),
