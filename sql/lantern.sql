@@ -31,7 +31,7 @@ CREATE OPERATOR <-> (
 
 CREATE SCHEMA _lantern_internal;
 
-CREATE FUNCTION _lantern_internal.validate_index(index regclass) RETURNS VOID
+CREATE FUNCTION _lantern_internal.validate_index(index regclass, print_info boolean DEFAULT true) RETURNS VOID
 	AS 'MODULE_PATHNAME', 'lantern_internal_validate_index' LANGUAGE C STABLE STRICT PARALLEL UNSAFE;
 
 -- operator classes

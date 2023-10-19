@@ -362,9 +362,10 @@ Datum       vector_l2sq_dist(PG_FUNCTION_ARGS)
 PGDLLEXPORT PG_FUNCTION_INFO_V1(lantern_internal_validate_index);
 Datum       lantern_internal_validate_index(PG_FUNCTION_ARGS)
 {
-    Oid indrelid = PG_GETARG_OID(0);
+    Oid  indrelid = PG_GETARG_OID(0);
+    bool print_info = PG_GETARG_BOOL(1);
 
-    ldb_validate_index(indrelid);
+    ldb_validate_index(indrelid, print_info);
     PG_RETURN_VOID();
 }
 

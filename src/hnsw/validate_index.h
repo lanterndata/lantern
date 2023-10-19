@@ -20,6 +20,6 @@
  *   an error message with details about the place and surrounding data
  *   structures.
  */
-void ldb_validate_index(Oid indrelid);
+void ldb_validate_index(Oid indrelid, bool print_info);
 
 #endif

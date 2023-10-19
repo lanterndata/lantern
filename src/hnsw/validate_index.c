@@ -563,7 +563,7 @@ void ldb_vi_free_neighbors(struct ldb_vi_node *vi_nodes, uint32 nodes_nr)
     }
 }
 
-void ldb_validate_index(Oid indrelid)
+void ldb_validate_index(Oid indrelid, bool print_info)
 {
     Relation             index;
     BlockNumber          header_blockno = 0;
@@ -580,7 +580,11 @@ void ldb_validate_index(Oid indrelid)
     /* the code here doesn't change the index, so AccessShareLock is enough */
     index = relation_open(indrelid, AccessShareLock);
 
-    elog(INFO, "validate_index() start for %s", RelationGetRelationName(index));
+    if(print_info) {
+        elog(INFO, "validate_index() start for %s with Oid=%u", RelationGetRelationName(index), indrelid);
+    } else {
+        elog(INFO, "validate_index() start for %s", RelationGetRelationName(index));
+    }
     memCtx = AllocSetContextCreate(CurrentMemoryContext, "hnsw validate_index context", ALLOCSET_DEFAULT_SIZES);
     saveCtx = MemoryContextSwitchTo(memCtx);
 
@@ -595,23 +599,27 @@ void ldb_validate_index(Oid indrelid)
              index_header->magicNumber,
              LDB_WAL_MAGIC_NUMBER);
     }
-    elog(INFO,
-         "index_header = HnswIndexHeaderPage("
-         "version=%" PRIu32 " vector_dim=%" PRIu32 " m=%" PRIu32 " ef_construction=%" PRIu32 " ef=%" PRIu32
-         " metric_kind=%d num_vectors=%" PRIu32 " last_data_block=%" PRIu32 " blockmap_page_groups=%" PRIu32 ")",
-         index_header->version,
-         index_header->vector_dim,
-         index_header->m,
-         index_header->ef_construction,
-         index_header->ef,
-         index_header->metric_kind,
-         index_header->num_vectors,
-         index_header->last_data_block,
-         index_header->blockmap_page_groups);
+    if(print_info) {
+        elog(INFO,
+             "index_header = HnswIndexHeaderPage("
+             "version=%" PRIu32 " vector_dim=%" PRIu32 " m=%" PRIu32 " ef_construction=%" PRIu32 " ef=%" PRIu32
+             " metric_kind=%d num_vectors=%" PRIu32 " last_data_block=%" PRIu32 " blockmap_page_groups=%" PRIu32 ")",
+             index_header->version,
+             index_header->vector_dim,
+             index_header->m,
+             index_header->ef_construction,
+             index_header->ef,
+             index_header->metric_kind,
+             index_header->num_vectors,
+             index_header->last_data_block,
+             index_header->blockmap_page_groups);
+    }
 
     blocks_nr = RelationGetNumberOfBlocksInFork(index, MAIN_FORKNUM);
     nodes_nr = index_header->num_vectors;
-    elog(INFO, "blocks_nr=%" PRIu32 " nodes_nr=%" PRIu32, blocks_nr, nodes_nr);
+    if(print_info) {
+        elog(INFO, "blocks_nr=%" PRIu32 " nodes_nr=%" PRIu32, blocks_nr, nodes_nr);
+    }
     /* TODO check nodes_nr against index_header->blockmap_page_groups */
 
     vi_blocks = palloc0_array(typeof(*vi_blocks), blocks_nr);
@@ -628,7 +636,7 @@ void ldb_validate_index(Oid indrelid)
         }
     }
     ldb_vi_read_nodes(index, vi_blocks, blocks_nr, vi_nodes, nodes_nr);
-    ldb_vi_print_statistics(vi_blocks, blocks_nr, vi_nodes, nodes_nr);
+    if(print_info) ldb_vi_print_statistics(vi_blocks, blocks_nr, vi_nodes, nodes_nr);
 
     ldb_vi_free_neighbors(vi_nodes, nodes_nr);
     pfree(vi_nodes);
