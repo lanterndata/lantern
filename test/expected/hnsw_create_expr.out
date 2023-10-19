@@ -68,15 +68,8 @@ CREATE INDEX ON test_table USING hnsw (int_to_fixed_binary_real_array(id)) WITH 
 INFO:  done init usearch index
 INFO:  inserted 3 elements
 INFO:  done saving 3 vectors
-SELECT _lantern_internal.validate_index('test_table_int_to_fixed_binary_real_array_idx');
+SELECT _lantern_internal.validate_index('test_table_int_to_fixed_binary_real_array_idx', false);
 INFO:  validate_index() start for test_table_int_to_fixed_binary_real_array_idx
-INFO:  index_header = HnswIndexHeaderPage(version=1 vector_dim=3 m=2 ef_construction=128 ef=64 metric_kind=1 num_vectors=3 last_data_block=2 blockmap_page_groups=0)
-INFO:  blocks_nr=3 nodes_nr=3
-INFO:  blocks for: header 1 blockmap 1 nodes 1
-INFO:  nodes per block: last block 3
-INFO:  level=0: nodes 0 directed neighbor edges 4 min neighbors 1 max neighbors 2
-INFO:  level=1: nodes 1 directed neighbor edges 4 min neighbors 1 max neighbors 2
-INFO:  level=2: nodes 2 directed neighbor edges 2 min neighbors 1 max neighbors 1
 INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------

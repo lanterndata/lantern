@@ -239,15 +239,32 @@ SELECT ROUND(hamming_dist(v, '{0,0}')::numeric, 2) FROM extra_small_world_ham OR
   4.00
 (4 rows)
 
--- validate_index() is not called for other indexes because validate_index()
--- prints details about the index and the index build code is not deterministic
-SELECT _lantern_internal.validate_index('extra_small_world_ham_v_idx');
+SELECT _lantern_internal.validate_index('small_world_l2_v_idx', false);
+INFO:  validate_index() start for small_world_l2_v_idx
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
+SELECT _lantern_internal.validate_index('small_world_cos_v_idx', false);
+INFO:  validate_index() start for small_world_cos_v_idx
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
+SELECT _lantern_internal.validate_index('small_world_ham_v_idx', false);
+INFO:  validate_index() start for small_world_ham_v_idx
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
+SELECT _lantern_internal.validate_index('extra_small_world_ham_v_idx', false);
 INFO:  validate_index() start for extra_small_world_ham_v_idx
-INFO:  index_header = HnswIndexHeaderPage(version=1 vector_dim=2 m=16 ef_construction=128 ef=64 metric_kind=6 num_vectors=4 last_data_block=2 blockmap_page_groups=0)
-INFO:  blocks_nr=3 nodes_nr=4
-INFO:  blocks for: header 1 blockmap 1 nodes 1
-INFO:  nodes per block: last block 4
-INFO:  level=0: nodes 4 directed neighbor edges 12 min neighbors 3 max neighbors 3
 INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------

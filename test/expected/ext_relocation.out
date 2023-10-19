@@ -71,6 +71,14 @@ CREATE INDEX hnsw_index ON small_world USING hnsw(v) WITH (dim=3);
 INFO:  done init usearch index
 INFO:  inserted 8 elements
 INFO:  done saving 8 vectors
+SELECT _lantern_internal.validate_index('hnsw_index', false);
+INFO:  validate_index() start for hnsw_index
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
 \set ON_ERROR_STOP off
 -- lantern does not support relocation.
 -- Postgres will not allow it to support this since its objects span over more than one schema
@@ -100,6 +108,14 @@ CREATE INDEX hnsw_index2 ON small_world USING hnsw(v) WITH (dim=3);
 INFO:  done init usearch index
 INFO:  inserted 8 elements
 INFO:  done saving 8 vectors
+SELECT _lantern_internal.validate_index('hnsw_index2', false);
+INFO:  validate_index() start for hnsw_index2
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
 \set ON_ERROR_STOP off
 -- extension function cannot be found without schema-qualification
 SELECT l2sq_dist(ARRAY[1.0, 2.0, 3.0], ARRAY[4.0, 5.0, 6.0]);

@@ -37,6 +37,7 @@ SET search_path TO public, schema1;
 SELECT l2sq_dist(ARRAY[1.0, 2.0, 3.0], ARRAY[4.0, 5.0, 6.0]);
 
 CREATE INDEX hnsw_index ON small_world USING hnsw(v) WITH (dim=3);
+SELECT _lantern_internal.validate_index('hnsw_index', false);
 
 \set ON_ERROR_STOP off
 -- lantern does not support relocation.
@@ -58,6 +59,7 @@ ORDER BY 1, 3;
 SET search_path TO public, schema2;
 --extension access method is still accessible since access methods are not schema-qualified
 CREATE INDEX hnsw_index2 ON small_world USING hnsw(v) WITH (dim=3);
+SELECT _lantern_internal.validate_index('hnsw_index2', false);
 
 \set ON_ERROR_STOP off
 -- extension function cannot be found without schema-qualification

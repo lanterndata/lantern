@@ -53,14 +53,8 @@ SHOW hnsw.init_k;
 (1 row)
 
 -- Validate the index data structures
-SELECT _lantern_internal.validate_index('small_world_v_idx');
+SELECT _lantern_internal.validate_index('small_world_v_idx', false);
 INFO:  validate_index() start for small_world_v_idx
-INFO:  index_header = HnswIndexHeaderPage(version=1 vector_dim=3 m=16 ef_construction=128 ef=64 metric_kind=1 num_vectors=8 last_data_block=2 blockmap_page_groups=0)
-INFO:  blocks_nr=3 nodes_nr=8
-INFO:  blocks for: header 1 blockmap 1 nodes 1
-INFO:  nodes per block: last block 8
-INFO:  level=0: nodes 7 directed neighbor edges 56 min neighbors 7 max neighbors 7
-INFO:  level=1: nodes 1 directed neighbor edges 0 min neighbors 0 max neighbors 0
 INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------

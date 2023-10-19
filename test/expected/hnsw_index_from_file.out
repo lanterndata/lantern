@@ -30,15 +30,8 @@ CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_ind
 INFO:  done init usearch index
 INFO:  done loading usearch index
 INFO:  done saving 1000 vectors
-SELECT _lantern_internal.validate_index('hnsw_l2_index');
+SELECT _lantern_internal.validate_index('hnsw_l2_index', false);
 INFO:  validate_index() start for hnsw_l2_index
-INFO:  index_header = HnswIndexHeaderPage(version=1 vector_dim=128 m=16 ef_construction=64 ef=32 metric_kind=1 num_vectors=1000 last_data_block=89 blockmap_page_groups=0)
-INFO:  blocks_nr=90 nodes_nr=1000
-INFO:  blocks for: header 1 blockmap 1 nodes 88
-INFO:  nodes per block: min (except last) 11 max (except last) 12 last 3
-INFO:  level=0: nodes 937 directed neighbor edges 10862 min neighbors 1 max neighbors 32
-INFO:  level=1: nodes 58 directed neighbor edges 426 min neighbors 2 max neighbors 16
-INFO:  level=2: nodes 5 directed neighbor edges 20 min neighbors 4 max neighbors 4
 INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
@@ -109,15 +102,8 @@ CREATE INDEX hnsw_cos_index ON sift_base1k USING hnsw (v) WITH (_experimental_in
 INFO:  done init usearch index
 INFO:  done loading usearch index
 INFO:  done saving 1000 vectors
-SELECT _lantern_internal.validate_index('hnsw_cos_index');
+SELECT _lantern_internal.validate_index('hnsw_cos_index', false);
 INFO:  validate_index() start for hnsw_cos_index
-INFO:  index_header = HnswIndexHeaderPage(version=1 vector_dim=128 m=16 ef_construction=64 ef=32 metric_kind=2 num_vectors=1000 last_data_block=89 blockmap_page_groups=0)
-INFO:  blocks_nr=90 nodes_nr=1000
-INFO:  blocks for: header 1 blockmap 1 nodes 88
-INFO:  nodes per block: min (except last) 11 max (except last) 12 last 3
-INFO:  level=0: nodes 937 directed neighbor edges 10845 min neighbors 1 max neighbors 31
-INFO:  level=1: nodes 58 directed neighbor edges 413 min neighbors 2 max neighbors 13
-INFO:  level=2: nodes 5 directed neighbor edges 20 min neighbors 4 max neighbors 4
 INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
@@ -172,15 +158,8 @@ CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_ind
 INFO:  done init usearch index
 INFO:  done loading usearch index
 INFO:  done saving 1000 vectors
-SELECT _lantern_internal.validate_index('hnsw_l2_index');
+SELECT _lantern_internal.validate_index('hnsw_l2_index', false);
 INFO:  validate_index() start for hnsw_l2_index
-INFO:  index_header = HnswIndexHeaderPage(version=1 vector_dim=128 m=16 ef_construction=64 ef=32 metric_kind=1 num_vectors=1000 last_data_block=89 blockmap_page_groups=0)
-INFO:  blocks_nr=90 nodes_nr=1000
-INFO:  blocks for: header 1 blockmap 1 nodes 88
-INFO:  nodes per block: min (except last) 11 max (except last) 12 last 3
-INFO:  level=0: nodes 937 directed neighbor edges 10862 min neighbors 1 max neighbors 32
-INFO:  level=1: nodes 58 directed neighbor edges 426 min neighbors 2 max neighbors 16
-INFO:  level=2: nodes 5 directed neighbor edges 20 min neighbors 4 max neighbors 4
 INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------

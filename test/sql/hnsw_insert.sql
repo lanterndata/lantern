@@ -13,7 +13,7 @@ CREATE TABLE small_world (
     v REAL[2]
 );
 CREATE INDEX ON small_world USING hnsw (v) WITH (dim=3);
-SELECT _lantern_internal.validate_index('small_world_v_idx');
+SELECT _lantern_internal.validate_index('small_world_v_idx', false);
 
 -- Insert rows with valid vector data
 INSERT INTO small_world (v) VALUES ('{0,0,1}'), ('{0,1,0}');
@@ -70,7 +70,7 @@ ORDER BY
     v <-> '{0,0,0}'
 LIMIT 10;
 
-SELECT _lantern_internal.validate_index('small_world_v_idx');
+SELECT _lantern_internal.validate_index('small_world_v_idx', false);
 
 -- Test the index with a larger number of vectors
 CREATE TABLE sift_base10k (
@@ -81,4 +81,5 @@ CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v dist_l2sq_ops) WITH (M=2, ef
 \COPY sift_base10k (v) FROM '/tmp/lantern/vector_datasets/siftsmall_base_arrays.csv' WITH CSV;
 SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
 EXPLAIN (COSTS FALSE) SELECT * FROM sift_base10k order by v <-> :'v4444';
--- not calling validate_index() here because the index generation is not deterministic
+
+SELECT _lantern_internal.validate_index('hnsw_idx', false);
