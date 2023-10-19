@@ -73,6 +73,13 @@ char *ldb_HnswGetIndexFilePath(Relation index)
     return (char *)opts + opts->experimantal_index_path_offset;
 }
 
+bool ldb_HnswGetPostponeIndexBuild(Relation index)
+{
+    ldb_HnswOptions *opts = (ldb_HnswOptions *)index->rd_options;
+    if(opts) return opts->postpone_index_build;
+    return false;
+}
+
 usearch_metric_kind_t ldb_HnswGetMetricKind(Relation index)
 {
     struct catclist *proclist = SearchSysCacheList1(AMPROCNUM, ObjectIdGetDatum(index->rd_opfamily[ 0 ]));
@@ -103,13 +110,15 @@ usearch_metric_kind_t ldb_HnswGetMetricKind(Relation index)
  */
 bytea *ldb_amoptions(Datum reloptions, bool validate)
 {
-    static const relopt_parse_elt tab[]
-        = {{"dim", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, dim)},
-           {"element_limit", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, element_limit)},
-           {"m", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, m)},
-           {"ef_construction", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, ef_construction)},
-           {"ef", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, ef)},
-           {"_experimental_index_path", RELOPT_TYPE_STRING, offsetof(ldb_HnswOptions, experimantal_index_path_offset)}};
+    static const relopt_parse_elt tab[] = {
+        {"dim", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, dim)},
+        {"element_limit", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, element_limit)},
+        {"m", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, m)},
+        {"ef_construction", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, ef_construction)},
+        {"ef", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, ef)},
+        {"_experimental_index_path", RELOPT_TYPE_STRING, offsetof(ldb_HnswOptions, experimantal_index_path_offset)},
+        {"_postpone_index_build", RELOPT_TYPE_BOOL, offsetof(ldb_HnswOptions, postpone_index_build)},
+    };
 
 #if PG_VERSION_NUM >= 130000
     LDB_UNUSED(validate);
@@ -205,6 +214,15 @@ void _PG_init(void)
 #if PG_VERSION_NUM >= 130000
                          ,
                          AccessExclusiveLock
+#endif
+    );
+    add_bool_reloption(ldb_hnsw_index_withopts,
+                       "_postpone_index_build",
+                       "Whether or not to postpone creation of the index to the first insert, for empty tables",
+                       false
+#if PG_VERSION_NUM >= certain_version
+                       ,
+                       AccessExclusiveLock
 #endif
     );
     DefineCustomIntVariable("hnsw.init_k",

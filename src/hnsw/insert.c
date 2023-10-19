@@ -70,12 +70,13 @@ bool ldb_aminsert(Relation         index,
     GenericXLogState      *state;
     uint32                 new_tuple_id;
     HnswIndexTuple        *new_tuple;
+    HnswColumnType         column_type;
     usearch_init_options_t opts = {0};
     LDB_UNUSED(heap);
 #if PG_VERSION_NUM >= 140000
     LDB_UNUSED(indexUnchanged);
 #endif
-
+    
     HnswInsertState *insertstate = palloc0(sizeof(HnswInsertState));
 
     if(checkUnique != UNIQUE_CHECK_NO) {
@@ -88,7 +89,77 @@ bool ldb_aminsert(Relation         index,
     if(isnull[ 0 ]) {
         return false;
     }
-    // todo:: thre is room for optimization for when indexUnchanged is true
+    // todo:: there is room for optimization for when indexUnchanged is true
+    //elog(INFO, "RUNNING AMINSERT!");
+
+    // TODO: what if there are concurrent inserts? can that result in issues with creating this index, which we've
+    // postponed, to here?
+    // bool postponed = (indexInfo->ii_AmCache != NULL);
+    datum = PointerGetDatum(PG_DETOAST_DATUM(values[ 0 ]));
+    column_type = GetIndexColumnType(index);
+    //elog(INFO, "HEAP number of blocks: %d", RelationGetNumberOfBlocks(heap));
+
+    bool postponed = RelationGetNumberOfBlocks(index) == 0;
+
+    //elog(INFO, "INSERT: ii_AmCache address: %p\n", indexInfo->ii_AmCache);
+    //elog(INFO, "Num Blocks in insert: %d", RelationGetNumberOfBlocks(index));
+
+    if(postponed) {
+        // int ndims = GetHnswIndexDimensions(index, indexInfo);
+        int ndims = DatumGetLength(datum, column_type);
+        // TODO: test this ldb_HnswGetDim call... not sure if options will carry over
+        int index_ndims = ldb_HnswGetDim(index);
+        // TODO: check if above works... we can then only do this postponed index build stuff if no dimension was
+        // specified during index declaration
+        // int index_ndims = -1;
+        //elog(INFO, "Vector dimension specified during index creation: %d", index_ndims);
+        //elog(INFO, "ndims is : %d", ndims);
+        // elog(INFO, "From aminsert, our index_ndims is: %d", index_ndims);
+
+        if(index_ndims >= 1 && index_ndims != ndims) {
+            elog(ERROR,
+                 "Vector dimension %d of inserted vector does not match vector dimension %d specified during index "
+                 "creation.",
+                 ndims,
+                 index_ndims);
+            return false;
+        }
+
+        if(ndims < 1) {
+            // error is printed in GetHNSWIndexDimensions above
+            elog(ERROR, "ndims < 1 in insert!");
+            return false;
+        }
+
+        if(ndims > HNSW_MAX_DIM) {
+            elog(ERROR,
+                 "Vector dimension %d of inserted vector is too large. "
+                 "LanternDB currently supports up to %ddim vectors",
+                 ndims,
+                 HNSW_MAX_DIM);
+            return false;
+        }
+
+        // construct index with ndims now
+        HnswBuildState buildstate;
+        buildstate.postponed = true;
+        buildstate.dimensions = ndims;
+
+        // dont think we need this context switching stuff
+        // MemoryContext prevCtx;
+        // prevCtx = CurrentMemoryContext;
+
+        //elog(INFO, "About to call build index for the second time");
+        BuildIndex(heap, index, indexInfo, &buildstate, MAIN_FORKNUM);
+        //elog(INFO, "Finished building Index!");
+
+        // Building the index already inserted this vector since it was written to the heap prior to this AM method
+        // being called, so we can return to avoid inserting twice
+        return false;
+
+        // MemoryContextSwitchTo(prevCtx);
+        // elog(INFO, "Finished switching back to prevCtx!");
+    }
 
     insertCtx = AllocSetContextCreate(CurrentMemoryContext, "LanternInsertContext", ALLOCSET_DEFAULT_SIZES);
     oldCtx = MemoryContextSwitchTo(insertCtx);
@@ -103,7 +174,11 @@ bool ldb_aminsert(Relation         index,
     hdr = (HnswIndexHeaderPage *)PageGetContents(hdr_page);
     assert(hdr->magicNumber == LDB_WAL_MAGIC_NUMBER);
 
-    opts.dimensions = GetHnswIndexDimensions(index, indexInfo);
+    //opts.dimensions = GetHnswIndexDimensions(index, indexInfo);
+    opts.dimensions = hdr->vector_dim;
+
+    //opts.dimensions = DatumGetLength(datum, column_type);
+    //elog(INFO, "opts.dimensions in insert: %d", (int)opts.dimensions);
     CheckHnswIndexDimensions(index, values[ 0 ], opts.dimensions);
     PopulateUsearchOpts(index, &opts);
     opts.retriever_ctx = ldb_wal_retriever_area_init(index, hdr);
@@ -125,14 +200,13 @@ bool ldb_aminsert(Relation         index,
 
     insertstate->uidx = uidx;
     insertstate->retriever_ctx = opts.retriever_ctx;
-    insertstate->columnType = GetIndexColumnType(index);
+    insertstate->columnType = column_type;
 
     hdr_page = NULL;
 
     meta = usearch_metadata(uidx, &error);
     assert(!error);
 
-    datum = PointerGetDatum(PG_DETOAST_DATUM(values[ 0 ]));
     void *vector = DatumGetSizedArray(datum, insertstate->columnType, opts.dimensions);
 
 #if LANTERNDB_COPYNODES

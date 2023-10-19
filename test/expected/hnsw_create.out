@@ -77,14 +77,16 @@ CREATE TABLE small_world4 (
 );
 -- If the first row is NULL we do not infer a dimension
 \set ON_ERROR_STOP off
-CREATE INDEX ON small_world4 USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
-ERROR:  column does not have dimensions, please specify one
 begin;
+CREATE INDEX ON small_world4 USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
 INSERT INTO small_world4 (id, vector) VALUES
 ('000', NULL),
 ('001', '{1,0,0,1}');
+INFO:  done init usearch index
+INFO:  inserted 1 elements
+INFO:  done saving 1 vectors
 CREATE INDEX ON small_world4 USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
-ERROR:  column does not have dimensions, please specify one
+ERROR:  Failed to infer dimensions from non-empty table, please specify one
 rollback;
 \set ON_ERROR_STOP on
 INSERT INTO small_world4 (id, vector) VALUES

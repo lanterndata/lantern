@@ -172,6 +172,9 @@ static void hnswcostestimate(PlannerInfo *root,
     costs.numIndexTuples = estimate_number_tuples_accessed(path->indexinfo->indexoid, num_tuples_in_index);
     uint64 num_blocks_accessed
         = estimate_number_blocks_accessed(num_tuples_in_index, path->indexinfo->pages, costs.numIndexTuples);
+    // choose max{above, 1} since on a postponed index build, we will have 0 for the above quantity... this should only
+    // affect scans on empty indexes
+    num_blocks_accessed = (num_blocks_accessed > 1) ? num_blocks_accessed : 1;
 
 #if PG_VERSION_NUM >= 120000
     genericcostestimate(root, path, loop_count, &costs);
@@ -384,6 +387,19 @@ HnswColumnType GetIndexColumnType(Relation index)
     TupleDesc         indexTupDesc = RelationGetDescr(index);
     Form_pg_attribute attr = TupleDescAttr(indexTupDesc, 0);
     return GetColumnTypeFromOid(attr->atttypid);
+}
+
+int DatumGetLength(Datum datum, HnswColumnType type)
+{
+    if(type == VECTOR) {
+        Vector *vector = DatumGetVector(datum);
+        return vector->dim;
+    } else if(type == REAL_ARRAY || type == INT_ARRAY) {
+        ArrayType *array = DatumGetArrayTypePCopy(datum);
+        return ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
+    } else {
+        elog(ERROR, "Unsupported type");
+    }
 }
 
 /*

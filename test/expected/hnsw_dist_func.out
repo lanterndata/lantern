@@ -20,20 +20,20 @@ CREATE TABLE small_world_l2 (id VARCHAR(3), v REAL[]);
 CREATE TABLE small_world_cos (id VARCHAR(3), v REAL[]);
 CREATE TABLE small_world_ham (id VARCHAR(3), v INTEGER[]);
 CREATE INDEX ON small_world_l2 USING hnsw (v dist_l2sq_ops) WITH (dim=3);
-INFO:  done init usearch index
-INFO:  inserted 0 elements
-INFO:  done saving 0 vectors
 CREATE INDEX ON small_world_cos USING hnsw (v dist_cos_ops) WITH (dim=3);
-INFO:  done init usearch index
-INFO:  inserted 0 elements
-INFO:  done saving 0 vectors
 CREATE INDEX ON small_world_ham USING hnsw (v dist_hamming_ops) WITH (dim=3);
-INFO:  done init usearch index
-INFO:  inserted 0 elements
-INFO:  done saving 0 vectors
 INSERT INTO small_world_l2 SELECT id, v FROM small_world;
+INFO:  done init usearch index
+INFO:  inserted 1 elements
+INFO:  done saving 1 vectors
 INSERT INTO small_world_cos SELECT id, v FROM small_world;
+INFO:  done init usearch index
+INFO:  inserted 1 elements
+INFO:  done saving 1 vectors
 INSERT INTO small_world_ham SELECT id, ARRAY[CAST(v[1] AS INTEGER), CAST(v[2] AS INTEGER), CAST(v[3] AS INTEGER)] FROM small_world;
+INFO:  done init usearch index
+INFO:  inserted 1 elements
+INFO:  done saving 1 vectors
 SET enable_seqscan = false;
 -- Verify that the distance functions work (check distances)
 SELECT ROUND(l2sq_dist(v, '{0,1,0}')::numeric, 2) FROM small_world_l2 ORDER BY v <-> '{0,1,0}';

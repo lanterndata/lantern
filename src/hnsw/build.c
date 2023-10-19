@@ -119,7 +119,11 @@ static void BuildCallback(
     Relation index, CALLBACK_ITEM_POINTER, Datum *values, bool *isnull, bool tupleIsAlive, void *state)
 {
     HnswBuildState *buildstate = (HnswBuildState *)state;
-    MemoryContext   oldCtx;
+    if(buildstate->postponed && buildstate->reltuples > 0) {
+        return;
+    }
+    //elog(INFO, "Callback for build!");
+    MemoryContext oldCtx;
     // we can later use this for some optimizations I think
     LDB_UNUSED(tupleIsAlive);
 
@@ -257,6 +261,8 @@ static int GetArrayLengthFromHeap(Relation heap, int indexCol, IndexInfo *indexI
     return n_items;
 }
 
+// Attempts to get the number of dimensions from the index, and falls back on a heap scan to get dimensions if that
+// fails
 int GetHnswIndexDimensions(Relation index, IndexInfo *indexInfo)
 {
     HnswColumnType columnType = GetIndexColumnType(index);
@@ -308,6 +314,10 @@ void CheckHnswIndexDimensions(Relation index, Datum arrayDatum, int dimensions)
     int            n_items;
     HnswColumnType indexType = GetIndexColumnType(index);
 
+    if(dimensions == HNSW_DEFAULT_DIM) {
+        return;
+    }
+
     if(indexType == REAL_ARRAY || indexType == INT_ARRAY) {
         /* Check dimensions of vector */
         array = DatumGetArrayTypePCopy(arrayDatum);
@@ -344,19 +354,21 @@ static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation i
     buildstate->index = index;
     buildstate->indexInfo = indexInfo;
     buildstate->columnType = GetIndexColumnType(index);
-    buildstate->dimensions = GetHnswIndexDimensions(index, indexInfo);
+    if(!buildstate->postponed) {
+        buildstate->dimensions = GetHnswIndexDimensions(index, indexInfo);
+    }
     buildstate->index_file_path = ldb_HnswGetIndexFilePath(index);
 
     // If a dimension wasn't specified try to infer it
-    if(buildstate->dimensions < 1) {
+    if(buildstate->dimensions < 1 && !buildstate->postponed) {
         buildstate->dimensions = InferDimension(heap, indexInfo);
     }
     /* Require column to have dimensions to be indexed */
-    if(buildstate->dimensions < 1) elog(ERROR, "column does not have dimensions, please specify one");
+    // if(buildstate->dimensions < 1) elog(ERROR, "column does not have dimensions, please specify one");
 
     // not supported because of 8K page limit in postgres WAL pages
     // can pass this limit once quantization is supported
-    if(buildstate->dimensions > HNSW_MAX_DIM)
+    if(buildstate->dimensions > HNSW_MAX_DIM && !buildstate->postponed)
         elog(ERROR,
              "vector dimension %d is too large. "
              "LanternDB currently supports up to %ddim vectors",
@@ -408,14 +420,35 @@ static void ScanTable(HnswBuildState *buildstate)
 /*
  * Build the index
  */
-static void BuildIndex(
-    Relation heap, Relation index, IndexInfo *indexInfo, HnswBuildState *buildstate, ForkNumber forkNum)
+void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, HnswBuildState *buildstate, ForkNumber forkNum)
 {
     usearch_error_t        error = NULL;
     usearch_init_options_t opts;
     MemSet(&opts, 0, sizeof(opts));
+    bool empty_table = RelationGetNumberOfBlocks(heap) == 0;
 
     InitBuildState(buildstate, heap, index, indexInfo);
+
+    if(buildstate->dimensions < 1 && !empty_table && !buildstate->postponed) {
+        elog(ERROR, "Failed to infer dimensions from non-empty table, please specify one");
+        return;
+    }
+
+    if(empty_table && !buildstate->postponed) {
+        // Postpone creation of index until first insert, where we can get dimension from that inserted vector and build
+        // the index with the right dimension buildstate has enough information at this point to return in original
+        // am_build
+        // TODO: we can only do this if there is no dimension specified in the options(cant be inferred) but that would
+        // require us passing that state to aminsert so we only build index
+        // elog(INFO, "Since table is empty, postponing creation of index until first insert");
+        // we use indexInfo->AmCache to store this (since it's a void* we can check if it's NULL to encode the boolean
+        // value of whether we're postponing or not)
+        // elog(INFO, "BUILD, before setting it to true! ii_AmCache address: %p\n", indexInfo->ii_AmCache);
+        indexInfo->ii_AmCache = (void *)1;
+        // elog(INFO, "BUILD, after setting it to true! ii_AmCache address: %p\n", indexInfo->ii_AmCache);
+        return;
+    }
+
     opts.dimensions = buildstate->dimensions;
     PopulateUsearchOpts(index, &opts);
 
@@ -424,7 +457,8 @@ static void BuildIndex(
     assert(error == NULL);
 
     buildstate->hnsw = NULL;
-    if(buildstate->index_file_path) {
+    if(buildstate->index_file_path && !buildstate->postponed) {
+        //elog(INFO, "using index file path to creat index!");
         if(access(buildstate->index_file_path, F_OK) != 0) {
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), errmsg("Invalid index file path ")));
         }
@@ -444,7 +478,7 @@ static void BuildIndex(
     } else {
         BlockNumber numBlocks = RelationGetNumberOfBlocks(heap);
         uint32_t    estimated_row_count = 0;
-        if(numBlocks > 0) {
+        if(numBlocks > 0 && !buildstate->postponed) {
             // Read the first block
             Buffer buffer = ReadBufferExtended(heap, MAIN_FORKNUM, 0, RBM_NORMAL, NULL);
             // Lock buffer so there won't be any new writes during this operation
@@ -476,10 +510,14 @@ static void BuildIndex(
         }
 
         UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_IN_MEMORY_INSERT);
-        LanternBench("build hnsw index", ScanTable(buildstate));
-
+        // if(!empty_table && !buildstate->postponed) {
+        //elog(INFO, "Before ScanTable");
+        LanternBench("build hnsw index",
+                     ScanTable(buildstate));  // can we get away with not calling this on an empty table?
+        //elog(INFO, "After ScanTable");
         elog(INFO, "inserted %ld elements", usearch_size(buildstate->usearch_index, &error));
         assert(error == NULL);
+        //elog(INFO, "After assertion for ScanTable");
     }
 
     char *result_buf = NULL;
@@ -512,6 +550,7 @@ IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInf
 {
     IndexBuildResult *result;
     HnswBuildState    buildstate;
+    buildstate.postponed = false;
 
     BuildIndex(heap, index, indexInfo, &buildstate, MAIN_FORKNUM);
 

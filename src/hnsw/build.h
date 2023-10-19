@@ -2,6 +2,7 @@
 #define LDB_HNSW_BUILD_H
 
 #include <access/genam.h>
+#include <common/relpath.h>
 #include <nodes/execnodes.h>
 #include <utils/relcache.h>
 
@@ -20,6 +21,7 @@ typedef struct HnswBuildState
     int            dimensions;
     HnswColumnType columnType;
     char          *index_file_path;
+    bool           postponed;
 
     /* Statistics */
     double tuples_indexed;
@@ -36,6 +38,7 @@ typedef struct HnswBuildState
 IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInfo);
 void              ldb_ambuildunlogged(Relation index);
 int               GetHnswIndexDimensions(Relation index, IndexInfo *indexInfo);
-void              CheckHnswIndexDimensions(Relation index, Datum arrayDatum, int deimensions);
+void              CheckHnswIndexDimensions(Relation index, Datum arrayDatum, int dimensions);
+void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, HnswBuildState *buildstate, ForkNumber forkNum);
 // todo: does this render my check unnecessary
 #endif  // LDB_HNSW_BUILD_H
