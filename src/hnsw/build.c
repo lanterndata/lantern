@@ -363,8 +363,6 @@ static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation i
     if(buildstate->dimensions < 1 && !buildstate->postponed) {
         buildstate->dimensions = InferDimension(heap, indexInfo);
     }
-    /* Require column to have dimensions to be indexed */
-    // if(buildstate->dimensions < 1) elog(ERROR, "column does not have dimensions, please specify one");
 
     // not supported because of 8K page limit in postgres WAL pages
     // can pass this limit once quantization is supported
@@ -501,6 +499,7 @@ void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, HnswBuildSt
 
         UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_IN_MEMORY_INSERT);
         LanternBench("build hnsw index", ScanTable(buildstate));
+
         elog(INFO, "inserted %ld elements", usearch_size(buildstate->usearch_index, &error));
         assert(error == NULL);
     }

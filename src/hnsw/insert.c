@@ -76,6 +76,7 @@ bool ldb_aminsert(Relation         index,
 #if PG_VERSION_NUM >= 140000
     LDB_UNUSED(indexUnchanged);
 #endif
+
     HnswInsertState *insertstate = palloc0(sizeof(HnswInsertState));
 
     if(checkUnique != UNIQUE_CHECK_NO) {
@@ -101,17 +102,6 @@ bool ldb_aminsert(Relation         index,
     // TODO: what if there are concurrent inserts? can that result in issues with creating this postponed index?
     if(postponed) {
         int ndims = DatumGetLength(datum, column_type);
-
-        /*
-        if(index_ndims_exists && index_ndims != ndims) {
-            elog(ERROR,
-                 "Vector dimension %d of inserted vector does not match vector dimension %d specified during index "
-                 "creation.",
-                 ndims,
-                 index_ndims);
-            return false;
-        }
-        */
 
         if(ndims < 1) {
             elog(ERROR, "Could not identify dimension of inserted vector!");
