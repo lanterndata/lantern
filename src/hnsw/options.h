@@ -40,11 +40,6 @@ typedef struct ldb_HnswOptions
     int   ef_construction;
     int   ef;
     int   experimantal_index_path_offset;
-
-    // whether we postpone the process of building the index on the first insert, when the table is empty
-    // this is done for user convenience so that we can get the dimension from the first insert, and user thus doesn't
-    // have to specify the dimension in the create index clause
-    bool postpone_index_build;
 } ldb_HnswOptions;
 
 int                   ldb_HnswGetDim(Relation index);

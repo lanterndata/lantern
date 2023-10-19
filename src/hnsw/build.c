@@ -119,10 +119,14 @@ static void BuildCallback(
     Relation index, CALLBACK_ITEM_POINTER, Datum *values, bool *isnull, bool tupleIsAlive, void *state)
 {
     HnswBuildState *buildstate = (HnswBuildState *)state;
+    // If this is a postponed index build, we only want to read the first tuple and build the index from that. This is
+    // relevant when we have postponed an index build (on an empty table) and then the first insert occurs as part of a
+    // batch (like \COPY from a csv file). When this happens, the batch of tuples will be in the heap by the time the
+    // first aminsert runs, and we only want to build the index with the first tuple since aminsert will return for only
+    // that tuple. All the other tuples will subsequently be inserted normally via aminsert after this
     if(buildstate->postponed && buildstate->reltuples > 0) {
         return;
     }
-    //elog(INFO, "Callback for build!");
     MemoryContext oldCtx;
     // we can later use this for some optimizations I think
     LDB_UNUSED(tupleIsAlive);
@@ -261,8 +265,8 @@ static int GetArrayLengthFromHeap(Relation heap, int indexCol, IndexInfo *indexI
     return n_items;
 }
 
-// Attempts to get the number of dimensions from the index, and falls back on a heap scan to get dimensions if that
-// fails
+// Attempts to get the number of dimensions from the index, and if that fails, falls back on a heap scan to fetch the
+// first tuple, and get the length of the vector from that tuple
 int GetHnswIndexDimensions(Relation index, IndexInfo *indexInfo)
 {
     HnswColumnType columnType = GetIndexColumnType(index);
@@ -313,10 +317,6 @@ void CheckHnswIndexDimensions(Relation index, Datum arrayDatum, int dimensions)
     ArrayType     *array;
     int            n_items;
     HnswColumnType indexType = GetIndexColumnType(index);
-
-    if(dimensions == HNSW_DEFAULT_DIM) {
-        return;
-    }
 
     if(indexType == REAL_ARRAY || indexType == INT_ARRAY) {
         /* Check dimensions of vector */
@@ -435,17 +435,8 @@ void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, HnswBuildSt
     }
 
     if(empty_table && !buildstate->postponed) {
-        // Postpone creation of index until first insert, where we can get dimension from that inserted vector and build
-        // the index with the right dimension buildstate has enough information at this point to return in original
-        // am_build
-        // TODO: we can only do this if there is no dimension specified in the options(cant be inferred) but that would
-        // require us passing that state to aminsert so we only build index
-        // elog(INFO, "Since table is empty, postponing creation of index until first insert");
-        // we use indexInfo->AmCache to store this (since it's a void* we can check if it's NULL to encode the boolean
-        // value of whether we're postponing or not)
-        // elog(INFO, "BUILD, before setting it to true! ii_AmCache address: %p\n", indexInfo->ii_AmCache);
-        indexInfo->ii_AmCache = (void *)1;
-        // elog(INFO, "BUILD, after setting it to true! ii_AmCache address: %p\n", indexInfo->ii_AmCache);
+        // Postpone creation of the index until the first insert, where we can get the dimension from that inserted
+        // vector and then build the index with that dimension
         return;
     }
 
@@ -458,7 +449,6 @@ void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, HnswBuildSt
 
     buildstate->hnsw = NULL;
     if(buildstate->index_file_path && !buildstate->postponed) {
-        //elog(INFO, "using index file path to creat index!");
         if(access(buildstate->index_file_path, F_OK) != 0) {
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), errmsg("Invalid index file path ")));
         }
@@ -510,14 +500,9 @@ void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, HnswBuildSt
         }
 
         UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_IN_MEMORY_INSERT);
-        // if(!empty_table && !buildstate->postponed) {
-        //elog(INFO, "Before ScanTable");
-        LanternBench("build hnsw index",
-                     ScanTable(buildstate));  // can we get away with not calling this on an empty table?
-        //elog(INFO, "After ScanTable");
+        LanternBench("build hnsw index", ScanTable(buildstate));
         elog(INFO, "inserted %ld elements", usearch_size(buildstate->usearch_index, &error));
         assert(error == NULL);
-        //elog(INFO, "After assertion for ScanTable");
     }
 
     char *result_buf = NULL;

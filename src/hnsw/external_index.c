@@ -368,7 +368,6 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
     // allocate buffer to construct the new node
     // note that we allocate more than sizeof(HnswIndexTuple) since the struct has a flexible array member
     // which depends on parameters passed into UsearchNodeBytes above
-    // TODO: this palloc is throwing an error
     alloced_tuple = (HnswIndexTuple *)palloc0(sizeof(HnswIndexTuple) + new_tuple_size);
     alloced_tuple->id = new_tuple_id;
     alloced_tuple->level = new_tuple_level;

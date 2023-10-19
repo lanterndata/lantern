@@ -389,6 +389,9 @@ HnswColumnType GetIndexColumnType(Relation index)
     return GetColumnTypeFromOid(attr->atttypid);
 }
 
+/*
+ * Returns length of vector from datum
+ */
 int DatumGetLength(Datum datum, HnswColumnType type)
 {
     if(type == VECTOR) {
@@ -400,6 +403,7 @@ int DatumGetLength(Datum datum, HnswColumnType type)
     } else {
         elog(ERROR, "Unsupported type");
     }
+    return -1;
 }
 
 /*
