@@ -118,9 +118,9 @@ static void ldb_vi_read_blockmaps(Relation             index,
 {
     /* TODO the outer loop math is mostly copy-pasted from StoreExternalIndex() */
     uint32 blockmap_groupno = 0;
-    int    group_node_first_index = 0;
+    uint32 group_node_first_index = 0;
     uint32 nodes_remaining = nodes_nr;
-    int    batch_size = HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
+    uint32 batch_size = HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
 
     if(blocks_nr == 0) return;
     vi_blocks[ 0 ].vp_type = LDB_VI_BLOCK_HEADER;
