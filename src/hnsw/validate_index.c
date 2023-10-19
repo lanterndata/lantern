@@ -542,8 +542,8 @@ static void ldb_vi_print_statistics(struct ldb_vi_block *vi_blocks,
     }
     for(uint32 level = 0; level <= max_level; ++level) {
         elog(INFO,
-             "level=%" PRIu32 ": nodes %" PRIu32 " directed neighbor edges %" PRIu64
-             " "
+             "level=%" PRIu32 ": nodes %" PRIu32
+             " directed neighbor edges %lu "
              "min neighbors %" PRIu32 " max neighbors %" PRIu32,
              level,
              nodes_per_level[ level ],
