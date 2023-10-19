@@ -2,7 +2,7 @@
 
 #include "hnsw/validate_index.h"
 
-#include <access/relation.h> /* relation_open */
+#include <access/heapam.h>   /* relation_open */
 #include <assert.h>          /* assert */
 #include <catalog/index.h>   /* IndexGetRelation */
 #include <inttypes.h>        /* PRIu32 */
