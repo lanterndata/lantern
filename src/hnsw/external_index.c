@@ -24,7 +24,7 @@
 #include <miscadmin.h>
 #endif
 
-static BlockNumber getBlockMapPageBlockNumber(uint32 *blockmap_page_group_index, int id);
+static BlockNumber getBlockMapPageBlockNumber(const HnswBlockMapGroupDesc *blockmap_groups, int id);
 
 uint32 UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, int level)
 {
@@ -54,57 +54,221 @@ static char *extract_node(char               *data,
     return tape;
 }
 
-int CreateBlockMapGroup(
-    HnswIndexHeaderPage *hdr, Relation index, ForkNumber forkNum, int first_node_index, int blockmap_groupno)
+static BlockNumber NumberOfBlockMapsInGroup(unsigned groupno)
 {
-    // Create empty blockmap pages for the group
-    const int    number_of_blockmaps_in_group = 1 << blockmap_groupno;
-    OffsetNumber inserted_at = InvalidOffsetNumber;
-    assert(hdr != NULL);
+    assert(groupno < HNSW_MAX_BLOCKMAP_GROUPS);
 
-    for(int blockmap_id = 0; blockmap_id < number_of_blockmaps_in_group; ++blockmap_id) {
-        GenericXLogState *state = GenericXLogStart(index);
-        Buffer            buf = ReadBufferExtended(index, forkNum, P_NEW, RBM_NORMAL, NULL);
+    return 1u << groupno;
+}
+
+static bool BlockMapGroupIsFullyInitialized(HnswIndexHeaderPage *hdr, unsigned groupno)
+{
+    assert(groupno < HNSW_MAX_BLOCKMAP_GROUPS);
+
+    return hdr->blockmap_groups[ groupno ].blockmaps_initialized == NumberOfBlockMapsInGroup(groupno);
+}
+
+static uint32 BlockMapGroupFirstNodeIndex(unsigned groupno)
+{
+    uint32 first_node_index = 0;
+
+    if(groupno == 0) return 0;
+    for(unsigned i = 0; i < groupno - 1; ++i) first_node_index += NumberOfBlockMapsInGroup(i);
+    return first_node_index;
+}
+
+static bool AreEnoughBlockMapsForTupleId(uint32 blockmap_groups_nr, uint32 tuple_id)
+{
+    // new_tuple_id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE + 1 is kth blockmap
+    // we check if k is more than already created 2^groups
+    return tuple_id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE + 1 < ((uint32)1 << blockmap_groups_nr);
+}
+
+/*
+ * Updates HnswBlockMapGroupDesc for groupno in the HnswIndexHeaderPage.
+ * The header is fsynced to the WAL after this function returns if flush_log is true.
+ * Assumes that the header (block 0) buffer is locked.
+ *
+ * In the current use cases the header page is added to a WAL record somewhere
+ * up the call stack, so the changes made here must be duplicated to the
+ * HnswIndexHeaderPage in that header page, otherwise they would be overwritten
+ * when that WAL record up the stack is written to the log.
+ */
+static void UpdateHeaderBlockMapGroupDesc(
+    Relation index, ForkNumber forkNum, unsigned groupno, const HnswBlockMapGroupDesc *desc, bool flush_log)
+{
+    GenericXLogState    *state;
+    BlockNumber          HEADER_BLOCK = 0;
+    Page                 hdr_page;
+    Buffer               hdr_buf;
+    HnswIndexHeaderPage *hdr_copy;
+    XLogRecPtr           log_rec_ptr;
+
+    state = GenericXLogStart(index);
+    /* no need to look the buffer because it's the header (block 0) and it's locked already) */
+    hdr_buf = ReadBufferExtended(index, forkNum, HEADER_BLOCK, RBM_NORMAL, NULL);
+    hdr_page = GenericXLogRegisterBuffer(state, hdr_buf, LDB_GENERIC_XLOG_DELTA_IMAGE);
+
+    hdr_copy = (HnswIndexHeaderPage *)PageGetContents(hdr_page);
+    assert(groupno < lengthof(hdr_copy->blockmap_groups));
+
+    hdr_copy->blockmap_groups_nr = groupno + 1;
+
+    hdr_copy->blockmap_groups[ groupno ] = *desc;
+
+    log_rec_ptr = GenericXLogFinish(state);
+    assert(log_rec_ptr != InvalidXLogRecPtr);
+    if(flush_log) XLogFlush(log_rec_ptr);
+    ReleaseBuffer(hdr_buf);
+}
+
+/*
+ * Continue and finish the initialization of a blockmap group.
+ * If the initialization hasn't been started, then the initialization is started.
+ * When this function is called a BUFFER_LOCK_EXCLUSIVE is supposed to be taken on the block 0 (header block).
+ * When this function returns the block maps of the group are fully initialized.
+ *
+ *          HnswBlockMapGroupDesc
+ * first_block          blockmaps_initialized       meaning
+ * InvalidBlockNumber   0                           The blockmap group initialization hasn't started.
+ * <block number>       0                           The blockmap group initialization has started, but
+ *                                                  no blockmaps has been initialized. It's possible that
+ *                                                  the block allocation for the group hasn't finished.
+ * <block number>       >0                          Some blockmaps were initialized.
+ * <block number>       NumberOfBlockMapsInGroup()  The blockmap group had been fully initialized.
+ *
+ * The process restarts during the blockmap creation are handled in the following way:
+ * - there are only 2 cases to modify the index in the code right now: index
+ *   creation and insert. If there are more cases the new code MUST do the
+ *   BlockMapGroupIsFullyInitialized() check and then call
+ *   ContinueBlockMapGroupInitialization if the blockmap group is not fully
+ *   initialized (similar to how PrepareIndexTuple() currently does it);
+ * - if the process restart happens during the index creation there is no code
+ *   currently to continue an index creation after crash, so this function
+ *   doesn't do anything special about it and just handles it as usual;
+ * - if the process restart happens during the insert it might be possible that
+ *   the blockmap group initialization hasn't been completed (and it could only
+ *   happen to one group, which is the last one). We're considering the state
+ *   of the blockmap group initialization after WAL replay after restart. The
+ *   following cases are possible:
+ *
+ *   - the first header update WAL record (which sets HnswBlockMapGroupDesc.first_block
+ *     for the group) hasn't been replayed. It means that
+ *     ContinueBlockMapGroupInitialization() will start from the first header
+ *     update and then continue as usual;
+ *   - the first header update WAL record was replayed, but the block
+ *     allocation for the index hasn't been finished. It will be detected by
+ *     non-InvalidBlockNumber value in the first_block and a size check for the
+ *     index relation. This case will be handled by finishing the block
+ *     allocations and then continuing as usual;
+ *   - blockmap pages initialization hasn't been complete. In this case the
+ *     HnswBlockMapGroupDesc.blockmaps_initialized will be used as the first
+ *     blockmap page to continue the initialization from. This value is updated
+ *     in the header approximately every HNSW_BLOCKMAP_UPDATE_HEADER_EVERY
+ *     initialized blockmap pages.
+ *
+ * - in case of failure during WAL replay we're relying on PostgreSQL to
+ *   correctly recover the WAL on subsequent restart;
+ * - in case of a failure in this function when it's continuing interrupted
+ *   blockmap group initialization the subsequent run of this function after
+ *   the restart will correctly continue from the nearest place it could
+ *   continue from.
+ *
+ * Important note: This function creates a WAL record to update
+ * HnswIndexHeaderPage.blockmap_groups and
+ * HnswIndexHeaderPage.blockmap_groups_nr in the header page. Therefore it has
+ * to update the same fields in the memory pointed to by hdr parameter, because
+ * the header page is added to a WAL record somewhere on the higher level and
+ * that WAL record would be GenericXLogFinish()ed after the header updates
+ * here, so whatever is written to the header page here directly would be
+ * overwritten.
+ */
+static void ContinueBlockMapGroupInitialization(
+    HnswIndexHeaderPage *hdr, Relation index, ForkNumber forkNum, uint32 first_node_index, unsigned groupno)
+{
+    GenericXLogState            *state;
+    BlockNumber                  blockmaps_in_group = NumberOfBlockMapsInGroup(groupno);
+    const HnswBlockMapGroupDesc *group_desc;
+    HnswBlockmapPage            *blockmap_page;
+    unsigned                     pages_in_xlog_state;
+    Buffer                       bufs[ MAX_GENERIC_XLOG_PAGES ];
+    Buffer                       buf;
+    Page                         page;
+    HnswIndexPageSpecialBlock   *special;
+    OffsetNumber                 inserted_at;
+
+    assert(groupno < HNSW_MAX_BLOCKMAP_GROUPS);
+
+    if(hdr->blockmap_groups[ groupno ].first_block == InvalidBlockNumber) {
+        assert(hdr->blockmap_groups[ groupno ].blockmaps_initialized == 0);
+        hdr->blockmap_groups[ groupno ].first_block = RelationGetNumberOfBlocksInFork(index, forkNum);
+        assert(groupno == hdr->blockmap_groups_nr);
+        hdr->blockmap_groups_nr = groupno + 1;
+        UpdateHeaderBlockMapGroupDesc(index, forkNum, groupno, &hdr->blockmap_groups[ groupno ], true);
+    }
+    assert(hdr->blockmap_groups_nr == groupno + 1);
+
+    group_desc = &hdr->blockmap_groups[ groupno ];
+    if(group_desc->blockmaps_initialized == 0
+       && group_desc->first_block + blockmaps_in_group > RelationGetNumberOfBlocksInFork(index, forkNum)) {
+        buf = ExtendBufferedRelTo(BMR_REL(index),
+                                  forkNum,
+                                  NULL,
+                                  EB_CLEAR_SIZE_CACHE,
+                                  group_desc->first_block + blockmaps_in_group,
+                                  RBM_NORMAL);
+        assert(group_desc->first_block + blockmaps_in_group - 1 == BufferGetBlockNumber(buf));
+        ReleaseBuffer(buf);
+    }
+    assert(group_desc->first_block + blockmaps_in_group <= RelationGetNumberOfBlocksInFork(index, forkNum));
+
+    blockmap_page = palloc0(sizeof(*blockmap_page));
+    pages_in_xlog_state = 0;
+    for(uint32 blockmap_id = group_desc->blockmaps_initialized; blockmap_id < blockmaps_in_group; ++blockmap_id) {
+        if(pages_in_xlog_state == 0) state = GenericXLogStart(index);
+
+        buf = ReadBufferExtended(index, forkNum, group_desc->first_block + blockmap_id, RBM_NORMAL, NULL);
         LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 
-        if(blockmap_id == 0) {
-            hdr->blockmap_page_groups = blockmap_groupno;
-            hdr->blockmap_page_group_index[ blockmap_groupno ] = BufferGetBlockNumber(buf);
-        }
-
-        Page page = GenericXLogRegisterBuffer(state, buf, GENERIC_XLOG_FULL_IMAGE);
+        page = GenericXLogRegisterBuffer(state, buf, GENERIC_XLOG_FULL_IMAGE);
         PageInit(page, BufferGetPageSize(buf), sizeof(HnswIndexPageSpecialBlock));
 
-        HnswIndexPageSpecialBlock *special = (HnswIndexPageSpecialBlock *)PageGetSpecialPointer(page);
+        special = (HnswIndexPageSpecialBlock *)PageGetSpecialPointer(page);
         special->firstId = first_node_index + blockmap_id * HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
-        special->nextblockno = InvalidBlockNumber;
+        special->lastId = special->firstId + HNSW_BLOCKMAP_BLOCKS_PER_PAGE - 1;
+        /* TODO nextblockno is incorrect for the last blockmap in the group */
+        special->nextblockno = group_desc->first_block + blockmap_id + 1;
 
-        HnswBlockmapPage *blockmap = palloc0(BLCKSZ);
-        blockmap->first_id = first_node_index + blockmap_id * HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
-
+        blockmap_page->first_id = first_node_index + blockmap_id * HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
         // we always add a single Blockmap page per Index page which has a fixed size that
         // always fits in postgres wal page. So this should never happen
         // (Assumes 8k BLKSZ. we can make HnswBlockmapPage size configurable by BLCKSZ)
-        inserted_at = PageAddItem(page, (Item)blockmap, sizeof(HnswBlockmapPage), InvalidOffsetNumber, false, false);
+        inserted_at = PageAddItem(page, (Item)blockmap_page, sizeof(*blockmap_page), InvalidOffsetNumber, false, false);
         ldb_invariant(inserted_at != InvalidOffsetNumber, "could not add blockmap to page %d", inserted_at);
 
-        special->lastId = first_node_index + (blockmap_id + 1) * HNSW_BLOCKMAP_BLOCKS_PER_PAGE - 1;
-        special->nextblockno = BufferGetBlockNumber(buf) + 1;
+        bufs[ pages_in_xlog_state++ ] = buf;
 
-        // GenericXLogFinish also calls MarkBufferDirty(buf)
-        GenericXLogFinish(state);
-        UnlockReleaseBuffer(buf);
-        // GenericXLog allows registering up to 4 buffers at a time. So, we cannot set up large BlockMapGroups
-        // in a single WAL entry. If we could, we would start the generic Xlog record before the for loop and commit
-        // all changes as a whole in the end of this function.
-        // Because now all changes do not happen atomically, we probably need to use some other mechanism to make
-        // sure we do not corrupt the index in case of a crash in the middle of a BlockMapGroup creation.
+        if(pages_in_xlog_state == MAX_GENERIC_XLOG_PAGES || blockmap_id == blockmaps_in_group - 1) {
+            bool update_header = false;
+
+            // GenericXLogFinish also calls MarkBufferDirty(buf)
+            GenericXLogFinish(state);
+            for(unsigned i = 0; i < pages_in_xlog_state; ++i) {
+                UnlockReleaseBuffer(bufs[ i ]);
+                if(((blockmap_id - pages_in_xlog_state + 1 + i) % HNSW_BLOCKMAP_UPDATE_HEADER_EVERY) == 0)
+                    update_header = true;
+            }
+            if(update_header || blockmap_id == blockmaps_in_group - 1) {
+                hdr->blockmap_groups[ groupno ].blockmaps_initialized = blockmap_id + 1;
+                UpdateHeaderBlockMapGroupDesc(
+                    index, forkNum, groupno, &hdr->blockmap_groups[ groupno ], blockmap_id == blockmaps_in_group - 1);
+            }
+            pages_in_xlog_state = 0;
+        }
     }
-
+    pfree(blockmap_page);
     // it is possible that usearch asks for a newly added node from this blockmap range
     // we need to make sure the global header has this information
-
-    return number_of_blockmaps_in_group;
 }
 
 void StoreExternalIndexBlockMapGroup(Relation             index,
@@ -114,12 +278,13 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
                                      char                *data,
                                      uint64              *progress,
                                      int                  dimension,
-                                     int                  first_node_index,
-                                     size_t               num_added_vectors,
-                                     int                  blockmap_groupno)
+                                     uint32               first_node_index,
+                                     uint32               num_added_vectors,
+                                     unsigned             blockmap_groupno)
 {
-    const int number_of_blockmaps_in_group
-        = CreateBlockMapGroup(headerp, index, forkNum, first_node_index, blockmap_groupno);
+    const uint32 number_of_blockmaps_in_group = NumberOfBlockMapsInGroup(blockmap_groupno);
+
+    ContinueBlockMapGroupInitialization(headerp, index, forkNum, first_node_index, blockmap_groupno);
 
     // Now add nodes to data pages
     char        *node = 0;
@@ -222,10 +387,10 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
     headerp->last_data_block = last_block;
 
     // Update blockmap pages with correct associations
-    for(int blockmap_id = 0; blockmap_id < number_of_blockmaps_in_group; ++blockmap_id) {
-        // When the blockmap page group was created, header block was updated accordingly in CreateBlockMapGroup
-        // call above.
-        const BlockNumber blockmapno = blockmap_id + headerp->blockmap_page_group_index[ blockmap_groupno ];
+    for(uint32 blockmap_id = 0; blockmap_id < number_of_blockmaps_in_group; ++blockmap_id) {
+        // When the blockmap page group was created, header block was updated accordingly in
+        // ContinueBlockMapGroupInitialization call above.
+        const BlockNumber blockmapno = blockmap_id + headerp->blockmap_groups[ blockmap_groupno ].first_block;
         Buffer            buf = ReadBufferExtended(index, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
         LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 
@@ -271,20 +436,26 @@ void StoreExternalIndex(Relation                index,
     headerp->metric_kind = opts->metric_kind;
 
     headerp->num_vectors = num_added_vectors;
-    headerp->blockmap_page_groups = 0;
-    MemSet(headerp->blockmap_page_group_index, 0, HNSW_MAX_BLOCKMAP_GROUPS);
-    // headerp->blockmap_page_group_index and blockmap_page_groups are
+    headerp->blockmap_groups_nr = 0;
+
+    for(uint32 i = 0; i < lengthof(headerp->blockmap_groups); ++i) {
+        headerp->blockmap_groups[ i ] = (HnswBlockMapGroupDesc){
+            .first_block = InvalidBlockNumber,
+            .blockmaps_initialized = 0,
+        };
+    }
+    // headerp->blockmap_groups and blockmap_groups_nr are
     // updated in a separate wal entry
-    headerp->last_data_block = -1;
+    headerp->last_data_block = InvalidBlockNumber;
 
     memcpy(headerp->usearch_header, data, USEARCH_HEADER_SIZE);
     ((PageHeader)header_page)->pd_lower = ((char *)headerp + sizeof(HnswIndexHeaderPage)) - (char *)header_page;
 
-    uint64 progress = USEARCH_HEADER_SIZE;  // usearch header size
-    int    blockmap_groupno = 0;
-    int    group_node_first_index = 0;
-    int    num_added_vectors_remaining = (int)num_added_vectors;
-    int    batch_size = HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
+    uint64   progress = USEARCH_HEADER_SIZE;  // usearch header size
+    unsigned blockmap_groupno = 0;
+    uint32   group_node_first_index = 0;
+    uint32   num_added_vectors_remaining = num_added_vectors;
+    uint32   batch_size = HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
     while(num_added_vectors_remaining > 0) {
         StoreExternalIndexBlockMapGroup(index,
                                         external_index,
@@ -296,7 +467,7 @@ void StoreExternalIndex(Relation                index,
                                         group_node_first_index,
                                         Min(num_added_vectors_remaining, batch_size),
                                         blockmap_groupno);
-        num_added_vectors_remaining -= batch_size;
+        num_added_vectors_remaining -= Min(num_added_vectors_remaining, batch_size);
         group_node_first_index += batch_size;
         batch_size = batch_size * 2;
         blockmap_groupno++;
@@ -350,6 +521,14 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
                                   uint32               new_tuple_level,
                                   HnswInsertState     *insertstate)
 {
+    if(hdr->blockmap_groups_nr > 0) {
+        unsigned last_blockmap_group = hdr->blockmap_groups_nr - 1;
+
+        if(!BlockMapGroupIsFullyInitialized(hdr, last_blockmap_group)) {
+            ContinueBlockMapGroupInitialization(
+                hdr, index_rel, MAIN_FORKNUM, BlockMapGroupFirstNodeIndex(last_blockmap_group), last_blockmap_group);
+        }
+    }
     // if any data blocks exist, the last one's buffer will be read into this
     Buffer last_dblock = InvalidBuffer;
     // if a new data buffer is created for the inserted vector, it will be stored here
@@ -377,7 +556,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
      *  (create new page if necessary) ***/
 
     if(hdr->last_data_block == InvalidBlockNumber) {
-        CreateBlockMapGroup(hdr, index_rel, MAIN_FORKNUM, 0, 0);
+        ContinueBlockMapGroupInitialization(hdr, index_rel, MAIN_FORKNUM, 0, 0);
         new_dblock = ReadBufferExtended(index_rel, MAIN_FORKNUM, P_NEW, RBM_NORMAL, NULL);
         LockBuffer(new_dblock, BUFFER_LOCK_EXCLUSIVE);
         new_vector_blockno = BufferGetBlockNumber(new_dblock);
@@ -405,9 +584,8 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
 
         assert(last_dblock != InvalidBuffer);
 
-        const uint32 blockmaps_are_enough
-            = new_tuple_id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE + 1 < ((uint32)1 << (hdr->blockmap_page_groups + 1));
-        if(PageGetFreeSpace(page) > sizeof(HnswIndexTuple) + alloced_tuple->size && blockmaps_are_enough) {
+        if(PageGetFreeSpace(page) > sizeof(HnswIndexTuple) + alloced_tuple->size
+           && AreEnoughBlockMapsForTupleId(hdr->blockmap_groups_nr, new_tuple_id)) {
             // there is enough space in the last page to fit the new vector
             // so we just append it to the page
             ldb_dlog("InsertBranching: we adding element to existing page");
@@ -430,10 +608,10 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
             // page creation.
 
             // check the count of blockmaps, see if there's place to add the block id, if yes add, if no create a
-            // new group check if already existing blockmaps are not enough new_tuple_id /
-            // HNSW_BLOCKMAP_BLOCKS_PER_PAGE + 1 is kth blockmap we check if k is more than already created 2^groups
-            if(new_tuple_id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE + 1 >= ((uint32)1 << (hdr->blockmap_page_groups + 1))) {
-                CreateBlockMapGroup(hdr, index_rel, MAIN_FORKNUM, new_tuple_id, hdr->blockmap_page_groups + 1);
+            // new group check if already existing blockmaps are not enough
+            if(!AreEnoughBlockMapsForTupleId(hdr->blockmap_groups_nr, new_tuple_id)) {
+                ContinueBlockMapGroupInitialization(
+                    hdr, index_rel, MAIN_FORKNUM, new_tuple_id, hdr->blockmap_groups_nr);
             }
 
             new_dblock = ReadBufferExtended(index_rel, MAIN_FORKNUM, P_NEW, RBM_NORMAL, NULL);
@@ -471,7 +649,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
     page = NULL;  // to avoid its accidental use
     /*** Update pagemap with the information of the added page ***/
     {
-        BlockNumber       blockmapno = getBlockMapPageBlockNumber(hdr->blockmap_page_group_index, new_tuple_id);
+        BlockNumber       blockmapno = getBlockMapPageBlockNumber(&hdr->blockmap_groups[ 0 ], new_tuple_id);
         Page              blockmap_page;
         HnswBlockmapPage *blockmap;
         int               max_offset;
@@ -504,7 +682,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
     return new_tup_ref;
 }
 
-static BlockNumber getBlockMapPageBlockNumber(uint32 *blockmap_page_group_index, int id)
+static BlockNumber getBlockMapPageBlockNumber(const HnswBlockMapGroupDesc *blockmap_groups, int id)
 {
     assert(id >= 0);
     // Trust me, I'm an engineer!
@@ -512,16 +690,16 @@ static BlockNumber getBlockMapPageBlockNumber(uint32 *blockmap_page_group_index,
     int k;
     for(k = 0; id >= (1 << k); ++k) {
     }
-    return blockmap_page_group_index[ k - 1 ] + (id - (1 << (k - 1)));
+    assert(blockmap_groups[ k - 1 ].first_block != InvalidBlockNumber);
+    return blockmap_groups[ k - 1 ].first_block + (id - (1 << (k - 1)));
 }
 
 BlockNumber getDataBlockNumber(RetrieverCtx *ctx, int id, bool add_to_extra_dirtied)
 {
-    HTABCache        *cache = &ctx->block_numbers_cache;
-    uint32           *blockmap_group_index = ctx->header_page_under_wal != NULL
-                                                 ? ctx->header_page_under_wal->blockmap_page_group_index
-                                                 : ctx->blockmap_page_group_index_cache;
-    BlockNumber       blockmapno = getBlockMapPageBlockNumber(blockmap_group_index, id);
+    HTABCache             *cache = &ctx->block_numbers_cache;
+    HnswBlockMapGroupDesc *blockmap_groups
+        = ctx->header_page_under_wal != NULL ? ctx->header_page_under_wal->blockmap_groups : ctx->blockmap_groups_cache;
+    BlockNumber       blockmapno = getBlockMapPageBlockNumber(blockmap_groups, id);
     BlockNumber       blockno;
     HnswBlockmapPage *blockmap_page;
     Page              page;

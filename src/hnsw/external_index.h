@@ -32,7 +32,16 @@
 // to be able to test more of the algorithm corner cases with a small table dataset
 #define HNSW_BLOCKMAP_BLOCKS_PER_PAGE 2000
 
+// the header is updated every time this number of pages is initialized in ContinueBlockMapGroupInitialization()
+#define HNSW_BLOCKMAP_UPDATE_HEADER_EVERY 100
+
 #define USEARCH_HEADER_SIZE 80
+
+typedef struct HnswBlockMapGroupDesc
+{
+    BlockNumber first_block;
+    uint32      blockmaps_initialized;
+} HnswBlockMapGroupDesc;
 
 typedef struct HnswIndexHeaderPage
 {
@@ -47,8 +56,8 @@ typedef struct HnswIndexHeaderPage
     BlockNumber           last_data_block;
     char                  usearch_header[ USEARCH_HEADER_SIZE ];
 
-    uint32 blockmap_page_groups;
-    uint32 blockmap_page_group_index[ HNSW_MAX_BLOCKMAP_GROUPS ];
+    uint32                blockmap_groups_nr;
+    HnswBlockMapGroupDesc blockmap_groups[ HNSW_MAX_BLOCKMAP_GROUPS ];
 } HnswIndexHeaderPage;
 
 typedef struct HnswIndexPageSpecialBlock
@@ -84,7 +93,7 @@ typedef struct
     Relation index_rel;
 
     // used for scans
-    uint32 blockmap_page_group_index_cache[ HNSW_MAX_BLOCKMAP_GROUPS ];  // todo::
+    HnswBlockMapGroupDesc blockmap_groups_cache[ HNSW_MAX_BLOCKMAP_GROUPS ];  // todo::
     // used for inserts
     HnswIndexHeaderPage *header_page_under_wal;
 

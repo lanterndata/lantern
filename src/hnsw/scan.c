@@ -75,9 +75,8 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     if(error != NULL) elog(ERROR, "error loading index: %s", error);
     assert(error == NULL);
 
-    memcpy(retriever_ctx->blockmap_page_group_index_cache,
-           headerp->blockmap_page_group_index,
-           sizeof(retriever_ctx->block_numbers_cache));
+    memcpy(
+        retriever_ctx->blockmap_groups_cache, headerp->blockmap_groups, sizeof(retriever_ctx->blockmap_groups_cache));
     retriever_ctx->header_page_under_wal = NULL;
 
     usearch_mem = headerp->usearch_header;
