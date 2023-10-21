@@ -122,6 +122,25 @@ static void UpdateHeaderBlockMapGroupDesc(
     ReleaseBuffer(hdr_buf);
 }
 
+static void ExtendIndexRelationTo(Relation index, ForkNumber forkNum, BlockNumber number_of_blocks)
+{
+    Buffer buf;
+
+    assert(RelationGetNumberOfBlocksInFork(index, forkNum) < number_of_blocks);
+
+#if PG_VERSION_NUM >= 160000
+    buf = ExtendBufferedRelTo(BMR_REL(index), forkNum, NULL, EB_CLEAR_SIZE_CACHE, number_of_blocks, RBM_NORMAL);
+    assert(BufferGetBlockNumber(buf) == number_of_blocks - 1);
+    ReleaseBuffer(buf);
+#else
+    for(BlockNumber block = RelationGetNumberOfBlocksInFork(index, forkNum); block < number_of_blocks; ++block) {
+        buf = ReadBufferExtended(index, forkNum, P_NEW, RBM_NORMAL, NULL);
+        assert(BufferGetBlockNumber(buf) == block);
+        ReleaseBuffer(buf);
+    }
+#endif
+}
+
 /*
  * Continue and finish the initialization of a blockmap group.
  * If the initialization hasn't been started, then the initialization is started.
@@ -211,14 +230,7 @@ static void ContinueBlockMapGroupInitialization(
     group_desc = &hdr->blockmap_groups[ groupno ];
     if(group_desc->blockmaps_initialized == 0
        && group_desc->first_block + blockmaps_in_group > RelationGetNumberOfBlocksInFork(index, forkNum)) {
-        buf = ExtendBufferedRelTo(BMR_REL(index),
-                                  forkNum,
-                                  NULL,
-                                  EB_CLEAR_SIZE_CACHE,
-                                  group_desc->first_block + blockmaps_in_group,
-                                  RBM_NORMAL);
-        assert(group_desc->first_block + blockmaps_in_group - 1 == BufferGetBlockNumber(buf));
-        ReleaseBuffer(buf);
+        ExtendIndexRelationTo(index, forkNum, group_desc->first_block + blockmaps_in_group);
     }
     assert(group_desc->first_block + blockmaps_in_group <= RelationGetNumberOfBlocksInFork(index, forkNum));
 
