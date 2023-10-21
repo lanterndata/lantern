@@ -108,6 +108,7 @@ cargo pgrx package --package lantern_extras
 ```
 
 </details>
+
 ### Initializing with psql
 
 Once the extension is installed, in a psql shell or in your favorite SQL environment run:
