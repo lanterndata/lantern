@@ -104,24 +104,24 @@ SELECT ARRAY_AGG(id ORDER BY id), ROUND(hamming_dist(v, '{0,1,0}')::numeric, 2) 
 (4 rows)
 
 -- Verify that the indexes is being used
-EXPLAIN SELECT id FROM small_world_l2 ORDER BY v <-> '{0,1,0}';
-                                           QUERY PLAN                                           
-------------------------------------------------------------------------------------------------
- Index Scan using small_world_l2_v_idx on small_world_l2  (cost=0.00..60.05 rows=1070 width=20)
+EXPLAIN (COSTS false) SELECT id FROM small_world_l2 ORDER BY v <-> '{0,1,0}';
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Index Scan using small_world_l2_v_idx on small_world_l2
    Order By: (v <-> '{0,1,0}'::real[])
 (2 rows)
 
-EXPLAIN SELECT id FROM small_world_cos ORDER BY v <-> '{0,1,0}';
-                                            QUERY PLAN                                            
---------------------------------------------------------------------------------------------------
- Index Scan using small_world_cos_v_idx on small_world_cos  (cost=0.00..60.05 rows=1070 width=20)
+EXPLAIN (COSTS false) SELECT id FROM small_world_cos ORDER BY v <-> '{0,1,0}';
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Index Scan using small_world_cos_v_idx on small_world_cos
    Order By: (v <-> '{0,1,0}'::real[])
 (2 rows)
 
-EXPLAIN SELECT id FROM small_world_ham ORDER BY v <-> '{0,1,0}';
-                                            QUERY PLAN                                            
---------------------------------------------------------------------------------------------------
- Index Scan using small_world_ham_v_idx on small_world_ham  (cost=0.00..60.05 rows=1070 width=20)
+EXPLAIN (COSTS false) SELECT id FROM small_world_ham ORDER BY v <-> '{0,1,0}';
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Index Scan using small_world_ham_v_idx on small_world_ham
    Order By: (v <-> '{0,1,0}'::integer[])
 (2 rows)
 
