@@ -544,9 +544,13 @@ BlockNumber getDataBlockNumber(RetrieverCtx *ctx, int id, bool add_to_extra_dirt
     // clang-format on
 #endif
 
-    void *blockno_from_cache_p = cache_get_item(cache, &id);
-    if(blockno_from_cache_p != NULL) {
-        return *((BlockNumber *)blockno_from_cache_p);
+    union voidblockno {
+        void *ptr;
+        BlockNumber blockno;
+    } blockno_from_cache_p;
+    blockno_from_cache_p.ptr = cache_get_item(cache, &id);
+    if(blockno_from_cache_p.ptr != NULL) {
+        return blockno_from_cache_p.blockno;
     }
 
     // it is necessary to first check the extra dirtied pages for the blockmap page, in case we are in the
@@ -571,7 +575,8 @@ BlockNumber getDataBlockNumber(RetrieverCtx *ctx, int id, bool add_to_extra_dirt
 
     offset = id % HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
     blockno = blockmap_page->blocknos[ offset ];
-    cache_set_item(cache, &id, &blockmap_page->blocknos[ offset ]);
+    size_t cache_value = (size_t)blockno;
+    cache_set_item(cache, &id, (void *)cache_value);
     if(!idx_pagemap_prelocked) {
         UnlockReleaseBuffer(buf);
     }
