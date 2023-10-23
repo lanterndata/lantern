@@ -44,18 +44,6 @@ env:
     log_exe_name=true print_suppressions=false exitcode=27
 
 jobs:
-  config:
-    runs-on: ubuntu-latest
-    outputs:
-      pg_latest: ${{ steps.setter.outputs.PG_LATEST }}
-      pg15_latest: ${{ steps.setter.outputs.PG15_LATEST }}
-    steps:
-    - name: Checkout source code
-      uses: actions/checkout@v3
-        #- name: Read configuration
-        #  id: setter
-        #  run: python .github/gh_config_reader.py
-
   sanitizer:
     # Change the JOB_NAME variable below when changing the name.
     # Don't use the env variable here because the env context is not accessible.
@@ -68,6 +56,9 @@ jobs:
         os: ["ubuntu-22.04"]
         pg: ["15.4"]#["15.4", "16.0"]
     steps:
+    - name: Checkout source code
+      uses: actions/checkout@v3
+
     - name: Install Linux Dependencies
       run: |
         sudo apt-get update
@@ -159,8 +150,6 @@ jobs:
     - name: Start Postgres
       run: |
         mkdir -p $PG_INSTALL_DIR/data
-        groupadd -r postgres
-        useradd -r -g postgres postgres
         chown -R postgres:postgres $PG_INSTALL_DIR/data
         chown -R postgres:postgres ${{ github.workspace }}/sanitizer
         su -c "$PG_INSTALL_DIR/bin/initdb -D $PG_INSTALL_DIR/data" postgres
