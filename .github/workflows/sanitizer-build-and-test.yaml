@@ -153,8 +153,8 @@ jobs:
         #sudo chown -R postgres:postgres ${{ github.workspace }}/sanitizer
         #getent group postgres || sudo groupadd postgres
         #id -u postgres  &>/dev/null || sudo useradd -g postgres postgres
-        initdb  -A trust -D $PG_INSTALL_DIR/data"
-        postgres -D $PG_INSTALL_DIR/data >/tmp/postgres.log 2>&1 &"
+        initdb  -A trust -D $PG_INSTALL_DIR/data
+        postgres -D $PG_INSTALL_DIR/data >/tmp/postgres.log 2>&1 &
 
     - name: make test
       run: |
