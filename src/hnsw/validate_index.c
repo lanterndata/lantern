@@ -231,46 +231,48 @@ static void ldb_vi_read_blockmaps(Relation             index,
     }
 }
 
-static bool ldb_vi_read_node_chunk(void *chunk, size_t chunk_size, void *tape, unsigned tape_pos, unsigned tape_size)
+/* Read a part of the node. Also advance tape_pos by chunk_size. */
+static void ldb_vi_read_node_chunk(const struct ldb_vi_node *vi_node,
+                                   void                     *chunk,
+                                   size_t                    chunk_size,
+                                   const char               *chunk_name,
+                                   void                     *tape,
+                                   unsigned                 *tape_pos,
+                                   unsigned                  tape_size)
 {
-    if(tape_pos + chunk_size > tape_size) return false;
-    memcpy(chunk, (char *)tape + tape_pos, chunk_size);
-    return true;
+    if(*tape_pos + chunk_size > tape_size) {
+        elog(ERROR,
+             "Error reading %s: tape_pos=%u + _chunk_size=%zu > tape_size=%u for "
+             "block=%" PRIu32 " offset=%" PRIu16 " node_id=%" PRIu32,
+             chunk_name,
+             *tape_pos,
+             chunk_size,
+             tape_size,
+             vi_node->vn_block,
+             vi_node->vn_offset,
+             vi_node->vn_id);
+    }
+    memcpy(chunk, (char *)tape + *tape_pos, chunk_size);
+    *tape_pos += chunk_size;
 }
 
-#define LDB_VI_READ_NODE_CHUNK(_chunk, _tape, _tape_pos, _tape_size)                              \
-    ({                                                                                            \
-        size_t _chunk_size = sizeof(_chunk);                                                      \
-                                                                                                  \
-        if(!ldb_vi_read_node_chunk(&(_chunk), _chunk_size, (_tape), (_tape_pos), (_tape_size))) { \
-            elog(ERROR,                                                                           \
-                 "Error reading " #_chunk                                                         \
-                 ": tape_pos=%u + _chunk_size=%zu > tape_size=%u for "                            \
-                 "block=%" PRIu32 " offset=%" PRIu16 " node_id=%" PRIu32,                         \
-                 _tape_pos,                                                                       \
-                 _chunk_size,                                                                     \
-                 _tape_size,                                                                      \
-                 vi_node->vn_block,                                                               \
-                 vi_node->vn_offset,                                                              \
-                 vi_node->vn_id);                                                                 \
-        }                                                                                         \
-        (_tape_pos) += _chunk_size;                                                               \
-    })
+#define LDB_VI_READ_NODE_CHUNK(_vi_node, _chunk, _tape, _tape_pos, _tape_size) \
+    ldb_vi_read_node_chunk((_vi_node), &(_chunk), sizeof(_chunk), #_chunk, (_tape), (_tape_pos), (_tape_size))
 
 /* See "Load nodes one by one" loop in usearch index_gt::load() */
 static void ldb_vi_read_node_carefully(
     void *node_tape, unsigned node_tape_size, const uint32 M, struct ldb_vi_node *vi_node, uint32 nodes_nr)
 {
-    unsigned tape_pos = 0; /* is advanced by the chunk size by LDB_VI_READ_NODE_CHUNK() */
+    unsigned tape_pos = 0;
     uint32   level_on_tape;
     uint32   neighbors_nr;
     uint32   neighbors_max;
     uint32  *neighbors;
     uint32   unused;
 
-    LDB_VI_READ_NODE_CHUNK(vi_node->vn_label, node_tape, tape_pos, node_tape_size);
-    LDB_VI_READ_NODE_CHUNK(vi_node->vn_dim, node_tape, tape_pos, node_tape_size);
-    LDB_VI_READ_NODE_CHUNK(level_on_tape, node_tape, tape_pos, node_tape_size);
+    LDB_VI_READ_NODE_CHUNK(vi_node, vi_node->vn_label, node_tape, &tape_pos, node_tape_size);
+    LDB_VI_READ_NODE_CHUNK(vi_node, vi_node->vn_dim, node_tape, &tape_pos, node_tape_size);
+    LDB_VI_READ_NODE_CHUNK(vi_node, level_on_tape, node_tape, &tape_pos, node_tape_size);
 
     if(level_on_tape != vi_node->vn_level) {
         elog(ERROR,
@@ -298,7 +300,7 @@ static void ldb_vi_read_node_carefully(
     vi_node->vn_neighbors = palloc_array(typeof(*(vi_node->vn_neighbors)), vi_node->vn_level + 1);
     for(uint32 level = 0; level <= vi_node->vn_level; ++level) {
         neighbors_max = level == 0 ? M * 2 : M;
-        LDB_VI_READ_NODE_CHUNK(neighbors_nr, node_tape, tape_pos, node_tape_size);
+        LDB_VI_READ_NODE_CHUNK(vi_node, neighbors_nr, node_tape, &tape_pos, node_tape_size);
 
         if(neighbors_nr > neighbors_max) {
             elog(ERROR,
@@ -318,7 +320,7 @@ static void ldb_vi_read_node_carefully(
         }
         neighbors = palloc_array(typeof(*neighbors), neighbors_nr);
         for(uint32 i = 0; i < neighbors_nr; ++i) {
-            LDB_VI_READ_NODE_CHUNK(neighbors[ i ], node_tape, tape_pos, node_tape_size);
+            LDB_VI_READ_NODE_CHUNK(vi_node, neighbors[ i ], node_tape, &tape_pos, node_tape_size);
             if(neighbors[ i ] >= nodes_nr) {
                 elog(ERROR,
                      "neighbors[%" PRIu32 "]=%" PRIu32 " >= nodes_nr=%" PRIu32
@@ -340,7 +342,7 @@ static void ldb_vi_read_node_carefully(
             }
         }
         for(uint32 i = neighbors_nr; i < neighbors_max; ++i)
-            LDB_VI_READ_NODE_CHUNK(unused, node_tape, tape_pos, node_tape_size);
+            LDB_VI_READ_NODE_CHUNK(vi_node, unused, node_tape, &tape_pos, node_tape_size);
         vi_node->vn_neighbors_nr[ level ] = neighbors_nr;
         vi_node->vn_neighbors[ level ] = neighbors;
     }
