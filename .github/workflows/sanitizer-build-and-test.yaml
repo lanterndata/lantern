@@ -152,11 +152,11 @@ jobs:
         sudo chown -R postgres:postgres ${{ github.workspace }}/sanitizer
         #getent group postgres || sudo groupadd postgres
         #id -u postgres  &>/dev/null || sudo useradd -g postgres postgres
-        su -c "$PG_INSTALL_DIR/bin/initdb -D $PG_INSTALL_DIR/data" postgres
+        sudo su -c "$PG_INSTALL_DIR/bin/initdb -D $PG_INSTALL_DIR/data" postgres
         echo "local   all             all                                     trust" >  ${PGDATA}/pg_hba.conf
         echo "host    all             all             127.0.0.1/32            trust" >>  ${PGDATA}/pg_hba.conf
         echo "host    all             all             ::1/128                 trust" >>  ${PGDATA}/pg_hba.conf
-        su -c "$PG_INSTALL_DIR/bin/postgres -D $PG_INSTALL_DIR/data >/tmp/postgres.log 2>&1 &" postgres
+        sudo su -c "$PG_INSTALL_DIR/bin/postgres -D $PG_INSTALL_DIR/data >/tmp/postgres.log 2>&1 &" postgres
 
     - name: make test
       run: |
