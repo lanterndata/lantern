@@ -54,6 +54,7 @@ jobs:
       matrix:
         os: ["ubuntu-22.04"]
         pg: ["15.4"]#["15.4", "16.0"]
+    steps:
     - name: Install Linux Dependencies
       run: |
         sudo apt-get update
