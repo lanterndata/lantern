@@ -19,6 +19,7 @@ on:
 env:
   name: "Sanitizer"
   PG_SRC_DIR: "pgbuild"
+  PG_INSTALL_DIR: ${{ github.workspace }}/pgsql
   extra_packages: "clang-15 llvm-15 llvm-15-dev llvm-15-tools"
   llvm_config: "llvm-config-15"
   CLANG: "clang-15"
@@ -129,7 +130,7 @@ jobs:
         # https://www.postgresql.org/message-id/CAM-w4HNH7%2BU9jZevpVK7Wr49tkfpWSR6wav0RLYrq0HWuP5cxw%40mail.gmail.com
         patch -F5 -p1 -d ~/$PG_SRC_DIR < scripts/sanitizers/postgres-asan-instrumentation.patch
         cd ~/$PG_SRC_DIR
-        ./configure --prefix=/usr/local/pgsql --enable-debug --enable-cassert \
+        ./configure --prefix=$PG_INSTALL_DIR --enable-debug --enable-cassert \
           --with-openssl --without-readline --without-zlib --without-libxml
         make -j$(nproc)
         make -j$(nproc) -C contrib/pageinspect
@@ -145,8 +146,8 @@ jobs:
     - name: Install PostgreSQL ${{ matrix.pg }}
       run: |
         make -C ~/$PG_SRC_DIR install
-        echo /usr/local/pgsql/bin >> $GITHUB_PATH
-        /usr/local/pgsql/bin/pg_config --version
+        echo $PG_INSTALL_DIR/bin >> $GITHUB_PATH
+        $PG_INSTALL_DIR/bin/pg_config --version
 
     - name: Build Lantern
       run: |
@@ -157,16 +158,16 @@ jobs:
 
     - name: Start Postgres
       run: |
-        mkdir -p /usr/local/pgsql/data
+        mkdir -p $PG_INSTALL_DIR/data
         groupadd -r postgres
         useradd -r -g postgres postgres
-        chown -R postgres:postgres /usr/local/pgsql/data
+        chown -R postgres:postgres $PG_INSTALL_DIR/data
         chown -R postgres:postgres ${{ github.workspace }}/sanitizer
-        su -c "/usr/local/pgsql/bin/initdb -D /usr/local/pgsql/data" postgres
+        su -c "$PG_INSTALL_DIR/bin/initdb -D $PG_INSTALL_DIR/data" postgres
         echo "local   all             all                                     trust" >  ${PGDATA}/pg_hba.conf
         echo "host    all             all             127.0.0.1/32            trust" >>  ${PGDATA}/pg_hba.conf
         echo "host    all             all             ::1/128                 trust" >>  ${PGDATA}/pg_hba.conf
-        su -c "/usr/local/pgsql/bin/postgres -D /usr/local/pgsql/data >/tmp/postgres.log 2>&1 &" postgres
+        su -c "$PG_INSTALL_DIR/bin/postgres -D $PG_INSTALL_DIR/data >/tmp/postgres.log 2>&1 &" postgres
 
     - name: make test
       run: |
