@@ -210,7 +210,7 @@ jobs:
           info locals
           bt full
         " 2>&1 | tee stacktrace.log
-        ./scripts/sanitizers/bundle_coredumps.sh
+        ./scripts/sanitizers/bundle_coredump.sh
         grep -C40 "was terminated by signal" postgres.log > postgres-failure.log ||:
 
     - name: Coredumps
