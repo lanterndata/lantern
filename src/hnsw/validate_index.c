@@ -3,7 +3,6 @@
 #include "hnsw/validate_index.h"
 
 #include <access/heapam.h>  /* relation_open */
-#include <assert.h>         /* assert */
 #include <catalog/index.h>  /* IndexGetRelation */
 #include <inttypes.h>       /* PRIu32 */
 #include <stdint.h>         /* UINT32_MAX */
@@ -12,6 +11,7 @@
 
 #include "hnsw/external_index.h" /* HnswIndexHeaderPage */
 #include "hnsw/options.h"        /* ldb_HnswGetM */
+#include "hnsw/utils.h"          /* ldb_invariant */
 
 enum ldb_vi_block_type
 {
@@ -475,14 +475,13 @@ static void ldb_vi_print_statistics(struct ldb_vi_block *vi_blocks,
 
     for(uint32 i = 0; i < nodes_nr; ++i) ++vi_blocks[ vi_nodes[ i ].vn_block ].vp_nodes_nr;
     /* because in the next loop the condition is "block > 0" */
-    assert(vi_blocks[ 0 ].vp_type == LDB_VI_BLOCK_HEADER);
+    ldb_invariant(vi_blocks[ 0 ].vp_type == LDB_VI_BLOCK_HEADER, "block 0 should be the header");
     for(BlockNumber block = blocks_nr - 1; block > 0; --block) {
         if(vi_blocks[ block ].vp_type == LDB_VI_BLOCK_NODES) {
             last_block = block;
             break;
         }
     }
-    assert(blocks_per_blocktype[ LDB_VI_BLOCK_NODES ] == 0 || last_block != InvalidBlockNumber);
     for(BlockNumber block = 0; block < blocks_nr; ++block) {
         if(vi_blocks[ block ].vp_type == LDB_VI_BLOCK_NODES && block != last_block) {
             min_nodes_per_block = Min(min_nodes_per_block, vi_blocks[ block ].vp_nodes_nr);
