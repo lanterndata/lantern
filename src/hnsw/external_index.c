@@ -544,8 +544,9 @@ BlockNumber getDataBlockNumber(RetrieverCtx *ctx, int id, bool add_to_extra_dirt
     // clang-format on
 #endif
 
-    union voidblockno {
-        void *ptr;
+    union voidblockno
+    {
+        void       *ptr;
         BlockNumber blockno;
     } blockno_from_cache_p;
     blockno_from_cache_p.ptr = cache_get_item(cache, &id);
