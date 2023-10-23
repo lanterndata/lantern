@@ -166,7 +166,7 @@ jobs:
       id: collectlogs
       run: |
         find /tmp/lantern -name regression.diffs -exec cat {} + > regression.log
-        find /tmp/ -name postgres.log -exec cat {} + > postgres.log
+        cp /tmp/postgres.log .
         if [[ "${{ runner.os }}" == "Linux" ]] ; then
           # wait in case there are in-progress coredumps
           sleep 10
