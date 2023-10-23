@@ -136,7 +136,7 @@ jobs:
       run: |
         make -C ~/$PG_SRC_DIR install
         echo $PG_INSTALL_DIR/bin >> $GITHUB_PATH
-        sudo chown -R 755 $PG_INSTALL_DIR/bin
+        sudo chmod -R 755 $PG_INSTALL_DIR/bin
         $PG_INSTALL_DIR/bin/pg_config --version
 
     - name: Build Lantern
