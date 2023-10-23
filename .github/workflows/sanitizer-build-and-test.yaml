@@ -2,6 +2,8 @@
 # largely copied from https://github.com/timescale/timescaledb/blob/main/.github/workflows/sanitizer-build-and-test.yaml
 name: Sanitizer test
 on:
+  schedule:
+    - cron: '0 0 * * 0'
   push:
     branches:
       - main
@@ -55,7 +57,7 @@ jobs:
       fail-fast: false
       matrix:
         os: ["ubuntu-22.04"]
-        pg: ["15.4"]#["15.4", "16.0"]
+        pg: ["11.21", "12.16", "13.2", "14.9", "15.4", "16.0"]
     steps:
     - name: Install Linux Dependencies
       run: |
@@ -89,7 +91,7 @@ jobs:
     - name: Get date for build caching
       id: get-date
       run: |
-        echo "date=$(date +"%d")" >> $GITHUB_OUTPUT
+        echo "date=$(date +"%m-%y")" >> $GITHUB_OUTPUT
 
     # Create a directory for sanitizer logs. This directory is referenced by
     # ASAN_OPTIONS, LSAN_OPTIONS, and UBSAN_OPTIONS
