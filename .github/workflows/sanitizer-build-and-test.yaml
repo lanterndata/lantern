@@ -49,7 +49,6 @@ jobs:
     # Don't use the env variable here because the env context is not accessible.
     name: PG${{ matrix.pg }} Sanitizer ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    needs: config
     strategy:
       fail-fast: false
       matrix:
