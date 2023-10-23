@@ -7,6 +7,8 @@ on:
       - main
       - trigger/sanitizer
   pull_request:
+    branches:
+      - main
     paths: .github/workflows/sanitizer-build-and-test.yaml
   workflow_dispatch:
     inputs:
@@ -148,6 +150,8 @@ jobs:
         mkdir -p $PG_INSTALL_DIR/data
         sudo chown -R postgres:postgres $PG_INSTALL_DIR/data
         sudo chown -R postgres:postgres ${{ github.workspace }}/sanitizer
+        #getent group postgres || sudo groupadd postgres
+        #id -u postgres  &>/dev/null || sudo useradd -g postgres postgres
         su -c "$PG_INSTALL_DIR/bin/initdb -D $PG_INSTALL_DIR/data" postgres
         echo "local   all             all                                     trust" >  ${PGDATA}/pg_hba.conf
         echo "host    all             all             127.0.0.1/32            trust" >>  ${PGDATA}/pg_hba.conf
