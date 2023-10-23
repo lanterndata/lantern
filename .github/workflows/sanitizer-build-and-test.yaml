@@ -54,10 +54,6 @@ jobs:
       matrix:
         os: ["ubuntu-22.04"]
         pg: ["15.4"]#["15.4", "16.0"]
-    steps:
-    - name: Checkout source code
-      uses: actions/checkout@v3
-
     - name: Install Linux Dependencies
       run: |
         sudo apt-get update
@@ -149,8 +145,8 @@ jobs:
     - name: Start Postgres
       run: |
         mkdir -p $PG_INSTALL_DIR/data
-        chown -R postgres:postgres $PG_INSTALL_DIR/data
-        chown -R postgres:postgres ${{ github.workspace }}/sanitizer
+        sudo chown -R postgres:postgres $PG_INSTALL_DIR/data
+        sudo chown -R postgres:postgres ${{ github.workspace }}/sanitizer
         su -c "$PG_INSTALL_DIR/bin/initdb -D $PG_INSTALL_DIR/data" postgres
         echo "local   all             all                                     trust" >  ${PGDATA}/pg_hba.conf
         echo "host    all             all             127.0.0.1/32            trust" >>  ${PGDATA}/pg_hba.conf
