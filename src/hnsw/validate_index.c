@@ -632,7 +632,7 @@ void ldb_validate_index(Oid indrelid, bool print_info)
              index_header->magicNumber,
              LDB_WAL_MAGIC_NUMBER);
     }
-    if(index_header->m != ldb_HnswGetM(index)) {
+    if(index_header->m != (uint32)ldb_HnswGetM(index)) {
         elog(ERROR, "index_header->m=%" PRIu32 " != ldb_HnswGetM(index)=%d", index_header->m, ldb_HnswGetM(index));
     }
     if(print_info) {
