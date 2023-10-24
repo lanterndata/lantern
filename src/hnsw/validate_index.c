@@ -260,8 +260,13 @@ static void ldb_vi_read_node_chunk(const struct ldb_vi_node *vi_node,
     ldb_vi_read_node_chunk((_vi_node), &(_chunk), sizeof(_chunk), #_chunk, (_tape), (_tape_pos), (_tape_size))
 
 /* See "Load nodes one by one" loop in usearch index_gt::load() */
-static void ldb_vi_read_node_carefully(
-    void *node_tape, unsigned node_tape_size, const uint32 M, struct ldb_vi_node *vi_node, uint32 nodes_nr)
+static void ldb_vi_read_node_carefully(void               *node_tape,
+                                       unsigned            node_tape_size,
+                                       uint32              vector_dim,
+                                       size_t              scalar_size,
+                                       const uint32        M,
+                                       struct ldb_vi_node *vi_node,
+                                       uint32              nodes_nr)
 {
     unsigned tape_pos = 0;
     uint32   level_on_tape;
@@ -274,6 +279,18 @@ static void ldb_vi_read_node_carefully(
     LDB_VI_READ_NODE_CHUNK(vi_node, vi_node->vn_dim, node_tape, &tape_pos, node_tape_size);
     LDB_VI_READ_NODE_CHUNK(vi_node, level_on_tape, node_tape, &tape_pos, node_tape_size);
 
+    if(vi_node->vn_dim != vector_dim * scalar_size) {
+        elog(ERROR,
+             "vi_node->vn_dim=%" PRIu32 " != vector_dim=%" PRIu32
+             " * scalar_size=%zu "
+             "for node_id=%" PRIu32 " block=%" PRIu32 " offset=%" PRIu16,
+             vi_node->vn_dim,
+             vector_dim,
+             scalar_size,
+             vi_node->vn_id,
+             vi_node->vn_block,
+             vi_node->vn_offset);
+    }
     if(level_on_tape != vi_node->vn_level) {
         elog(ERROR,
              "level_on_tape=%" PRIu32 " != vi_node->vn_level=%" PRIu32
@@ -347,7 +364,6 @@ static void ldb_vi_read_node_carefully(
         vi_node->vn_neighbors[ level ] = neighbors;
     }
     /* the vector of floats is at the end */
-    /* XXX it's not clear why vn_dim != dimensions */
     tape_pos += vi_node->vn_dim;
     if(tape_pos != node_tape_size) {
         elog(ERROR,
@@ -363,13 +379,15 @@ static void ldb_vi_read_node_carefully(
 
 #undef LDB_VI_READ_NODE_CHUNK
 
-static void ldb_vi_read_nodes(Relation             index,
-                              struct ldb_vi_block *vi_blocks,
-                              BlockNumber          blocks_nr,
-                              struct ldb_vi_node  *vi_nodes,
-                              uint32               nodes_nr)
+static void ldb_vi_read_nodes(Relation                   index,
+                              const HnswIndexHeaderPage *index_header,
+                              struct ldb_vi_block       *vi_blocks,
+                              BlockNumber                blocks_nr,
+                              struct ldb_vi_node        *vi_nodes,
+                              uint32                     nodes_nr)
 {
-    uint32 M = ldb_HnswGetM(index);
+    /* see usearch_init_options_t.quantization in PopulateUsearchOpts() */
+    const size_t scalar_size = sizeof(float);
 
     for(uint32_t i = 0; i < nodes_nr; ++i) {
         if(vi_nodes[ i ].vn_block == InvalidBlockNumber)
@@ -446,7 +464,13 @@ static void ldb_vi_read_nodes(Relation             index,
             vi_nodes[ node_id ].vn_offset = offset;
             vi_nodes[ node_id ].vn_id = node_id;
             vi_nodes[ node_id ].vn_level = index_tuple->level;
-            ldb_vi_read_node_carefully(&index_tuple->node, index_tuple->size, M, &vi_nodes[ node_id ], nodes_nr);
+            ldb_vi_read_node_carefully(&index_tuple->node,
+                                       index_tuple->size,
+                                       index_header->vector_dim,
+                                       scalar_size,
+                                       index_header->m,
+                                       &vi_nodes[ node_id ],
+                                       nodes_nr);
         }
         UnlockReleaseBuffer(buf);
     }
@@ -600,6 +624,9 @@ void ldb_validate_index(Oid indrelid, bool print_info)
              index_header->magicNumber,
              LDB_WAL_MAGIC_NUMBER);
     }
+    if(index_header->m != ldb_HnswGetM(index)) {
+        elog(ERROR, "index_header->m=%" PRIu32 " != ldb_HnswGetM(index)=%d", index_header->m, ldb_HnswGetM(index));
+    }
     if(print_info) {
         elog(INFO,
              "index_header = HnswIndexHeaderPage("
@@ -636,7 +663,7 @@ void ldb_validate_index(Oid indrelid, bool print_info)
             elog(ERROR, "vi_blocks[%" PRIu32 "].vp_type == LDB_VI_BLOCK_UNKNOWN (but it should be known now)", block);
         }
     }
-    ldb_vi_read_nodes(index, vi_blocks, blocks_nr, vi_nodes, nodes_nr);
+    ldb_vi_read_nodes(index, index_header, vi_blocks, blocks_nr, vi_nodes, nodes_nr);
     if(print_info) ldb_vi_print_statistics(vi_blocks, blocks_nr, vi_nodes, nodes_nr);
 
     ldb_vi_free_neighbors(vi_nodes, nodes_nr);
