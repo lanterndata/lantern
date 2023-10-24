@@ -13,6 +13,8 @@
 #include "hnsw/options.h"        /* ldb_HnswGetM */
 #include "hnsw/utils.h"          /* ldb_invariant */
 
+/* vi infix here is for Validate Index */
+
 enum ldb_vi_block_type
 {
     LDB_VI_BLOCK_UNKNOWN,
