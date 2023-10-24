@@ -410,7 +410,8 @@ static void ldb_vi_read_nodes(Relation                   index,
         if(PageGetMaxOffsetNumber(page) < FirstOffsetNumber)
             elog(ERROR, "block=%" PRIu32 " is supposed to have nodes but it doesn't have any", block);
 
-        for(OffsetNumber offset = 1; offset <= PageGetMaxOffsetNumber(page); ++offset) {
+        for(OffsetNumber offset = FirstOffsetNumber; offset <= PageGetMaxOffsetNumber(page);
+            offset = OffsetNumberNext(offset)) {
             ItemId          item_id = PageGetItemId(page, offset);
             HnswIndexTuple *index_tuple = (HnswIndexTuple *)PageGetItem(page, item_id);
             unsigned        index_tuple_length = ItemIdGetLength(item_id);
