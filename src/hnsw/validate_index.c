@@ -29,7 +29,13 @@ struct ldb_vi_block
     uint32_t               vp_nodes_nr;
 };
 
-/* represents a stored usearch node */
+/*
+ * Represents a stored usearch node.
+ * Assumes that usearch node has label, dim (size in bytes of the vector
+ * at the end) and neighbors on different levels.
+ *
+ * Please adjust ldb_vi_read_node_carefully() in case if on-storage format changes.
+ */
 struct ldb_vi_node
 {
     BlockNumber     vn_block;  /* in the index */
