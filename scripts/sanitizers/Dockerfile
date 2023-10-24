@@ -2,6 +2,7 @@ FROM debian:bookworm
 
 ARG VERSION=15.4
 ARG PGVECTOR_VERSION=0.5.0
+ARG UBSAN=
 
 WORKDIR /lantern
 # This requires the docker command be run in the lantern base director
@@ -40,9 +41,9 @@ RUN groupadd -r postgres --gid=999 && \
 ENV LLVM_CONFIG "llvm-config-15"
 ENV CC "clang-15"
 ENV CXX "clang-15"
-ENV CFLAGS "-g -fsanitize=address -fno-omit-frame-pointer -Og -fno-inline-functions"
-ENV CXXFLAGS "-g -fsanitize=address -fno-omit-frame-pointer -Og -fno-inline-functions"
-ENV LDFLAGS "-fsanitize=address"
+ENV CFLAGS "-g -fsanitize=address${UBSAN} -fno-omit-frame-pointer -Og -fno-inline-functions"
+ENV CXXFLAGS "-g -fsanitize=address${UBSAN} -fno-omit-frame-pointer -Og -fno-inline-functions"
+ENV LDFLAGS "-fsanitize=address${UBSAN}"
 
 RUN ./configure --prefix=/usr/local/pgsql --enable-debug --enable-cassert \
     --with-openssl --without-readline --without-zlib --without-libxml && \
@@ -86,7 +87,7 @@ COPY . .
 RUN rm -rf build && \
     mkdir build && \
     cd build && \
-    CXXFLAGS="" cmake -DCMAKE_BUILD_TYPE=Debug -DUSEARCH_NO_MARCH_NATIVE=ON .. && \
+    CXXFLAGS="-g -fsanitize=address -fno-omit-frame-pointer -Og -fno-inline-functions" cmake .. && \
     make install
 
 USER postgres

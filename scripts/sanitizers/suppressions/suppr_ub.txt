@@ -25,5 +25,5 @@ float-divide-by-zero:_bt_vacuum_needs_cleanup
 # postgres code and doesn't lead to bugs, because it is caught by a check later.
 float-cast-overflow:width_bucket_float8
 
-#todo try IndexNextWithReorder "load of value 127, which is not a valid value for type 'bool'"
-undefined:*/src/backend/executor/nodeIndexscan.c
+# a bool gets set to an int idk what's wrong
+bool:IndexNextWithReorder
