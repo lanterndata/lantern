@@ -64,6 +64,7 @@ if __name__ == "__main__":
     to_tag = args.to_tag
     if from_tag and to_tag:
         update_from_tag(from_tag, to_tag)
+        exit(0)
 
     if from_tag or to_tag:
         print("Must specify both or neither from_tag and to_tag")
@@ -71,7 +72,7 @@ if __name__ == "__main__":
 
     # test updates from all tags
     from_tags = [update_fname.split("--")[0] for update_fname in os.listdir("sql/updates")]
-    latest_version = "0.0.5"
+    latest_version = "main"
 
     pg_version = None if not 'PG_VERSION' in os.environ else os.environ['PG_VERSION']
     for from_tag in from_tags:
