@@ -119,15 +119,24 @@ set_target_properties(
 # needed to make sure cmake does not add libstdc++ to the linker command when an
 # external cpp library is added more at`
 # https://cmake-developers.cmake.narkive.com/JnbrDyGT/setting-linker-language-still-adds-lstdc
-
 if(NOT APPLE)
-  # apples does not understand -static-libstdc++ used in usearch to bundle libstdc++ with the
-  # created archive.
-  # so, on apple we dynamically link to the c++ runtime
-  # todo:: find a way to statically link the c++ runtime on mac
-  set(CMAKE_CXX_IMPLICIT_LINK_LIBRARIES "")
-  set(CMAKE_CXX_IMPLICIT_LINK_DIRECTORIES "")
+  # clang handles static libstdc++ differently than gcc
+  if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+    find_library(STATIC_LIBSTDCPP NAMES libstdc++.a PATHS ${CMAKE_CXX_IMPLICIT_LINK_DIRECTORIES})
+
+    if(STATIC_LIBSTDCPP)
+        set(CMAKE_CXX_IMPLICIT_LINK_LIBRARIES "${CMAKE_CXX_IMPLICIT_LINK_LIBRARIES};${STATIC_LIBSTDCPP}")
+    endif()
+  else()
+    # apples does not understand -static-libstdc++ used in usearch to bundle libstdc++ with the
+    # created archive.
+    # so, on apple we dynamically link to the c++ runtime
+    # todo:: find a way to statically link the c++ runtime on mac
+    set(CMAKE_CXX_IMPLICIT_LINK_LIBRARIES "")
+    set(CMAKE_CXX_IMPLICIT_LINK_DIRECTORIES "")
+  endif()
 endif()
+
 set_target_properties(lantern PROPERTIES LINKER_LANGUAGE C)
 
 target_include_directories(lantern PRIVATE "./third_party/usearch/c")

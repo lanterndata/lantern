@@ -29,9 +29,9 @@ SELECT ARRAY_AGG(id ORDER BY id), ROUND(cos_dist(v, '{0,1,0}')::numeric, 2) FROM
 SELECT ARRAY_AGG(id ORDER BY id), ROUND(hamming_dist(v, '{0,1,0}')::numeric, 2) FROM small_world_ham GROUP BY 2 ORDER BY 2;
 
 -- Verify that the indexes is being used
-EXPLAIN SELECT id FROM small_world_l2 ORDER BY v <-> '{0,1,0}';
-EXPLAIN SELECT id FROM small_world_cos ORDER BY v <-> '{0,1,0}';
-EXPLAIN SELECT id FROM small_world_ham ORDER BY v <-> '{0,1,0}';
+EXPLAIN (COSTS false) SELECT id FROM small_world_l2 ORDER BY v <-> '{0,1,0}';
+EXPLAIN (COSTS false) SELECT id FROM small_world_cos ORDER BY v <-> '{0,1,0}';
+EXPLAIN (COSTS false) SELECT id FROM small_world_ham ORDER BY v <-> '{0,1,0}';
 
 \set ON_ERROR_STOP off
 
