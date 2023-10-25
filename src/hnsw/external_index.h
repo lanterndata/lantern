@@ -139,4 +139,6 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
                                   uint32               new_tuple_level,
                                   HnswInsertState     *insertstate);
 
+BlockNumber NumberOfBlockMapsInGroup(unsigned groupno);
+
 #endif  // LDB_HNSW_EXTERNAL_INDEX_H
