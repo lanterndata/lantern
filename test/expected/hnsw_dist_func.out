@@ -239,3 +239,35 @@ SELECT ROUND(hamming_dist(v, '{0,0}')::numeric, 2) FROM extra_small_world_ham OR
   4.00
 (4 rows)
 
+SELECT _lantern_internal.validate_index('small_world_l2_v_idx', false);
+INFO:  validate_index() start for small_world_l2_v_idx
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
+SELECT _lantern_internal.validate_index('small_world_cos_v_idx', false);
+INFO:  validate_index() start for small_world_cos_v_idx
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
+SELECT _lantern_internal.validate_index('small_world_ham_v_idx', false);
+INFO:  validate_index() start for small_world_ham_v_idx
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
+SELECT _lantern_internal.validate_index('extra_small_world_ham_v_idx', false);
+INFO:  validate_index() start for extra_small_world_ham_v_idx
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+

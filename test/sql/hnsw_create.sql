@@ -9,12 +9,14 @@
 -- Validate that creating a secondary index works
 CREATE INDEX ON sift_base1k USING hnsw (v) WITH (dim=128, M=4);
 SELECT * FROM ldb_get_indexes('sift_base1k');
+SELECT _lantern_internal.validate_index('sift_base1k_v_idx', false);
 
 -- Validate that index creation works with a larger number of vectors
 \ir utils/sift10k_array.sql
 CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=4, dim=128);
 SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
 EXPLAIN (COSTS FALSE) SELECT * FROM sift_base10k order by v <-> :'v4444' LIMIT 10;
+SELECT _lantern_internal.validate_index('hnsw_idx', false);
 
 --- Validate that M values inside the allowed range [2, 128] do not throw an error
 
@@ -64,6 +66,8 @@ INSERT INTO small_world4 (id, vector) VALUES
 ('000', '{1,0,0,0}'),
 ('001', '{1,0,0,1}'),
 ('010', '{1,0,1,0}');
+
+SELECT _lantern_internal.validate_index('small_world4_hnsw_idx', false);
 
 -- without the index, I can change the dimension of a vector element
 DROP INDEX small_world4_hnsw_idx;

@@ -71,6 +71,7 @@ INSERT INTO test_table VALUES (0), (1), (7);
 
 -- This should success
 CREATE INDEX ON test_table USING hnsw (int_to_fixed_binary_real_array(id)) WITH (M=2);
+SELECT _lantern_internal.validate_index('test_table_int_to_fixed_binary_real_array_idx', false);
 
 \set ON_ERROR_STOP off
 -- This should result in an error that dimensions does not match

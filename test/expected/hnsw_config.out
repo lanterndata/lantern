@@ -52,3 +52,12 @@ SHOW hnsw.init_k;
  10
 (1 row)
 
+-- Validate the index data structures
+SELECT _lantern_internal.validate_index('small_world_v_idx', false);
+INFO:  validate_index() start for small_world_v_idx
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
