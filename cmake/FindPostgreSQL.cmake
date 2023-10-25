@@ -91,7 +91,7 @@ if(PostgreSQL_FOUND)
   separate_arguments(_pg_ldflags_ex)
 
   set(_server_lib_dirs ${_pg_libdir} ${_pg_pkglibdir})
-  set(_server_inc_dirs ${_pg_pkgincludedir} ${_pg_includedir_server})
+  set(_server_inc_dirs ${_pg_includedir_server} ${_pg_pkgincludedir})
   string(REPLACE ";" " " _shared_link_options
                  "${_pg_ldflags};${_pg_ldflags_sl}")
   set(_link_options ${_pg_ldflags})
