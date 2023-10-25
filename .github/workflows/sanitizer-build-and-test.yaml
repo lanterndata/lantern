@@ -91,7 +91,6 @@ jobs:
     - name: Checkout lantern
       uses: actions/checkout@v3
       with:
-        ref: ${{ github.ref  }}
         fetch-depth: 0
         submodules: "recursive"
 
