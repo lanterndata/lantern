@@ -26,6 +26,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
+          # fetch-depth ensures all tags are present on the repo so we can run update tests successfully
+          fetch-depth: 0
           submodules: "recursive"
       - name: Build
         id: build
