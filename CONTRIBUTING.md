@@ -39,6 +39,10 @@ Below is a short recording demonstrating the use of `livedebug.py`:
 
 [![asciicast](https://asciinema.org/a/jTsbWdOcTvUl4iAJlAw3Cszbt.svg)](https://asciinema.org/a/jTsbWdOcTvUl4iAJlAw3Cszbt)
 
+## Running sanitizers
+
+To ensure that code is safe, pull requests are tested using google's [AddressSanitizer](https://github.com/google/sanitizers/wiki/AddressSanitizer). Additionally [UBSan](https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html) is run against releases. A [docker container](scripts/sanitizers/Dockerfile) is provided for testing changes locally. it can be invoked by running the script `scripts/sanitizers/run_sanitizers.sh`. **Please note that this script must be run in the root directory of the lantern repository**. By default it will build `postgres 15.4` and run tests against it instrumented only with AddressSanitizer. If you would like to run UBSan you can pass the `-u` flag. If you wish to test against a specific version you can use the `-v` flag specifying a specific version, e.g. `scripts/sanitizers/run_sanitizers.sh -u -v11.21`
+
 ## Adding/modifying LanternDB's SQL interface
 
 When modifying the SQL interface, you add relevant SQL logic under `sql/`. In addition, you add an update script under `sql/updates`, in a file named `[CURRENT_VERSION]--latest.sql`. You should create this file if it does not exist.

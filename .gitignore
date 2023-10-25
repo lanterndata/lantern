@@ -17,6 +17,7 @@ test/tmp_output/
 .DS_Store
 build
 data
+sanitizer
 .vscode/
 .devcontainer/
 .cache

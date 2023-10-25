@@ -1,0 +1,248 @@
+# Run tests with sanitizers enabled
+# derived from from https://github.com/timescale/timescaledb/blob/main/.github/workflows/sanitizer-build-and-test.yaml
+name: Sanitizer test
+on:
+  push:
+    branches:
+      - main
+      - trigger/sanitizer
+  pull_request:
+    branches:
+      - main
+    paths: .github/workflows/sanitizer-build-and-test.yaml
+  release:
+    types: [created, edited]
+  workflow_dispatch:
+    inputs:
+      debug_enabled:
+        type: boolean
+        description: "Run the build against llvm sanitizers"
+        required: false
+        default: false
+
+env:
+  name: "Sanitizer"
+  PG_SRC_DIR: "pgbuild"
+  PG_INSTALL_DIR: ${{ github.workspace }}/pgsql
+  extra_packages: "clang-15 llvm-15 llvm-15-dev llvm-15-tools"
+  llvm_config: "llvm-config-15"
+  CLANG: "clang-15"
+  CC: "clang-15"
+  CXX: "clang-15"
+
+  CFLAGS: "-g -fsanitize=address -fno-omit-frame-pointer -Og -fno-inline-functions"
+  CXXFLAGS: "-g -fsanitize=address -fno-omit-frame-pointer -Og -fno-inline-functions"
+  LDFLAGS: "-fsanitize=address"
+
+  ASAN_OPTIONS: suppressions=${{ github.workspace }}/scripts/sanitizers/suppressions/suppr_asan.txt
+    detect_odr_violation=0 log_path=${{ github.workspace }}/sanitizer/
+    log_exe_name=true print_suppressions=false exitcode=27
+    detect_leaks=0 abort_on_error=1
+
+  LSAN_OPTIONS: suppressions=${{ github.workspace }}/scripts/sanitizers/suppressions/suppr_leak.txt
+    print_suppressions=0 log_path=${{ github.workspace }}/sanitizer/
+    log_exe_name=true print_suppressions=false exitcode=27
+
+  UBSAN_OPTIONS: suppressions=${{ github.workspace }}/scripts/sanitizers/suppressions/suppr_ub.txt
+    print_stacktrace=1 halt_on_error=1 log_path=${{ github.workspace }}/sanitizer/
+    log_exe_name=true print_suppressions=false exitcode=27
+
+jobs:
+  sanitizer:
+    # Change the JOB_NAME variable below when changing the name.
+    # Don't use the env variable here because the env context is not accessible.
+    name: PG${{ matrix.pg }} Sanitizer ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ["ubuntu-22.04"]
+        pg: ["11.21", "12.16", "13.2", "14.9", "15.4", "16.0"]
+    steps:
+    - name: Enable UBSan if this is a release
+      if: ${{ github.event_name == 'release' }}
+      run: |
+        echo "CFLAGS=\"\-g -fsanitize=address,undefined -fno-omit-frame-pointer -O0 -fno-inline-functions"" >> $GITHUB_ENV
+        echo "CXXFLAGS=\"\-g -fsanitize=address,undefined -fno-omit-frame-pointer -O0 -fno-inline-functions"" >> $GITHUB_ENV
+        echo "LDFLAGS=\"-fsanitize=address,undefined\"" >> $GITHUB_ENV
+
+    - name: Install Linux Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y wget \
+        curl \
+        systemd-coredump \
+        build-essential \
+        gdb \
+        make \
+        cmake \
+        pkg-config \
+        flex \
+        bison \
+        libicu-dev \
+        libssl-dev \
+        clang-15 \
+        llvm-15 \
+        llvm-15-dev \
+        llvm-15-tools \
+        libstdc++-12-dev \
+        libstdc++6
+
+    - name: Checkout lantern
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+        submodules: "recursive"
+
+    # We are going to rebuild Postgres daily, so that it doesn't suddenly break
+    # ages after the original problem.
+    - name: Get date for build caching
+      id: get-date
+      run: |
+        echo "date=$(date +"%m-%y")" >> $GITHUB_OUTPUT
+
+    # Create a directory for sanitizer logs. This directory is referenced by
+    # ASAN_OPTIONS, LSAN_OPTIONS, and UBSAN_OPTIONS
+    - name: Create sanitizer log directory
+      run: |
+        mkdir ${{ github.workspace }}/sanitizer
+
+    # we cache the build directory instead of the install directory here
+    # because extension installation will write files to install directory
+    # leading to a tainted cache
+    - name: Cache PostgreSQL ${{ matrix.pg }}
+      id: cache-postgresql
+      uses: actions/cache@v3
+      with:
+        path: ~/${{ env.PG_SRC_DIR }}
+        key: "${{ matrix.os }}-${{ env.name }}-postgresql-${{ matrix.pg }}-${{ env.CC }}\
+          -${{ steps.get-date.outputs.date }}-${{ hashFiles('.github/**') }}"
+
+    - name: Build PostgreSQL ${{ matrix.pg }} if not in cache
+      id: build-postgresql
+      if: steps.cache-postgresql.outputs.cache-hit != 'true'
+      run: |
+        wget -q -O postgresql.tar.bz2 \
+          https://ftp.postgresql.org/pub/source/v${{ matrix.pg }}/postgresql-${{ matrix.pg }}.tar.bz2
+        mkdir -p ~/$PG_SRC_DIR
+        tar --extract --file postgresql.tar.bz2 --directory ~/$PG_SRC_DIR --strip-components 1
+        # Add instrumentation to the Postgres memory contexts. For more details, see
+        # https://www.postgresql.org/message-id/CAM-w4HNH7%2BU9jZevpVK7Wr49tkfpWSR6wav0RLYrq0HWuP5cxw%40mail.gmail.com
+        patch -F5 -p1 -d ~/$PG_SRC_DIR < scripts/sanitizers/postgres-asan-instrumentation.patch
+        cd ~/$PG_SRC_DIR
+        ./configure --prefix=$PG_INSTALL_DIR --enable-debug --enable-cassert \
+          --with-openssl --without-readline --without-zlib --without-libxml
+        make -j$(nproc)
+        make -j$(nproc) -C contrib/pageinspect
+        make -j$(nproc) -C src/test/isolation
+        echo "exit_code=$?" >> $GITHUB_OUTPUT
+
+    - name: save cache preemptively if postgres built
+      uses: actions/cache/save@v3
+      if: steps.build-postgresql.outputs.exit_code == 0
+      with:
+        path: ~/${{ env.PG_SRC_DIR }}
+        key: "${{ matrix.os }}-${{ env.name }}-postgresql-${{ matrix.pg }}-${{ env.CC }}\
+          -${{ steps.get-date.outputs.date }}-${{ hashFiles('.github/**') }}"
+
+    - name: Upload config.log
+      if: always() && steps.cache-postgresql.outputs.cache-hit != 'true'
+      uses: actions/upload-artifact@v3
+      with:
+        name: config.log for PostgreSQL ${{ matrix.os }} ${{ matrix.name }} ${{ matrix.pg }}
+        path: ~/${{ env.PG_SRC_DIR }}/config.log
+
+    - name: Install PostgreSQL ${{ matrix.pg }}
+      run: |
+        make -C ~/$PG_SRC_DIR install
+        echo $PG_INSTALL_DIR/bin >> $GITHUB_PATH
+        sudo chmod -R 755 $PG_INSTALL_DIR/bin
+        $PG_INSTALL_DIR/bin/pg_config --version
+
+    - name: Build Lantern
+      run: |
+        mkdir lantern_build
+        cd lantern_build
+        CXXFLAG="" cmake ..
+        make install
+
+    - name: Start Postgres
+      run: |
+        mkdir -p $PG_INSTALL_DIR/data
+        #sudo chown -R postgres:postgres $PG_INSTALL_DIR/data
+        #sudo chown -R postgres:postgres ${{ github.workspace }}/sanitizer
+        #getent group postgres || sudo groupadd postgres
+        #id -u postgres  &>/dev/null || sudo useradd -g postgres postgres
+        initdb  -A trust -D $PG_INSTALL_DIR/data
+        postgres -D $PG_INSTALL_DIR/data >/tmp/postgres.log 2>&1 &
+
+    - name: make test
+      run: |
+        cd lantern_build
+        make test
+
+    - name: Show regression diffs
+      if: always()
+      id: collectlogs
+      run: |
+        find /tmp/lantern -name regression.diffs -exec cat {} + > regression.log
+        cp /tmp/postgres.log .
+        if [[ "${{ runner.os }}" == "Linux" ]] ; then
+          # wait in case there are in-progress coredumps
+          sleep 10
+          if coredumpctl -q list >/dev/null; then echo "coredumps=true" >>$GITHUB_OUTPUT; fi
+          # print OOM killer information
+          sudo journalctl --system -q --facility=kern --grep "Killed process" || true
+        fi
+        if [[ -s regression.log ]]; then echo "regression_diff=true" >>$GITHUB_OUTPUT; fi
+        #grep -e 'FAILED' -e 'failed (ignored)' installcheck.log || true
+        cat regression.log
+
+    - name: Save regression diffs
+      if: always() && steps.collectlogs.outputs.regression_diff == 'true'
+      uses: actions/upload-artifact@v3
+      with:
+        name: Regression diff ${{ matrix.os }} ${{ env.name }} ${{ matrix.pg }}
+        path: |
+          regression.log
+
+    - name: Save postgres log
+      if: always() && steps.collectlogs.outputs.regression_diff == 'true'
+      uses: actions/upload-artifact@v3
+      with:
+        name: Postgres log ${{ matrix.os }} ${{ env.name }} ${{ matrix.pg }}
+        path: |
+          postgres.log
+
+    - name: Stack trace
+      if: always() && steps.collectlogs.outputs.coredumps == 'true'
+      run: |
+        sudo coredumpctl gdb <<<"
+          set verbose on
+          set trace-commands on
+          show debug-file-directory
+          printf "'"'"query = '%s'\n\n"'"'", debug_query_string
+          frame function ExceptionalCondition
+          printf "'"'"condition = '%s'\n"'"'", conditionName
+          up 1
+          l
+          info args
+          info locals
+          bt full
+        " 2>&1 | tee stacktrace.log
+        ./scripts/sanitizers/bundle_coredump.sh
+        grep -C40 "was terminated by signal" postgres.log > postgres-failure.log ||:
+
+    - name: Coredumps
+      if: always() && steps.collectlogs.outputs.coredumps == 'true'
+      uses: actions/upload-artifact@v3
+      with:
+        name: Coredumps ${{ matrix.os }} ${{ env.name }} ${{ matrix.pg }}
+        path: coredumps
+
+    - name: sanitizer logs
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: sanitizer logs ${{ matrix.os }} ${{ env.name }} ${{ matrix.pg }}
+        path: ${{ github.workspace }}/sanitizer

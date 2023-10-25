@@ -28,6 +28,7 @@
 static relopt_kind ldb_hnsw_index_withopts;
 
 int ldb_hnsw_init_k;
+int ldb_hnsw_ef_search;
 
 // this variable is only set during testing and controls whether
 // certain elog() calls are made
@@ -188,7 +189,7 @@ void _PG_init(void)
 
     add_int_reloption(ldb_hnsw_index_withopts,
                       "ef",
-                      "HNSW ef-construction hyperparameter",
+                      "HNSW ef-search hyperparameter",
                       HNSW_DEFAULT_EF,
                       1,
                       HNSW_MAX_EF
@@ -214,6 +215,19 @@ void _PG_init(void)
                             LDB_HNSW_DEFAULT_K,
                             1,
                             LDB_HNSW_MAX_K,
+                            PGC_USERSET,
+                            0,
+                            NULL,
+                            NULL,
+                            NULL);
+
+    DefineCustomIntVariable("lantern_hnsw.ef_search",
+                            "Expansion factor to use during vector search in a scan",
+                            "Valid values are in range [1, 400]",
+                            &ldb_hnsw_ef_search,
+                            USEARCH_SEARCH_EF_INVALID_VALUE,
+                            USEARCH_SEARCH_EF_INVALID_VALUE,
+                            HNSW_MAX_EF,
                             PGC_USERSET,
                             0,
                             NULL,

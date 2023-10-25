@@ -30,6 +30,14 @@ CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_ind
 INFO:  done init usearch index
 INFO:  done loading usearch index
 INFO:  done saving 1000 vectors
+SELECT _lantern_internal.validate_index('hnsw_l2_index', false);
+INFO:  validate_index() start for hnsw_l2_index
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
 SELECT * FROM ldb_get_indexes('sift_base1k');
    indexname   |  size  |                                                                   indexdef                                                                   | total_index_size 
 ---------------+--------+----------------------------------------------------------------------------------------------------------------------------------------------+------------------
@@ -94,6 +102,14 @@ CREATE INDEX hnsw_cos_index ON sift_base1k USING hnsw (v) WITH (_experimental_in
 INFO:  done init usearch index
 INFO:  done loading usearch index
 INFO:  done saving 1000 vectors
+SELECT _lantern_internal.validate_index('hnsw_cos_index', false);
+INFO:  validate_index() start for hnsw_cos_index
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
 SELECT * FROM ldb_get_indexes('sift_base1k');
    indexname    |  size  |                                                                    indexdef                                                                    | total_index_size 
 ----------------+--------+------------------------------------------------------------------------------------------------------------------------------------------------+------------------
@@ -142,6 +158,14 @@ CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_ind
 INFO:  done init usearch index
 INFO:  done loading usearch index
 INFO:  done saving 1000 vectors
+SELECT _lantern_internal.validate_index('hnsw_l2_index', false);
+INFO:  validate_index() start for hnsw_l2_index
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
 -- This should not throw error, but the first result will not be 0 as vector 777 is deleted from the table
 SELECT ROUND(l2sq_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <-> :'v777' LIMIT 10;
    round   

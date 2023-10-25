@@ -69,6 +69,14 @@ DEBUG:  LANTERN - ---------------------
  t
 (1 row)
 
+SELECT _lantern_internal.validate_index('empty_idx', false);
+INFO:  validate_index() start for empty_idx
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
 DROP INDEX empty_idx;
 -- Case 1, more data in index.
 -- Should see higher cost than Case 0.
@@ -87,6 +95,14 @@ DEBUG:  LANTERN - ---------------------
  is_cost_estimate_within_error 
 -------------------------------
  t
+(1 row)
+
+SELECT _lantern_internal.validate_index('hnsw_idx', false);
+INFO:  validate_index() start for hnsw_idx
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
 (1 row)
 
 DROP INDEX hnsw_idx;
@@ -109,6 +125,14 @@ DEBUG:  LANTERN - ---------------------
  t
 (1 row)
 
+SELECT _lantern_internal.validate_index('hnsw_idx', false);
+INFO:  validate_index() start for hnsw_idx
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
 DROP INDEX hnsw_idx;
 -- Case 3, higher ef.
 -- Should see higher cost than Case 2.
@@ -127,6 +151,14 @@ DEBUG:  LANTERN - ---------------------
  is_cost_estimate_within_error 
 -------------------------------
  t
+(1 row)
+
+SELECT _lantern_internal.validate_index('hnsw_idx', false);
+INFO:  validate_index() start for hnsw_idx
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
 (1 row)
 
 DROP INDEX hnsw_idx;

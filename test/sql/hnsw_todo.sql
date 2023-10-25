@@ -22,9 +22,11 @@ SET enable_seqscan = false;
 \set ON_ERROR_STOP off
 
 CREATE INDEX ON small_world_l2 USING hnsw (vector dist_l2sq_ops);
+SELECT _lantern_internal.validate_index('small_world_l2_vector_idx', false);
 
 -- this should be supported
 CREATE INDEX ON small_world_l2 USING hnsw (vector_int dist_l2sq_int_ops);
+SELECT _lantern_internal.validate_index('small_world_l2_vector_int_idx', false);
 
 -- this should use index
 EXPLAIN (COSTS FALSE)
@@ -48,6 +50,7 @@ INSERT INTO sift_base1k (id, v) VALUES
 (1102, array_fill(2, ARRAY[128]));
 SELECT v AS v1001 FROM sift_base1k WHERE id = 1001 \gset
 CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2.usearch');
+SELECT _lantern_internal.validate_index('hnsw_l2_index', false);
 -- The 1001 and 1002 vectors will be ignored in search, so the first row will not be 0 in result
 SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <-> :'v1001' LIMIT 1;
 
@@ -59,6 +62,7 @@ DROP TABLE sift_base1k CASCADE;
 \ir utils/sift1k_array.sql
 UPDATE sift_base1k SET v=:'v1001' WHERE id=777;
 CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2.usearch');
+SELECT _lantern_internal.validate_index('hnsw_l2_index', false);
 -- The first row will not be 0 now as the vector under id=777 was updated to 1,1,1,1... but it was indexed with different vector
 -- So the usearch index can not find 1,1,1,1,1.. vector in the index and wrong results will be returned
 -- This is an expected behaviour for now

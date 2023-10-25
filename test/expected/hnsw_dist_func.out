@@ -104,24 +104,24 @@ SELECT ARRAY_AGG(id ORDER BY id), ROUND(hamming_dist(v, '{0,1,0}')::numeric, 2) 
 (4 rows)
 
 -- Verify that the indexes is being used
-EXPLAIN SELECT id FROM small_world_l2 ORDER BY v <-> '{0,1,0}';
-                                           QUERY PLAN                                           
-------------------------------------------------------------------------------------------------
- Index Scan using small_world_l2_v_idx on small_world_l2  (cost=0.00..60.05 rows=1070 width=20)
+EXPLAIN (COSTS false) SELECT id FROM small_world_l2 ORDER BY v <-> '{0,1,0}';
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Index Scan using small_world_l2_v_idx on small_world_l2
    Order By: (v <-> '{0,1,0}'::real[])
 (2 rows)
 
-EXPLAIN SELECT id FROM small_world_cos ORDER BY v <-> '{0,1,0}';
-                                            QUERY PLAN                                            
---------------------------------------------------------------------------------------------------
- Index Scan using small_world_cos_v_idx on small_world_cos  (cost=0.00..60.05 rows=1070 width=20)
+EXPLAIN (COSTS false) SELECT id FROM small_world_cos ORDER BY v <-> '{0,1,0}';
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Index Scan using small_world_cos_v_idx on small_world_cos
    Order By: (v <-> '{0,1,0}'::real[])
 (2 rows)
 
-EXPLAIN SELECT id FROM small_world_ham ORDER BY v <-> '{0,1,0}';
-                                            QUERY PLAN                                            
---------------------------------------------------------------------------------------------------
- Index Scan using small_world_ham_v_idx on small_world_ham  (cost=0.00..60.05 rows=1070 width=20)
+EXPLAIN (COSTS false) SELECT id FROM small_world_ham ORDER BY v <-> '{0,1,0}';
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Index Scan using small_world_ham_v_idx on small_world_ham
    Order By: (v <-> '{0,1,0}'::integer[])
 (2 rows)
 
@@ -238,4 +238,36 @@ SELECT ROUND(hamming_dist(v, '{0,0}')::numeric, 2) FROM extra_small_world_ham OR
   2.00
   4.00
 (4 rows)
+
+SELECT _lantern_internal.validate_index('small_world_l2_v_idx', false);
+INFO:  validate_index() start for small_world_l2_v_idx
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
+SELECT _lantern_internal.validate_index('small_world_cos_v_idx', false);
+INFO:  validate_index() start for small_world_cos_v_idx
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
+SELECT _lantern_internal.validate_index('small_world_ham_v_idx', false);
+INFO:  validate_index() start for small_world_ham_v_idx
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
+SELECT _lantern_internal.validate_index('extra_small_world_ham_v_idx', false);
+INFO:  validate_index() start for extra_small_world_ham_v_idx
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
 

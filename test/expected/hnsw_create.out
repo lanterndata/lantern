@@ -34,6 +34,14 @@ SELECT * FROM ldb_get_indexes('sift_base1k');
  sift_base1k_v_idx | 632 kB | CREATE INDEX sift_base1k_v_idx ON public.sift_base1k USING hnsw (v) WITH (dim='128', m='4') | 632 kB
 (1 row)
 
+SELECT _lantern_internal.validate_index('sift_base1k_v_idx', false);
+INFO:  validate_index() start for sift_base1k_v_idx
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
 -- Validate that index creation works with a larger number of vectors
 \ir utils/sift10k_array.sql
 CREATE TABLE IF NOT EXISTS sift_base10k (
@@ -53,6 +61,14 @@ EXPLAIN (COSTS FALSE) SELECT * FROM sift_base10k order by v <-> :'v4444' LIMIT 1
    ->  Index Scan using hnsw_idx on sift_base10k
          Order By: (v <-> '{55,61,11,4,5,2,13,24,65,49,13,9,23,37,94,38,54,11,14,14,40,31,50,44,53,4,0,0,27,17,8,34,12,10,4,4,22,52,68,53,9,2,0,0,2,116,119,64,119,2,0,0,2,30,119,119,116,5,0,8,47,9,5,60,7,7,10,23,56,50,23,5,28,68,6,18,24,65,50,9,119,75,3,0,1,8,12,85,119,11,4,6,8,9,5,74,25,11,8,20,18,12,2,21,11,90,25,32,33,15,2,9,84,67,8,4,22,31,11,33,119,30,3,6,0,0,0,26}'::real[])
 (3 rows)
+
+SELECT _lantern_internal.validate_index('hnsw_idx', false);
+INFO:  validate_index() start for hnsw_idx
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
 
 --- Validate that M values inside the allowed range [2, 128] do not throw an error
 CREATE INDEX ON small_world USING hnsw (v) WITH (M=2);
@@ -117,6 +133,14 @@ INSERT INTO small_world4 (id, vector) VALUES
 ('000', '{1,0,0,0}'),
 ('001', '{1,0,0,1}'),
 ('010', '{1,0,1,0}');
+SELECT _lantern_internal.validate_index('small_world4_hnsw_idx', false);
+INFO:  validate_index() start for small_world4_hnsw_idx
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
 -- without the index, I can change the dimension of a vector element
 DROP INDEX small_world4_hnsw_idx;
 UPDATE small_world4 SET vector = '{0,0,0}' WHERE id = '001';
