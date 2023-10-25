@@ -55,7 +55,7 @@ static char *extract_node(char               *data,
     return tape;
 }
 
-static BlockNumber NumberOfBlockMapsInGroup(unsigned groupno)
+BlockNumber NumberOfBlockMapsInGroup(unsigned groupno)
 {
     assert(groupno < HNSW_MAX_BLOCKMAP_GROUPS);
 

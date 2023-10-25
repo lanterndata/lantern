@@ -133,15 +133,24 @@ static void ldb_vi_read_blockmaps(Relation             index,
     if(blocks_nr == 0) return;
     vi_blocks[ 0 ].vp_type = LDB_VI_BLOCK_HEADER;
     while(nodes_remaining != 0) {
-        if(blockmap_groupno > index_header->blockmap_page_groups) {
+        if(blockmap_groupno >= index_header->blockmap_groups_nr) {
             elog(ERROR,
-                 "blockmap_groupno=%d > index_header->blockmap_page_groups=%d",
+                 "blockmap_groupno=%" PRIu32 " >= index_header->blockmap_groups_nr=%" PRIu32,
                  blockmap_groupno,
-                 index_header->blockmap_page_groups);
+                 index_header->blockmap_groups_nr);
+        }
+        if(index_header->blockmap_groups[ blockmap_groupno ].blockmaps_initialized
+           != NumberOfBlockMapsInGroup(blockmap_groupno)) {
+            elog(ERROR,
+                 "HnswBlockMapGroupDesc.blockmaps_initialized=%" PRIu32 " != NumberOfBlockMapsInGroup()=%" PRIu32
+                 " for blockmap_groupno=%" PRIu32,
+                 index_header->blockmap_groups[ blockmap_groupno ].blockmaps_initialized,
+                 NumberOfBlockMapsInGroup(blockmap_groupno),
+                 blockmap_groupno);
         }
         /* TODO see the loop in CreateBlockMapGroup() */
         BlockNumber number_of_blockmaps_in_group = 1u << blockmap_groupno;
-        BlockNumber group_start = index_header->blockmap_page_group_index[ blockmap_groupno ];
+        BlockNumber group_start = index_header->blockmap_groups[ blockmap_groupno ].first_block;
         for(unsigned blockmap_id = 0; blockmap_id < number_of_blockmaps_in_group; ++blockmap_id) {
             BlockNumber blockmap_block = group_start + blockmap_id;
             BlockNumber expected_special_nextblockno;
@@ -640,7 +649,7 @@ void ldb_validate_index(Oid indrelid, bool print_info)
         elog(INFO,
              "index_header = HnswIndexHeaderPage("
              "version=%" PRIu32 " vector_dim=%" PRIu32 " m=%" PRIu32 " ef_construction=%" PRIu32 " ef=%" PRIu32
-             " metric_kind=%d num_vectors=%" PRIu32 " last_data_block=%" PRIu32 " blockmap_page_groups=%" PRIu32 ")",
+             " metric_kind=%d num_vectors=%" PRIu32 " last_data_block=%" PRIu32 " blockmap_groups_nr=%" PRIu32 ")",
              index_header->version,
              index_header->vector_dim,
              index_header->m,
@@ -649,7 +658,7 @@ void ldb_validate_index(Oid indrelid, bool print_info)
              index_header->metric_kind,
              index_header->num_vectors,
              index_header->last_data_block,
-             index_header->blockmap_page_groups);
+             index_header->blockmap_groups_nr);
     }
 
     blocks_nr = RelationGetNumberOfBlocksInFork(index, MAIN_FORKNUM);
@@ -657,7 +666,7 @@ void ldb_validate_index(Oid indrelid, bool print_info)
     if(print_info) {
         elog(INFO, "blocks_nr=%" PRIu32 " nodes_nr=%" PRIu32, blocks_nr, nodes_nr);
     }
-    /* TODO check nodes_nr against index_header->blockmap_page_groups */
+    /* TODO check nodes_nr against index_header->blockmap_groups_nr */
 
     vi_blocks = palloc0_array(typeof(*vi_blocks), blocks_nr);
     vi_nodes = palloc0_array(typeof(*vi_nodes), nodes_nr);
