@@ -1,3 +1,4 @@
+# This file was copied from timescaledb
 #!/bin/bash
 
 TARGET=coredumps

@@ -1,9 +1,7 @@
 # Run tests with sanitizers enabled
-# largely copied from https://github.com/timescale/timescaledb/blob/main/.github/workflows/sanitizer-build-and-test.yaml
+# derived from from https://github.com/timescale/timescaledb/blob/main/.github/workflows/sanitizer-build-and-test.yaml
 name: Sanitizer test
 on:
-  schedule:
-    - cron: '0 0 * * 0'
   push:
     branches:
       - main
@@ -12,6 +10,8 @@ on:
     branches:
       - main
     paths: .github/workflows/sanitizer-build-and-test.yaml
+  release:
+    types: [created, edited]
   workflow_dispatch:
     inputs:
       debug_enabled:
@@ -59,6 +59,13 @@ jobs:
         os: ["ubuntu-22.04"]
         pg: ["11.21", "12.16", "13.2", "14.9", "15.4", "16.0"]
     steps:
+    - name: Enable UBSan if this is a release
+      if: ${{ github.event_name == 'release' }}
+      run: |
+        echo "CFLAGS=\"\-g -fsanitize=address,undefined -fno-omit-frame-pointer -Og -fno-inline-functions"" >> $GITHUB_ENV
+        echo "CXXFLAGS=\"\-g -fsanitize=address,undefined -fno-omit-frame-pointer -Og -fno-inline-functions"" >> $GITHUB_ENV
+        echo "LDFLAGS=\"-fsanitize=address,undefined\"" >> $GITHUB_ENV
+
     - name: Install Linux Dependencies
       run: |
         sudo apt-get update
