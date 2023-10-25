@@ -204,14 +204,14 @@ jobs:
         name: Regression diff ${{ matrix.os }} ${{ env.name }} ${{ matrix.pg }}
         path: |
           regression.log
-          postgres.log
 
-    - name: Save PostgreSQL log
-      if: always()
+    - name: Save postgres log
+      if: always() && steps.collectlogs.outputs.regression_diff == 'true'
       uses: actions/upload-artifact@v3
       with:
-        name: PostgreSQL log ${{ matrix.os }} ${{ env.name }} ${{ matrix.pg }}
-        path: /var/log/postgresql/*.log
+        name: Regression diff ${{ matrix.os }} ${{ env.name }} ${{ matrix.pg }}
+        path: |
+          postgres.log
 
     - name: Stack trace
       if: always() && steps.collectlogs.outputs.coredumps == 'true'
