@@ -51,7 +51,9 @@ jobs:
           sudo pip install GitPython &&\
           # Start postgres
           sudo su postgres -c "PG_VERSION=$PG_VERSION RUN_TESTS=0 ./ci/scripts/run-tests-linux.sh" && \
-          sudo su -c "PG_VERSION=$PG_VERSION python3 ./scripts/test_updates.py -U postgres"
+          sudo su -c "PG_VERSION=$PG_VERSION python3 ./scripts/test_updates.py -U postgres" &&\
+          echo "Done with updates"
+
         env:
           PG_VERSION: ${{ matrix.postgres }}
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
