@@ -14,7 +14,6 @@ def update_from_tag(from_version: str, to_version: str):
     repo = git.Repo(search_parent_directories=True)
     sha_before = repo.head.object.hexsha
     repo.remotes[0].fetch()
-
     repo.git.checkout(from_tag)
     sha_after = repo.head.object.hexsha
     print("sha_after", sha_after)
