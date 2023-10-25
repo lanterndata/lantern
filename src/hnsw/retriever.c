@@ -48,6 +48,8 @@ void ldb_wal_retriever_area_reset(RetrieverCtx *ctx, HnswIndexHeaderPage *header
     }
     dlist_init(&ctx->takenbuffers);
 
+    fa_cache_init(&ctx->fa_cache);
+
     assert(ctx->header_page_under_wal == header_page_under_wal);
     ctx->header_page_under_wal = header_page_under_wal;
 }

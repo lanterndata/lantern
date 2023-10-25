@@ -226,7 +226,7 @@ void _PG_init(void)
                             "Valid values are in range [1, 400]",
                             &ldb_hnsw_ef_search,
                             USEARCH_SEARCH_EF_INVALID_VALUE,
-                            1,
+                            USEARCH_SEARCH_EF_INVALID_VALUE,
                             HNSW_MAX_EF,
                             PGC_USERSET,
                             0,
