@@ -12,6 +12,7 @@
 #include <parser/parsetree.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <utils/memutils.h>
 #include <utils/rel.h>
 #include <utils/syscache.h>
 
@@ -195,7 +196,8 @@ static Node *operator_rewriting_mutator(Node *node, void *ctx)
                     Relation  index = index_open(indexid, AccessShareLock);
                     Oid       indexfunc = get_func_id_from_index(index);
                     if(OidIsValid(indexfunc)) {
-                        FuncExpr *fnExpr = makeNode(FuncExpr);
+                        MemoryContext old = MemoryContextSwitchTo(MessageContext);
+                        FuncExpr     *fnExpr = makeNode(FuncExpr);
                         fnExpr->funcresulttype = opExpr->opresulttype;
                         fnExpr->funcretset = opExpr->opretset;
                         fnExpr->funccollid = opExpr->opcollid;
@@ -207,6 +209,7 @@ static Node *operator_rewriting_mutator(Node *node, void *ctx)
                         // print it as a function
                         fnExpr->funcformat = COERCE_EXPLICIT_CALL;
                         fnExpr->funcid = indexfunc;
+                        MemoryContextSwitchTo(old);
 
                         index_close(index, AccessShareLock);
 
@@ -236,6 +239,18 @@ static Node *operator_rewriting_mutator(Node *node, void *ctx)
 
         base_plan_mutator(scanPlan, context);
         return (Node *)scan;
+    }
+
+    if(IsA(node, List)) {
+        MemoryContext old = MemoryContextSwitchTo(MessageContext);
+        List         *list = (List *)node;
+        List         *ret = NIL;
+        ListCell     *lc;
+        foreach(lc, list) {
+            ret = lappend(ret, operator_rewriting_mutator((Node *)lfirst(lc), ctx));
+        }
+        MemoryContextSwitchTo(old);
+        return (Node *)ret;
     }
 
     if(is_plan_node(node)) {
