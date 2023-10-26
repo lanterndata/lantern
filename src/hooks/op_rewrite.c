@@ -12,6 +12,7 @@
 #include <parser/parsetree.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <utils/catcache.h>
 #include <utils/memutils.h>
 #include <utils/rel.h>
 #include <utils/syscache.h>
@@ -166,13 +167,19 @@ static Oid get_func_id_from_index(Relation index)
     ReleaseSysCache(opclassTuple);
 
     // SELECT * FROM pg_amproc WHERE amprocfamily=opclassOid
-    HeapTuple opTuple = SearchSysCache1(AMPROCNUM, ObjectIdGetDatum(opclassOid));
+    // SearchSysCache1 is what we want and in fact it runs fine against release builds. However debug builds assert that
+    // AMPROCNUM takes only 1 arg which isn't true and so they fail. We therefore have to use SearchSysCacheList1 since
+    // it doesn't enforce this invariant. Ideally we would call SearchCatCache1 directly but postgres doesn't expose
+    // necessary constants
+    CatCList *opList = SearchSysCacheList1(AMPROCNUM, ObjectIdGetDatum(opclassOid));
+    assert(opList->n_members == 1);
+    HeapTuple opTuple = &opList->members[ 0 ]->tuple;
     if(!HeapTupleIsValid(opTuple)) {
         index_close(index, AccessShareLock);
         elog(ERROR, "Failed to find the function for operator class");
     }
     Oid functionId = ((Form_pg_amproc)GETSTRUCT(opTuple))->amproc;
-    ReleaseSysCache(opTuple);
+    ReleaseCatCacheList(opList);
 
     return functionId;
 }

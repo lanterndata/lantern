@@ -55,7 +55,14 @@ docker exec -i -u root lantern-sanitizers /bin/bash <<EOF
 chown -R postgres:postgres /lantern/sanitizer
 EOF
 
+DIFF_PATH=/tmp/lantern/tmp_output/regression.diffs
 docker exec -i -u postgres -w /lantern/build lantern-sanitizers /bin/bash <<EOF
 make test
-cp /tmp/lantern/tmp_output/results/*.out /lantern/sanitizer
+if test -f $DIFF_PATH; then
+    cp /tmp/lantern/tmp_output/regression.diffs /lantern/sanitizer/test.diffs
+fi
+make test-parallel
+if test -f $DIFF_PATH; then
+    cp /tmp/lantern/tmp_output/regression.diffs /lantern/sanitizer/test-parallel.diffs
+fi
 EOF
