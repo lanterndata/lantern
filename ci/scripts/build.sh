@@ -111,4 +111,3 @@ else
  setup_cargo_deps && \
  package_extension
 fi
-

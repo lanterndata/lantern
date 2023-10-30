@@ -5,10 +5,12 @@ resolver = "2"
 
 members = [
     "lantern_extras",
+    "lantern_logger",
     "lantern_create_index",
     "lantern_embeddings",
     "lantern_embeddings_core",
     "lantern_cli",
+    "lantern_daemon",
 ]
 
 [profile.release]

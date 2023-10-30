@@ -3,6 +3,7 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
 
 use cxx::UniquePtr;
+use lantern_logger::{LogLevel, Logger};
 use postgres::{Client, NoTls, Row};
 use postgres_types::FromSql;
 use usearch::ffi::*;
@@ -51,6 +52,7 @@ fn index_chunk(
     rows: Vec<Row>,
     thread_n: usize,
     index: Arc<ThreadSafeIndex>,
+    logger: Arc<Logger>,
 ) -> Result<(), anyhow::Error> {
     let row_count = rows.len();
 
@@ -59,10 +61,10 @@ fn index_chunk(
         let vec: Vec<f32> = row.get(1);
         index.add_in_thread(ctid.label, &vec, thread_n);
     }
-    println!(
-        "[*] {} items added to index from thread {}",
+    logger.debug(&format!(
+        "{} items added to index from thread {}",
         row_count, thread_n
-    );
+    ));
     Ok(())
 }
 
@@ -82,11 +84,15 @@ impl ThreadSafeIndex {
 unsafe impl Sync for ThreadSafeIndex {}
 unsafe impl Send for ThreadSafeIndex {}
 
-pub fn create_usearch_index(args: &cli::CreateIndexArgs) -> Result<(), anyhow::Error> {
-    println!(
-        "[*] Creating index with parameters dimensions={} m={} ef={} ef_construction={}",
+pub fn create_usearch_index(
+    args: &cli::CreateIndexArgs,
+    logger: Option<Logger>,
+) -> Result<(), anyhow::Error> {
+    let logger = Arc::new(logger.unwrap_or(Logger::new("Lantern Index", LogLevel::Debug)));
+    logger.info(&format!(
+        "Creating index with parameters dimensions={} m={} ef={} ef_construction={}",
         args.dims, args.m, args.ef, args.efc
-    );
+    ));
 
     let options = IndexOptions {
         dimensions: args.dims,
@@ -98,7 +104,7 @@ pub fn create_usearch_index(args: &cli::CreateIndexArgs) -> Result<(), anyhow::E
     };
 
     let num_cores: usize = std::thread::available_parallelism().unwrap().into();
-    println!("[*] Number of available CPU cores: {}", num_cores);
+    logger.info(&format!("Number of available CPU cores: {}", num_cores));
 
     let index = new_index(&options)?;
     // get all row count
@@ -111,7 +117,7 @@ pub fn create_usearch_index(args: &cli::CreateIndexArgs) -> Result<(), anyhow::E
     index.reserve(count as usize)?;
     let thread_safe_index = ThreadSafeIndex { inner: index };
 
-    println!("[*] Items to index {}", count);
+    logger.info(&format!("Items to index {}", count));
 
     let index_arc = Arc::new(thread_safe_index);
 
@@ -124,6 +130,7 @@ pub fn create_usearch_index(args: &cli::CreateIndexArgs) -> Result<(), anyhow::E
     for n in 0..num_cores {
         // spawn thread
         let index_ref = index_arc.clone();
+        let logger_ref = logger.clone();
         let receiver = rx_arc.clone();
 
         let handle = std::thread::spawn(move || loop {
@@ -137,7 +144,7 @@ pub fn create_usearch_index(args: &cli::CreateIndexArgs) -> Result<(), anyhow::E
                 break;
             }
             let rows = rows.unwrap();
-            index_chunk(rows, n, index_ref.clone()).unwrap();
+            index_chunk(rows, n, index_ref.clone(), logger_ref.clone()).unwrap();
         });
         handles.push(handle);
     }
@@ -168,6 +175,6 @@ pub fn create_usearch_index(args: &cli::CreateIndexArgs) -> Result<(), anyhow::E
     }
 
     index_arc.save(&args.out);
-    println!("[*] Index saved under {}", &args.out);
+    logger.info(&format!("Index saved under {}", &args.out));
     Ok(())
 }

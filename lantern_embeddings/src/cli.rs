@@ -28,7 +28,6 @@ pub struct EmbeddingArgs {
     pub column: String,
 
     /// Output db uri, fully associated database connection string including db name. Defaults to
-    /// uri
     #[arg(long)]
     pub out_uri: Option<String>,
 
@@ -41,8 +40,8 @@ pub struct EmbeddingArgs {
     pub out_column: String,
 
     /// Batch size
-    #[arg(short, long, default_value_t = 200)]
-    pub batch_size: usize,
+    #[arg(short, long)]
+    pub batch_size: Option<usize>,
 
     /// Data path
     #[arg(short, long)]
@@ -55,6 +54,18 @@ pub struct EmbeddingArgs {
     /// Output csv path. If specified result will be written in csv instead of database
     #[arg(short, long)]
     pub out_csv: Option<String>,
+
+    /// Filter which will be used when getting data from source table
+    #[arg(short, long)]
+    pub filter: Option<String>,
+
+    /// Limit will be applied to source table if specified
+    #[arg(short, long)]
+    pub limit: Option<u32>,
+
+    /// Stream data to output table while still generating
+    #[arg(long, default_value_t = false)]
+    pub stream: bool,
 }
 
 impl EmbeddingArgs {

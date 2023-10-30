@@ -10,10 +10,7 @@ use std::collections::HashMap;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
-use tokenizers::{
-    PaddingDirection, PaddingParams, PaddingStrategy, Tokenizer, TruncationDirection,
-    TruncationParams, TruncationStrategy,
-};
+use tokenizers::{PaddingParams, Tokenizer, TruncationParams};
 use tokio::{fs, runtime};
 
 #[macro_use]
@@ -29,25 +26,96 @@ pub struct EncoderService {
 pub struct EncoderOptions {
     pub visual: bool,
     pub use_tokenizer: bool,
-    pub pad_token_sequence: usize,
+    padding_params: Option<PaddingParams>,
+    truncation_params: Option<TruncationParams>,
     pub input_image_size: Option<usize>,
 }
 
 const DATA_PATH: &'static str = ".ldb_extras_data/";
 
 struct ModelInfo {
-    url: &'static str,
-    tokenizer_url: Option<&'static str>,
+    url: String,
+    tokenizer_url: Option<String>,
     encoder_args: EncoderOptions,
     encoder: Option<EncoderService>,
 }
 
+struct ModelInfoBuilder {
+    base_url: &'static str,
+    use_tokenizer: Option<bool>,
+    visual: Option<bool>,
+    input_image_size: Option<usize>,
+    padding_params: Option<PaddingParams>,
+    truncation_params: Option<TruncationParams>,
+}
+
+impl ModelInfoBuilder {
+    fn new(base_url: &'static str) -> Self {
+        ModelInfoBuilder {
+            base_url,
+            use_tokenizer: None,
+            visual: None,
+            input_image_size: None,
+            padding_params: None,
+            truncation_params: None,
+        }
+    }
+
+    fn with_tokenizer(&mut self, status: bool) -> &mut Self {
+        self.use_tokenizer = if status { Some(true) } else { None };
+        self
+    }
+
+    fn with_visual(&mut self, status: bool) -> &mut Self {
+        self.visual = if status { Some(true) } else { None };
+        self
+    }
+
+    fn with_input_image_size(&mut self, len: usize) -> &mut Self {
+        self.input_image_size = Some(len);
+        self
+    }
+
+    fn build(&self) -> ModelInfo {
+        let model_url = format!("{}/model.onnx", self.base_url);
+        let mut tokenizer_url = None;
+
+        if self.use_tokenizer.is_some() {
+            tokenizer_url = Some(format!("{}/tokenizer.json", self.base_url));
+        }
+
+        let encoder_args = EncoderOptions {
+            visual: self.visual.is_some(),
+            use_tokenizer: self.use_tokenizer.is_some(),
+            input_image_size: self.input_image_size.clone(),
+            padding_params: self.padding_params.clone(),
+            truncation_params: self.truncation_params.clone(),
+        };
+
+        ModelInfo {
+            url: model_url,
+            tokenizer_url,
+            encoder: None,
+            encoder_args,
+        }
+    }
+}
+
 lazy_static! {
     static ref MODEL_INFO_MAP: RwLock<HashMap<&'static str, ModelInfo>> = RwLock::new(HashMap::from([
-        ("clip/ViT-B-32-textual", ModelInfo{encoder: None, url: "https://huggingface.co/varik77/onnx-models/resolve/main/openai/ViT-B-32/textual/model.onnx", tokenizer_url: Some("https://huggingface.co/varik77/onnx-models/resolve/main/openai/ViT-B-32/textual/tokenizer.json"), encoder_args: EncoderOptions{visual:false, pad_token_sequence: 77, use_tokenizer: true, input_image_size: None}}),
-        ("clip/ViT-B-32-visual", ModelInfo{encoder: None, url: "https://huggingface.co/varik77/onnx-models/resolve/main/openai/ViT-B-32/visual/model.onnx", tokenizer_url: None, encoder_args: EncoderOptions{visual:true, input_image_size: Some(224), use_tokenizer: false, pad_token_sequence: 0} }),
-        ("BAAI/bge-base-en", ModelInfo{encoder: None, url: "https://huggingface.co/varik77/onnx-models/resolve/main/BAAI/bge-base-en/model.onnx", tokenizer_url: Some("https://huggingface.co/varik77/onnx-models/resolve/main/BAAI/bge-base-en/tokenizer.json"), encoder_args: EncoderOptions{visual:false, pad_token_sequence: 512, use_tokenizer: true, input_image_size: None}}),
-        ("BAAI/bge-large-en", ModelInfo{encoder: None, url: "https://huggingface.co/varik77/onnx-models/resolve/main/BAAI/bge-large-en/model.onnx", tokenizer_url: Some("https://huggingface.co/varik77/onnx-models/resolve/main/BAAI/bge-large-en/tokenizer.json"), encoder_args: EncoderOptions{visual:false, pad_token_sequence: 512, use_tokenizer: true, input_image_size: None}}),
+        ("clip/ViT-B-32-textual", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/openai/ViT-B-32/textual").with_tokenizer(true).build()),
+        ("clip/ViT-B-32-visual", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/openai/ViT-B-32/visual").with_input_image_size(224).with_visual(true).build()),
+        ("BAAI/bge-small-en", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/BAAI/bge-small-en-v1.5").with_tokenizer(true).build()),
+        ("BAAI/bge-base-en", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/BAAI/bge-base-en-v1.5").with_tokenizer(true).build()),
+        ("BAAI/bge-large-en", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/BAAI/bge-large-en-v1.5").with_tokenizer(true).build()),
+        ("intfloat/e5-base-v2", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/intfloat/e5-base-v2").with_tokenizer(true).build()),
+        ("intfloat/e5-large-v2", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/intfloat/e5-large-v2").with_tokenizer(true).build()),
+        ("llmrails/ember-v1", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/llmrails/ember-v1").with_tokenizer(true).build()),
+        ("thenlper/gte-base", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/thenlper/gte-base").with_tokenizer(true).build()),
+        ("thenlper/gte-large", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/thenlper/gte-large").with_tokenizer(true).build()),
+        ("microsoft/all-MiniLM-L12-v2", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/microsoft/all-MiniLM-L12-v2").with_tokenizer(true).build()),
+        ("microsoft/all-mpnet-base-v2", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/microsoft/all-mpnet-base-v2").with_tokenizer(true).build()),
+        ("transformers/multi-qa-mpnet-base-dot-v1", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/transformers/multi-qa-mpnet-base-dot-v1").with_tokenizer(true).build())
     ]));
 }
 
@@ -83,26 +151,14 @@ impl EncoderService {
             let mut tokenizer_instance =
                 Tokenizer::from_file(Path::join(model_folder, "tokenizer.json")).unwrap();
 
-            tokenizer_instance.with_padding(Some(PaddingParams {
-                strategy: if args.pad_token_sequence > 0 {
-                    PaddingStrategy::Fixed(args.pad_token_sequence)
-                } else {
-                    PaddingStrategy::BatchLongest
-                },
-                direction: PaddingDirection::Right,
-                pad_to_multiple_of: None,
-                pad_id: 0,
-                pad_type_id: 0,
-                pad_token: "[PAD]".to_string(),
-            }));
+            // In case tokenizer will not contain padding and truncation params
+            // We will specify them manually
+            if args.padding_params.is_some() {
+                tokenizer_instance.with_padding(args.padding_params.clone());
+            }
 
-            if args.pad_token_sequence > 0 {
-                tokenizer_instance.with_truncation(Some(TruncationParams {
-                    direction: TruncationDirection::Right,
-                    max_length: args.pad_token_sequence,
-                    strategy: TruncationStrategy::LongestFirst,
-                    stride: 0,
-                }))?;
+            if args.truncation_params.is_some() {
+                tokenizer_instance.with_truncation(args.truncation_params.clone())?;
             }
 
             tokenizer = Some(tokenizer_instance);
@@ -124,55 +180,60 @@ impl EncoderService {
         })
     }
 
-    fn process_text_bge(
+    fn process_text_bert(
         &self,
         text: &Vec<&str>,
     ) -> Result<Vec<Vec<f32>>, Box<dyn std::error::Error + Send + Sync>> {
         let session = &self.encoder;
+        let text_len = text.len();
         let preprocessed = self
             .tokenizer
             .as_ref()
             .unwrap()
             .encode_batch(text.clone(), true)?;
 
-        let v1: Vec<i64> = preprocessed
+        let mut vecs = Vec::with_capacity(session.inputs.len());
+
+        for input in &session.inputs {
+            let mut val = None;
+            match input.name.as_str() {
+                "input_ids" => {
+                    let v: Vec<i64> = preprocessed
+                        .iter()
+                        .map(|i| i.get_ids().iter().map(|b| *b as i64).collect())
+                        .concat();
+                    val = Some(v);
+                }
+                "attention_mask" => {
+                    let v: Vec<i64> = preprocessed
+                        .iter()
+                        .map(|i| i.get_attention_mask().iter().map(|b| *b as i64).collect())
+                        .concat();
+                    val = Some(v);
+                }
+                "token_type_ids" => {
+                    let v: Vec<i64> = preprocessed
+                        .iter()
+                        .map(|i| i.get_type_ids().iter().map(|b| *b as i64).collect())
+                        .concat();
+                    val = Some(v);
+                }
+                _ => {}
+            }
+            if let Some(v) = val {
+                vecs.push(
+                    CowArray::from(Array2::from_shape_vec((text_len, v.len() / text_len), v)?)
+                        .into_dyn(),
+                );
+            }
+        }
+
+        let inputs = vecs
             .iter()
-            .map(|i| i.get_ids().iter().map(|b| *b as i64).collect())
-            .concat();
+            .map(|v| Value::from_array(session.allocator(), &v).unwrap())
+            .collect();
 
-        let v2: Vec<i64> = preprocessed
-            .iter()
-            .map(|i| i.get_attention_mask().iter().map(|b| *b as i64).collect())
-            .concat();
-
-        let v3: Vec<i64> = preprocessed
-            .iter()
-            .map(|i| i.get_type_ids().iter().map(|b| *b as i64).collect())
-            .concat();
-
-        let ids = CowArray::from(Array2::from_shape_vec(
-            (text.len(), v1.len() / text.len()),
-            v1,
-        )?)
-        .into_dyn();
-
-        let mask = CowArray::from(Array2::from_shape_vec(
-            (text.len(), v2.len() / text.len()),
-            v2,
-        )?)
-        .into_dyn();
-
-        let type_ids = CowArray::from(Array2::from_shape_vec(
-            (text.len(), v3.len() / text.len()),
-            v3,
-        )?)
-        .into_dyn();
-
-        let outputs = session.run(vec![
-            Value::from_array(session.allocator(), &ids)?,
-            Value::from_array(session.allocator(), &mask)?,
-            Value::from_array(session.allocator(), &type_ids)?,
-        ])?;
+        let outputs = session.run(inputs)?;
 
         let binding = outputs[0].try_extract()?;
         let embeddings = binding.view();
@@ -247,9 +308,7 @@ impl EncoderService {
     ) -> Result<Vec<Vec<f32>>, Box<dyn std::error::Error + Send + Sync>> {
         match self.name.as_str() {
             "clip/ViT-B-32-textual" => self.process_text_clip(text),
-            "BAAI/bge-base-en" => self.process_text_bge(text),
-            "BAAI/bge-large-en" => self.process_text_bge(text),
-            _ => self.process_text_clip(text),
+            _ => self.process_text_bert(text),
         }
     }
 
@@ -367,13 +426,13 @@ pub mod clip {
         if !model_path.exists() {
             // model is not downloaded, we should download it
             logger("Downloading model [this is one time operation]");
-            download_file(model_info.url, &model_path)?;
+            download_file(&model_info.url, &model_path)?;
         }
 
         if !tokenizer_path.exists() && model_info.tokenizer_url.is_some() {
             logger("Downloading tokenizer [this is one time operation]");
             // tokenizer is not downloaded, we should download it
-            download_file(model_info.tokenizer_url.unwrap(), &tokenizer_path)?;
+            download_file(&model_info.tokenizer_url.as_ref().unwrap(), &tokenizer_path)?;
         }
 
         let encoder = EncoderService::new(
@@ -415,7 +474,7 @@ pub mod clip {
         let result = model_info.encoder.as_ref().unwrap().process_text(texts);
 
         match result {
-            Ok(res) => Ok(res.clone()),
+            Ok(res) => Ok(res),
             Err(err) => {
                 // remove lock
                 drop(map);
@@ -508,7 +567,7 @@ pub mod clip {
         let result = model_info.encoder.as_ref().unwrap().process_image(&buffers);
 
         match result {
-            Ok(res) => Ok(res.clone()),
+            Ok(res) => Ok(res),
             Err(err) => {
                 // remove lock
                 drop(map);

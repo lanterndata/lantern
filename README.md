@@ -68,8 +68,8 @@ make install
 <details>
 <summary> Click to expand</summary>
 
-You should have onnxruntime in your system in order to build the extension.  
-You can download the `onnxruntime` binary realease from GitHub https://github.com/microsoft/onnxruntime/releases/tag/v1.15.1 and place it somewhere in your system (e.g. /usr/lib/onnxruntime)
+You should have onnxruntime in your system in order to run the extension.
+You can download the `onnxruntime` binary realease from GitHub https://github.com/microsoft/onnxruntime/releases/tag/v1.16.1 and place it somewhere in your system (e.g. /usr/lib/onnxruntime)
 
 Then you should export these 2 environment variables
 
@@ -172,7 +172,25 @@ This is a CLI application that generates vector embeddings from your postgres da
 
 ### Installation
 
-Run `cargo install --path lantern_cli` to install the binary
+Run `cargo install --path lantern_cli` to install the binary if you have clonned the source code or `cargo install --git https://github.com/lanterndata/lantern_extras.git` to install from git.
+
+or build and use the docker image
+
+```bash
+# CPU version
+docker build -f Dockerfile.cli -t lantern-cli .
+
+# GPU version (CUDA)
+docker build -f Dockerfile.cli.cuda -t lantern-cli:gpu .
+
+# Run with CPU version
+docker run lantern-cli create-embeddings  --model 'BAAI/bge-large-en' --uri 'postgresql://postgres@127.0.0.1:5432/postgres' --table "wiki" --column "content" --out-column "content_embedding" --pk "id" --batch-size 40
+
+# Run with GPU verion
+nvidia-docker run lantern-cli:gpu create-embeddings  --model 'BAAI/bge-large-en' --uri 'postgresql://postgres@127.0.0.1:5432/postgres' --table "wiki" --column "content" --out-column "content_embedding" --pk "id" --batch-size 40
+```
+
+> [nvidia-container-runtime](https://developer.nvidia.com/nvidia-container-runtime) is required for GPU version to work. You can check the GPU load using `nvtop` command (`apt install nvtop`)
 
 ### Usage
 
@@ -217,4 +235,33 @@ INSERT INTO images (url) VALUES ('https://cdn.pixabay.com/photo/2014/11/30/14/11
 
 ```bash
 lantern-cli create-embeddings  --model 'clip/ViT-B-32-visual'  --uri 'postgresql://postgres:postgres@localhost:5432/test' --table "images" --column "url" --out-column "embedding" --pk "id" --schema "public" --visual
+```
+
+### Daemon Mode
+
+Lantern CLI can be used in daemon mode to continousely listen to postgres table and generate embeddings.
+
+```bash
+ lantern-cli start-daemon --uri 'postgres://postgres@localhost:5432/postgres' --table lantern_jobs --schema public --log-level debug
+```
+
+This will set up trigger on specified table (`lantern_jobs`) and when new row will be inserted it will start embedding generation based on row data.
+After that the triggers will be set up in target table, so it will generate embeddings continousely for that table.
+The jobs table should have the following structure
+
+```sql
+ id SERIAL PRIMARY KEY,
+ db_connection TEXT,
+ schema TEXT,
+ "table" TEXT,
+ src_column TEXT,
+ dst_column TEXT,
+ embedding_model TEXT,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW (),
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW (),
+ canceled_at TIMESTAMPTZ NOT NULL DEFAULT NOW (),
+ init_started_at TIMESTAMPTZ,
+ init_finished_at TIMESTAMPTZ,
+ init_failed_at TIMESTAMPTZ,
+ init_failure_reason TEXT
 ```

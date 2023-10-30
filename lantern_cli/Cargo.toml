@@ -1,6 +1,6 @@
 [package]
 name = "lantern_cli"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 
 [[bin]]
@@ -13,3 +13,4 @@ path = "src/main.rs"
 clap = { version = "4.4.0", features = ["derive"] }
 lantern_create_index = { path = "../lantern_create_index" }
 lantern_embeddings = { path = "../lantern_embeddings" }
+lantern_daemon = { path = "../lantern_daemon" }
