@@ -37,7 +37,7 @@ WITH neighbors AS (
 ) SELECT COUNT(*) from neighbors;
 
 -- Change default k and make sure the number of usearch_searchs makes sense
-SET hnsw.init_k = 4;
+SET lantern_hnsw.init_k = 4;
 WITH neighbors AS (
     SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 3
 ) SELECT COUNT(*) from neighbors;

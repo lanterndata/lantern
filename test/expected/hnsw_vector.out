@@ -146,7 +146,7 @@ EXPLAIN (COSTS FALSE) SELECT * FROM sift_base10k ORDER BY v <-> :'v4444' LIMIT 1
 (3 rows)
 
 -- Ensure we can query an index for more elements than the value of init_k
-SET hnsw.init_k = 4;
+SET lantern_hnsw.init_k = 4;
 WITH neighbors AS (
     SELECT * FROM small_world order by v <-> '[1,0,0]' LIMIT 3
 ) SELECT COUNT(*) from neighbors;
