@@ -1,4 +1,4 @@
-FROM rust:1.72.0
+FROM rust:1.72.0 as build
 # Copy the files in your machine to the Docker image
 WORKDIR /app
 COPY . .
@@ -11,6 +11,10 @@ RUN apt update && \
   apt install -y --no-install-recommends wget build-essential pkg-config clang curl libssl-dev && \
   cargo build --release --package lantern_cli
 
+FROM debian:12
+COPY --from=build /app/target/release/lantern-cli .
+RUN apt update && \
+  apt install -y wget && apt clean
 # Download onnxruntime
 RUN mkdir -p /usr/local/lib && \
     cd /usr/local/lib && \
@@ -22,4 +26,4 @@ RUN mkdir -p /usr/local/lib && \
 ENV ORT_STRATEGY=system
 ENV ORT_DYLIB_PATH=/usr/local/lib/onnxruntime/lib/libonnxruntime.so
 # Run the binary
-ENTRYPOINT ["./target/release/lantern-cli"]
+ENTRYPOINT ["./lantern-cli"]
