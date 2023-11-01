@@ -222,34 +222,7 @@ void _PG_init(void)
                             NULL,
                             NULL);
 
-    DefineCustomIntVariable("hnsw.ef_search",
-                            "Expansion factor to use during vector search in a scan",
-                            "Valid values are in range [1, 400]",
-                            &ldb_hnsw_ef_search,
-                            USEARCH_SEARCH_EF_INVALID_VALUE,
-                            USEARCH_SEARCH_EF_INVALID_VALUE,
-                            HNSW_MAX_EF,
-                            PGC_USERSET,
-                            0,
-                            NULL,
-                            NULL,
-                            NULL);
-
-    // lantern_hnsw is for case when there will be another hnsw am defined by another extension
-    DefineCustomIntVariable("lantern_hnsw.init_k",
-                            "Number of elements to initially retrieve from the index in a scan",
-                            "Valid values are in range [1, 1000]",
-                            &ldb_hnsw_init_k,
-                            LDB_HNSW_DEFAULT_K,
-                            1,
-                            LDB_HNSW_MAX_K,
-                            PGC_USERSET,
-                            0,
-                            NULL,
-                            NULL,
-                            NULL);
-
-    DefineCustomIntVariable("lantern_hnsw.ef_search",
+    DefineCustomIntVariable("hnsw.ef",
                             "Expansion factor to use during vector search in a scan",
                             "Valid values are in range [1, 400]",
                             &ldb_hnsw_ef_search,

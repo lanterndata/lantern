@@ -13,10 +13,10 @@ INSERT INTO small_world (id, b, v) VALUES
     ('101', FALSE, '{1,0,1}'),
     ('110', FALSE, '{1,1,0}'),
     ('111', TRUE,  '{1,1,1}');
--- Before the HNSW index is created, the parameter lantern_hnsw.init_k should not be available
+-- Before the HNSW index is created, the parameter hnsw.init_k should not be available
 \set ON_ERROR_STOP off
-SHOW lantern_hnsw.init_k;
-ERROR:  unrecognized configuration parameter "lantern_hnsw.init_k"
+SHOW hnsw.init_k;
+ERROR:  unrecognized configuration parameter "hnsw.init_k"
 \set ON_ERROR_STOP on
 -- Create an index and verify that it was created
 CREATE INDEX ON small_world USING hnsw (v) WITH (dim=3);
@@ -29,26 +29,26 @@ SELECT * FROM ldb_get_indexes('small_world');
  small_world_v_idx | 24 kB | CREATE INDEX small_world_v_idx ON public.small_world USING hnsw (v) WITH (dim='3') | 24 kB
 (1 row)
 
--- Verify that lantern_hnsw.init_k exists after index creation
-SHOW lantern_hnsw.init_k;
- lantern_hnsw.init_k 
----------------------
+-- Verify that hnsw.init_k exists after index creation
+SHOW hnsw.init_k;
+ hnsw.init_k 
+-------------
  10
 (1 row)
 
--- Modify lantern_hnsw.init_k and verify that it was modified
-SET lantern_hnsw.init_k = 45;
-SHOW lantern_hnsw.init_k;
- lantern_hnsw.init_k 
----------------------
+-- Modify hnsw.init_k and verify that it was modified
+SET hnsw.init_k = 45;
+SHOW hnsw.init_k;
+ hnsw.init_k 
+-------------
  45
 (1 row)
 
--- Reset all parameters and verify that lantern_hnsw.init_k was reset
+-- Reset all parameters and verify that hnsw.init_k was reset
 RESET ALL;
-SHOW lantern_hnsw.init_k;
- lantern_hnsw.init_k 
----------------------
+SHOW hnsw.init_k;
+ hnsw.init_k 
+-------------
  10
 (1 row)
 
