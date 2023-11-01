@@ -62,6 +62,7 @@ void ldb_failure_point_enable(const char *func, const char *name, uint32 dont_tr
     state->remaining = dont_trigger_first_nr;
     strncpy(state->func, func, lengthof(state->func));
     strncpy(state->name, name, lengthof(state->name));
+    elog(INFO, "Failure point (func=%s name=%s) is enabled.", state->func, state->name);
 }
 
 bool ldb_failure_point_is_enabled(const char *func, const char *name)
