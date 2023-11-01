@@ -7,7 +7,6 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{mpsc, Arc};
 use std::thread::JoinHandle;
 use std::time::Instant;
-use std::{panic, process};
 
 use postgres::{Client, NoTls, Row};
 
@@ -354,14 +353,6 @@ pub fn create_embeddings_from_db(
         "Model - {}, Visual - {}, Batch Size - {}",
         args.model, args.visual, batch_size
     ));
-
-    // Exit process if any of the threads panic
-    // This should never happen as thread results are handled below
-    let process_hook_logger = logger.clone();
-    panic::set_hook(Box::new(move |panic_info| {
-        process_hook_logger.error(&format!("{}", panic_info));
-        process::exit(1);
-    }));
 
     // Create channel that will send the database rows to embedding worker
     let (producer_tx, producer_rx): (Sender<Vec<Row>>, Receiver<Vec<Row>>) = mpsc::channel();
