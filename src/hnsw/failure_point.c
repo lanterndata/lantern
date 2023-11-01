@@ -6,10 +6,10 @@
 
 struct failure_point_state
 {
-    bool        enabled;
-    const char *func;
-    const char *name;
-    uint32      remaining;
+    bool   enabled;
+    char   func[ 0x100 ];
+    char   name[ 0x100 ];
+    uint32 remaining;
 };
 
 static struct failure_point_state *failure_point_get_state(void)
@@ -42,12 +42,26 @@ void ldb_failure_point_enable(const char *func, const char *name, uint32 dont_tr
              name,
              dont_trigger_first_nr);
     }
-    *state = (struct failure_point_state){
-        .enabled = true,
-        .func = func,
-        .name = name,
-        .remaining = dont_trigger_first_nr,
-    };
+    if(strlen(func) >= lengthof(state->func)) {
+        elog(ERROR,
+             "failure point function name is too large: "
+             "func=%s strlen(func)=%zu lengthof(state->func)=%zu",
+             func,
+             strlen(func),
+             lengthof(state->func));
+    }
+    if(strlen(name) >= lengthof(state->name)) {
+        elog(ERROR,
+             "failure point name is too large: "
+             "name=%s strlen(name)=%zu lengthof(state->name)=%zu",
+             name,
+             strlen(name),
+             lengthof(state->name));
+    }
+    state->enabled = true;
+    state->remaining = dont_trigger_first_nr;
+    strncpy(state->func, func, lengthof(state->func));
+    strncpy(state->name, name, lengthof(state->name));
 }
 
 bool ldb_failure_point_is_enabled(const char *func, const char *name)
