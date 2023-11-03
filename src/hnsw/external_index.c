@@ -13,6 +13,7 @@
 #include <utils/relcache.h>
 
 #include "extra_dirtied.h"
+#include "failure_point.h"
 #include "htab_cache.h"
 #include "insert.h"
 #include "options.h"
@@ -66,6 +67,8 @@ int CreateBlockMapGroup(
         GenericXLogState *state = GenericXLogStart(index);
         Buffer            buf = ReadBufferExtended(index, forkNum, P_NEW, RBM_NORMAL, NULL);
         LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
+
+        LDB_FAILURE_POINT_CRASH_IF_ENABLED("crash_after_buf_allocation");
 
         if(blockmap_id == 0) {
             hdr->blockmap_page_groups = blockmap_groupno;
