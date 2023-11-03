@@ -1,5 +1,5 @@
 ------------------------------------------------------------------------------
--- Test changing lantern_hnsw.ef_search variable at runtime 
+-- Test changing hnsw.ef variable at runtime 
 ------------------------------------------------------------------------------
 
 \ir utils/sift1k_array.sql
@@ -13,9 +13,9 @@ INSERT INTO sift_base1k (id, v) VALUES
 
 -- Validate error on invalid ef_search values
 \set ON_ERROR_STOP off
-SET lantern_hnsw.ef_search = -1;
-SET lantern_hnsw.ef_search = 0;
-SET lantern_hnsw.ef_search = 401;
+SET hnsw.ef = -1;
+SET hnsw.ef = 0;
+SET hnsw.ef = 401;
 \set ON_ERROR_STOP on
 
 -- Repeat the same query while varying ef parameter
@@ -24,33 +24,33 @@ SET enable_seqscan = false;
 SELECT v AS v1001 FROM sift_base1k WHERE id = 1001 \gset
 
 -- Queries below have the same result
-SET lantern_hnsw.ef_search = 1;
+SET hnsw.ef = 1;
 SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <-> :'v1001' LIMIT 10;
 
-SET lantern_hnsw.ef_search = 2;
+SET hnsw.ef = 2;
 SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <-> :'v1001' LIMIT 10;
 
-SET lantern_hnsw.ef_search = 4;
+SET hnsw.ef = 4;
 SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <-> :'v1001' LIMIT 10;
 
-SET lantern_hnsw.ef_search = 8;
+SET hnsw.ef = 8;
 SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <-> :'v1001' LIMIT 10;
 
-SET lantern_hnsw.ef_search = 16;
+SET hnsw.ef = 16;
 SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <-> :'v1001' LIMIT 10;
 
 -- Queries below have the same result, which is different from above
-SET lantern_hnsw.ef_search = 32;
+SET hnsw.ef = 32;
 SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <-> :'v1001' LIMIT 10;
 
-SET lantern_hnsw.ef_search = 64;
+SET hnsw.ef = 64;
 SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <-> :'v1001' LIMIT 10;
 
-SET lantern_hnsw.ef_search = 128;
+SET hnsw.ef = 128;
 SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <-> :'v1001' LIMIT 10;
 
-SET lantern_hnsw.ef_search = 256;
+SET hnsw.ef = 256;
 SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <-> :'v1001' LIMIT 10;
 
-SET lantern_hnsw.ef_search = 400;
+SET hnsw.ef = 400;
 SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <-> :'v1001' LIMIT 10;
