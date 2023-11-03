@@ -51,3 +51,9 @@ impl Logger {
         eprintln!("[X] [{}] {}", &self.label, msg);
     }
 }
+
+impl Clone for Logger {
+    fn clone(&self) -> Self {
+        Logger::new(&self.label, self.level.clone())
+    }
+}

@@ -5,10 +5,11 @@ mod types;
 
 use client_jobs::toggle_client_job;
 use futures::{future, StreamExt};
-use helpers::{check_table_exists, get_full_table_name};
+use helpers::check_table_exists;
 use itertools::Itertools;
 use lantern_embeddings::cli::EmbeddingArgs;
 use lantern_logger::Logger;
+use lantern_utils::{get_full_table_name, quote_ident};
 use std::collections::HashMap;
 use std::path::Path;
 use std::process;
@@ -104,10 +105,8 @@ async fn db_notification_listener(
 async fn lock_row(client: Arc<Client>, logger: Arc<Logger>, job_id: i32, row_id: &str) -> bool {
     let res = client
         .execute(
-            &format!(
-                "INSERT INTO {EMB_LOCK_TABLE_NAME} (job_id, row_id) VALUES ({job_id}, '{row_id}')"
-            ),
-            &[],
+            &format!("INSERT INTO {EMB_LOCK_TABLE_NAME} (job_id, row_id) VALUES ($1, $2)"),
+            &[&job_id, &row_id],
         )
         .await;
 
@@ -167,15 +166,13 @@ async fn embedding_worker(
                 let full_table_name = get_full_table_name(schema_ref.deref(), table_ref.deref());
                 if let Err(e) = result {
                     // update failure reason
-                    client_ref.execute(&format!("UPDATE {full_table_name} SET init_failed_at=NOW(), updated_at=NOW(), init_failure_reason='{0}' WHERE id={1}", e.to_string(), job.id), &[]).await?;
+                    client_ref.execute(&format!("UPDATE {full_table_name} SET init_failed_at=NOW(), updated_at=NOW(), init_failure_reason=$1 WHERE id=$2"), &[&e.to_string(), &job.id]).await?;
                 } else {
                     // mark success
-                    client_ref.execute(&format!("UPDATE {full_table_name} SET init_finished_at=NOW(), updated_at=NOW() WHERE id={0}", job.id), &[]).await?;
+                    client_ref.execute(&format!("UPDATE {full_table_name} SET init_finished_at=NOW(), updated_at=NOW() WHERE id=$1"), &[&job.id]).await?;
                     toggle_client_job(job.id.clone(), job.db_uri.clone(), job.column.clone(), job.table.clone(), job.schema.clone(), logger.level.clone(), Some(notifications_tx.clone()), true ).await?;
                 }
             }
-
-
         }
         Ok(()) as AnyhowVoidResult
     })
@@ -343,7 +340,7 @@ async fn job_insert_processor(
             // will pick that job and try to generate embeddings (though this is very rare case)
             if notification.init && !notification.generate_missing {
                 // Only update init time if this is the first time job is being executed
-                let updated_count = client_r1.execute(&format!("UPDATE {0} SET init_started_at=NOW() WHERE init_started_at IS NULL AND id={id}", &full_table_name_r1), &[]).await?;
+                let updated_count = client_r1.execute(&format!("UPDATE {0} SET init_started_at=NOW() WHERE init_started_at IS NULL AND id=$1", &full_table_name_r1), &[&id]).await?;
                 if updated_count == 0 {
                     continue;
                 }
@@ -351,8 +348,8 @@ async fn job_insert_processor(
 
             let job_result = client_r1
                 .query_one(
-                    &format!("{job_query_sql_r1} WHERE id={id} AND canceled_at IS NULL"),
-                    &[],
+                    &format!("{job_query_sql_r1} WHERE id=$1 AND canceled_at IS NULL"),
+                    &[&id],
                 )
                 .await;
 
@@ -383,8 +380,8 @@ async fn job_insert_processor(
             for (job_id, row_ids) in jobs {
                 let job_result = client
                     .query_one(
-                        &format!("{job_query_sql} WHERE id={job_id} AND canceled_at IS NULL"),
-                        &[],
+                        &format!("{job_query_sql} WHERE id=$1 AND canceled_at IS NULL"),
+                        &[&job_id],
                     )
                     .await;
                 if let Err(e) = job_result {
@@ -397,7 +394,7 @@ async fn job_insert_processor(
                 let pk = "id";
                 job.set_is_init(false);
                 let row_ids_str = row_ids.iter().map(|r| format!("'{r}'")).join(",");
-                job.set_filter(&format!("\"{pk}\" IN ({row_ids_str})"));
+                job.set_filter(&format!("{} IN ({row_ids_str})", quote_ident(pk)));
                 let _ = job_tx.send(job).await;
             }
 
@@ -424,7 +421,7 @@ async fn job_update_processor(
         while let Some(notification) = update_queue_rx.recv().await {
             let full_table_name =  get_full_table_name(&schema, &table);
             let id = notification.id;
-            let row = client.query_one(&format!("SELECT db_connection as db_uri, dst_column, src_column as \"column\", \"table\", \"schema\", canceled_at, init_finished_at FROM {0} WHERE id={id}", &full_table_name), &[]).await?;
+            let row = client.query_one(&format!("SELECT db_connection as db_uri, dst_column, src_column as \"column\", \"table\", \"schema\", canceled_at, init_finished_at FROM {0} WHERE id=$1", &full_table_name), &[&id]).await?;
             let src_column = row.get::<&str, String>("column").to_owned();
             let out_column = row.get::<&str, String>("dst_column").to_owned();
 
@@ -482,8 +479,8 @@ async fn create_data_path(logger: Arc<Logger>) -> &'static str {
 }
 
 #[tokio::main]
-pub async fn start(args: cli::DaemonArgs) -> Result<(), anyhow::Error> {
-    let logger = Arc::new(Logger::new("Lantern Daemon", args.log_level.value()));
+pub async fn start(args: cli::DaemonArgs, logger: Option<Logger>) -> Result<(), anyhow::Error> {
+    let logger = Arc::new(logger.unwrap_or(Logger::new("Lantern Daemon", args.log_level.value())));
     logger.info("Staring Daemon");
 
     let (main_db_client, connection) = tokio_postgres::connect(&args.uri, NoTls).await?;

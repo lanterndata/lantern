@@ -15,3 +15,4 @@ postgres = "0.19.7"
 postgres-types = { version = "0.2.6", features = ["derive"] }
 usearch = { git = "https://github.com/Ngalstyan4/usearch.git", branch = "pg-rebase" }
 lantern_logger = { path = "../lantern_logger" }
+lantern_utils = { path = "../lantern_utils" }

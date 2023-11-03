@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use cxx::UniquePtr;
 use lantern_logger::{LogLevel, Logger};
+use lantern_utils::{get_full_table_name, quote_ident};
 use postgres::{Client, NoTls, Row};
 use postgres_types::FromSql;
 use usearch::ffi::*;
@@ -110,7 +111,13 @@ pub fn create_usearch_index(
     // get all row count
     let mut client = Client::connect(&args.uri, NoTls).unwrap();
     let mut transaction = client.transaction()?;
-    let rows = transaction.query(&format!("SELECT COUNT(*) FROM \"{}\";", args.table), &[])?;
+    let rows = transaction.query(
+        &format!(
+            "SELECT COUNT(*) FROM {};",
+            get_full_table_name(&args.schema, &args.table)
+        ),
+        &[],
+    )?;
 
     let count: i64 = rows[0].get(0);
     // reserve enough memory on index
@@ -152,7 +159,11 @@ pub fn create_usearch_index(
     // With portal we can execute a query and poll values from it in chunks
     let portal = transaction
         .bind(
-            &format!("SELECT ctid, {} FROM \"{}\";", &args.column, &args.table),
+            &format!(
+                "SELECT ctid, {} FROM {};",
+                quote_ident(&args.column),
+                get_full_table_name(&args.schema, &args.table)
+            ),
             &[],
         )
         .unwrap();

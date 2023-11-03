@@ -1,6 +1,7 @@
 use csv::Writer;
 use lantern_embeddings_core::clip;
 use lantern_logger::{LogLevel, Logger};
+use lantern_utils::{get_full_table_name, quote_ident};
 use rand::Rng;
 use std::io::Write;
 use std::sync::mpsc::{Receiver, Sender};
@@ -30,6 +31,7 @@ fn producer_worker(
         let column = &args.column;
         let schema = &args.schema;
         let table = &args.table;
+        let full_table_name = get_full_table_name(schema, table);
 
         let mut client = Client::connect(&args.uri, NoTls)?;
         let mut transaction = client.transaction()?;
@@ -37,7 +39,7 @@ fn producer_worker(
             let rows = transaction
             .query(
                 &format!(
-                    "SELECT reltuples::bigint AS estimate FROM pg_class WHERE oid ='\"{schema}\".\"{table}\"'::regclass"
+                    "SELECT reltuples::bigint AS estimate FROM pg_class WHERE oid ='{full_table_name}'::regclass",
                 ),
                 &[],
             )?;
@@ -66,7 +68,11 @@ fn producer_worker(
 
         // With portal we can execute a query and poll values from it in chunks
         let portal = transaction.bind(
-            &format!("SELECT \"{pk}\"::text, \"{column}\" FROM \"{schema}\".\"{table}\" {filter_sql} {limit_sql};"),
+            &format!(
+                "SELECT {pk}::text, {column} FROM {full_table_name} {filter_sql} {limit_sql};",
+                pk = quote_ident(pk),
+                column = quote_ident(column),
+            ),
             &[],
         )?;
 
@@ -190,6 +196,7 @@ fn db_exporter_worker(
         let column = &args.out_column;
         let table = args.out_table.as_ref().unwrap_or(&args.table);
         let schema = &args.schema;
+        let full_table_name = get_full_table_name(schema, table);
 
         let mut client = Client::connect(&uri, NoTls)?;
 
@@ -197,7 +204,8 @@ fn db_exporter_worker(
         let mut check_transaction = client.transaction()?;
         let res = check_transaction.execute(
             &format!(
-                "ALTER TABLE \"{schema}\".\"{table}\" ADD COLUMN IF NOT EXISTS \"{column}\" REAL[]"
+                "ALTER TABLE {full_table_name} ADD COLUMN IF NOT EXISTS {column} REAL[]",
+                column = quote_ident(column)
             ),
             &[],
         );
@@ -214,7 +222,9 @@ fn db_exporter_worker(
         transaction
             .execute(
                 &format!(
-                    "CREATE TEMPORARY TABLE {temp_table_name} AS SELECT \"{pk}\", '{{}}'::REAL[] AS \"{column}\" FROM \"{schema}\".\"{table}\" LIMIT 0"
+                    "CREATE TEMPORARY TABLE {temp_table_name} AS SELECT {pk}, '{{}}'::REAL[] AS {column} FROM {full_table_name} LIMIT 0",
+                    pk=quote_ident(pk),
+                    column=quote_ident(column)
                 ),
                 &[],
             )?;
@@ -222,7 +232,7 @@ fn db_exporter_worker(
         let mut transaction = client.transaction()?;
         let mut writer = transaction.copy_in(&format!("COPY {temp_table_name} FROM stdin"))?;
         let mut did_receive = false;
-        let update_sql = &format!("UPDATE \"{schema}\".\"{table}\" dest SET \"{column}\" = src.\"{column}\" FROM \"{temp_table_name}\" src WHERE src.\"{pk}\" = dest.\"{pk}\"");
+        let update_sql = &format!("UPDATE {full_table_name} dest SET {column} = src.{column} FROM {temp_table_name} src WHERE src.{pk} = dest.{pk}", column=quote_ident(column), pk=quote_ident(pk), temp_table_name=quote_ident(&temp_table_name));
 
         let flush_interval = 10;
         let min_flush_rows = 50;
@@ -386,8 +396,11 @@ pub fn create_embeddings_from_db(
     Ok(())
 }
 
-pub fn show_available_models(args: &cli::ShowModelsArgs) -> AnyhowVoidResult {
-    let logger = Logger::new("Lantern Embeddings", LogLevel::Info);
+pub fn show_available_models(
+    args: &cli::ShowModelsArgs,
+    logger: Option<Logger>,
+) -> AnyhowVoidResult {
+    let logger = logger.unwrap_or(Logger::new("Lantern Embeddings", LogLevel::Info));
     logger.info("Available Models\n");
     logger.print_raw(&clip::get_available_models(args.data_path.as_deref()));
     Ok(())

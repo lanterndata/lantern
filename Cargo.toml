@@ -5,6 +5,7 @@ resolver = "2"
 
 members = [
     "lantern_extras",
+    "lantern_utils",
     "lantern_logger",
     "lantern_create_index",
     "lantern_embeddings",

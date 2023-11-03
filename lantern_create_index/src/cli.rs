@@ -30,6 +30,10 @@ pub struct CreateIndexArgs {
     #[arg(short, long)]
     pub uri: String,
 
+    /// Schema name
+    #[arg(short, long, default_value = "public")]
+    pub schema: String,
+
     /// Table name
     #[arg(short, long)]
     pub table: String,

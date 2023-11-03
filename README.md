@@ -178,10 +178,10 @@ or build and use the docker image
 
 ```bash
 # Run with CPU version
-docker run lanterndata/lantern-cli create-embeddings  --model 'BAAI/bge-large-en' --uri 'postgresql://postgres@127.0.0.1:5432/postgres' --table "wiki" --column "content" --out-column "content_embedding" --pk "id" --batch-size 40
+docker run -v models-volume:/models --rm --network host lanterndata/lantern-cli create-embeddings --model 'BAAI/bge-large-en' --uri 'postgresql://postgres@host.docker.internal:5432/postgres' --table "wiki" --column "content" --out-column "content_embedding" --pk "id" --batch-size 40 --data-path /models
 
 # Run with GPU verion
-nvidia-docker run lanterndata/lantern-cli:gpu create-embeddings  --model 'BAAI/bge-large-en' --uri 'postgresql://postgres@127.0.0.1:5432/postgres' --table "wiki" --column "content" --out-column "content_embedding" --pk "id" --batch-size 40
+nvidia-docker run -v models-volume:/models --rm --network host lanterndata/lantern-cli:gpu create-embeddings  --model 'BAAI/bge-large-en' --uri 'postgresql://postgres@host.docker.internal:5432/postgres' --table "wiki" --column "content" --out-column "content_embedding" --pk "id" --batch-size 40 --data-path /models
 ```
 
 > [nvidia-container-runtime](https://developer.nvidia.com/nvidia-container-runtime) is required for GPU version to work. You can check the GPU load using `nvtop` command (`apt install nvtop`)

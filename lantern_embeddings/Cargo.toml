@@ -15,4 +15,5 @@ postgres = "0.19.7"
 csv = "1.3.0"
 lantern_embeddings_core = { path = "../lantern_embeddings_core" }
 lantern_logger = { path = "../lantern_logger" }
+lantern_utils = { path = "../lantern_utils" }
 rand = "0.8.5"

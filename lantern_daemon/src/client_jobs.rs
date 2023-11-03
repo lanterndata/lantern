@@ -1,7 +1,8 @@
-use crate::helpers::{check_table_exists, get_full_table_name};
+use crate::helpers::check_table_exists;
 use crate::types::{AnyhowVoidResult, JobInsertNotification};
 use futures::StreamExt;
 use lantern_logger::{LogLevel, Logger};
+use lantern_utils::get_full_table_name;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::Arc;
