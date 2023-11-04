@@ -8,7 +8,6 @@
 #include <commands/vacuum.h>
 #include <float.h>
 #include <math.h>
-#include <utils/builtins.h>
 #include <utils/guc.h>
 #include <utils/lsyscache.h>
 #include <utils/selfuncs.h>
@@ -16,7 +15,6 @@
 
 #include "hnsw/build.h"
 #include "hnsw/delete.h"
-#include "hnsw/failure_point.h"
 #include "hnsw/insert.h"
 #include "hnsw/options.h"
 #include "hnsw/scan.h"
@@ -368,17 +366,6 @@ Datum       lantern_internal_validate_index(PG_FUNCTION_ARGS)
     bool print_info = PG_GETARG_BOOL(1);
 
     ldb_validate_index(indrelid, print_info);
-    PG_RETURN_VOID();
-}
-
-PGDLLEXPORT PG_FUNCTION_INFO_V1(lantern_internal_failure_point_enable);
-Datum       lantern_internal_failure_point_enable(PG_FUNCTION_ARGS)
-{
-    const char *func = text_to_cstring(PG_GETARG_TEXT_PP(0));
-    const char *name = text_to_cstring(PG_GETARG_TEXT_PP(1));
-    uint32      dont_trigger_first_nr = PG_GETARG_UINT32(2);
-
-    ldb_failure_point_enable(func, name, dont_trigger_first_nr);
     PG_RETURN_VOID();
 }
 

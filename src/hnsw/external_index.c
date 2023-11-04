@@ -13,7 +13,6 @@
 #include <utils/relcache.h>
 
 #include "extra_dirtied.h"
-#include "failure_point.h"
 #include "htab_cache.h"
 #include "insert.h"
 #include "options.h"

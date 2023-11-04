@@ -35,15 +35,14 @@ ORDER BY 1, 3;
  extschema |           proname            |     proschema     
 -----------+------------------------------+-------------------
  schema1   | validate_index               | _lantern_internal
- schema1   | failure_point_enable         | _lantern_internal
  schema1   | _create_ldb_operator_classes | _lantern_internal
+ schema1   | ldb_generic_dist             | schema1
  schema1   | l2sq_dist                    | schema1
  schema1   | hnsw_handler                 | schema1
  schema1   | hamming_dist                 | schema1
  schema1   | cos_dist                     | schema1
  schema1   | ldb_generic_dist             | schema1
- schema1   | ldb_generic_dist             | schema1
-(9 rows)
+(8 rows)
 
 -- show all the extension operators
 SELECT ne.nspname AS extschema, op.oprname, np.nspname AS proschema
