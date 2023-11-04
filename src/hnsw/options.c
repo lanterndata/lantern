@@ -208,6 +208,7 @@ void _PG_init(void)
                          AccessExclusiveLock
 #endif
     );
+
     DefineCustomIntVariable("hnsw.init_k",
                             "Number of elements to initially retrieve from the index in a scan",
                             "Valid values are in range [1, 1000]",
@@ -221,7 +222,7 @@ void _PG_init(void)
                             NULL,
                             NULL);
 
-    DefineCustomIntVariable("lantern_hnsw.ef_search",
+    DefineCustomIntVariable("hnsw.ef",
                             "Expansion factor to use during vector search in a scan",
                             "Valid values are in range [1, 400]",
                             &ldb_hnsw_ef_search,
