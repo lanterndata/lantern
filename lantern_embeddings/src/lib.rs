@@ -199,25 +199,26 @@ fn db_exporter_worker(
         let full_table_name = get_full_table_name(schema, table);
 
         let mut client = Client::connect(&uri, NoTls)?;
-
-        // Try to add the target column and check if user has write permissions to table
-        let mut check_transaction = client.transaction()?;
-        let res = check_transaction.execute(
-            &format!(
-                "ALTER TABLE {full_table_name} ADD COLUMN IF NOT EXISTS {column} REAL[]",
-                column = quote_ident(column)
-            ),
-            &[],
-        );
-
-        if res.is_err() {
-            anyhow::bail!("User does not have write permissions to target table");
-        }
-        check_transaction.commit()?;
-
         let mut transaction = client.transaction()?;
         let mut rng = rand::thread_rng();
         let temp_table_name = format!("_lantern_tmp_{}", rng.gen_range(0..1000));
+
+        // Try to check if user has write permissions to table
+        let res = transaction.query("SELECT 1 FROM information_schema.column_privileges WHERE table_schema=$1 AND table_name=$2 AND column_name=$3 AND privilege_type='UPDATE' AND grantee=current_user", &[schema, table, column])?;
+
+        if res.get(0).is_none() {
+            anyhow::bail!("User does not have write permissions to target table");
+        }
+
+        if args.create_column {
+            transaction.execute(
+                &format!(
+                    "ALTER TABLE {full_table_name} ADD COLUMN IF NOT EXISTS {column} REAL[]",
+                    column = quote_ident(column)
+                ),
+                &[],
+            )?;
+        }
 
         transaction
             .execute(
@@ -229,6 +230,7 @@ fn db_exporter_worker(
                 &[],
             )?;
         transaction.commit()?;
+
         let mut transaction = client.transaction()?;
         let mut writer = transaction.copy_in(&format!("COPY {temp_table_name} FROM stdin"))?;
         let mut did_receive = false;

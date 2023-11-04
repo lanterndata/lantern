@@ -157,6 +157,7 @@ async fn embedding_worker(
                 data_path: Some(data_path),
                 visual: false,
                 stream: false,
+                create_column: false,
                 out_csv: None,
                 filter: job.filter,
                 limit: None

@@ -2,7 +2,7 @@ use crate::helpers::check_table_exists;
 use crate::types::{AnyhowVoidResult, JobInsertNotification};
 use futures::StreamExt;
 use lantern_logger::{LogLevel, Logger};
-use lantern_utils::get_full_table_name;
+use lantern_utils::{append_params_to_uri, get_full_table_name};
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -13,7 +13,6 @@ use tokio::sync::{
     mpsc::{Receiver, Sender},
 };
 use tokio_postgres::{AsyncMessage, Client, NoTls};
-use url::Url;
 
 enum Signal {
     Stop,
@@ -34,22 +33,41 @@ pub async fn toggle_client_job(
     job_insert_queue_tx: Option<Sender<JobInsertNotification>>,
     enable: bool,
 ) -> AnyhowVoidResult {
+    let logger = Arc::new(Logger::new(&format!("Job {job_id}"), log_level));
+    let job_logger = logger.clone();
     if enable {
         let job_insert_queue_tx = job_insert_queue_tx.unwrap();
+        let task_logger = logger.clone();
         tokio::spawn(async move {
-            let _ = start_client_job(
+            let res = start_client_job(
+                job_logger,
                 job_id,
                 db_uri,
                 src_column,
                 table,
                 schema,
                 job_insert_queue_tx,
-                log_level,
             )
             .await;
+
+            if let Err(e) = res {
+                task_logger.error(&format!("Error while starting job {}", e.to_string()));
+            }
         });
     } else {
-        let _ = stop_client_job(&db_uri, job_id, &src_column, &table, &schema, true).await;
+        let res = stop_client_job(
+            job_logger,
+            &db_uri,
+            job_id,
+            &src_column,
+            &table,
+            &schema,
+            true,
+        )
+        .await;
+        if let Err(e) = res {
+            logger.error(&format!("Error while stopping job {}", e.to_string()));
+        }
     }
 
     Ok(())
@@ -130,12 +148,12 @@ async fn client_notification_listener(
     job_insert_queue_tx: Sender<JobInsertNotification>,
     logger: Arc<Logger>,
 ) -> Result<Sender<()>, anyhow::Error> {
-    let uri = Url::parse_with_params(&db_uri, &[("connect_timeout", "10")])?;
+    let uri = append_params_to_uri(&db_uri, "connect_timeout=10");
     let (client, mut connection) = tokio_postgres::connect(&uri.as_str(), NoTls).await?;
 
     let client = Arc::new(client);
 
-    logger.info("Lisening for notifications");
+    logger.info("Listening for notifications");
 
     let client_ref = client.clone();
     let task = tokio::spawn(async move {
@@ -199,21 +217,28 @@ async fn client_notification_listener(
 }
 
 async fn start_client_job(
+    logger: Arc<Logger>,
     job_id: i32,
     db_uri: String,
     src_column: String,
     table: String,
     schema: String,
     job_insert_queue_tx: Sender<JobInsertNotification>,
-    log_level: LogLevel,
 ) -> AnyhowVoidResult {
-    let logger = Arc::new(Logger::new(&format!("Job {job_id}"), log_level));
-
     let jobs = CLIENT_JOBS.read().await;
     if jobs.get(&job_id).is_some() {
         logger.warn("Job is active, cancelling before running again");
         drop(jobs);
-        stop_client_job(&db_uri, job_id, &src_column, &table, &schema, false).await?;
+        stop_client_job(
+            logger.clone(),
+            &db_uri,
+            job_id,
+            &src_column,
+            &table,
+            &schema,
+            false,
+        )
+        .await?;
     } else {
         drop(jobs);
     }
@@ -260,6 +285,7 @@ async fn start_client_job(
     // Save job tx into shared hashmap, so we will be able to stop the job later
     let mut jobs = CLIENT_JOBS.write().await;
     jobs.insert(job_id, job_signal_tx);
+    drop(jobs);
 
     let mut cancel_listener_task = client_notification_listener(
         db_uri.clone(),
@@ -313,6 +339,7 @@ async fn start_client_job(
 }
 
 async fn stop_client_job(
+    logger: Arc<Logger>,
     db_uri: &str,
     job_id: i32,
     src_column: &str,
@@ -320,8 +347,6 @@ async fn stop_client_job(
     schema: &str,
     remove: bool,
 ) -> AnyhowVoidResult {
-    let logger = Arc::new(Logger::new(&format!("Job {job_id}"), LogLevel::Debug));
-
     if remove {
         // remove client triggers
         let res = remove_client_triggers(db_uri, src_column, table, schema, logger.clone()).await;

@@ -66,6 +66,10 @@ pub struct EmbeddingArgs {
     /// Stream data to output table while still generating
     #[arg(long, default_value_t = false)]
     pub stream: bool,
+
+    /// Create destination column if not exists
+    #[arg(long, default_value_t = true)]
+    pub create_column: bool,
 }
 
 impl EmbeddingArgs {
