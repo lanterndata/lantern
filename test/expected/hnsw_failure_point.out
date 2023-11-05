@@ -28,7 +28,7 @@ INFO:  validate_index() done, no issues found.
 -- now let's crash after a buffer for a blockmap is allocated during insert,
 -- but it hasn't been recorded yet
 SELECT _lantern_internal.failure_point_enable('CreateBlockMapGroup', 'crash_after_buf_allocation');
-INFO:  Failure point (func=CreateBlockMapGroup name=crash_after_buf_allocation) is enabled.
+INFO:  Failure point (func=CreateBlockMapGroup name=crash_after_buf_allocation remaining=0) is enabled.
  failure_point_enable 
 ----------------------
  
