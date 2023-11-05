@@ -76,6 +76,9 @@ BEGIN
         ELSE
             PERFORM _lantern_internal.validate_index('small_world_v_idx', false);
         END IF;
+        -- now let's finish the blockmap creation and validate the index again
+        PERFORM _lantern_internal.continue_blockmap_group_initialization('small_world_v_idx');
+        PERFORM _lantern_internal.validate_index('small_world_v_idx', false);
     END LOOP;
     RAISE INFO 'The test is complete.';
 END $$;

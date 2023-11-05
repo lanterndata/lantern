@@ -382,6 +382,15 @@ Datum       lantern_internal_failure_point_enable(PG_FUNCTION_ARGS)
     PG_RETURN_VOID();
 }
 
+PGDLLEXPORT PG_FUNCTION_INFO_V1(lantern_internal_continue_blockmap_group_initialization);
+Datum       lantern_internal_continue_blockmap_group_initialization(PG_FUNCTION_ARGS)
+{
+    Oid indrelid = PG_GETARG_OID(0);
+
+    ldb_continue_blockmap_group_initialization(indrelid);
+    PG_RETURN_VOID();
+}
+
 /*
  * Get data type for give oid
  * */

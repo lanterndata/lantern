@@ -73,6 +73,9 @@ BEGIN
         ELSE
             PERFORM _lantern_internal.validate_index('small_world_v_idx', false);
         END IF;
+        -- now let's finish the blockmap creation and validate the index again
+        PERFORM _lantern_internal.continue_blockmap_group_initialization('small_world_v_idx');
+        PERFORM _lantern_internal.validate_index('small_world_v_idx', false);
     END LOOP;
     RAISE INFO 'The test is complete.';
 END $$;
@@ -88,6 +91,9 @@ NOTICE:  Exception caught: ldb_failure_point_crash()
 INFO:  At this point no changes have been made to the index header, so validate_index() should succeed.
 INFO:  validate_index() start for small_world_v_idx
 INFO:  validate_index() done, no issues found.
+INFO:  The last blockmap group is fully initialized.
+INFO:  validate_index() start for small_world_v_idx
+INFO:  validate_index() done, no issues found.
 INFO:  done init usearch index
 INFO:  inserted 0 elements
 INFO:  done saving 0 vectors
@@ -99,6 +105,9 @@ NOTICE:  Exception caught: ldb_failure_point_crash()
 INFO:  It's not know if the header will be updated before WAL flush, so it's not clear if validate_index() will succeed.
 INFO:  validate_index() start for small_world_v_idx
 NOTICE:  Exception caught: HnswBlockMapGroupDesc.blockmaps_initialized=0 != NumberOfBlockMapsInGroup()=2 for blockmap_groupno=1
+INFO:  The last blockmap group has been successfully initialized.
+INFO:  validate_index() start for small_world_v_idx
+INFO:  validate_index() done, no issues found.
 INFO:  done init usearch index
 INFO:  inserted 0 elements
 INFO:  done saving 0 vectors
@@ -110,6 +119,9 @@ NOTICE:  Exception caught: ldb_failure_point_crash()
 INFO:  After updating the header validate_index() must fail, because the header has 0 initialized blockmaps for the last blockmap group.
 INFO:  validate_index() start for small_world_v_idx
 NOTICE:  Exception caught: HnswBlockMapGroupDesc.blockmaps_initialized=0 != NumberOfBlockMapsInGroup()=2 for blockmap_groupno=1
+INFO:  The last blockmap group has been successfully initialized.
+INFO:  validate_index() start for small_world_v_idx
+INFO:  validate_index() done, no issues found.
 INFO:  done init usearch index
 INFO:  inserted 0 elements
 INFO:  done saving 0 vectors
@@ -121,6 +133,9 @@ NOTICE:  Exception caught: ldb_failure_point_crash()
 INFO:  The same reason to fail as before.
 INFO:  validate_index() start for small_world_v_idx
 NOTICE:  Exception caught: HnswBlockMapGroupDesc.blockmaps_initialized=0 != NumberOfBlockMapsInGroup()=2 for blockmap_groupno=1
+INFO:  The last blockmap group has been successfully initialized.
+INFO:  validate_index() start for small_world_v_idx
+INFO:  validate_index() done, no issues found.
 INFO:  done init usearch index
 INFO:  inserted 0 elements
 INFO:  done saving 0 vectors
@@ -132,6 +147,9 @@ NOTICE:  Exception caught: ldb_failure_point_crash()
 INFO:  The validate_index() will fail at the same place, because the check for unused blocks is after the check for the number of initialize blockmap blocks.
 INFO:  validate_index() start for small_world_v_idx
 NOTICE:  Exception caught: HnswBlockMapGroupDesc.blockmaps_initialized=0 != NumberOfBlockMapsInGroup()=2 for blockmap_groupno=1
+INFO:  The last blockmap group has been successfully initialized.
+INFO:  validate_index() start for small_world_v_idx
+INFO:  validate_index() done, no issues found.
 INFO:  done init usearch index
 INFO:  inserted 0 elements
 INFO:  done saving 0 vectors
@@ -143,6 +161,9 @@ NOTICE:  Exception caught: ldb_failure_point_crash()
 INFO:  Here blockmap blocks are initialized, but the header may or may not be updated to reflect this.
 INFO:  validate_index() start for small_world_v_idx
 NOTICE:  Exception caught: HnswBlockMapGroupDesc.blockmaps_initialized=0 != NumberOfBlockMapsInGroup()=2 for blockmap_groupno=1
+INFO:  The last blockmap group has been successfully initialized.
+INFO:  validate_index() start for small_world_v_idx
+INFO:  validate_index() done, no issues found.
 INFO:  done init usearch index
 INFO:  inserted 0 elements
 INFO:  done saving 0 vectors
@@ -152,6 +173,9 @@ INFO:  Failure point (func=UpdateHeaderBlockMapGroupDesc name=just_before_wal_fl
 INFO:  Failure point (func=UpdateHeaderBlockMapGroupDesc name=just_before_wal_flush) has been triggered.
 NOTICE:  Exception caught: ldb_failure_point_crash()
 INFO:  It's not know if the header will be updated for the second (last) time before WAL flush, so it's not clear if validate_index() will succeed.
+INFO:  validate_index() start for small_world_v_idx
+INFO:  validate_index() done, no issues found.
+INFO:  The last blockmap group is fully initialized.
 INFO:  validate_index() start for small_world_v_idx
 INFO:  validate_index() done, no issues found.
 INFO:  done init usearch index
@@ -165,6 +189,9 @@ NOTICE:  Exception caught: ldb_failure_point_crash()
 INFO:  After updating the header validate_index() must succeed, because the blockmap group is fully initialized and the header is updated.
 INFO:  validate_index() start for small_world_v_idx
 INFO:  validate_index() done, no issues found.
+INFO:  The last blockmap group is fully initialized.
+INFO:  validate_index() start for small_world_v_idx
+INFO:  validate_index() done, no issues found.
 INFO:  done init usearch index
 INFO:  inserted 0 elements
 INFO:  done saving 0 vectors
@@ -174,6 +201,9 @@ INFO:  Failure point (func=ContinueBlockMapGroupInitialization name=just_after_u
 INFO:  Failure point (func=ContinueBlockMapGroupInitialization name=just_after_updating_header_at_the_end) has been triggered.
 NOTICE:  Exception caught: ldb_failure_point_crash()
 INFO:  Blockmaps are initilized, the header is updated. validate_index() should not fail.
+INFO:  validate_index() start for small_world_v_idx
+INFO:  validate_index() done, no issues found.
+INFO:  The last blockmap group is fully initialized.
 INFO:  validate_index() start for small_world_v_idx
 INFO:  validate_index() done, no issues found.
 INFO:  The test is complete.

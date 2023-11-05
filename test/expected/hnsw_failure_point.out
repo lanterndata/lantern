@@ -41,6 +41,24 @@ INFO:  Failure point (func=ContinueBlockMapGroupInitialization name=just_after_e
 ERROR:  ldb_failure_point_crash()
 \set ON_ERROR_STOP on
 -- now we see that the index has an extra free page, so the index validation fails
+\set ON_ERROR_STOP off
 SELECT _lantern_internal.validate_index('small_world_v_idx', false);
 INFO:  validate_index() start for small_world_v_idx
 ERROR:  HnswBlockMapGroupDesc.blockmaps_initialized=0 != NumberOfBlockMapsInGroup()=2 for blockmap_groupno=1
+\set ON_ERROR_STOP on
+-- now let's continue and finish the blockmap creation and then validate the index again
+SELECT _lantern_internal.continue_blockmap_group_initialization('small_world_v_idx');
+INFO:  The last blockmap group has been successfully initialized.
+ continue_blockmap_group_initialization 
+----------------------------------------
+ 
+(1 row)
+
+SELECT _lantern_internal.validate_index('small_world_v_idx', false);
+INFO:  validate_index() start for small_world_v_idx
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+

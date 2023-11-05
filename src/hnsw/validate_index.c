@@ -191,11 +191,13 @@ static void ldb_vi_read_blockmaps(Relation             index,
                 elog(ERROR,
                      "blockmap->first_id=%" PRIu32
                      " != "
-                     "group_node_first_index=%d + blockmap_id=%u * HNSW_BLOCKMAP_BLOCKS_PER_PAGE=%d",
+                     "group_node_first_index=%d + blockmap_id=%u * HNSW_BLOCKMAP_BLOCKS_PER_PAGE=%d for "
+                     "blockmap_groupno=%" PRIu32,
                      blockmap->first_id,
                      group_node_first_index,
                      blockmap_id,
-                     HNSW_BLOCKMAP_BLOCKS_PER_PAGE);
+                     HNSW_BLOCKMAP_BLOCKS_PER_PAGE,
+                     blockmap_groupno);
             }
             HnswIndexPageSpecialBlock *special = (HnswIndexPageSpecialBlock *)PageGetSpecialPointer(page);
             if(special->firstId != blockmap->first_id) {
