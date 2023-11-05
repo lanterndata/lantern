@@ -4,6 +4,7 @@
 #include "external_index.h"
 
 #include <access/generic_xlog.h>  // GenericXLog
+#include <access/heapam.h>        // relation_open
 #include <assert.h>
 #include <common/relpath.h>
 #include <hnsw/fa_cache.h>
@@ -74,8 +75,8 @@ static uint32 BlockMapGroupFirstNodeIndex(unsigned groupno)
     uint32 first_node_index = 0;
 
     if(groupno == 0) return 0;
-    for(unsigned i = 0; i < groupno - 1; ++i) first_node_index += NumberOfBlockMapsInGroup(i);
-    return first_node_index;
+    for(unsigned i = 0; i < groupno; ++i) first_node_index += NumberOfBlockMapsInGroup(i);
+    return first_node_index * HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
 }
 
 static bool AreEnoughBlockMapsForTupleId(uint32 blockmap_groups_nr, uint32 tuple_id)
@@ -705,6 +706,51 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
 
     pfree(alloced_tuple);
     return new_tup_ref;
+}
+
+/* TODO refactor: the relation open/close/read the header code is very similar to ldb_validate_index() */
+void ldb_continue_blockmap_group_initialization(Oid indrelid)
+{
+    Relation             index;
+    BlockNumber          header_blockno = 0;
+    Buffer               header_buf;
+    Page                 header_page;
+    HnswIndexHeaderPage *index_header;
+    bool                 update_header = false;
+    GenericXLogState    *state;
+    XLogRecPtr           ptr;
+
+    /* the code may modify the index, so at least ExclusiveLock should be taken */
+    index = relation_open(indrelid, ExclusiveLock);
+    state = GenericXLogStart(index);
+    header_buf = ReadBuffer(index, header_blockno);
+    LockBuffer(header_buf, BUFFER_LOCK_EXCLUSIVE);
+    header_page = GenericXLogRegisterBuffer(state, header_buf, LDB_GENERIC_XLOG_DELTA_IMAGE);
+    index_header = (HnswIndexHeaderPage *)PageGetContents(header_page);
+
+    if(index_header->blockmap_groups_nr == 0) {
+        elog(INFO, "There is no blockmap group to continue to initialize: blockmap_groups_nr=0");
+    } else if(BlockMapGroupIsFullyInitialized(index_header, index_header->blockmap_groups_nr - 1)) {
+        elog(INFO, "The last blockmap group is fully initialized.");
+    } else {
+        ContinueBlockMapGroupInitialization(index_header,
+                                            index,
+                                            MAIN_FORKNUM,
+                                            BlockMapGroupFirstNodeIndex(index_header->blockmap_groups_nr - 1),
+                                            index_header->blockmap_groups_nr - 1);
+        update_header = true;
+        elog(INFO, "The last blockmap group has been successfully initialized.");
+    }
+
+    if(update_header) {
+        ptr = GenericXLogFinish(state);
+        assert(ptr != InvalidXLogRecPtr);
+    } else {
+        GenericXLogAbort(state);
+    }
+
+    UnlockReleaseBuffer(header_buf);
+    relation_close(index, ExclusiveLock);
 }
 
 static BlockNumber getBlockMapPageBlockNumber(const HnswBlockMapGroupDesc *blockmap_groups, int id)

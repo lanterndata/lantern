@@ -141,4 +141,10 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
 
 BlockNumber NumberOfBlockMapsInGroup(unsigned groupno);
 
+/*
+ * Continue and finish the last blockmap group initialization if needed.
+ * @see ContinueBlockMapGroupInitialization
+ */
+void ldb_continue_blockmap_group_initialization(Oid indrelid);
+
 #endif  // LDB_HNSW_EXTERNAL_INDEX_H
