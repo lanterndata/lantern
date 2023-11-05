@@ -22,7 +22,7 @@ SELECT _lantern_internal.validate_index('small_world_v_idx', false);
 
 -- now let's crash after a buffer for a blockmap is allocated during insert,
 -- but it hasn't been recorded yet
-SELECT _lantern_internal.failure_point_enable('CreateBlockMapGroup', 'crash_after_buf_allocation');
+SELECT _lantern_internal.failure_point_enable('ContinueBlockMapGroupInitialization', 'just_after_extending_the_index_relation');
 
 -- here is the insert where the crash happens
 \set ON_ERROR_STOP off
