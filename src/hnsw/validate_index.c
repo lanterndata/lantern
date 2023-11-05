@@ -666,8 +666,11 @@ void ldb_validate_index(Oid indrelid, bool print_info)
              index_header->last_data_block,
              index_header->blockmap_groups_nr);
         for(uint32 i = 0; i < index_header->blockmap_groups_nr; ++i) {
-            elog(INFO, "blockmap_groups[%"PRIu32"]=(first_block=%"PRIu32", blockmaps_initialized=%"PRIu32"),",
-                 i, index_header->blockmap_groups[i].first_block, index_header->blockmap_groups[i].blockmaps_initialized);
+            elog(INFO,
+                 "blockmap_groups[%" PRIu32 "]=(first_block=%" PRIu32 ", blockmaps_initialized=%" PRIu32 "),",
+                 i,
+                 index_header->blockmap_groups[ i ].first_block,
+                 index_header->blockmap_groups[ i ].blockmaps_initialized);
         }
     }
 
