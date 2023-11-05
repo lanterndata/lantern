@@ -129,10 +129,11 @@ static void ldb_vi_read_blockmaps(Relation             index,
     uint32 group_node_first_index = 0;
     uint32 nodes_remaining = nodes_nr;
     uint32 batch_size = HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
+    bool   last_group_node_is_used = true;
 
     if(blocks_nr == 0) return;
     vi_blocks[ 0 ].vp_type = LDB_VI_BLOCK_HEADER;
-    while(nodes_remaining != 0) {
+    while(nodes_remaining != 0 || (last_group_node_is_used && blockmap_groupno < index_header->blockmap_groups_nr)) {
         if(blockmap_groupno >= index_header->blockmap_groups_nr) {
             elog(ERROR,
                  "blockmap_groupno=%" PRIu32 " >= index_header->blockmap_groups_nr=%" PRIu32,
@@ -241,6 +242,11 @@ static void ldb_vi_read_blockmaps(Relation             index,
 
             UnlockReleaseBuffer(buf);
         }
+        /*
+         * This is for the case when the last blockmap group is initialized,
+         * but PostgreSQL process crashed before something was added to it.
+         */
+        last_group_node_is_used = batch_size == nodes_remaining;
         nodes_remaining -= Min(batch_size, nodes_remaining);
         group_node_first_index += batch_size;
         batch_size = batch_size * 2;
@@ -659,6 +665,10 @@ void ldb_validate_index(Oid indrelid, bool print_info)
              index_header->num_vectors,
              index_header->last_data_block,
              index_header->blockmap_groups_nr);
+        for(uint32 i = 0; i < index_header->blockmap_groups_nr; ++i) {
+            elog(INFO, "blockmap_groups[%"PRIu32"]=(first_block=%"PRIu32", blockmaps_initialized=%"PRIu32"),",
+                 i, index_header->blockmap_groups[i].first_block, index_header->blockmap_groups[i].blockmaps_initialized);
+        }
     }
 
     blocks_nr = RelationGetNumberOfBlocksInFork(index, MAIN_FORKNUM);

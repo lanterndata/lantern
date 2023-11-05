@@ -119,7 +119,11 @@ static void UpdateHeaderBlockMapGroupDesc(
 
     log_rec_ptr = GenericXLogFinish(state);
     assert(log_rec_ptr != InvalidXLogRecPtr);
-    if(flush_log) XLogFlush(log_rec_ptr);
+    if(flush_log) {
+        LDB_FAILURE_POINT_CRASH_IF_ENABLED("just_before_wal_flush");
+        XLogFlush(log_rec_ptr);
+        LDB_FAILURE_POINT_CRASH_IF_ENABLED("just_after_wal_flush");
+    }
     ReleaseBuffer(hdr_buf);
 }
 
@@ -224,7 +228,9 @@ static void ContinueBlockMapGroupInitialization(
         hdr->blockmap_groups[ groupno ].first_block = RelationGetNumberOfBlocksInFork(index, forkNum);
         assert(groupno == hdr->blockmap_groups_nr);
         hdr->blockmap_groups_nr = groupno + 1;
+        LDB_FAILURE_POINT_CRASH_IF_ENABLED("just_before_writing_the_intent_to_init");
         UpdateHeaderBlockMapGroupDesc(index, forkNum, groupno, &hdr->blockmap_groups[ groupno ], true);
+        LDB_FAILURE_POINT_CRASH_IF_ENABLED("just_after_writing_the_intent_to_init");
     }
     assert(hdr->blockmap_groups_nr == groupno + 1);
 
@@ -232,6 +238,7 @@ static void ContinueBlockMapGroupInitialization(
     if(group_desc->blockmaps_initialized == 0
        && group_desc->first_block + blockmaps_in_group > RelationGetNumberOfBlocksInFork(index, forkNum)) {
         ExtendIndexRelationTo(index, forkNum, group_desc->first_block + blockmaps_in_group);
+        LDB_FAILURE_POINT_CRASH_IF_ENABLED("just_after_extending_the_index_relation");
     }
     assert(group_desc->first_block + blockmaps_in_group <= RelationGetNumberOfBlocksInFork(index, forkNum));
 
@@ -271,11 +278,15 @@ static void ContinueBlockMapGroupInitialization(
                 if(((blockmap_id - pages_in_xlog_state + 1 + i) % HNSW_BLOCKMAP_UPDATE_HEADER_EVERY) == 0)
                     update_header = true;
             }
+            if(blockmap_id == blockmaps_in_group - 1)
+                LDB_FAILURE_POINT_CRASH_IF_ENABLED("just_before_updating_header_at_the_end");
             if(update_header || blockmap_id == blockmaps_in_group - 1) {
                 hdr->blockmap_groups[ groupno ].blockmaps_initialized = blockmap_id + 1;
                 UpdateHeaderBlockMapGroupDesc(
                     index, forkNum, groupno, &hdr->blockmap_groups[ groupno ], blockmap_id == blockmaps_in_group - 1);
             }
+            if(blockmap_id == blockmaps_in_group - 1)
+                LDB_FAILURE_POINT_CRASH_IF_ENABLED("just_after_updating_header_at_the_end");
             pages_in_xlog_state = 0;
         }
     }
