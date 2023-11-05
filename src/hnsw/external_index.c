@@ -744,6 +744,7 @@ void ldb_continue_blockmap_group_initialization(Oid indrelid)
     if(update_header) {
         ptr = GenericXLogFinish(state);
         assert(ptr != InvalidXLogRecPtr);
+        LDB_UNUSED(ptr);
     } else {
         GenericXLogAbort(state);
     }
