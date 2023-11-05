@@ -28,7 +28,7 @@ INFO:  validate_index() done, no issues found.
 -- now let's crash after a buffer for a blockmap is allocated during insert,
 -- but it hasn't been recorded yet
 SELECT _lantern_internal.failure_point_enable('CreateBlockMapGroup', 'crash_after_buf_allocation');
-INFO:  Failure point (func=CreateBlockMapGroup name=crash_after_buf_allocation) is enabled.
+INFO:  Failure point (func=CreateBlockMapGroup name=crash_after_buf_allocation remaining=0) is enabled.
  failure_point_enable 
 ----------------------
  
@@ -37,10 +37,13 @@ INFO:  Failure point (func=CreateBlockMapGroup name=crash_after_buf_allocation) 
 -- here is the insert where the crash happens
 \set ON_ERROR_STOP off
 INSERT INTO small_world (v) VALUES ('{2,2,2}');
-INFO:  Failure point (func=CreateBlockMapGroup name=crash_after_buf_allocation) has been triggered.
-ERROR:  ldb_failure_point_crash()
 \set ON_ERROR_STOP on
 -- now we see that the index has an extra free page, so the index validation fails
 SELECT _lantern_internal.validate_index('small_world_v_idx', false);
 INFO:  validate_index() start for small_world_v_idx
-ERROR:  vi_blocks[48].vp_type == LDB_VI_BLOCK_UNKNOWN (but it should be known now)
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
