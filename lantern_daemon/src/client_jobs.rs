@@ -2,7 +2,7 @@ use crate::helpers::check_table_exists;
 use crate::types::{AnyhowVoidResult, JobInsertNotification};
 use futures::StreamExt;
 use lantern_logger::{LogLevel, Logger};
-use lantern_utils::{append_params_to_uri, get_full_table_name};
+use lantern_utils::{append_params_to_uri, get_full_table_name, quote_ident};
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -88,21 +88,24 @@ async fn setup_client_triggers(
     check_table_exists(client.clone(), &full_table_name).await?;
 
     // Set up trigger on table insert
+    let function_name = quote_ident(&format!("notify_insert_lantern_daemon_{table}_{column}"));
+    let trigger_name = quote_ident(&format!("trigger_lantern_jobs_insert__{column}"));
+
     client
         .batch_execute(&format!(
             "
-            CREATE OR REPLACE FUNCTION notify_insert_lantern_daemon_{table}_{column}() RETURNS TRIGGER AS $$
+            CREATE OR REPLACE FUNCTION {function_name}() RETURNS TRIGGER AS $$
               BEGIN
                 PERFORM pg_notify('{channel}', NEW.id::TEXT || ':' || '{job_id}');
                 RETURN NULL;
               END;
             $$ LANGUAGE plpgsql;
 
-            CREATE OR REPLACE TRIGGER trigger_lantern_jobs_insert_{column}
+            CREATE OR REPLACE TRIGGER {trigger_name}
             AFTER INSERT 
             ON {full_table_name}
             FOR EACH ROW
-            EXECUTE PROCEDURE notify_insert_lantern_daemon_{table}_{column}();
+            EXECUTE PROCEDURE {function_name}();
         ",
         ))
         .await?;
@@ -127,12 +130,14 @@ async fn remove_client_triggers(
     });
     let full_table_name = get_full_table_name(schema, table);
 
+    let function_name = quote_ident(&format!("notify_insert_lantern_daemon_{table}_{column}"));
+    let trigger_name = quote_ident(&format!("trigger_lantern_jobs_insert__{column}"));
     // Set up trigger on table insert
     db_client
         .batch_execute(&format!(
             "
-            DROP TRIGGER IF EXISTS trigger_lantern_jobs_insert_{column}
-            ON {full_table_name};
+            DROP FUNCTION IF EXISTS {function_name};
+            DROP TRIGGER IF EXISTS {trigger_name} ON {full_table_name};
         ",
         ))
         .await?;
@@ -256,8 +261,9 @@ async fn start_client_job(
         }
     });
 
-    let notification_channel =
-        Arc::new(format!("lantern_client_notifications_{table}_{src_column}"));
+    let notification_channel = Arc::new(quote_ident(&format!(
+        "lantern_client_notifications_{table}_{src_column}"
+    )));
 
     // Wrap variables into Arc to share between tasks
     let db_uri = Arc::new(db_uri);
