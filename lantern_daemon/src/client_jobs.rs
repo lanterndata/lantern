@@ -89,7 +89,7 @@ async fn setup_client_triggers(
 
     // Set up trigger on table insert
     let function_name = quote_ident(&format!("notify_insert_lantern_daemon_{table}_{column}"));
-    let trigger_name = quote_ident(&format!("trigger_lantern_jobs_insert__{column}"));
+    let trigger_name = quote_ident(&format!("trigger_lantern_jobs_insert_{column}"));
 
     client
         .batch_execute(&format!(
@@ -131,7 +131,7 @@ async fn remove_client_triggers(
     let full_table_name = get_full_table_name(schema, table);
 
     let function_name = quote_ident(&format!("notify_insert_lantern_daemon_{table}_{column}"));
-    let trigger_name = quote_ident(&format!("trigger_lantern_jobs_insert__{column}"));
+    let trigger_name = quote_ident(&format!("trigger_lantern_jobs_insert_{column}"));
     // Set up trigger on table insert
     db_client
         .batch_execute(&format!(
