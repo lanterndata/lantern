@@ -90,6 +90,7 @@ async fn setup_client_triggers(
     // Set up trigger on table insert
     let function_name = quote_ident(&format!("notify_insert_lantern_daemon_{table}_{column}"));
     let trigger_name = quote_ident(&format!("trigger_lantern_jobs_insert_{column}"));
+    let channel = channel.replace("\"", "");
 
     client
         .batch_execute(&format!(
