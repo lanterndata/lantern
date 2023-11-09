@@ -121,7 +121,7 @@ target_include_directories(
   PUBLIC ${CMAKE_SOURCE_DIR}/src
   PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
-set(_link_flags "${PostgreSQL_SHARED_LINK_OPTIONS}")
+set(_link_flags "${PostgreSQL_SHARED_LINK_OPTIONS} -Wl,--version-script=${CMAKE_BINARY_DIR}/hide_symbols.version")
 foreach(_dir ${PostgreSQL_SERVER_LIBRARY_DIRS})
   set(_link_flags "${_link_flags} -L${_dir}")
 endforeach()
@@ -263,6 +263,19 @@ add_custom_target(
   COMMAND ${CMAKE_SOURCE_DIR}/scripts/run_benchmarks.sh --print-only
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/build
 )
+
+# build machinery to suppress extraneous symbols in .so
+add_custom_target(
+  symbol-suppresion
+  COMMAND ${CMAKE_SOURCE_DIR}/scripts/build_symbol_suppression.sh ${CMAKE_SOURCE_DIR}/src ${CMAKE_BINARY_DIR}/hide_symbols.version
+)
+add_dependencies(lantern symbol-suppresion)
+set_property(
+  TARGET lantern
+  APPEND
+  PROPERTY ADDITIONAL_CLEAN_FILES hide_symbols.version
+)
+
 
 # DEVELOPMENT
 find_program(CLANG_FORMAT NAMES clang-format)
