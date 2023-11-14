@@ -9,6 +9,18 @@ INCOMPATIBLE_VERSIONS = {
     '16': ['0.0.4']
 }
 
+def shell(cmd, exit_on_error=True):
+    res = subprocess.run(cmd, shell=True)
+    if res.returncode != 0:
+        if res.stderr:
+                print("Error building from tag" + res.stderr)
+        print("res stdout", res.stdout, res)
+        if exit_on_error:
+            exit(1)
+        else:
+            print("ERROR on command", cmd)
+
+
 def update_from_tag(from_version: str, to_version: str):
     from_tag = "v" + from_version
     repo = git.Repo(search_parent_directories=True)
@@ -19,23 +31,21 @@ def update_from_tag(from_version: str, to_version: str):
     print("sha_after", sha_after)
 
     # run "mkdir build && cd build && cmake .. && make -j4 && make install"
-    res = subprocess.run(f"mkdir -p {args.builddir} ; cd {args.builddir} && git submodule update && cmake .. && make -j4 && make install", shell=True)
-    if res.returncode != 0:
-        if res.stderr:
-            print("Error building from tag" + res.stderr)
-        print("res stdout", res.stdout, res.stderr, res)
-        exit(1)
+    res = shell(f"mkdir -p {args.builddir} ; cd {args.builddir} && git submodule update && cmake .. && make -j4 && make install")
 
-    res = subprocess.run(f"psql postgres -U {args.user} -c 'DROP DATABASE IF EXISTS {args.db};'", shell=True)
-    res = subprocess.run(f"psql postgres -U {args.user} -c 'CREATE DATABASE {args.db};'", shell=True)
-    res = subprocess.run(f"psql postgres -U {args.user} -c 'DROP EXTENSION IF EXISTS lantern CASCADE; CREATE EXTENSION lantern;' -d {args.db};", shell=True)
+    res = shell(f"psql postgres -U {args.user} -c 'DROP DATABASE IF EXISTS {args.db};'")
+    res = shell(f"psql postgres -U {args.user} -c 'CREATE DATABASE {args.db};'")
+    res = shell(f"psql postgres -U {args.user} -c 'DROP EXTENSION IF EXISTS lantern CASCADE; CREATE EXTENSION lantern;' -d {args.db};")
     # todo:: run init() portion of parallel tests
 
     repo.git.checkout(sha_before)
-    res = subprocess.run(f"cd {args.builddir} ; git submodule update && cmake .. && make -j4 && make install && make test", shell=True)
-    res = subprocess.run(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={to_version} make test", shell=True)
-    res = subprocess.run(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-parallel FILTER=begin", shell=True)
-    res = subprocess.run(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={to_version} make test-parallel EXCLUDE=begin", shell=True)
+    res = shell(f"cd {args.builddir} ; git submodule update && cmake .. && make -j4 && make install")
+    res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={to_version} make test")
+    # run begin on {from_version}
+    res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-parallel FILTER=begin")
+    # run the actual parallel tests after the upgrade
+    # todo: parallel tests are failing (tracked by https://github.com/lanterndata/lantern/issues/226)
+    res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={to_version} make test-parallel EXCLUDE=begin", exit_on_error=False)
     #todo:: run query and check portion of parallel tests
 
 def incompatible_version(pg_version, version_tag):
@@ -71,8 +81,11 @@ if __name__ == "__main__":
         exit(1)
 
     # test updates from all tags
-    from_tags = [update_fname.split("--")[0] for update_fname in os.listdir("sql/updates")]
-    latest_version = "main"
+    tag_pairs = [update_fname.split("--") for update_fname in os.listdir("sql/updates")]
+    from_tags = [p[0] for p in tag_pairs]
+    to_tags = [p[1].split(".sql")[0] for p in tag_pairs]
+    # os.listdir has alphabetical order and postgres enforces same order of versions
+    latest_version = to_tags[-1]
 
     pg_version = None if not 'PG_VERSION' in os.environ else os.environ['PG_VERSION']
     for from_tag in from_tags:

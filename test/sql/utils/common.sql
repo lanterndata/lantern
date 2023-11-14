@@ -1,8 +1,12 @@
+-- N.B.: This file shall be maintained such that it can safely be rerun without throwing an error
+--      This is because in upgrade tests we may run this multiple times in preparation for sequential
+--      and parallel upgrade tests
+
 -- test helper functions that should exist in all test runs live here
 -- there is no need to explicitly include this file in other tests as the test runner will
 -- run this before running the actual test
 
-CREATE EXTENSION pageinspect;
+CREATE EXTENSION IF NOT EXISTS pageinspect;
 
 \set ON_ERROR_STOP on
 
