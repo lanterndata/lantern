@@ -128,7 +128,7 @@ Important takeaways:
 
 ## 🗺️ Roadmap
 
-- Cloud-hosted version of Lantern - [Sign up](https://forms.gle/YwxTzN9138LZEeCw8) for updates
+- Cloud-hosted version of Lantern - Sign up [here](https://lantern.dev)
 - Hardware-accelerated distance metrics, tailored for your CPU, enabling faster queries
 - Templates and guides for building applications for different industries
 - More tools for generating embeddings (support for third party model API’s, more local models)
