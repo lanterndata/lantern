@@ -21,3 +21,4 @@ sanitizer
 .vscode/
 .devcontainer/
 .cache
+.cosine
