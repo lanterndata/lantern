@@ -204,6 +204,201 @@ SELECT has_index_scan('EXPLAIN WITH t AS (SELECT id FROM test1 ORDER BY v <-> ''
  t
 (1 row)
 
+-- Validate <-> is replaced with the matching function when an index is present
+set enable_seqscan = true;
+set enable_indexscan = false;
+EXPLAIN (COSTS false) SELECT * from small_world ORDER BY v <-> '{1,1,1}';
+                  QUERY PLAN                   
+-----------------------------------------------
+ Sort
+   Sort Key: (l2sq_dist(v, '{1,1,1}'::real[]))
+   ->  Seq Scan on small_world
+(3 rows)
+
+SELECT * from small_world ORDER BY v <-> '{1,1,1}';
+ id  | b |    v    
+-----+---+---------
+ 111 | t | {1,1,1}
+ 101 | f | {1,0,1}
+ 110 | f | {1,1,0}
+ 011 | t | {0,1,1}
+ 100 | f | {1,0,0}
+ 001 | t | {0,0,1}
+ 010 | f | {0,1,0}
+ 000 | t | {0,0,0}
+(8 rows)
+
+begin;
+INSERT INTO test2 (v) VALUES ('{1,4}');
+INSERT INTO test2 (v) VALUES ('{2,4}');
+CREATE INDEX test2_cos ON test2 USING hnsw(v dist_cos_ops);
+INFO:  done init usearch index
+INFO:  inserted 3 elements
+INFO:  done saving 3 vectors
+EXPLAIN (COSTS false) SELECT * from test2 ORDER BY v <-> '{1,4}';
+                 QUERY PLAN                 
+--------------------------------------------
+ Sort
+   Sort Key: (cos_dist(v, '{1,4}'::real[]))
+   ->  Seq Scan on test2
+(3 rows)
+
+-- Some additional cases that trigger operator rewriting
+-- SampleScan
+EXPLAIN (COSTS false) SELECT * FROM small_world TABLESAMPLE BERNOULLI (20) ORDER BY v <-> '{1,1,1}' ASC;
+                  QUERY PLAN                   
+-----------------------------------------------
+ Sort
+   Sort Key: (l2sq_dist(v, '{1,1,1}'::real[]))
+   ->  Sample Scan on small_world
+         Sampling: bernoulli ('20'::real)
+(4 rows)
+
+-- can't compare direct equality here because it's random
+SELECT results_match('EXPLAIN SELECT * FROM small_world TABLESAMPLE BERNOULLI (20) ORDER BY v <-> ''{1,1,1}'' ASC',
+    'EXPLAIN SELECT * FROM small_world TABLESAMPLE BERNOULLI (20) ORDER BY l2sq_dist(v, ''{1,1,1}'') ASC');
+ results_match 
+---------------
+ t
+(1 row)
+
+-- SetOpt/HashSetOp
+EXPLAIN (COSTS false) (SELECT * FROM small_world ORDER BY v <-> '{1,0,1}' ASC ) EXCEPT (SELECT * FROM small_world ORDER by v <-> '{1,1,1}' ASC LIMIT 5);
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ HashSetOp Except
+   ->  Append
+         ->  Subquery Scan on "*SELECT* 1"
+               ->  Sort
+                     Sort Key: (l2sq_dist(small_world.v, '{1,0,1}'::real[]))
+                     ->  Seq Scan on small_world
+         ->  Subquery Scan on "*SELECT* 2"
+               ->  Limit
+                     ->  Sort
+                           Sort Key: (l2sq_dist(small_world_1.v, '{1,1,1}'::real[]))
+                           ->  Seq Scan on small_world small_world_1
+(11 rows)
+
+SELECT results_match('(SELECT * FROM small_world ORDER BY v <-> ''{1,0,1}'' ASC ) EXCEPT (SELECT * FROM small_world ORDER by v <-> ''{1,1,1}'' ASC LIMIT 5)',
+    '(SELECT * FROM small_world ORDER BY l2sq_dist(v, ''{1,0,1}'') ASC ) EXCEPT (SELECT * FROM small_world ORDER by l2sq_dist(v, ''{1,1,1}'') ASC LIMIT 5)');
+ results_match 
+---------------
+ t
+(1 row)
+
+-- HashAggregate
+EXPLAIN (COSTS false) SELECT v, COUNT(*) FROM small_world GROUP BY v ORDER BY v <-> '{1,1,1}';
+                  QUERY PLAN                   
+-----------------------------------------------
+ Sort
+   Sort Key: (l2sq_dist(v, '{1,1,1}'::real[]))
+   ->  HashAggregate
+         Group Key: v
+         ->  Seq Scan on small_world
+(5 rows)
+
+SELECT results_match('SELECT v, COUNT(*) FROM small_world GROUP BY v ORDER BY v <-> ''{1,1,1}''',
+    'SELECT v, COUNT(*) FROM small_world GROUP BY v ORDER BY l2sq_dist(v, ''{1,1,1}'')');
+ results_match 
+---------------
+ t
+(1 row)
+
+-- GroupBy this 
+EXPLAIN (COSTS false) SELECT * FROM small_world GROUP BY id, v, b ORDER BY v <-> '{1,1,1}';
+                  QUERY PLAN                   
+-----------------------------------------------
+ Sort
+   Sort Key: (l2sq_dist(v, '{1,1,1}'::real[]))
+   ->  HashAggregate
+         Group Key: id, v, b
+         ->  Seq Scan on small_world
+(5 rows)
+
+SELECT results_match('SELECT * FROM small_world GROUP BY id, v, b ORDER BY v <-> ''{1,1,1}''',
+    'SELECT * FROM small_world GROUP BY id, v, b ORDER BY l2sq_dist(v, ''{1,1,1}'')');
+ results_match 
+---------------
+ t
+(1 row)
+
+-- HashJoin/Hash
+CREATE TABLE small_world_2 AS (SELECT * FROM small_world);
+EXPLAIN (COSTS false) SELECT * FROM small_world JOIN small_world_2 using (v) ORDER BY v <-> '{1,1,1}';
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Sort
+   Sort Key: (l2sq_dist(small_world.v, '{1,1,1}'::real[]))
+   ->  Hash Join
+         Hash Cond: (small_world_2.v = small_world.v)
+         ->  Seq Scan on small_world_2
+         ->  Hash
+               ->  Seq Scan on small_world
+(7 rows)
+
+SELECT results_match('SELECT * FROM small_world JOIN small_world_2 using (v) ORDER BY v <-> ''{1,1,1}''',
+    'SELECT * FROM small_world JOIN small_world_2 using (v) ORDER BY l2sq_dist(v, ''{1,1,1}'')');
+ results_match 
+---------------
+ t
+(1 row)
+
+-- MixedAggregate (this doesn't require additional logic, but I include it here as an example of generating the path)
+EXPLAIN (COSTS false) SELECT v FROM small_world GROUP BY ROLLUP(v) ORDER BY v <-> '{1,1,1}';
+                  QUERY PLAN                   
+-----------------------------------------------
+ Sort
+   Sort Key: (l2sq_dist(v, '{1,1,1}'::real[]))
+   ->  MixedAggregate
+         Hash Key: v
+         Group Key: ()
+         ->  Seq Scan on small_world
+(6 rows)
+
+SELECT results_match('SELECT v FROM small_world GROUP BY ROLLUP(v) ORDER BY v <-> ''{1,1,1}''',
+    'SELECT v FROM small_world GROUP BY ROLLUP(v) ORDER BY l2sq_dist(v, ''{1,1,1}'')');
+ results_match 
+---------------
+ t
+(1 row)
+
+-- WindowAgg
+EXPLAIN (COSTS false) SELECT v, EVERY(b) OVER () FROM small_world ORDER BY v <-> '{1,1,1}';
+                  QUERY PLAN                   
+-----------------------------------------------
+ Sort
+   Sort Key: (l2sq_dist(v, '{1,1,1}'::real[]))
+   ->  WindowAgg
+         ->  Seq Scan on small_world
+(4 rows)
+
+SELECT results_match('SELECT v, EVERY(b) OVER () FROM small_world ORDER BY v <-> ''{1,1,1}''',
+    'SELECT v, EVERY(b) OVER () FROM small_world ORDER BY l2sq_dist(v, ''{1,1,1}'')');
+ results_match 
+---------------
+ t
+(1 row)
+
+-- LockRows
+EXPLAIN (COSTS false) SELECT * FROM small_world ORDER BY v <-> '{1,1,1}' ASC FOR UPDATE;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ LockRows
+   ->  Sort
+         Sort Key: (l2sq_dist(v, '{1,1,1}'::real[]))
+         ->  Seq Scan on small_world
+(4 rows)
+
+SELECT results_match('SELECT * FROM small_world ORDER BY v <-> ''{1,1,1}'' ASC FOR UPDATE',
+    'SELECT * FROM small_world ORDER BY l2sq_dist(v, ''{1,1,1}'') ASC FOR UPDATE');
+ results_match 
+---------------
+ t
+(1 row)
+
+rollback;
+set enable_indexscan = true;
+set enable_seqscan = false;
 -- todo:: Verify joins work and still use index
 -- todo:: Verify incremental sorts work
 -- Validate index data structures

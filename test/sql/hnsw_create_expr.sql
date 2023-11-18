@@ -83,6 +83,4 @@ CREATE INDEX ON test_table USING hnsw (int_to_string(id)) WITH (M=2);
 -- This should result in error about multicolumn expressions support
 CREATE INDEX ON test_table USING hnsw (int_to_fixed_binary_real_array(id), int_to_dynamic_binary_real_array(id)) WITH (M=2);
 
--- This currently results in an error about using the operator outside of index
--- This case should be fixed
 SELECT id FROM test_table ORDER BY int_to_fixed_binary_real_array(id) <-> '{0,0,0}'::REAL[] LIMIT 2;
