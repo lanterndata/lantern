@@ -171,7 +171,7 @@ async fn embedding_worker(
                 } else {
                     // mark success
                     client_ref.execute(&format!("UPDATE {full_table_name} SET init_finished_at=NOW(), updated_at=NOW() WHERE id=$1"), &[&job.id]).await?;
-                    toggle_client_job(job.id.clone(), job.db_uri.clone(), job.column.clone(), job.table.clone(), job.schema.clone(), logger.level.clone(), Some(notifications_tx.clone()), true ).await?;
+                    toggle_client_job(job.id.clone(), job.db_uri.clone(), job.column.clone(), job.out_column.clone(), job.table.clone(), job.schema.clone(), logger.level.clone(), Some(notifications_tx.clone()), true ).await?;
                 }
             }
         }
@@ -434,7 +434,7 @@ async fn job_update_processor(
             }
 
             if init_finished_at.is_some() {
-              toggle_client_job(id, row.get::<&str, String>("db_uri").to_owned(), row.get::<&str, String>("column").to_owned(), row.get::<&str, String>("table").to_owned(), row.get::<&str, String>("schema").to_owned(), logger.level.clone(), Some(job_insert_queue_tx.clone()), canceled_at.is_none()).await?;
+              toggle_client_job(id, row.get::<&str, String>("db_uri").to_owned(), src_column.clone(), out_column.clone(), row.get::<&str, String>("table").to_owned(), row.get::<&str, String>("schema").to_owned(), logger.level.clone(), Some(job_insert_queue_tx.clone()), canceled_at.is_none()).await?;
             }
 
             if canceled_at.is_none() && notification.generate_missing {

@@ -27,6 +27,7 @@ pub async fn toggle_client_job(
     job_id: i32,
     db_uri: String,
     src_column: String,
+    dst_column: String,
     table: String,
     schema: String,
     log_level: LogLevel,
@@ -44,6 +45,7 @@ pub async fn toggle_client_job(
                 job_id,
                 db_uri,
                 src_column,
+                dst_column,
                 table,
                 schema,
                 job_insert_queue_tx,
@@ -60,6 +62,7 @@ pub async fn toggle_client_job(
             &db_uri,
             job_id,
             &src_column,
+            &dst_column,
             &table,
             &schema,
             true,
@@ -76,7 +79,8 @@ pub async fn toggle_client_job(
 async fn setup_client_triggers(
     job_id: i32,
     client: Arc<Client>,
-    column: Arc<String>,
+    src_column: Arc<String>,
+    dst_column: Arc<String>,
     table: Arc<String>,
     schema: Arc<String>,
     channel: Arc<String>,
@@ -88,8 +92,12 @@ async fn setup_client_triggers(
     check_table_exists(client.clone(), &full_table_name).await?;
 
     // Set up trigger on table insert
-    let function_name = quote_ident(&format!("notify_insert_lantern_daemon_{table}_{column}"));
-    let trigger_name = quote_ident(&format!("trigger_lantern_jobs_insert_{column}"));
+    let function_name = quote_ident(&format!(
+        "notify_insert_lantern_daemon_{table}_{src_column}_{dst_column}"
+    ));
+    let trigger_name = quote_ident(&format!(
+        "trigger_lantern_jobs_insert_{src_column}_{dst_column}"
+    ));
     let channel = channel.replace("\"", "");
 
     client
@@ -116,7 +124,8 @@ async fn setup_client_triggers(
 
 async fn remove_client_triggers(
     db_uri: &str,
-    column: &str,
+    src_column: &str,
+    dst_column: &str,
     table: &str,
     schema: &str,
     logger: Arc<Logger>,
@@ -131,8 +140,12 @@ async fn remove_client_triggers(
     });
     let full_table_name = get_full_table_name(schema, table);
 
-    let function_name = quote_ident(&format!("notify_insert_lantern_daemon_{table}_{column}"));
-    let trigger_name = quote_ident(&format!("trigger_lantern_jobs_insert_{column}"));
+    let function_name = quote_ident(&format!(
+        "notify_insert_lantern_daemon_{table}_{src_column}_{dst_column}"
+    ));
+    let trigger_name = quote_ident(&format!(
+        "trigger_lantern_jobs_insert_{src_column}_{dst_column}"
+    ));
     // Set up trigger on table insert
     db_client
         .batch_execute(&format!(
@@ -227,6 +240,7 @@ async fn start_client_job(
     job_id: i32,
     db_uri: String,
     src_column: String,
+    dst_column: String,
     table: String,
     schema: String,
     job_insert_queue_tx: Sender<JobInsertNotification>,
@@ -240,6 +254,7 @@ async fn start_client_job(
             &db_uri,
             job_id,
             &src_column,
+            &dst_column,
             &table,
             &schema,
             false,
@@ -263,12 +278,13 @@ async fn start_client_job(
     });
 
     let notification_channel = Arc::new(quote_ident(&format!(
-        "lantern_client_notifications_{table}_{src_column}"
+        "lantern_client_notifications_{table}_{src_column}_{dst_column}"
     )));
 
     // Wrap variables into Arc to share between tasks
     let db_uri = Arc::new(db_uri);
     let src_column = Arc::new(src_column);
+    let dst_column = Arc::new(dst_column);
     let table = Arc::new(table);
     let schema = Arc::new(schema);
 
@@ -277,6 +293,7 @@ async fn start_client_job(
         job_id,
         db_client,
         src_column.clone(),
+        dst_column.clone(),
         table.clone(),
         schema.clone(),
         notification_channel.clone(),
@@ -350,13 +367,22 @@ async fn stop_client_job(
     db_uri: &str,
     job_id: i32,
     src_column: &str,
+    dst_column: &str,
     table: &str,
     schema: &str,
     remove: bool,
 ) -> AnyhowVoidResult {
     if remove {
         // remove client triggers
-        let res = remove_client_triggers(db_uri, src_column, table, schema, logger.clone()).await;
+        let res = remove_client_triggers(
+            db_uri,
+            src_column,
+            dst_column,
+            table,
+            schema,
+            logger.clone(),
+        )
+        .await;
 
         if let Err(e) = res {
             logger.error(&format!("Error while removing triggers: {}", e))
