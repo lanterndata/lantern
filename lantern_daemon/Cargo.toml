@@ -19,3 +19,4 @@ lantern_logger = { path = "../lantern_logger" }
 lantern_utils = { path = "../lantern_utils" }
 lazy_static = "1.4.0"
 itertools = "0.11.0"
+md5 = "0.7.0"

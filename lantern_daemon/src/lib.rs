@@ -102,10 +102,16 @@ async fn db_notification_listener(
     Ok(())
 }
 
-async fn lock_row(client: Arc<Client>, logger: Arc<Logger>, job_id: i32, row_id: &str) -> bool {
+async fn lock_row(
+    client: Arc<Client>,
+    lock_table_schema: &str,
+    logger: Arc<Logger>,
+    job_id: i32,
+    row_id: &str,
+) -> bool {
     let res = client
         .execute(
-            &format!("INSERT INTO {EMB_LOCK_TABLE_NAME} (job_id, row_id) VALUES ($1, $2)"),
+            &format!("INSERT INTO {lock_table_schema} (job_id, row_id) VALUES ($1, $2)"),
             &[&job_id, &row_id],
         )
         .await;
@@ -185,12 +191,14 @@ async fn startup_hook(
     client: Arc<Client>,
     table: &str,
     schema: &str,
+    lock_table_schema: &str,
     channel: &str,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
     logger.info("Setting up environment");
     // verify that table exists
     let full_table_name = get_full_table_name(schema, table);
+    let lock_table_name = get_full_table_name(lock_table_schema, EMB_LOCK_TABLE_NAME);
     check_table_exists(client.clone(), &full_table_name).await?;
 
     // Set up trigger on table insert
@@ -228,12 +236,14 @@ async fn startup_hook(
             EXECUTE PROCEDURE notify_update_lantern_daemon();
 
             -- Create Lock Table
-            CREATE UNLOGGED TABLE IF NOT EXISTS {EMB_LOCK_TABLE_NAME} (
+            CREATE SCHEMA IF NOT EXISTS {lock_table_schema};
+            CREATE UNLOGGED TABLE IF NOT EXISTS {lock_table_name} (
               job_id INTEGER NOT NULL,
               row_id TEXT NOT NULL,
               CONSTRAINT ldb_lock_jobid_rowid UNIQUE (job_id, row_id)
             );
         ",
+            lock_table_schema = quote_ident(lock_table_schema)
         ))
         .await?;
 
@@ -271,6 +281,7 @@ async fn job_insert_processor(
     mut notifications_rx: Receiver<JobInsertNotification>,
     job_tx: Sender<Job>,
     schema: String,
+    lock_table_schema: String,
     table: String,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
@@ -302,6 +313,7 @@ async fn job_insert_processor(
     let client_r1 = client.clone();
     let job_tx_r1 = job_tx.clone();
     let logger_r1 = logger.clone();
+    let lock_table_name = get_full_table_name(&lock_table_schema, EMB_LOCK_TABLE_NAME);
     let job_batching_hashmap_r1 = job_batching_hashmap.clone();
 
     let insert_processor_task = tokio::spawn(async move {
@@ -310,7 +322,14 @@ async fn job_insert_processor(
 
             if let Some(row_id) = notification.row_id {
                 // Single row update received from client job, lock row and add to batching map
-                let status = lock_row(client_r1.clone(), logger_r1.clone(), id, &row_id).await;
+                let status = lock_row(
+                    client_r1.clone(),
+                    &lock_table_name,
+                    logger_r1.clone(),
+                    id,
+                    &row_id,
+                )
+                .await;
 
                 if status {
                     // this means locking was successfull and row will be processed
@@ -506,6 +525,7 @@ pub async fn start(args: cli::DaemonArgs, logger: Option<Logger>) -> Result<(), 
         main_db_client.clone(),
         &args.table,
         &args.schema,
+        &args.internal_schema,
         &notification_channel,
         logger.clone(),
     )
@@ -524,6 +544,7 @@ pub async fn start(args: cli::DaemonArgs, logger: Option<Logger>) -> Result<(), 
             insert_notification_queue_rx,
             job_queue_tx,
             args.schema.clone(),
+            args.internal_schema.clone(),
             args.table.clone(),
             logger.clone(),
         )) as VoidFuture,

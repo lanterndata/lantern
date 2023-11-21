@@ -76,6 +76,21 @@ pub async fn toggle_client_job(
     Ok(())
 }
 
+fn get_trigger_name(src_column: &str, dst_column: &str) -> String {
+    let digest = md5::compute(format!("{src_column}{dst_column}").as_bytes());
+    return format!("trigger_lantern_jobs_insert_{:x}", digest);
+}
+
+fn get_function_name(table: &str, src_column: &str, dst_column: &str) -> String {
+    let digest = md5::compute(format!("{table}{src_column}{dst_column}").as_bytes());
+    return format!("notify_insert_lantern_daemon_{:x}", digest);
+}
+
+fn get_notification_channel_name(table: &str, src_column: &str, dst_column: &str) -> String {
+    let digest = md5::compute(format!("{table}{src_column}{dst_column}").as_bytes());
+    return format!("lantern_client_notifications_{:x}", digest);
+}
+
 async fn setup_client_triggers(
     job_id: i32,
     client: Arc<Client>,
@@ -91,15 +106,11 @@ async fn setup_client_triggers(
     let full_table_name = get_full_table_name(schema.deref(), table.deref());
     check_table_exists(client.clone(), &full_table_name).await?;
 
-    // Set up trigger on table insert
-    let function_name = quote_ident(&format!(
-        "notify_insert_lantern_daemon_{table}_{src_column}_{dst_column}"
-    ));
-    let trigger_name = quote_ident(&format!(
-        "trigger_lantern_jobs_insert_{src_column}_{dst_column}"
-    ));
-    let channel = channel.replace("\"", "");
+    let function_name = get_function_name(table.deref(), src_column.deref(), dst_column.deref());
+    let trigger_name = get_trigger_name(src_column.deref(), dst_column.deref());
+    let function_name = get_full_table_name(schema.deref(), &function_name);
 
+    // Set up trigger on table insert
     client
         .batch_execute(&format!(
             "
@@ -277,10 +288,11 @@ async fn start_client_job(
         }
     });
 
-    let notification_channel = Arc::new(quote_ident(&format!(
-        "lantern_client_notifications_{table}_{src_column}_{dst_column}"
-    )));
-
+    let notification_channel = Arc::new(get_notification_channel_name(
+        &table,
+        &src_column,
+        &dst_column,
+    ));
     // Wrap variables into Arc to share between tasks
     let db_uri = Arc::new(db_uri);
     let src_column = Arc::new(src_column);

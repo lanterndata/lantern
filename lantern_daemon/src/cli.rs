@@ -42,6 +42,10 @@ pub struct DaemonArgs {
     #[arg(short, long, default_value = "public")]
     pub schema: String,
 
+    /// Internal schema name to create required tables
+    #[arg(short, long, default_value = "lantern")]
+    pub internal_schema: String,
+
     /// Max concurrent jobs
     #[arg(short, long, default_value_t = 1)]
     pub queue_size: usize,
