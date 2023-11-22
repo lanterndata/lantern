@@ -2,7 +2,7 @@ use crate::helpers::check_table_exists;
 use crate::types::{AnyhowVoidResult, JobInsertNotification};
 use futures::StreamExt;
 use lantern_logger::{LogLevel, Logger};
-use lantern_utils::{append_params_to_uri, get_full_table_name, quote_ident};
+use lantern_utils::{append_params_to_uri, get_full_table_name};
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -26,8 +26,6 @@ lazy_static! {
 pub async fn toggle_client_job(
     job_id: i32,
     db_uri: String,
-    src_column: String,
-    dst_column: String,
     table: String,
     schema: String,
     log_level: LogLevel,
@@ -44,8 +42,6 @@ pub async fn toggle_client_job(
                 job_logger,
                 job_id,
                 db_uri,
-                src_column,
-                dst_column,
                 table,
                 schema,
                 job_insert_queue_tx,
@@ -57,17 +53,7 @@ pub async fn toggle_client_job(
             }
         });
     } else {
-        let res = stop_client_job(
-            job_logger,
-            &db_uri,
-            job_id,
-            &src_column,
-            &dst_column,
-            &table,
-            &schema,
-            true,
-        )
-        .await;
+        let res = stop_client_job(job_logger, &db_uri, job_id, &table, &schema, true).await;
         if let Err(e) = res {
             logger.error(&format!("Error while stopping job {}", e.to_string()));
         }
@@ -76,26 +62,21 @@ pub async fn toggle_client_job(
     Ok(())
 }
 
-fn get_trigger_name(src_column: &str, dst_column: &str) -> String {
-    let digest = md5::compute(format!("{src_column}{dst_column}").as_bytes());
-    return format!("trigger_lantern_jobs_insert_{:x}", digest);
+fn get_trigger_name(job_id: i32) -> String {
+    return format!("trigger_lantern_jobs_insert_{job_id}");
 }
 
-fn get_function_name(table: &str, src_column: &str, dst_column: &str) -> String {
-    let digest = md5::compute(format!("{table}{src_column}{dst_column}").as_bytes());
-    return format!("notify_insert_lantern_daemon_{:x}", digest);
+fn get_function_name(job_id: i32) -> String {
+    return format!("notify_insert_lantern_daemon_{job_id}");
 }
 
-fn get_notification_channel_name(table: &str, src_column: &str, dst_column: &str) -> String {
-    let digest = md5::compute(format!("{table}{src_column}{dst_column}").as_bytes());
-    return format!("lantern_client_notifications_{:x}", digest);
+fn get_notification_channel_name(job_id: i32) -> String {
+    return format!("lantern_client_notifications_{job_id}");
 }
 
 async fn setup_client_triggers(
     job_id: i32,
     client: Arc<Client>,
-    src_column: Arc<String>,
-    dst_column: Arc<String>,
     table: Arc<String>,
     schema: Arc<String>,
     channel: Arc<String>,
@@ -106,8 +87,8 @@ async fn setup_client_triggers(
     let full_table_name = get_full_table_name(schema.deref(), table.deref());
     check_table_exists(client.clone(), &full_table_name).await?;
 
-    let function_name = get_function_name(table.deref(), src_column.deref(), dst_column.deref());
-    let trigger_name = get_trigger_name(src_column.deref(), dst_column.deref());
+    let function_name = get_function_name(job_id);
+    let trigger_name = get_trigger_name(job_id);
     let function_name = get_full_table_name(schema.deref(), &function_name);
 
     // Set up trigger on table insert
@@ -135,8 +116,7 @@ async fn setup_client_triggers(
 
 async fn remove_client_triggers(
     db_uri: &str,
-    src_column: &str,
-    dst_column: &str,
+    job_id: i32,
     table: &str,
     schema: &str,
     logger: Arc<Logger>,
@@ -151,18 +131,15 @@ async fn remove_client_triggers(
     });
     let full_table_name = get_full_table_name(schema, table);
 
-    let function_name = quote_ident(&format!(
-        "notify_insert_lantern_daemon_{table}_{src_column}_{dst_column}"
-    ));
-    let trigger_name = quote_ident(&format!(
-        "trigger_lantern_jobs_insert_{src_column}_{dst_column}"
-    ));
+    let function_name = get_function_name(job_id);
+    let function_name = get_full_table_name(schema.deref(), &function_name);
+    let trigger_name = get_trigger_name(job_id);
     // Set up trigger on table insert
     db_client
         .batch_execute(&format!(
             "
-            DROP FUNCTION IF EXISTS {function_name};
             DROP TRIGGER IF EXISTS {trigger_name} ON {full_table_name};
+            DROP FUNCTION IF EXISTS {function_name};
         ",
         ))
         .await?;
@@ -250,8 +227,6 @@ async fn start_client_job(
     logger: Arc<Logger>,
     job_id: i32,
     db_uri: String,
-    src_column: String,
-    dst_column: String,
     table: String,
     schema: String,
     job_insert_queue_tx: Sender<JobInsertNotification>,
@@ -260,17 +235,7 @@ async fn start_client_job(
     if jobs.get(&job_id).is_some() {
         logger.warn("Job is active, cancelling before running again");
         drop(jobs);
-        stop_client_job(
-            logger.clone(),
-            &db_uri,
-            job_id,
-            &src_column,
-            &dst_column,
-            &table,
-            &schema,
-            false,
-        )
-        .await?;
+        stop_client_job(logger.clone(), &db_uri, job_id, &table, &schema, false).await?;
     } else {
         drop(jobs);
     }
@@ -288,15 +253,9 @@ async fn start_client_job(
         }
     });
 
-    let notification_channel = Arc::new(get_notification_channel_name(
-        &table,
-        &src_column,
-        &dst_column,
-    ));
+    let notification_channel = Arc::new(get_notification_channel_name(job_id));
     // Wrap variables into Arc to share between tasks
     let db_uri = Arc::new(db_uri);
-    let src_column = Arc::new(src_column);
-    let dst_column = Arc::new(dst_column);
     let table = Arc::new(table);
     let schema = Arc::new(schema);
 
@@ -304,8 +263,6 @@ async fn start_client_job(
     setup_client_triggers(
         job_id,
         db_client,
-        src_column.clone(),
-        dst_column.clone(),
         table.clone(),
         schema.clone(),
         notification_channel.clone(),
@@ -378,23 +335,13 @@ async fn stop_client_job(
     logger: Arc<Logger>,
     db_uri: &str,
     job_id: i32,
-    src_column: &str,
-    dst_column: &str,
     table: &str,
     schema: &str,
     remove: bool,
 ) -> AnyhowVoidResult {
     if remove {
         // remove client triggers
-        let res = remove_client_triggers(
-            db_uri,
-            src_column,
-            dst_column,
-            table,
-            schema,
-            logger.clone(),
-        )
-        .await;
+        let res = remove_client_triggers(db_uri, job_id, table, schema, logger.clone()).await;
 
         if let Err(e) = res {
             logger.error(&format!("Error while removing triggers: {}", e))

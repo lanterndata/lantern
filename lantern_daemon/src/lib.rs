@@ -177,7 +177,7 @@ async fn embedding_worker(
                 } else {
                     // mark success
                     client_ref.execute(&format!("UPDATE {full_table_name} SET init_finished_at=NOW(), updated_at=NOW() WHERE id=$1"), &[&job.id]).await?;
-                    toggle_client_job(job.id.clone(), job.db_uri.clone(), job.column.clone(), job.out_column.clone(), job.table.clone(), job.schema.clone(), logger.level.clone(), Some(notifications_tx.clone()), true ).await?;
+                    toggle_client_job(job.id.clone(), job.db_uri.clone(), job.table.clone(), job.schema.clone(), logger.level.clone(), Some(notifications_tx.clone()), true ).await?;
                 }
             }
         }
@@ -258,7 +258,7 @@ async fn collect_pending_jobs(
     // Get all pending jobs and set them in queue
     let rows = client
         .query(
-            &format!("SELECT id FROM {table} WHERE init_failed_at IS NULL ORDER BY id"),
+            &format!("SELECT id FROM {table} WHERE init_failed_at IS NULL and canceled_at IS NULL ORDER BY id"),
             &[],
         )
         .await?;
@@ -453,7 +453,7 @@ async fn job_update_processor(
             }
 
             if init_finished_at.is_some() {
-              toggle_client_job(id, row.get::<&str, String>("db_uri").to_owned(), src_column.clone(), out_column.clone(), row.get::<&str, String>("table").to_owned(), row.get::<&str, String>("schema").to_owned(), logger.level.clone(), Some(job_insert_queue_tx.clone()), canceled_at.is_none()).await?;
+              toggle_client_job(id, row.get::<&str, String>("db_uri").to_owned(), row.get::<&str, String>("table").to_owned(), row.get::<&str, String>("schema").to_owned(), logger.level.clone(), Some(job_insert_queue_tx.clone()), canceled_at.is_none()).await?;
             }
 
             if canceled_at.is_none() && notification.generate_missing {
@@ -568,7 +568,7 @@ pub async fn start(args: cli::DaemonArgs, logger: Option<Logger>) -> Result<(), 
         Box::pin(collect_pending_jobs(
             main_db_client.clone(),
             update_notification_queue_tx.clone(),
-            args.table.clone(),
+            get_full_table_name(&args.schema, &args.table),
         )) as VoidFuture,
     ];
 
