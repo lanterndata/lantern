@@ -132,7 +132,7 @@ async fn remove_client_triggers(
     let full_table_name = get_full_table_name(schema, table);
 
     let function_name = get_function_name(job_id);
-    let function_name = get_full_table_name(schema.deref(), &function_name);
+    let function_name = get_full_table_name(schema, &function_name);
     let trigger_name = get_trigger_name(job_id);
     // Set up trigger on table insert
     db_client

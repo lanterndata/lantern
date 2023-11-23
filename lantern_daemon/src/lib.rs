@@ -104,14 +104,14 @@ async fn db_notification_listener(
 
 async fn lock_row(
     client: Arc<Client>,
-    lock_table_schema: &str,
+    lock_table_name: &str,
     logger: Arc<Logger>,
     job_id: i32,
     row_id: &str,
 ) -> bool {
     let res = client
         .execute(
-            &format!("INSERT INTO {lock_table_schema} (job_id, row_id) VALUES ($1, $2)"),
+            &format!("INSERT INTO {lock_table_name} (job_id, row_id) VALUES ($1, $2)"),
             &[&job_id, &row_id],
         )
         .await;
@@ -313,7 +313,7 @@ async fn job_insert_processor(
     let client_r1 = client.clone();
     let job_tx_r1 = job_tx.clone();
     let logger_r1 = logger.clone();
-    let lock_table_name = get_full_table_name(&lock_table_schema, EMB_LOCK_TABLE_NAME);
+    let lock_table_name = Arc::new(get_full_table_name(&lock_table_schema, EMB_LOCK_TABLE_NAME));
     let job_batching_hashmap_r1 = job_batching_hashmap.clone();
 
     let insert_processor_task = tokio::spawn(async move {
@@ -321,30 +321,37 @@ async fn job_insert_processor(
             let id = notification.id;
 
             if let Some(row_id) = notification.row_id {
-                // Single row update received from client job, lock row and add to batching map
-                let status = lock_row(
-                    client_r1.clone(),
-                    &lock_table_name,
-                    logger_r1.clone(),
-                    id,
-                    &row_id,
-                )
-                .await;
+                // Do this in a non-blocking way to not block collecting of updates while locking
+                let client_r1 = client_r1.clone();
+                let logger_r1 = logger_r1.clone();
+                let job_batching_hashmap_r1 = job_batching_hashmap_r1.clone();
+                let lock_table_name = lock_table_name.clone();
+                tokio::spawn(async move {
+                    // Single row update received from client job, lock row and add to batching map
+                    let status = lock_row(
+                        client_r1.clone(),
+                        &lock_table_name,
+                        logger_r1.clone(),
+                        id,
+                        &row_id,
+                    )
+                    .await;
 
-                if status {
-                    // this means locking was successfull and row will be processed
-                    // from this daemon
-                    let mut jobs = job_batching_hashmap_r1.lock().await;
-                    let job = jobs.get_mut(&id);
+                    if status {
+                        // this means locking was successfull and row will be processed
+                        // from this daemon
+                        let mut jobs = job_batching_hashmap_r1.lock().await;
+                        let job = jobs.get_mut(&id);
 
-                    if let Some(job_vec) = job {
-                        job_vec.push(row_id.to_owned());
-                    } else {
-                        jobs.insert(id, vec![row_id.to_owned()]);
+                        if let Some(job_vec) = job {
+                            job_vec.push(row_id.to_owned());
+                        } else {
+                            jobs.insert(id, vec![row_id.to_owned()]);
+                        }
+
+                        drop(jobs);
                     }
-
-                    drop(jobs);
-                }
+                });
 
                 continue;
             }
