@@ -17,7 +17,13 @@ fn main() {
         cli::Commands::CreateEmbeddings(args) => {
             let logger = Logger::new("Lantern Embeddings", LogLevel::Debug);
             _main_logger = Some(logger.clone());
-            lantern_embeddings::create_embeddings_from_db(args, Some(logger))
+            let res = lantern_embeddings::create_embeddings_from_db(args, true, None, Some(logger));
+            // Handle error here as this call does not return void as others
+            let logger = _main_logger.as_ref().unwrap();
+            if let Err(e) = res {
+                logger.error(&e.to_string());
+            }
+            Ok(())
         }
         cli::Commands::ShowModels(args) => {
             let logger = Logger::new("Lantern Embeddings", LogLevel::Debug);

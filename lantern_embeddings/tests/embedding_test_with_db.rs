@@ -1,4 +1,10 @@
-use std::env;
+use std::{
+    env,
+    sync::{
+        atomic::{AtomicU8, Ordering},
+        Arc,
+    },
+};
 
 use lantern_embeddings;
 use lantern_embeddings::cli;
@@ -20,8 +26,8 @@ fn drop_db_tables(client: &mut Client, table_name: &str) {
     client
         .batch_execute(&format!(
             "
-    DROP TABLE IF EXISTS {table_name};
-"
+        DROP TABLE IF EXISTS {table_name};
+    "
         ))
         .expect("Could not drop tables");
 }
@@ -32,6 +38,14 @@ fn test_embedding_generation_from_db() {
     let table_name = String::from("_lantern_embeddings_test");
     let mut db_client = Client::connect(&db_url, NoTls).expect("Database connection failed");
     setup_db_tables(&mut db_client, &table_name);
+
+    let final_progress = Arc::new(AtomicU8::new(0));
+    let final_progress_r1 = final_progress.clone();
+
+    let callback = move |progress: u8| {
+        println!("Callback called {progress}");
+        final_progress_r1.store(progress, Ordering::SeqCst);
+    };
 
     lantern_embeddings::create_embeddings_from_db(
         cli::EmbeddingArgs {
@@ -50,8 +64,11 @@ fn test_embedding_generation_from_db() {
             limit: None,
             filter: None,
             data_path: Some("/tmp/lantern-embeddings-core-test".to_owned()),
+            create_column: true,
             stream: false,
         },
+        true,
+        Some(Box::new(callback)),
         None,
     )
     .unwrap();
@@ -70,4 +87,5 @@ fn test_embedding_generation_from_db() {
     drop_db_tables(&mut db_client, &table_name);
 
     assert_eq!(cnt, 0);
+    assert_eq!(final_progress.load(Ordering::SeqCst), 100);
 }

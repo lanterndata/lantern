@@ -15,7 +15,7 @@ use std::path::Path;
 use std::process;
 use std::sync::Arc;
 use std::time::Duration;
-use std::{ops::Deref, time::SystemTime};
+use std::time::SystemTime;
 use tokio::fs;
 use tokio::sync::Mutex;
 use tokio::sync::{
@@ -138,20 +138,41 @@ async fn embedding_worker(
 ) -> AnyhowVoidResult {
     let schema = Arc::new(schema);
     let table = Arc::new(table);
+    let jobs_table_name = Arc::new(get_full_table_name(&schema, &table));
 
     tokio::spawn(async move {
         logger.info("Embedding worker started");
         while let Some(job) = job_queue_rx.recv().await {
             logger.info(&format!("Starting execution of job {}", job.id));
             let client_ref = client.clone();
-            let schema_ref = schema.clone();
-            let table_ref = table.clone();
+            let client_ref2 = client.clone();
+            let logger_ref = logger.clone();
             let data_path = data_path.clone();
+            let job = Arc::new(job);
+            let job_ref = job.clone();
+            let jobs_table_name_r1 = jobs_table_name.clone();
+            let schema_ref = schema.clone();
+
+            let progress_callback = move |progress: u8| {
+                // Passed progress in a format string to avoid type casts between 
+                // different int types
+                let res = futures::executor::block_on(client_ref2.execute(&format!("UPDATE {jobs_table_name_r1} SET init_progress={progress} WHERE id=$1"), &[&job_ref.id]));
+
+                if let Err(e) = res {
+                    logger_ref.error(&format!("Error while updating progress for job {job_id}: {e}", job_id=job_ref.id));
+                }
+            };
+
+            let progress_callback = if job.is_init {
+                Some(Box::new(progress_callback) as lantern_embeddings::ProgressCbFn)
+            } else {
+                None
+            };
 
             let task_logger = Logger::new(&format!("Job {}", job.id), logger.level.clone());
             let result = lantern_embeddings::create_embeddings_from_db(EmbeddingArgs {
                 pk: String::from("id"),
-                model: job.model,
+                model: job.model.clone(),
                 schema: job.schema.clone(),
                 uri: job.db_uri.clone(),
                 out_uri: Some(job.db_uri.clone()),
@@ -162,22 +183,36 @@ async fn embedding_worker(
                 batch_size: job.batch_size,
                 data_path: Some(data_path),
                 visual: false,
-                stream: false,
+                stream: true,
                 create_column: false,
                 out_csv: None,
-                filter: job.filter,
+                filter: job.filter.clone(),
                 limit: None
-            }, Some(task_logger));
+            }, progress_callback.is_some(), progress_callback, Some(task_logger));
 
-            if job.is_init {
-                let full_table_name = get_full_table_name(schema_ref.deref(), table_ref.deref());
-                if let Err(e) = result {
-                    // update failure reason
-                    client_ref.execute(&format!("UPDATE {full_table_name} SET init_failed_at=NOW(), updated_at=NOW(), init_failure_reason=$1 WHERE id=$2"), &[&e.to_string(), &job.id]).await?;
-                } else {
-                    // mark success
-                    client_ref.execute(&format!("UPDATE {full_table_name} SET init_finished_at=NOW(), updated_at=NOW() WHERE id=$1"), &[&job.id]).await?;
-                    toggle_client_job(job.id.clone(), job.db_uri.clone(), job.table.clone(), job.schema.clone(), logger.level.clone(), Some(notifications_tx.clone()), true ).await?;
+
+            match result {
+                Ok(processed_cnt) => {
+                    if job.is_init {
+                        // mark success
+                        client_ref.execute(&format!("UPDATE {jobs_table_name} SET init_finished_at=NOW(), updated_at=NOW() WHERE id=$1"), &[&job.id]).await?;
+                        toggle_client_job(job.id.clone(), job.db_uri.clone(), job.table.clone(), job.schema.clone(), logger.level.clone(), Some(notifications_tx.clone()), true ).await?;
+                    }
+
+                    if processed_cnt > 0 {
+                        let fn_name = get_full_table_name(&schema_ref, "increment_embedding_usage");
+                        let res = client_ref.execute(&format!("SELECT {fn_name}({job_id},{usage})", job_id=job.id, usage=processed_cnt), &[]).await;
+
+                        if let Err(e) = res {
+                            logger.error(&format!("Error while updating usage for {job_id}: {e}", job_id=job.id));
+                        }
+                    }
+                },
+                Err(e) => {
+                    if job.is_init {
+                        // update failure reason
+                        client_ref.execute(&format!("UPDATE {jobs_table_name} SET init_failed_at=NOW(), updated_at=NOW(), init_failure_reason=$1 WHERE id=$2"), &[&e.to_string(), &job.id]).await?;
+                    }
                 }
             }
         }
