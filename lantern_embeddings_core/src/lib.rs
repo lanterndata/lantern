@@ -454,34 +454,6 @@ pub mod clip {
     }
 
     use super::*;
-    pub fn process_text(
-        model_name: &str,
-        texts: &Vec<&str>,
-        logger: Option<&LoggerFn>,
-        data_path: Option<&str>,
-    ) -> Result<Vec<Vec<f32>>, anyhow::Error> {
-        let logger = logger.unwrap_or(&(default_logger as LoggerFn));
-        let download_result =
-            check_and_download_files(model_name, logger, data_path.unwrap_or(DATA_PATH));
-
-        if let Err(err) = download_result {
-            anyhow::bail!("Error happened while downloading model files: {:?}", err);
-        }
-
-        let map = MODEL_INFO_MAP.read().unwrap();
-        let model_info = map.get(model_name).unwrap();
-
-        let result = model_info.encoder.as_ref().unwrap().process_text(texts);
-
-        match result {
-            Ok(res) => Ok(res),
-            Err(err) => {
-                // remove lock
-                drop(map);
-                anyhow::bail!("Error happened while generating text embedding: {:?}", err);
-            }
-        }
-    }
 
     async fn get_image_buffer(path_or_url: &str) -> Result<Vec<u8>, anyhow::Error> {
         if let Ok(url) = Url::parse(path_or_url) {
@@ -543,11 +515,12 @@ pub mod clip {
         Ok(buffers.clone())
     }
 
-    pub fn process_image(
+    pub fn process(
         model_name: &str,
-        paths_or_urls: &Vec<&str>,
+        input: &Vec<&str>,
         logger: Option<&LoggerFn>,
         data_path: Option<&str>,
+        cache: bool,
     ) -> Result<Vec<Vec<f32>>, anyhow::Error> {
         let logger = logger.unwrap_or(&(default_logger as LoggerFn));
 
@@ -558,28 +531,38 @@ pub mod clip {
             anyhow::bail!("Error happened while downloading model files: {:?}", err);
         }
 
-        let buffers = get_images_parallel(paths_or_urls, logger)?;
-
         let map = MODEL_INFO_MAP.read().unwrap();
         let model_info = map.get(model_name).unwrap();
 
-        println!("[*] Creating embeddings...");
-        let result = model_info.encoder.as_ref().unwrap().process_image(&buffers);
+        let result;
+        if model_info.encoder_args.visual {
+            let buffers = get_images_parallel(input, logger)?;
+            result = model_info.encoder.as_ref().unwrap().process_image(&buffers);
+        } else {
+            result = model_info.encoder.as_ref().unwrap().process_text(input);
+        }
+
+        drop(map);
+
+        if !cache {
+            let mut map = MODEL_INFO_MAP.write().unwrap();
+            let model_info = map.get_mut(model_name).unwrap();
+            model_info.encoder = None;
+        }
 
         match result {
             Ok(res) => Ok(res),
             Err(err) => {
-                // remove lock
-                drop(map);
-                anyhow::bail!("Error happened while generating text embedding {:?}", err);
+                anyhow::bail!("Error happened while generating embeddings {:?}", err);
             }
         }
     }
 
-    pub fn get_available_models(data_path: Option<&str>) -> String {
+    pub fn get_available_models(data_path: Option<&str>) -> (String, Vec<(String, bool)>) {
         let map = MODEL_INFO_MAP.read().unwrap();
         let mut res = String::new();
         let data_path = data_path.unwrap_or(DATA_PATH);
+        let mut models = Vec::with_capacity(map.len());
         for (key, value) in &*map {
             let model_exists =
                 if Path::join(&Path::new(data_path), format!("{}/model.onnx", key)).exists() {
@@ -597,8 +580,9 @@ pub mod clip {
                 "{} - type: {}, downloaded: {}\n",
                 key, model_type, model_exists
             ));
+            models.push((key.to_string(), value.encoder_args.visual));
         }
 
-        return res;
+        return (res, models);
     }
 }

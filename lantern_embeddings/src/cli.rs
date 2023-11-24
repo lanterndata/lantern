@@ -89,3 +89,23 @@ pub struct ShowModelsArgs {
     #[arg(short, long)]
     pub data_path: Option<String>,
 }
+
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+pub struct MeasureModelSpeedArgs {
+    /// Data path
+    #[arg(short, long)]
+    pub data_path: Option<String>,
+
+    /// Model name (if not passed all models will be tested)
+    #[arg(short, long)]
+    pub model: Option<String>,
+
+    /// Fully associated database connection string including db name
+    #[arg(short, long)]
+    pub uri: String,
+
+    /// Initial limit size for tests
+    #[arg(short, long, default_value_t = 500)]
+    pub initial_limit: u32,
+}

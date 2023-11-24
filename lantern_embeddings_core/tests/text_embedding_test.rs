@@ -19,11 +19,12 @@ macro_rules! text_embedding_test {
         fn $name() {
             let (model, input, expected, batch_size) = $value;
             let inputs = itertools::repeat_n(input, batch_size).collect();
-            let output = lantern_embeddings_core::clip::process_text(
+            let output = lantern_embeddings_core::clip::process(
                 model,
                 &inputs,
                 None,
                 Some("/tmp/lantern-embeddings-core-test"),
+                false,
             )
             .unwrap();
 

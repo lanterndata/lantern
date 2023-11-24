@@ -30,6 +30,11 @@ fn main() {
             _main_logger = Some(logger.clone());
             lantern_embeddings::show_available_models(&args, Some(logger))
         }
+        cli::Commands::MeasureModelSpeed(args) => {
+            let logger = Logger::new("Lantern Embeddings", LogLevel::Info);
+            _main_logger = Some(logger.clone());
+            lantern_embeddings::measure_speed::start_speed_test(&args, Some(logger))
+        }
         cli::Commands::StartDaemon(args) => {
             let logger = Logger::new("Lantern Daemon", args.log_level.value());
             _main_logger = Some(logger.clone());

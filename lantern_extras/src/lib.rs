@@ -14,11 +14,12 @@ fn notice_fn(text: &str) {
 
 #[pg_extern(immutable, parallel_safe)]
 fn clip_text<'a>(text: &'a str) -> Vec<f32> {
-    let res = lantern_embeddings_core::clip::process_text(
+    let res = lantern_embeddings_core::clip::process(
         "clip/ViT-B-32-textual",
         &vec![text],
         Some(&(notice_fn as lantern_embeddings_core::LoggerFn)),
         None,
+        true,
     );
     if let Err(e) = res {
         error!("{}", e);
@@ -29,11 +30,12 @@ fn clip_text<'a>(text: &'a str) -> Vec<f32> {
 
 #[pg_extern(immutable, parallel_safe)]
 fn text_embedding<'a>(model_name: &'a str, text: &'a str) -> Vec<f32> {
-    let res = lantern_embeddings_core::clip::process_text(
+    let res = lantern_embeddings_core::clip::process(
         model_name,
         &vec![text],
         Some(&(notice_fn as lantern_embeddings_core::LoggerFn)),
         None,
+        true,
     );
     if let Err(e) = res {
         error!("{}", e);
@@ -44,11 +46,12 @@ fn text_embedding<'a>(model_name: &'a str, text: &'a str) -> Vec<f32> {
 
 #[pg_extern(immutable, parallel_safe)]
 fn image_embedding<'a>(model_name: &'a str, path_or_url: &'a str) -> Vec<f32> {
-    let res = lantern_embeddings_core::clip::process_image(
+    let res = lantern_embeddings_core::clip::process(
         model_name,
         &vec![path_or_url],
         Some(&(notice_fn as lantern_embeddings_core::LoggerFn)),
         None,
+        true,
     );
     if let Err(e) = res {
         error!("{}", e);
@@ -59,11 +62,12 @@ fn image_embedding<'a>(model_name: &'a str, path_or_url: &'a str) -> Vec<f32> {
 
 #[pg_extern(immutable, parallel_safe)]
 fn clip_image<'a>(path_or_url: &'a str) -> Vec<f32> {
-    let res = lantern_embeddings_core::clip::process_image(
+    let res = lantern_embeddings_core::clip::process(
         "clip/ViT-B-32-visual",
         &vec![path_or_url],
         Some(&(notice_fn as lantern_embeddings_core::LoggerFn)),
         None,
+        true,
     );
     if let Err(e) = res {
         error!("{}", e);
@@ -74,7 +78,7 @@ fn clip_image<'a>(path_or_url: &'a str) -> Vec<f32> {
 
 #[pg_extern(immutable, parallel_safe)]
 fn get_available_models() -> String {
-    return lantern_embeddings_core::clip::get_available_models(None);
+    return lantern_embeddings_core::clip::get_available_models(None).0;
 }
 
 #[pg_extern]

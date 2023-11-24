@@ -43,7 +43,6 @@ fn test_embedding_generation_from_db() {
     let final_progress_r1 = final_progress.clone();
 
     let callback = move |progress: u8| {
-        println!("Callback called {progress}");
         final_progress_r1.store(progress, Ordering::SeqCst);
     };
 
