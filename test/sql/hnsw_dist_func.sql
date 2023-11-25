@@ -92,7 +92,65 @@ SELECT t2_results.id FROM test1 t1 JOIN LATERAL (SELECT t2.id FROM test2 t2 ORDE
 WITH t AS (SELECT id FROM test1 ORDER BY v <-> '{1,2}' LIMIT 1) SELECT DISTINCT id FROM t;
 WITH t AS (SELECT id FROM test1 ORDER BY v <-> '{1,2}' LIMIT 1) SELECT id, COUNT(*) FROM t GROUP BY 1;
 WITH t AS (SELECT id FROM test1 ORDER BY v <-> '{1,2}') SELECT id FROM t UNION SELECT id FROM t;
+
+-- issue #227
+SELECT * from test2 JOIN LATERAL (SELECT * FROM (SELECT id FROM test2 ORDER BY v <-> '{1,2}') as forall) haha on TRUE;
+-- more complex setup of the above
+SELECT forall.id, nearest_per_id.* FROM
+(SELECT * FROM
+  test2) AS forall
+  JOIN LATERAL (
+    SELECT
+      ARRAY_AGG(id ORDER BY id) AS near_ids,
+      ARRAY_AGG(dist ORDER BY id) AS near_dists
+    FROM
+      (
+        SELECT
+          id,
+          l2sq_dist(v, forall.v) as dist
+        FROM
+          test2
+        ORDER BY
+          v <-> forall.v
+        LIMIT
+          5
+      ) as __unused_name
+  ) nearest_per_id on TRUE
+ORDER BY
+  forall.id
+LIMIT
+  9;
+
 \set ON_ERROR_STOP on
+-- cross-lateral joins work as expected when appropriate index exists
+-- nearest element for each vector
+-- Note: The limit below is 4 to make sure all neighbors with distance 1 are included
+-- and none of distance 2 are included. if we include some of distance 2, then we need
+-- further sorting to make sure ties among nodes with distance 2 are broken consistently
+SELECT forall.id, nearest_per_id.* FROM
+(SELECT * FROM
+  small_world_l2) AS forall
+  JOIN LATERAL (
+    SELECT
+      ARRAY_AGG(id ORDER BY dist, id) AS near_ids,
+      ARRAY_AGG(dist ORDER BY dist, id) AS near_dists
+    FROM
+      (
+        SELECT
+          id,
+          l2sq_dist(v, forall.v) as dist
+        FROM
+          small_world_l2
+        ORDER BY
+          v <-> forall.v
+        LIMIT
+          4
+      ) as __unused_name
+  ) nearest_per_id on TRUE
+ORDER BY
+  forall.id
+LIMIT
+  9;
 
 -- Check that hamming distance query results are sorted correctly
 CREATE TABLE extra_small_world_ham (

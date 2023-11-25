@@ -222,7 +222,77 @@ WITH t AS (SELECT id FROM test1 ORDER BY v <-> '{1,2}' LIMIT 1) SELECT id, COUNT
 ERROR:  Operator <-> can only be used inside of an index
 WITH t AS (SELECT id FROM test1 ORDER BY v <-> '{1,2}') SELECT id FROM t UNION SELECT id FROM t;
 ERROR:  Operator <-> can only be used inside of an index
+-- issue #227
+SELECT * from test2 JOIN LATERAL (SELECT * FROM (SELECT id FROM test2 ORDER BY v <-> '{1,2}') as forall) haha on TRUE;
+ERROR:  Operator <-> can only be used inside of an index
+-- more complex setup of the above
+SELECT forall.id, nearest_per_id.* FROM
+(SELECT * FROM
+  test2) AS forall
+  JOIN LATERAL (
+    SELECT
+      ARRAY_AGG(id ORDER BY id) AS near_ids,
+      ARRAY_AGG(dist ORDER BY id) AS near_dists
+    FROM
+      (
+        SELECT
+          id,
+          l2sq_dist(v, forall.v) as dist
+        FROM
+          test2
+        ORDER BY
+          v <-> forall.v
+        LIMIT
+          5
+      ) as __unused_name
+  ) nearest_per_id on TRUE
+ORDER BY
+  forall.id
+LIMIT
+  9;
+ERROR:  Operator <-> can only be used inside of an index
 \set ON_ERROR_STOP on
+-- cross-lateral joins work as expected when appropriate index exists
+-- nearest element for each vector
+-- Note: The limit below is 4 to make sure all neighbors with distance 1 are included
+-- and none of distance 2 are included. if we include some of distance 2, then we need
+-- further sorting to make sure ties among nodes with distance 2 are broken consistently
+SELECT forall.id, nearest_per_id.* FROM
+(SELECT * FROM
+  small_world_l2) AS forall
+  JOIN LATERAL (
+    SELECT
+      ARRAY_AGG(id ORDER BY dist, id) AS near_ids,
+      ARRAY_AGG(dist ORDER BY dist, id) AS near_dists
+    FROM
+      (
+        SELECT
+          id,
+          l2sq_dist(v, forall.v) as dist
+        FROM
+          small_world_l2
+        ORDER BY
+          v <-> forall.v
+        LIMIT
+          4
+      ) as __unused_name
+  ) nearest_per_id on TRUE
+ORDER BY
+  forall.id
+LIMIT
+  9;
+ id  |     near_ids      | near_dists 
+-----+-------------------+------------
+ 000 | {000,001,010,100} | {0,1,1,1}
+ 001 | {001,000,011,101} | {0,1,1,1}
+ 010 | {010,000,011,110} | {0,1,1,1}
+ 011 | {011,001,010,111} | {0,1,1,1}
+ 100 | {100,000,101,110} | {0,1,1,1}
+ 101 | {101,001,100,111} | {0,1,1,1}
+ 110 | {110,010,100,111} | {0,1,1,1}
+ 111 | {111,011,101,110} | {0,1,1,1}
+(8 rows)
+
 -- Check that hamming distance query results are sorted correctly
 CREATE TABLE extra_small_world_ham (
     id SERIAL PRIMARY KEY,
