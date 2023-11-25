@@ -1,7 +1,7 @@
 use csv::Writer;
 use lantern_embeddings_core::clip;
 use lantern_logger::{LogLevel, Logger};
-use lantern_utils::{get_full_table_name, quote_ident};
+use lantern_utils::{append_params_to_uri, get_full_table_name, quote_ident};
 use rand::Rng;
 use std::hint;
 use std::io::Write;
@@ -20,6 +20,8 @@ type EmbeddingRecord = (String, Vec<f32>);
 type AnyhowVoidResult = Result<(), anyhow::Error>;
 type AnyhowU64Result = Result<usize, anyhow::Error>;
 pub type ProgressCbFn = Box<dyn Fn(u8) + Send + Sync>;
+
+static CONNECTION_PARAMS: &'static str = "connect_timeout=10";
 
 // Helper function to calculate progress using total and processed row count
 fn calculate_progress(total: i64, processed: usize) -> u8 {
@@ -62,7 +64,8 @@ fn producer_worker(
             "".to_owned()
         };
 
-        let client = Client::connect(&args.uri, NoTls);
+        let uri = append_params_to_uri(&args.uri, CONNECTION_PARAMS);
+        let client = Client::connect(&uri, NoTls);
 
         // we are excplicity checking for error here
         // because the item_count atomic should be update
@@ -244,6 +247,8 @@ fn db_exporter_worker(
         let table = args.out_table.as_ref().unwrap_or(&args.table);
         let schema = &args.schema;
         let full_table_name = get_full_table_name(schema, table);
+
+        let uri = append_params_to_uri(uri, CONNECTION_PARAMS);
 
         let mut client = Client::connect(&uri, NoTls)?;
         let mut transaction = client.transaction()?;
