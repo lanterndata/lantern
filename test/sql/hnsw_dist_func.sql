@@ -48,8 +48,9 @@ SELECT ARRAY[1,2,3] <-> ARRAY[3,2,1];
 SELECT ROUND((v <-> ARRAY[0,1,0])::numeric, 2) FROM small_world_cos ORDER BY v <-> '{0,1,0}' LIMIT 7;
 SELECT ROUND((v <-> ARRAY[0,1,0])::numeric, 2) FROM small_world_ham ORDER BY v <-> '{0,1,0}' LIMIT 7;
 
--- More robust distance operator tests
+\set ON_ERROR_STOP on
 
+-- More robust distance operator tests
 CREATE TABLE test1 (id SERIAL, v REAL[]);
 CREATE TABLE test2 (id SERIAL, v REAL[]);
 INSERT INTO test1 (v) VALUES ('{5,3}');
@@ -58,6 +59,8 @@ INSERT INTO test2 (v) VALUES ('{5,4}');
 -- Expect success
 SELECT 0 + 1;
 SELECT 1 FROM test1 WHERE id = 0 + 1;
+
+\set ON_ERROR_STOP off
 
 -- Expect errors due to incorrect usage
 INSERT INTO test1 (v) VALUES (ARRAY['{1,2}'::REAL[] <-> '{4,2}'::REAL[], 0]);
@@ -89,6 +92,7 @@ SELECT t2_results.id FROM test1 t1 JOIN LATERAL (SELECT t2.id FROM test2 t2 ORDE
 WITH t AS (SELECT id FROM test1 ORDER BY v <-> '{1,2}' LIMIT 1) SELECT DISTINCT id FROM t;
 WITH t AS (SELECT id FROM test1 ORDER BY v <-> '{1,2}' LIMIT 1) SELECT id, COUNT(*) FROM t GROUP BY 1;
 WITH t AS (SELECT id FROM test1 ORDER BY v <-> '{1,2}') SELECT id FROM t UNION SELECT id FROM t;
+\set ON_ERROR_STOP on
 
 -- Check that hamming distance query results are sorted correctly
 CREATE TABLE extra_small_world_ham (

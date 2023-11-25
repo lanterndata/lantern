@@ -146,6 +146,7 @@ SELECT ROUND((v <-> ARRAY[0,1,0])::numeric, 2) FROM small_world_cos ORDER BY v <
 ERROR:  Operator <-> is invalid outside of ORDER BY context
 SELECT ROUND((v <-> ARRAY[0,1,0])::numeric, 2) FROM small_world_ham ORDER BY v <-> '{0,1,0}' LIMIT 7;
 ERROR:  Operator <-> is invalid outside of ORDER BY context
+\set ON_ERROR_STOP on
 -- More robust distance operator tests
 CREATE TABLE test1 (id SERIAL, v REAL[]);
 CREATE TABLE test2 (id SERIAL, v REAL[]);
@@ -164,6 +165,7 @@ SELECT 1 FROM test1 WHERE id = 0 + 1;
         1
 (1 row)
 
+\set ON_ERROR_STOP off
 -- Expect errors due to incorrect usage
 INSERT INTO test1 (v) VALUES (ARRAY['{1,2}'::REAL[] <-> '{4,2}'::REAL[], 0]);
 ERROR:  Operator <-> is invalid outside of ORDER BY context
@@ -220,6 +222,7 @@ WITH t AS (SELECT id FROM test1 ORDER BY v <-> '{1,2}' LIMIT 1) SELECT id, COUNT
 ERROR:  Operator <-> can only be used inside of an index
 WITH t AS (SELECT id FROM test1 ORDER BY v <-> '{1,2}') SELECT id FROM t UNION SELECT id FROM t;
 ERROR:  Operator <-> can only be used inside of an index
+\set ON_ERROR_STOP on
 -- Check that hamming distance query results are sorted correctly
 CREATE TABLE extra_small_world_ham (
     id SERIAL PRIMARY KEY,
