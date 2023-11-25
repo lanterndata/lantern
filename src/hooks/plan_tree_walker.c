@@ -10,6 +10,27 @@
 
 bool base_plan_walker(Plan *plan, bool (*walker_func)(Node *plan, void *context), void *context)
 {
+    /*
+        If there is a need to debug this function, follow the steps below:
+        0. Add the following as the default branch in plan_tree_walker
+            default:
+                {
+                    ldb_dlog("plan_tree_walker: unsupported plan node type: %d", nodeTag(plan));
+                    return false;
+                }
+            This will print all nodes that are not explicitly handled by the walker.
+            Currently there are several such nodes which probably means there are more
+            latent issues here.
+        1. Attach gdb to the postgres process
+        2. Set a breakpoint at the function entry
+        3. navitate through relevant paths via gdb
+        4. debug print Plan* nodes via
+            p (char*) nodeToString(plan);
+
+        Note: for non-trivial Plan* nodes you may need to run:
+            set print elements 0
+        in gdb to make sure the node string is not truncated.
+    */
     if(walker_func((Node *)plan->targetlist, context)) return true;
     if(walker_func((Node *)plan->qual, context)) return true;
     if(walker_func((Node *)plan->lefttree, context)) return true;
@@ -122,6 +143,12 @@ bool plan_tree_walker(Plan *plan, bool (*walker_func)(Node *plan, void *context)
             Append *append = (Append *)plan;
             if(base_plan_walker(&(append->plan), walker_func, context)) return true;
             if(walker_func((Node *)append->appendplans, context)) return true;
+            break;
+        }
+        case T_Material:
+        {
+            Material *material = (Material *)plan;
+            if(base_plan_walker(&(material->plan), walker_func, context)) return true;
             break;
         }
         default:
