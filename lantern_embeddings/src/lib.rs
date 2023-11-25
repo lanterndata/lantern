@@ -62,8 +62,22 @@ fn producer_worker(
             "".to_owned()
         };
 
-        let mut client = Client::connect(&args.uri, NoTls)?;
+        let client = Client::connect(&args.uri, NoTls);
+
+        // we are excplicity checking for error here
+        // because the item_count atomic should be update
+        // as we have a while loop waiting for it
+        // if before updating the variable there will be error the while
+        // loop will never exit
+
+        if let Err(e) = client {
+            item_count_r1.store(0, Ordering::SeqCst);
+            anyhow::bail!("{e}");
+        }
+        let mut client = client.unwrap();
+
         let mut transaction = client.transaction()?;
+
         if estimate_count {
             let rows = transaction.query(
                 &format!(
@@ -71,7 +85,15 @@ fn producer_worker(
                     pk = quote_ident(pk)
                 ),
                 &[],
-            )?;
+            );
+
+            if let Err(e) = rows {
+                item_count_r1.store(0, Ordering::SeqCst);
+                anyhow::bail!("{e}");
+            }
+
+            let rows = rows.unwrap();
+
             let count: i64 = rows[0].get(0);
             item_count_r1.store(count, Ordering::SeqCst);
             if count > 0 {
@@ -87,7 +109,7 @@ fn producer_worker(
         // With portal we can execute a query and poll values from it in chunks
         let portal = transaction.bind(
             &format!(
-                "SELECT {pk}::text, {column} FROM {full_table_name} {filter_sql} {limit_sql};",
+                "SELECT {pk}::text, {column}::text FROM {full_table_name} {filter_sql} {limit_sql};",
                 pk = quote_ident(pk),
                 column = quote_ident(column),
             ),
@@ -148,7 +170,7 @@ fn embedding_worker(
             let mut input_ids: Vec<String> = Vec::with_capacity(rows.len());
 
             for row in &rows {
-                if let Some(src_data) = row.get::<usize, Option<&str>>(1) {
+                if let Ok(Some(src_data)) = row.try_get::<usize, Option<&str>>(1) {
                     input_vectors.push(src_data);
                     input_ids.push(row.get::<usize, String>(0));
                 }
@@ -439,14 +461,30 @@ pub fn create_embeddings_from_db(
     ];
 
     for handle in handles {
-        if let Err(e) = handle.join().unwrap() {
-            logger.error(&format!("{}", e));
-            anyhow::bail!("{}", e);
+        match handle.join() {
+            Err(e) => {
+                logger.error(&format!("{:?}", e));
+                anyhow::bail!("{:?}", e);
+            }
+            Ok(res) => {
+                if let Err(e) = res {
+                    logger.error(&format!("{:?}", e));
+                    anyhow::bail!("{:?}", e);
+                }
+            }
         }
     }
 
     // This will return the result with number of rows processed
-    exporter_handle.join().unwrap()
+    match exporter_handle.join() {
+        Err(e) => {
+            logger.error(&format!("{:?}", e));
+            anyhow::bail!("{:?}", e);
+        }
+        Ok(res) => {
+            return res;
+        }
+    }
 }
 
 pub fn show_available_models(
