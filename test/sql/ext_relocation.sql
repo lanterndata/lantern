@@ -19,7 +19,7 @@ FROM pg_catalog.pg_extension AS e
     INNER JOIN pg_catalog.pg_namespace AS ne ON (ne.oid = e.extnamespace)
     INNER JOIN pg_catalog.pg_namespace AS np ON (np.oid = p.pronamespace)
 WHERE d.deptype = 'e' AND e.extname = 'lantern'
-ORDER BY 1, 3;
+ORDER BY 1, 3, 2;
 
 -- show all the extension operators
 SELECT ne.nspname AS extschema, op.oprname, np.nspname AS proschema
