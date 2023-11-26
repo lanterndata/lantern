@@ -126,3 +126,20 @@ BEGIN
 END;
 $BODY$
 LANGUAGE plpgsql;
+
+-- Database updates
+-- Must be run in update scripts every time index storage format changes and a finer-grained update
+-- method is not shipped for the format change
+CREATE OR REPLACE FUNCTION _lantern_internal.reindex_lantern_indexes()
+RETURNS VOID AS $$
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN SELECT indexname FROM pg_indexes
+            WHERE indexdef ILIKE '%USING hnsw%' OR indexdef ILIKE '%USING lantern_hnsw%'
+    LOOP
+        RAISE NOTICE 'Reindexing index: %', r.indexname;
+        EXECUTE 'REINDEX INDEX ' || quote_ident(r.indexname) || ';';
+        RAISE NOTICE 'Reindexed index: %', r.indexname;
+    END LOOP;
+END $$ LANGUAGE plpgsql VOLATILE;

@@ -16,7 +16,7 @@
 #include "options.h"
 #include "usearch.h"
 
-#define LDB_WAL_MAGIC_NUMBER   0xa47e20db
+#define LDB_WAL_MAGIC_NUMBER   0xa47e60db
 #define LDB_WAL_VERSION_NUMBER 0x00000001
 
 // used for code clarity when modifying WAL entries
