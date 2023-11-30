@@ -203,7 +203,7 @@ static Node *operator_rewriting_mutator(Node *node, void *ctx)
                     Relation  index = index_open(indexid, AccessShareLock);
                     Oid       indexfunc = get_func_id_from_index(index);
                     if(OidIsValid(indexfunc)) {
-                        MemoryContext old = MemoryContextSwitchTo(MessageContext);
+                        MemoryContext old = MemoryContextSwitchTo(PortalContext);
                         FuncExpr     *fnExpr = makeNode(FuncExpr);
                         fnExpr->funcresulttype = opExpr->opresulttype;
                         fnExpr->funcretset = opExpr->opretset;
