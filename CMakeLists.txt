@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.3)
 
-set(LANTERNDB_VERSION 0.0.7)
+set(LANTERNDB_VERSION 0.0.8)
 
 project(
   LanternDB
@@ -166,7 +166,8 @@ set (_update_files
   sql/updates/0.0.4--0.0.5.sql
   sql/updates/0.0.5--0.0.6.sql
   sql/updates/0.0.6--0.0.7.sql
-  )
+  sql/updates/0.0.7--0.0.8.sql
+)
 
 add_custom_command(
   OUTPUT ${CMAKE_BINARY_DIR}/${_script_file}
