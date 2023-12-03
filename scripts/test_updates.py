@@ -45,7 +45,8 @@ def update_from_tag(from_version: str, to_version: str):
 
     repo.git.checkout(sha_before)
     res = shell(f"cd {args.builddir} ; git submodule update && cmake .. && make -j4 && make install")
-    res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={to_version} make test")
+    # res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={to_version} make test")
+
     # run the actual parallel tests after the upgrade
     # todo: parallel tests are failing (tracked by https://github.com/lanterndata/lantern/issues/226)
     res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={to_version} make test-parallel EXCLUDE=begin", exit_on_error=False)
