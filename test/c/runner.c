@@ -59,7 +59,6 @@ int recreate_database(PGconn *root_conn, const char *test_db_name)
     full_statement = malloc(strlen(statement) + strlen(test_db_name));
     sprintf(full_statement, "%s%s", statement, test_db_name);
     res = PQexec(root_conn, full_statement);
-    printf("%s\n", full_statement);
     free(full_statement);
 
     if(PQresultStatus(res) != PGRES_COMMAND_OK) {
@@ -132,7 +131,7 @@ int main()
 
     for(i = 0; i < sizeof(test_cases) / sizeof(struct TestCase); i++) {
         current_case = test_cases[ i ];
-        printf("[+] Running test case '%s'\n", current_case.name);
+        printf("[+] Running test case '%s'...\n", current_case.name);
 
         // Create test database
         if(recreate_database(root_conn, TEST_DB_NAME)) {
@@ -163,6 +162,7 @@ int main()
 
         // Close test connection
         PQfinish(test_conn);
+        printf("[+] Test case '%s' passed\n", current_case.name);
     }
 
     PQfinish(root_conn);
