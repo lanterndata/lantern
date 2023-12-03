@@ -27,8 +27,6 @@ DB_USER="${DB_USER:-$DEFAULT_USER}"
 # this will be used by pg_regress while making diff file
 export PG_REGRESS_DIFF_OPTS=-u
 
-echo "Filter: $FILTER"
-
 mkdir -p $TMP_OUTDIR
 
 # if $TMP_ROOT/vector_datasets does not exist
@@ -76,13 +74,20 @@ pgvector_installed=$($PSQL -U $DB_USER -d postgres -c "SELECT 1 FROM pg_availabl
 # Settings
 REGRESSION=0
 PARALLEL=0
+C_TESTS=0
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --regression) REGRESSION=1 ;;
         --parallel) PARALLEL=1 ;;
+        --c) C_TESTS=1 ;;
     esac
     shift
 done
+
+if [ "$C_TESTS" -eq 1 ]; then
+    DB_USER=$DB_USER TEST_DB_NAME=$TESTDB ./bin/lantern_c_tests
+    exit $?
+fi
 
 FIRST_TEST=1
 function print_test {
