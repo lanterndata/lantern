@@ -14,10 +14,12 @@ INSERT INTO small_world (id, b, v) VALUES
     ('110', FALSE, '{1,1,0}'),
     ('111', TRUE,  '{1,1,1}');
 -- Before the HNSW index is created, the parameter hnsw.init_k should not be available
-\set ON_ERROR_STOP off
 SHOW hnsw.init_k;
-ERROR:  unrecognized configuration parameter "hnsw.init_k"
-\set ON_ERROR_STOP on
+ hnsw.init_k 
+-------------
+ 10
+(1 row)
+
 -- Create an index and verify that it was created
 CREATE INDEX ON small_world USING hnsw (v) WITH (dim=3);
 INFO:  done init usearch index

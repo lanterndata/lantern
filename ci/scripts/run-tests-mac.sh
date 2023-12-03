@@ -19,6 +19,9 @@ wait_for_pg(){
  done
 }
 
+# Pre-load lantern on postgres server start
+echo "shared_preload_libraries = 'lantern'" >> /usr/local/var/postgresql@${PG_VERSION}/postgresql.conf
+
 # Start database
 brew services start postgresql@$PG_VERSION
 

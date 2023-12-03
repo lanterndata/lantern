@@ -30,20 +30,32 @@ RUN apt update \
     cd pgvector-${PGVECTOR_VERSION} && \
     make && make install
 
-COPY . .
 
 # Build lantern
+
+
+# Install benchmarking tools in build folder
+
+ENV POSTGRES_CONFIG_FILE /etc/postgresql/postgresql.conf
+RUN sudo apt install -y vim
+RUN cp /usr/share/postgresql/postgresql.conf.sample $POSTGRES_CONFIG_FILE && \
+    echo "shared_preload_libraries = 'lantern'" >> $POSTGRES_CONFIG_FILE
+RUN echo "postgres ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+# RUN mkdir build/lantern \
+#     && git clone https://github.com/lanterndata/benchmark build/benchmark \
+#     && cd build/benchmark \
+#     && pip install -r core/requirements.txt --break-system-packages \
+#     && pip install -r external/requirements.txt --break-system-packages
+ENV DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres
+ENV LANTERN_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres
+
+COPY . .
 RUN rm -rf build \
-    && mkdir build \
+    ; mkdir build \
     && cd build \
     && cmake -DUSEARCH_NO_MARCH_NATIVE=ON -DCMAKE_BUILD_TYPE=Debug .. \
     && make install
-
-# Install benchmarking tools in build folder
-RUN mkdir build/lantern \
-    && git clone https://github.com/lanterndata/benchmark build/benchmark \
-    && cd build/benchmark \
-    && pip install -r core/requirements.txt --break-system-packages \
-    && pip install -r external/requirements.txt --break-system-packages
-ENV DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres
-ENV LANTERN_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres
+RUN chown postgres:postgres -R /lantern
+# run docker as entrypoint with custom config as argument
+# docker-entrypoint.sh is in /usr/local/bin/
+ENTRYPOINT docker-entrypoint.sh -c config_file=$POSTGRES_CONFIG_FILE

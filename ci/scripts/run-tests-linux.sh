@@ -42,7 +42,6 @@ function start_pg() {
     sleep 1
     start_pg
   else
-    echo "port = 5432" >> ${PGDATA}/postgresql.conf
     # Enable auth without password
     echo "local   all             all                                     trust" >  $PGDATA/pg_hba.conf
     echo "host    all             all             127.0.0.1/32            trust" >>  $PGDATA/pg_hba.conf
@@ -51,6 +50,9 @@ function start_pg() {
 
     # Set port
     echo "port = 5432" >> ${PGDATA}/postgresql.conf
+
+    # Pre-load lantern on postgres server start
+    echo "shared_preload_libraries = 'lantern'" >> ${PGDATA}/postgresql.conf
     # Run postgres database
     GCOV_PREFIX=$WORKDIR/build/CMakeFiles/lantern.dir/ GCOV_PREFIX_STRIP=5 POSTGRES_HOST_AUTH_METHOD=trust /usr/lib/postgresql/$PG_VERSION/bin/postgres 1>/tmp/pg-out.log 2>/tmp/pg-error.log &
   fi

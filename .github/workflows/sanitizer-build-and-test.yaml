@@ -168,11 +168,9 @@ jobs:
     - name: Start Postgres
       run: |
         mkdir -p $PG_INSTALL_DIR/data
-        #sudo chown -R postgres:postgres $PG_INSTALL_DIR/data
-        #sudo chown -R postgres:postgres ${{ github.workspace }}/sanitizer
-        #getent group postgres || sudo groupadd postgres
-        #id -u postgres  &>/dev/null || sudo useradd -g postgres postgres
         initdb  -A trust -D $PG_INSTALL_DIR/data
+        # Make our extension pre-loaded
+        echo "shared_preload_libraries = 'lantern'" >> $PG_INSTALL_DIR/data/postgresql.conf
         postgres -D $PG_INSTALL_DIR/data >/tmp/postgres.log 2>&1 &
 
     - name: make test

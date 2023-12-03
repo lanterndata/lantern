@@ -1,9 +1,7 @@
 \ir utils/small_world_array.sql
 
 -- Before the HNSW index is created, the parameter hnsw.init_k should not be available
-\set ON_ERROR_STOP off
 SHOW hnsw.init_k;
-\set ON_ERROR_STOP on
 
 -- Create an index and verify that it was created
 CREATE INDEX ON small_world USING hnsw (v) WITH (dim=3);
