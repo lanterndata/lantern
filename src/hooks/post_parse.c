@@ -3,6 +3,7 @@
 #include "post_parse.h"
 
 #include <catalog/pg_type_d.h>
+#include <commands/extension.h>
 #include <nodes/makefuncs.h>
 #include <nodes/nodeFuncs.h>
 #include <parser/analyze.h>
@@ -168,6 +169,10 @@ void post_parse_analyze_hook_with_operator_check(ParseState *pstate,
 #else
         original_post_parse_analyze_hook(pstate, query);
 #endif
+    }
+
+    if(creating_extension) {
+        return;
     }
 
     List *oidList = ldb_get_operator_oids();

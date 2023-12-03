@@ -2,6 +2,7 @@
 
 #include "executor_start.h"
 
+#include <commands/extension.h>
 #include <executor/executor.h>
 #include <nodes/nodeFuncs.h>
 #include <nodes/nodes.h>
@@ -68,6 +69,15 @@ void ExecutorStart_hook_with_operator_check(QueryDesc *queryDesc, int eflags)
 {
     if(original_ExecutorStart_hook) {
         original_ExecutorStart_hook(queryDesc, eflags);
+    }
+
+    if(creating_extension) {
+        // this is true in only CREATE EXTENSION and ALTER EXTENSION UPDATE commands
+        // these statements are guaranteed to not use our operators and state necessary
+        // to run our hooks is not ready anyway so it would be wrong to run this
+        elog(DEBUG2, "Skipping executor start hook for CREATE EXTENSION ... statement");
+        standard_ExecutorStart(queryDesc, eflags);
+        return;
     }
 
     List *oidList = ldb_get_operator_oids();
