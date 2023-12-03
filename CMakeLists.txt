@@ -103,11 +103,7 @@ if (LANTERN_BUILD_C_TESTS)
   # Add link directories for postgres shared libraries
   target_link_directories(lantern_c_tests PRIVATE ${PostgreSQL_LIBRARY_DIRS})
   # Link libpq
-  set_target_properties(
-    lantern_c_tests
-    PROPERTIES PREFIX ""
-               LINK_FLAGS "-lpq"
-               POSITION_INDEPENDENT_CODE ON)
+  target_link_libraries(lantern_c_tests "-lpq")
 endif()
 # ==================================================
 
