@@ -1,5 +1,5 @@
-#ifndef _TEST_OP_REWRITE
-#define _TEST_OP_REWRITE
+#ifndef TEST_OP_REWRITE_H
+#define TEST_OP_REWRITE_H
 
 #include <libpq-fe.h>
 
