@@ -19,10 +19,16 @@ struct TestCase
 PGconn *connect_database(
     const char *db_host, const char *db_port, const char *db_user, const char *db_password, const char *db_name)
 {
-    const int const_db_uri_chars = strlen("host= port= user= dbname= password=");
+    const int const_db_uri_chars = strlen("host= port= user= dbname= sslmode=disable password=");
     char *db_uri = malloc(strlen(db_host) + strlen(db_port) + strlen(db_user) + strlen(db_password) + strlen(db_name)
                           + const_db_uri_chars);
-    sprintf(db_uri, "host=%s port=%s user=%s dbname=%s password=%s", db_host, db_port, db_user, db_name, db_password);
+    sprintf(db_uri,
+            "host=%s port=%s user=%s dbname=%s sslmode=disable password=%s",
+            db_host,
+            db_port,
+            db_user,
+            db_name,
+            db_password);
 
     PGconn *conn = PQconnectdb(db_uri);
     free(db_uri);
@@ -160,6 +166,6 @@ int main()
     }
 
     PQfinish(root_conn);
-    printf("[+] All tests passed");
+    printf("[+] All tests passed\n");
     return 0;
 }

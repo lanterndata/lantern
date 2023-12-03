@@ -249,7 +249,7 @@ static Node *operator_rewriting_mutator(Node *node, void *ctx)
     }
 
     if(IsA(node, List)) {
-        MemoryContext old = MemoryContextSwitchTo(PortalContext);
+        MemoryContext old = MemoryContextSwitchTo(MessageContext);
         List         *list = (List *)node;
         List         *ret = NIL;
         ListCell     *lc;

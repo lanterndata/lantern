@@ -79,7 +79,7 @@ while [[ "$#" -gt 0 ]]; do
     case $1 in
         --regression) REGRESSION=1 ;;
         --parallel) PARALLEL=1 ;;
-        --c) C_TESTS=1 ;;
+        --client) C_TESTS=1 ;;
     esac
     shift
 done
