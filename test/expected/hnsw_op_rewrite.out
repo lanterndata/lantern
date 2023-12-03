@@ -1,0 +1,16 @@
+---------------------------------------------------------------------
+-- Test Database Crashes which were caused by operator rewriting logic
+---------------------------------------------------------------------
+-- This case were causing Segfault from
+-- post_parse_analyze_hook_with_operator_check() -> ldb_get_operator_oids() -> ... LookupOperName() ... -> GetRealCmin()
+BEGIN;
+DROP EXTENSION IF EXISTS lantern CASCADE;
+CREATE EXTENSION lantern;
+\set ON_ERROR_STOP off
+SELECT ARRAY[1,1] <-> ARRAY[1,1];
+ERROR:  Operator <-> is invalid outside of ORDER BY context
+ROLLBACK;
+server closed the connection unexpectedly
+	This probably means the server terminated abnormally
+	before or while processing the request.
+connection to server was lost
