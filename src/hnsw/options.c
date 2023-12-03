@@ -8,6 +8,7 @@
 #include <catalog/pg_type_d.h>
 #include <executor/executor.h>
 #include <fmgr.h>
+#include <miscadmin.h>
 #include <parser/analyze.h>
 #include <utils/catcache.h>
 #include <utils/guc.h>
@@ -135,6 +136,12 @@ bytea *ldb_amoptions(Datum reloptions, bool validate)
  */
 void _PG_init(void)
 {
+    if(process_shared_preload_libraries_in_progress) {
+        elog(WARNING,
+             "LanternDB HNSW index extension loaded inside shared_preload_libraries."
+             "Make sure to restart the server before running ALTER EXTENSION lantern UPDATE");
+    }
+
     original_post_parse_analyze_hook = post_parse_analyze_hook;
     original_ExecutorStart_hook = ExecutorStart_hook;
 
