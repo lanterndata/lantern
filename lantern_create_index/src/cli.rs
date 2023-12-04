@@ -22,6 +22,20 @@ impl UMetricKind {
             }
         }
     }
+
+    pub fn sql_function(&self) -> String {
+        match self {
+            UMetricKind::L2sq => {
+                return "l2sq_dist".to_owned();
+            }
+            UMetricKind::Cos => {
+                return "cos_dist".to_owned();
+            }
+            UMetricKind::Hamming => {
+                return "hamming_dist".to_owned();
+            }
+        }
+    }
 }
 
 #[derive(Parser, Debug)]
@@ -65,4 +79,12 @@ pub struct CreateIndexArgs {
     /// Index output file
     #[arg(short, long, default_value = "index.usearch")] // arg_enum here
     pub out: String,
+
+    /// Import index to database (should be run as db superuser to have access)
+    #[arg(short, long, default_value_t = false)]
+    pub import: bool,
+
+    /// Index name to use when imporrting index to database
+    #[arg(long)]
+    pub index_name: Option<String>,
 }

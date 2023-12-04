@@ -1,18 +1,19 @@
 [package]
-name = "lantern_cli"
-version = "0.0.14"
+name = "lantern_index_autotune"
+version = "0.0.1"
 edition = "2021"
 
-[[bin]]
-name = "lantern-cli"
-path = "src/main.rs"
+[lib]
+crate-type = ["lib"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 clap = { version = "4.4.0", features = ["derive"] }
+anyhow = "1.0.75"
+postgres = "0.19.7"
 lantern_create_index = { path = "../lantern_create_index" }
-lantern_embeddings = { path = "../lantern_embeddings" }
-lantern_daemon = { path = "../lantern_daemon" }
 lantern_logger = { path = "../lantern_logger" }
-lantern_index_autotune = { path = "../lantern_index_autotune" }
+lantern_utils = { path = "../lantern_utils" }
+rand = "0.8.5"
+uuid = {version = "1.6.1", features = ["v4", "fast-rng", "macro-diagnostics"]}

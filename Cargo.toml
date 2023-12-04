@@ -12,6 +12,7 @@ members = [
     "lantern_embeddings_core",
     "lantern_cli",
     "lantern_daemon",
+    "lantern_index_autotune",
 ]
 
 [profile.release]

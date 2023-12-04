@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 use lantern_create_index::cli::CreateIndexArgs;
 use lantern_daemon::cli::DaemonArgs;
 use lantern_embeddings::cli::{EmbeddingArgs, MeasureModelSpeedArgs, ShowModelsArgs};
+use lantern_index_autotune::cli::IndexAutotuneArgs;
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
@@ -11,8 +12,10 @@ pub enum Commands {
     CreateEmbeddings(EmbeddingArgs),
     /// Show embedding models
     ShowModels(ShowModelsArgs),
-    /// Show embedding models
+    /// Measure embedding geneartion speed
     MeasureModelSpeed(MeasureModelSpeedArgs),
+    /// Autotune index
+    AutotuneIndex(IndexAutotuneArgs),
     /// Start in daemon mode
     StartDaemon(DaemonArgs),
 }

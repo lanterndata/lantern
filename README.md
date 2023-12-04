@@ -149,13 +149,13 @@ Run `cargo install --path lantern_cli` to install the binary
 Run `lantern-cli create-index --help` to show the cli options.
 
 ```bash
-Usage: lantern-cli create-index --uri <URI> --table <TABLE> --column <COLUMN> -m <M> --efc <EFC> --ef <EF> -d <DIMS> --metric-kind <METRIC_KIND> --out <OUT>
+Usage: lantern-cli create-index --uri <URI> --table <TABLE> --column <COLUMN> -m <M> --efc <EFC> --ef <EF> -d <DIMS> --metric-kind <METRIC_KIND> --out <OUT> --import
 ```
 
 ### Example
 
 ```bash
-lantern-cli create-index -u "postgresql://localhost/test" -t "small_world" -c "vec" -m 16 --ef 64 --efc 128 -d 3 --metric-kind cos --out /tmp/index.usearch
+lantern-cli create-index -u "postgresql://localhost/test" -t "small_world" -c "vec" -m 16 --ef 64 --efc 128 -d 3 --metric-kind cos --out /tmp/index.usearch --import
 ```
 
 ### Notes

@@ -12,7 +12,7 @@ fn main() {
         cli::Commands::CreateIndex(args) => {
             let logger = Logger::new("Lantern Index", LogLevel::Debug);
             _main_logger = Some(logger.clone());
-            lantern_create_index::create_usearch_index(&args, Some(logger))
+            lantern_create_index::create_usearch_index(&args, Some(logger), None)
         }
         cli::Commands::CreateEmbeddings(args) => {
             let logger = Logger::new("Lantern Embeddings", LogLevel::Debug);
@@ -34,6 +34,11 @@ fn main() {
             let logger = Logger::new("Lantern Embeddings", LogLevel::Info);
             _main_logger = Some(logger.clone());
             lantern_embeddings::measure_speed::start_speed_test(&args, Some(logger))
+        }
+        cli::Commands::AutotuneIndex(args) => {
+            let logger = Logger::new("Lantern Index Autotune", LogLevel::Debug);
+            _main_logger = Some(logger.clone());
+            lantern_index_autotune::autotune_index(&args, Some(logger))
         }
         cli::Commands::StartDaemon(args) => {
             let logger = Logger::new("Lantern Daemon", args.log_level.value());
