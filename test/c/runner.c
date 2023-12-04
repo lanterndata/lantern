@@ -83,6 +83,17 @@ int create_extension(PGconn *conn)
     return 0;
 }
 
+const char *getenv_or_default(const char *env_name, const char *default_val)
+{
+    const char *val = getenv(env_name);
+
+    if(val == NULL) {
+        return default_val;
+    }
+
+    return val;
+}
+
 int main()
 {
     size_t          i;
@@ -94,34 +105,14 @@ int main()
     };
 
     // Set up database connection variables
-    const char *DB_HOST = getenv("DB_HOST");
-    const char *DB_PORT = getenv("DB_PORT");
-    const char *DB_USER = getenv("DB_USER");
-    const char *DB_PASSWORD = getenv("DB_PASSWORD");
-    const char *TEST_DB_NAME = getenv("TEST_DB_NAME");
+    const char *DB_HOST = getenv_or_default("DB_HOST", "localhost");
+    const char *DB_PORT = getenv_or_default("DB_PORT", "5432");
+    const char *DB_USER = getenv_or_default("DB_USER", "postgres");
+    const char *DB_PASSWORD = getenv_or_default("DB_PASSWORD", "");
+    const char *TEST_DB_NAME = getenv_or_default("TEST_DB_NAME", "lantern_testdb");
     const char *ROOT_DB_NAME = "postgres";
     PGconn     *test_conn = NULL;
     PGconn     *root_conn = NULL;
-
-    if(DB_HOST == NULL) {
-        DB_HOST = "localhost";
-    }
-
-    if(DB_PORT == NULL) {
-        DB_PORT = "5432";
-    }
-
-    if(DB_USER == NULL) {
-        DB_USER = "postgres";
-    }
-
-    if(DB_PASSWORD == NULL) {
-        DB_PASSWORD = "";
-    }
-
-    if(TEST_DB_NAME == NULL) {
-        TEST_DB_NAME = "lantern_testdb";
-    }
 
     root_conn = connect_database(DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, ROOT_DB_NAME);
 
