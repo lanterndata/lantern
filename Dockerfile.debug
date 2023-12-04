@@ -1,3 +1,6 @@
+# If you want to test with another Postgres version
+# Find root dockerfile here: https://github.com/var77/postgres-docker-debug
+
 # To use GDB inside container run docker like this:
 # docker build . -t pg-lantern-debug
 # docker run --cap-add=SYS_PTRACE -p 5433:5432 -d --name debug-pg pg-lantern-debug
