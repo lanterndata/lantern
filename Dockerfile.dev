@@ -1,8 +1,15 @@
-ARG VERSION=16
+ARG VERSION=15
 ARG PGVECTOR_VERSION=0.5.0
 
 # If you want to build the base image for different versions
 # Refer to the base image Dockerfile here https://github.com/var77/postgres-docker-debug
+# To use GDB inside container run docker like this:
+# docker build . -t lantern-dev
+# docker run --cap-add=SYS_PTRACE -p 5433:5432 -d --name lantern-dev lantern-dev
+# Then exec to it docker exec -ti lantern-dev bash
+# sudo su
+# gdb -p $pid_of_pg_backend
+
 FROM varik77/postgres:$VERSION-debug
 ARG PGVECTOR_VERSION
 
@@ -31,7 +38,7 @@ RUN mkdir build/lantern \
     && cd build/benchmark \
     && pip install -r core/requirements.txt \
     && pip install -r external/requirements.txt
-ENV DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres
-ENV LANTERN_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres
+ENV DATABASE_URL=postgres://postgres@localhost:5432/postgres
+ENV LANTERN_DATABASE_URL=postgres://postgres@localhost:5432/postgres
 
 USER postgres
