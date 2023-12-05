@@ -19,7 +19,7 @@ struct TestCase
 PGconn *connect_database(
     const char *db_host, const char *db_port, const char *db_user, const char *db_password, const char *db_name)
 {
-    const int const_db_uri_chars = strlen("host= port= user= dbname= sslmode=disable password=");
+    const int const_db_uri_chars = strlen("host= port= user= dbname= sslmode=disable password=") + 1;
     char *db_uri = malloc(strlen(db_host) + strlen(db_port) + strlen(db_user) + strlen(db_password) + strlen(db_name)
                           + const_db_uri_chars);
     sprintf(db_uri,
@@ -44,7 +44,7 @@ PGconn *connect_database(
 int recreate_database(PGconn *root_conn, const char *test_db_name)
 {
     char *statement = "DROP DATABASE IF EXISTS ";
-    char *full_statement = malloc(strlen(statement) + strlen(test_db_name));
+    char *full_statement = malloc(strlen(statement) + strlen(test_db_name) + 1);
     sprintf(full_statement, "%s%s", statement, test_db_name);
     PGresult *res = PQexec(root_conn, full_statement);
     free(full_statement);
@@ -56,7 +56,7 @@ int recreate_database(PGconn *root_conn, const char *test_db_name)
     }
 
     statement = "CREATE DATABASE ";
-    full_statement = malloc(strlen(statement) + strlen(test_db_name));
+    full_statement = malloc(strlen(statement) + strlen(test_db_name) + 1);
     sprintf(full_statement, "%s%s", statement, test_db_name);
     res = PQexec(root_conn, full_statement);
     free(full_statement);

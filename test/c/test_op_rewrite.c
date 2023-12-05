@@ -1,6 +1,3 @@
-#ifndef TEST_OP_REWRITE_H
-#define TEST_OP_REWRITE_H
-
 #include <libpq-fe.h>
 
 int test_op_rewrite(PGconn *conn)
@@ -51,4 +48,3 @@ int test_op_rewrite(PGconn *conn)
     }
     return 0;
 }
-#endif
