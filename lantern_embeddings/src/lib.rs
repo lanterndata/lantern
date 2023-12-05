@@ -395,19 +395,19 @@ fn csv_exporter_worker(
 
 fn get_default_batch_size(model: &str) -> usize {
     match model {
-        "clip/ViT-B-32-textual" => 500,
+        "clip/ViT-B-32-textual" => 2000,
         "clip/ViT-B-32-visual" => 100,
-        "BAAI/bge-small-en" => 500,
+        "BAAI/bge-small-en" => 300,
         "BAAI/bge-base-en" => 100,
-        "BAAI/bge-large-en" => 40,
-        "infloat/e5-base-v2" => 100,
-        "infloat/e5-large-v2" => 40,
+        "BAAI/bge-large-en" => 60,
+        "intfloat/e5-base-v2" => 300,
+        "intfloat/e5-large-v2" => 100,
         "llmrails/ember-v1" => 100,
-        "thenlper/gte-base" => 100,
-        "thenlper/gte-large" => 40,
-        "microsoft/all-MiniLM-L12-v2" => 500,
-        "microsoft/all-mpnet-base-v2" => 100,
-        "transformers/multi-qa-mpnet-base-dot-v1" => 50,
+        "thenlper/gte-base" => 1000,
+        "thenlper/gte-large" => 800,
+        "microsoft/all-MiniLM-L12-v2" => 1000,
+        "microsoft/all-mpnet-base-v2" => 400,
+        "transformers/multi-qa-mpnet-base-dot-v1" => 300,
         _ => 100,
     }
 }
