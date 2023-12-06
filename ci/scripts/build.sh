@@ -59,7 +59,7 @@ function build_and_install() {
   
   if [ -n "$ENABLE_COVERAGE" ]
   then
-    flags="$flags -DCMAKE_C_COMPILER=/usr/bin/gcc -DCODECOVERAGE=ON"
+    flags="$flags -DCMAKE_C_COMPILER=/usr/bin/gcc -DCODECOVERAGE=ON -DBUILD_C_TESTS=ON"
   fi
 
   # Run cmake

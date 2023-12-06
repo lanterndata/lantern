@@ -25,6 +25,7 @@ option(BUILD_LIBHNSW "Build libhnsw as hnsw provider" OFF)
 option(CODECOVERAGE "Enable code coverage for the build" OFF)
 option(BENCH "Enable benchmarking" OFF)
 option(FAILURE_POINTS "Enable failure points" ON)
+option(BUILD_C_TESTS "Build C client tests" OFF)
 
 if(CODECOVERAGE)
   message(STATUS "Code coverage is enabled.")
@@ -91,6 +92,27 @@ endif()
 
 # ADD LanternDB! Let there be light!
 add_library(lantern MODULE ${SOURCES})
+
+# ============= Lantern tests with C libpq ==========
+if (BUILD_C_TESTS)
+  add_executable(lantern_c_tests "test/c/runner.c")
+  # Add postgres header include dirs
+  target_include_directories(
+    lantern_c_tests
+    SYSTEM PRIVATE ${PostgreSQL_INCLUDE_DIRS})
+  # Add link directories for postgres shared libraries
+  target_link_directories(lantern_c_tests PRIVATE ${PostgreSQL_LIBRARY_DIRS})
+  # Link libpq
+  target_link_libraries(lantern_c_tests "-lpq")
+  
+  add_custom_target(
+    test-client
+    COMMAND ${CMAKE_SOURCE_DIR}/scripts/run_all_tests.sh --client
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/
+  )
+  add_dependencies(test-client lantern_c_tests)
+endif()
+# ==================================================
 
 # Add postgres extension packaging rules
 target_include_directories(
