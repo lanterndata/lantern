@@ -17,6 +17,7 @@
 #include <utils/rel.h>
 #include <utils/syscache.h>
 
+#include "../hnsw/options.h"
 #include "plan_tree_walker.h"
 #include "utils.h"
 
@@ -276,7 +277,7 @@ bool ldb_rewrite_ops(Plan *plan, List *oidList, List *rtable)
     context.indices = NULL;
     context.rtable = rtable;
 
-    if(IsA(node, IndexScan) || IsA(node, IndexOnlyScan)) {
+    if(ldb_pgvector_compat || IsA(node, IndexScan) || IsA(node, IndexOnlyScan)) {
         return false;
     }
 

@@ -31,6 +31,10 @@ static relopt_kind ldb_hnsw_index_withopts;
 int ldb_hnsw_init_k;
 int ldb_hnsw_ef_search;
 
+// if this variable is set to true
+// our operator rewriting hooks will be disabled
+bool ldb_pgvector_compat;
+
 // this variable is only set during testing and controls whether
 // certain elog() calls are made
 // see ldb_dlog() definition and callsites for details
@@ -246,6 +250,17 @@ void _PG_init(void)
                              "Whether or not the DB is in a regression test",
                              "set this to 1 to enable extra logging for use in lanterndb regression tests",
                              &ldb_is_test,
+                             false,
+                             PGC_USERSET,
+                             0,
+                             NULL,
+                             NULL,
+                             NULL);
+
+    DefineCustomBoolVariable("lantern.pgvector_compat",
+                             "Whether or not the operator <-> should automatically detect the right distance function",
+                             "set this to 1 to disable operator rewriting hooks",
+                             &ldb_pgvector_compat,
                              false,
                              PGC_USERSET,
                              0,
