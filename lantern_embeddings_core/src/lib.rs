@@ -4,12 +4,14 @@ use image::io::Reader as ImageReader;
 use image::GenericImageView;
 use itertools::Itertools;
 use ndarray::{s, Array2, Array4, CowArray, Dim};
+use nvml_wrapper::Nvml;
 use ort::session::Session;
 use ort::{Environment, ExecutionProvider, GraphOptimizationLevel, SessionBuilder, Value};
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
+use sysinfo::{System, SystemExt};
 use tokenizers::{PaddingParams, Tokenizer, TruncationParams};
 use tokio::{fs, runtime};
 
@@ -131,6 +133,8 @@ lazy_static! {
         .unwrap()
         .into_arc();
 }
+
+static MEM_PERCENT_THRESHOLD: f64 = 80.0;
 
 fn default_logger(text: &str) {
     println!("{}", text);
@@ -394,10 +398,109 @@ pub mod clip {
         Ok(())
     }
 
+    fn clear_model_cache(
+        model_map: &mut HashMap<&'static str, ModelInfo>,
+    ) -> Result<(), anyhow::Error> {
+        for (_, model_info) in model_map.iter_mut() {
+            model_info.encoder = None;
+        }
+
+        Ok(())
+    }
+
+    fn percent_gpu_memory_used() -> Result<f64, anyhow::Error> {
+        let mut _nvml_instance = None;
+        let mut gpu_device = None;
+
+        if let Ok(nvml) = Nvml::init() {
+            _nvml_instance = Some(nvml);
+            let _nvml_insteance = _nvml_instance.as_mut().unwrap();
+            let nvml_device = _nvml_insteance.device_by_index(0);
+            if let Ok(device) = nvml_device {
+                gpu_device = Some(device);
+            }
+        }
+
+        if gpu_device.is_none() {
+            return Ok(0.0);
+        }
+
+        let gpu_device = gpu_device.as_ref().unwrap();
+
+        let mem_info = gpu_device.memory_info()?;
+        // Sometimes models consume much more memory based on input size.
+        // In my experiments the 200mb model was consuming 3GB memory.
+        // So comparing model size with free GPU memory will not be correct here.
+        // Instead we will check if the used memory in GPU is more than the threshold
+        // For GPU we will just clear the cache but not throw an error
+        // As the error from ORT is handled and will not cause an OOM like RAM
+        Ok((mem_info.used as f64 / mem_info.total as f64) * 100.0)
+    }
+
+    fn check_available_memory(
+        logger: &LoggerFn,
+        model_path: &PathBuf,
+        model_map: &mut HashMap<&'static str, ModelInfo>,
+        cache: bool,
+    ) -> Result<(), anyhow::Error> {
+        let mut sys = System::new_all();
+        sys.refresh_all();
+        let total_free_mem =
+            (sys.total_memory() - sys.used_memory()) + (sys.total_swap() - sys.used_swap());
+        let total_free_mem = total_free_mem as f64;
+        let model_file = std::fs::File::open(model_path)?;
+        let metadata = model_file.metadata()?;
+        let model_size = metadata.len() as f64;
+
+        let percent_of_free_mem = (model_size / total_free_mem) * 100.0;
+
+        let mut cache_cleared = false;
+        if percent_of_free_mem >= MEM_PERCENT_THRESHOLD {
+            // If not enough RAM try to clear model cache
+            // and check again
+            logger("System memory limit exceeded, trying to clear cache");
+            clear_model_cache(model_map)?;
+            cache_cleared = true;
+            sys.refresh_all();
+            let total_free_mem =
+                (sys.total_memory() - sys.used_memory()) + (sys.total_swap() - sys.used_swap());
+            let total_free_mem = total_free_mem as f64;
+            let percent_of_free_mem = (model_size / total_free_mem) * 100.0;
+
+            if percent_of_free_mem >= MEM_PERCENT_THRESHOLD {
+                let mem_avail_in_mb = total_free_mem / 1024.0 / 1024.0;
+
+                // We need available_memory + percent_diff % to run the model
+                let percent_diff = percent_of_free_mem - MEM_PERCENT_THRESHOLD;
+                let mem_needed_in_mb = mem_avail_in_mb + mem_avail_in_mb / (100.0 / percent_diff);
+                anyhow::bail!(
+                    "Not enough free memory to run the model. Memory needed: {:.2}MB, Memory available: {:.2}MB",
+                    mem_needed_in_mb,
+                    mem_avail_in_mb
+                );
+            }
+        }
+
+        if cache && percent_gpu_memory_used()? >= MEM_PERCENT_THRESHOLD {
+            // The GPU memory will only be checked when the models are cached
+            // If not enough GPU RAM and cache is not clearted already
+            // try to clear model cache
+            // We will not check again and instead let ort fail if not enough memory
+            // the ort error will not kill the process as it is result
+            if !cache_cleared {
+                logger("GPU memory limit exceeded, trying to clear cache");
+                clear_model_cache(model_map)?;
+            }
+        }
+
+        Ok(())
+    }
+
     fn check_and_download_files(
         model_name: &str,
         logger: &LoggerFn,
         data_path: &str,
+        cache: bool,
     ) -> Result<(), anyhow::Error> {
         {
             let map = MODEL_INFO_MAP.read().unwrap();
@@ -435,6 +538,10 @@ pub mod clip {
             download_file(&model_info.tokenizer_url.as_ref().unwrap(), &tokenizer_path)?;
         }
 
+        // Check available memory
+        check_available_memory(logger, &model_path, &mut map_write, cache)?;
+
+        let model_info = map_write.get_mut(model_name).unwrap();
         let encoder = EncoderService::new(
             &ONNX_ENV,
             model_name,
@@ -525,10 +632,10 @@ pub mod clip {
         let logger = logger.unwrap_or(&(default_logger as LoggerFn));
 
         let download_result =
-            check_and_download_files(model_name, logger, data_path.unwrap_or(DATA_PATH));
+            check_and_download_files(model_name, logger, data_path.unwrap_or(DATA_PATH), cache);
 
         if let Err(err) = download_result {
-            anyhow::bail!("Error happened while downloading model files: {:?}", err);
+            anyhow::bail!("{:?}", err);
         }
 
         let map = MODEL_INFO_MAP.read().unwrap();
