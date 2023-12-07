@@ -173,7 +173,7 @@ static Oid get_func_id_from_index(Relation index)
     // it doesn't enforce this invariant. Ideally we would call SearchCatCache1 directly but postgres doesn't expose
     // necessary constants
     CatCList *opList = SearchSysCacheList1(AMPROCNUM, ObjectIdGetDatum(opclassOid));
-    assert(opList->n_members == 1);
+    // assert(opList->n_members == 1);
     HeapTuple opTuple = &opList->members[ 0 ]->tuple;
     if(!HeapTupleIsValid(opTuple)) {
         index_close(index, AccessShareLock);
@@ -277,7 +277,7 @@ bool ldb_rewrite_ops(Plan *plan, List *oidList, List *rtable)
     context.indices = NULL;
     context.rtable = rtable;
 
-    if(ldb_pgvector_compat || IsA(node, IndexScan) || IsA(node, IndexOnlyScan)) {
+    if(IsA(node, IndexScan) || IsA(node, IndexOnlyScan)) {
         return false;
     }
 

@@ -325,6 +325,13 @@ static float8 vector_dist(Vector *a, Vector *b, usearch_metric_kind_t metric_kin
     return usearch_dist(a->x, b->x, metric_kind, a->dim, usearch_scalar_f32_k);
 }
 
+static void pgvector_compat_guard()
+{
+    if(!ldb_pgvector_compat) {
+        elog(ERROR, "Operator can only be used when lantern.pgvector_compat=TRUE");
+    }
+}
+
 PGDLLEXPORT PG_FUNCTION_INFO_V1(ldb_generic_dist);
 Datum       ldb_generic_dist(PG_FUNCTION_ARGS) { PG_RETURN_NULL(); }
 
@@ -344,9 +351,27 @@ Datum       cos_dist(PG_FUNCTION_ARGS)
     PG_RETURN_FLOAT4(array_dist(a, b, usearch_metric_cos_k));
 }
 
+PGDLLEXPORT PG_FUNCTION_INFO_V1(cos_dist_with_guard);
+Datum       cos_dist_with_guard(PG_FUNCTION_ARGS)
+{
+    pgvector_compat_guard();
+    ArrayType *a = PG_GETARG_ARRAYTYPE_P(0);
+    ArrayType *b = PG_GETARG_ARRAYTYPE_P(1);
+    PG_RETURN_FLOAT4(array_dist(a, b, usearch_metric_cos_k));
+}
+
 PGDLLEXPORT PG_FUNCTION_INFO_V1(hamming_dist);
 Datum       hamming_dist(PG_FUNCTION_ARGS)
 {
+    ArrayType *a = PG_GETARG_ARRAYTYPE_P(0);
+    ArrayType *b = PG_GETARG_ARRAYTYPE_P(1);
+    PG_RETURN_INT32((int32)array_dist(a, b, usearch_metric_hamming_k));
+}
+
+PGDLLEXPORT PG_FUNCTION_INFO_V1(hamming_dist_with_guard);
+Datum       hamming_dist_with_guard(PG_FUNCTION_ARGS)
+{
+    pgvector_compat_guard();
     ArrayType *a = PG_GETARG_ARRAYTYPE_P(0);
     ArrayType *b = PG_GETARG_ARRAYTYPE_P(1);
     PG_RETURN_INT32((int32)array_dist(a, b, usearch_metric_hamming_k));
@@ -359,6 +384,44 @@ Datum       vector_l2sq_dist(PG_FUNCTION_ARGS)
     Vector *b = PG_GETARG_VECTOR_P(1);
 
     PG_RETURN_FLOAT8((double)vector_dist(a, b, usearch_metric_l2sq_k));
+}
+
+PGDLLEXPORT PG_FUNCTION_INFO_V1(vector_cos_dist);
+Datum       vector_cos_dist(PG_FUNCTION_ARGS)
+{
+    Vector *a = PG_GETARG_VECTOR_P(0);
+    Vector *b = PG_GETARG_VECTOR_P(1);
+
+    PG_RETURN_FLOAT8((double)vector_dist(a, b, usearch_metric_cos_k));
+}
+
+PGDLLEXPORT PG_FUNCTION_INFO_V1(vector_cos_dist_with_guard);
+Datum       vector_cos_dist_with_guard(PG_FUNCTION_ARGS)
+{
+    pgvector_compat_guard();
+    Vector *a = PG_GETARG_VECTOR_P(0);
+    Vector *b = PG_GETARG_VECTOR_P(1);
+
+    PG_RETURN_FLOAT8((double)vector_dist(a, b, usearch_metric_hamming_k));
+}
+
+PGDLLEXPORT PG_FUNCTION_INFO_V1(vector_hamming_dist);
+Datum       vector_hamming_dist(PG_FUNCTION_ARGS)
+{
+    Vector *a = PG_GETARG_VECTOR_P(0);
+    Vector *b = PG_GETARG_VECTOR_P(1);
+
+    PG_RETURN_FLOAT8((double)vector_dist(a, b, usearch_metric_hamming_k));
+}
+
+PGDLLEXPORT PG_FUNCTION_INFO_V1(vector_hamming_dist_with_guard);
+Datum       vector_hamming_dist_with_guard(PG_FUNCTION_ARGS)
+{
+    pgvector_compat_guard();
+    Vector *a = PG_GETARG_VECTOR_P(0);
+    Vector *b = PG_GETARG_VECTOR_P(1);
+
+    PG_RETURN_FLOAT8((double)vector_dist(a, b, usearch_metric_hamming_k));
 }
 
 PGDLLEXPORT PG_FUNCTION_INFO_V1(lantern_internal_validate_index);

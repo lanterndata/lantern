@@ -112,3 +112,38 @@ SELECT id FROM small_world_arr ORDER BY v <-> ARRAY[0,0,0];
 DROP INDEX cos_idx;
 CREATE INDEX ham_idx ON small_world_arr USING lantern_hnsw(v) WITH (m=3);
 SELECT id FROM small_world_arr ORDER BY v <-> ARRAY[0,0,0];
+
+-- Test pgvector in lantern.pgvector_compat=TRUE mode
+DROP TABLE small_world;
+\ir utils/small_world_vector.sql
+
+-- Distance functions
+SET lantern.pgvector_compat=TRUE;
+SET enable_seqscan=OFF;
+
+-- l2sq index
+CREATE INDEX l2_idx ON small_world USING lantern_hnsw (v) WITH (dim=3, M=5, ef=20, ef_construction=20);
+
+SELECT ROUND((v <-> '[0,1,0]'::VECTOR)::numeric, 2) as dist
+FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
+
+EXPLAIN (COSTS FALSE) SELECT ROUND((v <-> '[0,1,0]'::VECTOR)::numeric, 2) as dist
+FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
+
+-- cosine index
+CREATE INDEX cos_idx ON small_world  USING lantern_hnsw (v dist_vec_cos_ops);
+
+SELECT ROUND((v <=> '[0,1,0]'::VECTOR)::numeric, 2) as dist
+FROM small_world ORDER BY v <=> '[0,1,0]'::VECTOR LIMIT 7;
+
+EXPLAIN (COSTS FALSE) SELECT ROUND((v <=> '[0,1,0]'::VECTOR)::numeric, 2) as dist
+FROM small_world ORDER BY v <=> '[0,1,0]'::VECTOR LIMIT 7;
+
+-- hamming index
+CREATE INDEX hamming_idx ON small_world  USING lantern_hnsw (v dist_vec_hamming_ops);
+
+SELECT ROUND((v <+> '[0,1,0]'::VECTOR)::numeric, 2) as dist
+FROM small_world ORDER BY v <+> '[0,1,0]'::VECTOR LIMIT 7;
+
+EXPLAIN (COSTS FALSE) SELECT ROUND((v <+> '[0,1,0]'::VECTOR)::numeric, 2) as dist
+FROM small_world ORDER BY v <+> '[0,1,0]'::VECTOR LIMIT 7;

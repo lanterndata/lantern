@@ -95,12 +95,23 @@ usearch_metric_kind_t ldb_HnswGetMetricKind(Relation index)
 
     if(fnaddr == l2sq_dist || fnaddr == vector_l2sq_dist) {
         return usearch_metric_l2sq_k;
-    } else if(fnaddr == hamming_dist) {
+    } else if(fnaddr == hamming_dist || fnaddr == vector_hamming_dist) {
         return usearch_metric_hamming_k;
-    } else if(fnaddr == cos_dist) {
+    } else if(fnaddr == cos_dist || fnaddr == vector_cos_dist) {
         return usearch_metric_cos_k;
     } else {
         elog(ERROR, "could not find distance function for index");
+    }
+}
+
+void pgvector_compat_assign_hook(bool status)
+{
+    if(status) {
+        post_parse_analyze_hook = original_post_parse_analyze_hook;
+        ExecutorStart_hook = original_ExecutorStart_hook;
+    } else {
+        post_parse_analyze_hook = post_parse_analyze_hook_with_operator_check;
+        ExecutorStart_hook = ExecutorStart_hook_with_operator_check;
     }
 }
 
@@ -265,7 +276,7 @@ void _PG_init(void)
                              PGC_USERSET,
                              0,
                              NULL,
-                             NULL,
+                             (GucBoolAssignHook)pgvector_compat_assign_hook,
                              NULL);
 }
 

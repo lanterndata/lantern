@@ -38,14 +38,13 @@ EXPLAIN (COSTS FALSE)
 SELECT id, ROUND(l2sq_dist(vector_int, array[0,1,0])::numeric, 2) as dist
 FROM small_world_l2
 ORDER BY vector_int <-> array[0,1,0] LIMIT 7;
-                              QUERY PLAN                               
------------------------------------------------------------------------
+                               QUERY PLAN                               
+------------------------------------------------------------------------
  Limit
-   ->  Result
-         ->  Sort
-               Sort Key: (l2sq_dist(vector_int, '{0,1,0}'::integer[]))
-               ->  Seq Scan on small_world_l2
-(5 rows)
+   ->  Sort
+         Sort Key: (public.l2sq_dist(vector_int, '{0,1,0}'::integer[]))
+         ->  Seq Scan on small_world_l2
+(4 rows)
 
 --- Test scenarious ---
 -----------------------------------------
