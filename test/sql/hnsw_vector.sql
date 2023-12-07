@@ -121,22 +121,27 @@ DROP TABLE small_world;
 SET lantern.pgvector_compat=TRUE;
 SET enable_seqscan=OFF;
 
+-- Note:
+-- For l2sqs and cosine distances in SELECT statement 
+-- It is better to use the function by name like cos_dist or l2sq_dist
+-- As operators for vector types are provided from pgvector, so it may cause undefined behaviour
+
 -- l2sq index
 CREATE INDEX l2_idx ON small_world USING lantern_hnsw (v) WITH (dim=3, M=5, ef=20, ef_construction=20);
 
-SELECT ROUND((v <-> '[0,1,0]'::VECTOR)::numeric, 2) as dist
+SELECT ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
 
-EXPLAIN (COSTS FALSE) SELECT ROUND((v <-> '[0,1,0]'::VECTOR)::numeric, 2) as dist
+EXPLAIN (COSTS FALSE) SELECT ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
 
 -- cosine index
 CREATE INDEX cos_idx ON small_world  USING lantern_hnsw (v dist_vec_cos_ops);
 
-SELECT ROUND((v <=> '[0,1,0]'::VECTOR)::numeric, 2) as dist
+SELECT ROUND(cos_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <=> '[0,1,0]'::VECTOR LIMIT 7;
 
-EXPLAIN (COSTS FALSE) SELECT ROUND((v <=> '[0,1,0]'::VECTOR)::numeric, 2) as dist
+EXPLAIN (COSTS FALSE) SELECT ROUND(cos_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <=> '[0,1,0]'::VECTOR LIMIT 7;
 
 -- hamming index

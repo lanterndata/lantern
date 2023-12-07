@@ -262,12 +262,16 @@ INSERT INTO small_world (id, b, v) VALUES
 -- Distance functions
 SET lantern.pgvector_compat=TRUE;
 SET enable_seqscan=OFF;
+-- Note:
+-- For l2sqs and cosine distances in SELECT statement 
+-- It is better to use the function by name like cos_dist or l2sq_dist
+-- As operators for vector types are provided from pgvector, so it may cause undefined behaviour
 -- l2sq index
 CREATE INDEX l2_idx ON small_world USING lantern_hnsw (v) WITH (dim=3, M=5, ef=20, ef_construction=20);
 INFO:  done init usearch index
 INFO:  inserted 8 elements
 INFO:  done saving 8 vectors
-SELECT ROUND((v <-> '[0,1,0]'::VECTOR)::numeric, 2) as dist
+SELECT ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
  dist 
 ------
@@ -275,12 +279,12 @@ FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
  1.00
  1.00
  1.00
- 1.41
- 1.41
- 1.41
+ 2.00
+ 2.00
+ 2.00
 (7 rows)
 
-EXPLAIN (COSTS FALSE) SELECT ROUND((v <-> '[0,1,0]'::VECTOR)::numeric, 2) as dist
+EXPLAIN (COSTS FALSE) SELECT ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
                   QUERY PLAN                  
 ----------------------------------------------
@@ -294,7 +298,7 @@ CREATE INDEX cos_idx ON small_world  USING lantern_hnsw (v dist_vec_cos_ops);
 INFO:  done init usearch index
 INFO:  inserted 8 elements
 INFO:  done saving 8 vectors
-SELECT ROUND((v <=> '[0,1,0]'::VECTOR)::numeric, 2) as dist
+SELECT ROUND(cos_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <=> '[0,1,0]'::VECTOR LIMIT 7;
  dist 
 ------
@@ -307,7 +311,7 @@ FROM small_world ORDER BY v <=> '[0,1,0]'::VECTOR LIMIT 7;
  1.00
 (7 rows)
 
-EXPLAIN (COSTS FALSE) SELECT ROUND((v <=> '[0,1,0]'::VECTOR)::numeric, 2) as dist
+EXPLAIN (COSTS FALSE) SELECT ROUND(cos_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <=> '[0,1,0]'::VECTOR LIMIT 7;
                   QUERY PLAN                   
 -----------------------------------------------
