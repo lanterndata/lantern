@@ -3,11 +3,13 @@
 -----------------------------------------------------------
 
 -- create a table and fill the first blockmap group
-CREATE FUNCTION prepare() RETURNS VOID AS $$
+CREATE FUNCTION prepare(create_index BOOL) RETURNS VOID AS $$
 BEGIN
     DROP TABLE IF EXISTS small_world;
     CREATE TABLE small_world (id SERIAL PRIMARY KEY, v real[]);
-    CREATE INDEX ON small_world USING hnsw (v) WITH (dim=3);
+    IF create_index THEN
+        CREATE INDEX ON small_world USING hnsw (v) WITH (dim=3);
+    END IF;
     -- let's insert HNSW_BLOCKMAP_BLOCKS_PER_PAGE (2000) record to fill the first blockmap page
     BEGIN
         FOR i IN 1..2000 LOOP
@@ -18,6 +20,19 @@ END;
 $$ LANGUAGE plpgsql VOLATILE;
 
 -- enable a failure point and run an insert to trigger new blockmap group initialization
+CREATE FUNCTION trigger_index_build_failure(func TEXT, name TEXT, dont_trigger_first_nr INTEGER) RETURNS VOID AS $$
+BEGIN
+    PERFORM _lantern_internal.failure_point_enable(func, name, dont_trigger_first_nr);
+    BEGIN
+         -- Create index to trigger failure point
+        CREATE INDEX ON small_world USING hnsw (v) WITH (dim=3);
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'Exception caught: %', SQLERRM;
+    END;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+-- enable a failure point and run an index to trigger new blockmap group initialization
 CREATE FUNCTION trigger_failure(func TEXT, name TEXT, dont_trigger_first_nr INTEGER) RETURNS VOID AS $$
 BEGIN
     PERFORM _lantern_internal.failure_point_enable(func, name, dont_trigger_first_nr);
@@ -56,11 +71,16 @@ DECLARE
         "ContinueBlockMapGroupInitialization",
          "just_after_updating_header_at_the_end", 0, false}
                     }';
+    index_build_failure_points TEXT[][]:= '{
+        {"Failure when building index: after the nodes for blockmap group are written but blockmaps are not updated. This is invariant, as no pages will be created if index creation will fail in the middles (this should be handled by Postgres)",
+        "StoreExternalIndexBlockMapGroup",
+         "just_before_updating_blockmaps_after_inserting_nodes", 0, true}
+                    }';
     fp TEXT[];
 BEGIN
     FOREACH fp SLICE 1 IN ARRAY failure_points
     LOOP
-        PERFORM prepare();
+        PERFORM prepare(TRUE);
         PERFORM _lantern_internal.validate_index('small_world_v_idx', false);
         PERFORM trigger_failure(fp[2], fp[3], fp[4]::integer);
         RAISE INFO '%', fp[1];
@@ -78,6 +98,29 @@ BEGIN
         END IF;
         -- now let's finish the blockmap creation and validate the index again
         PERFORM _lantern_internal.continue_blockmap_group_initialization('small_world_v_idx');
+        PERFORM _lantern_internal.validate_index('small_world_v_idx', false);
+    END LOOP;
+
+--    Failure points for index build state
+    FOREACH fp SLICE 1 IN ARRAY index_build_failure_points
+    LOOP
+        PERFORM prepare(FALSE);
+        PERFORM trigger_index_build_failure(fp[2], fp[3], fp[4]::integer);
+        RAISE INFO '%', fp[1];
+        -- This cases will mostly except validate_index to fail
+        -- As if the postgres is crashed while building index
+        -- Index pages should not be crated
+        IF fp[5]::boolean IS NULL OR fp[5]::boolean THEN
+            BEGIN
+                PERFORM _lantern_internal.validate_index('small_world_v_idx', false);
+            EXCEPTION WHEN OTHERS THEN
+                RAISE NOTICE 'Exception caught: %', SQLERRM;
+            END;
+        ELSE
+            PERFORM _lantern_internal.validate_index('small_world_v_idx', false);
+        END IF;
+        -- now let's finish index creation and validate the index again
+        CREATE INDEX ON small_world USING hnsw (v) WITH (dim=3);
         PERFORM _lantern_internal.validate_index('small_world_v_idx', false);
     END LOOP;
     RAISE INFO 'The test is complete.';

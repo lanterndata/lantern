@@ -412,6 +412,7 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
     }
     headerp->last_data_block = last_block;
 
+    LDB_FAILURE_POINT_CRASH_IF_ENABLED("just_before_updating_blockmaps_after_inserting_nodes");
     // Update blockmap pages with correct associations
     for(uint32 blockmap_id = 0; blockmap_id < number_of_blockmaps_in_group; ++blockmap_id) {
         // When the blockmap page group was created, header block was updated accordingly in
