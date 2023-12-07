@@ -112,8 +112,20 @@ void pgvector_compat_assign_hook(bool status, void *extra)
         post_parse_analyze_hook = original_post_parse_analyze_hook;
         ExecutorStart_hook = original_ExecutorStart_hook;
     } else {
-        post_parse_analyze_hook = post_parse_analyze_hook_with_operator_check;
-        ExecutorStart_hook = ExecutorStart_hook_with_operator_check;
+        // this checks are done because this function will be called when extension
+        // is first time initialized as well right after _PG_init
+        // so if we here just set original hook to ExecutorStart_hook
+        // which is already changed to our hook from _PG_init, it will have infinite recursion
+        // as original hook is called in our executor start hook
+        // also this bug could happen if  SET lantern.pgvector_compat=FALSE; was called twice
+        if(ExecutorStart_hook != ExecutorStart_hook_with_operator_check) {
+            original_ExecutorStart_hook = ExecutorStart_hook;
+            ExecutorStart_hook = ExecutorStart_hook_with_operator_check;
+        }
+        if(post_parse_analyze_hook != post_parse_analyze_hook_with_operator_check) {
+            original_post_parse_analyze_hook = post_parse_analyze_hook;
+            post_parse_analyze_hook = post_parse_analyze_hook_with_operator_check;
+        }
     }
 }
 

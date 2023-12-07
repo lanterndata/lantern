@@ -42,6 +42,9 @@ SELECT v::INTEGER[] <+> ARRAY[1,1,1] FROM op_test ORDER BY v::INTEGER[] <+> ARRA
 SELECT v <-> ARRAY[1,1,1] FROM op_test ORDER BY v <-> ARRAY[1,1,1];
 
 RESET ALL;
+-- Set false twice to verify that no crash is happening
+SET lantern.pgvector_compat=FALSE;
+SET lantern.pgvector_compat=FALSE;
 \set ON_ERROR_STOP off
 -- should rewrite operator
 SELECT * FROM op_test ORDER BY v <-> ARRAY[1,1,1];
