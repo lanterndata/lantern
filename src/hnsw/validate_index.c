@@ -134,23 +134,23 @@ static void ldb_vi_read_blockmaps(Relation             index,
     if(blocks_nr == 0) return;
     vi_blocks[ 0 ].vp_type = LDB_VI_BLOCK_HEADER;
     while(nodes_remaining != 0 || (last_group_node_is_used && blockmap_groupno < index_header->blockmap_groups_nr)) {
+        BlockNumber number_of_blockmaps_in_group = NumberOfBlockMapsInGroup(blockmap_groupno);
+
         if(blockmap_groupno >= index_header->blockmap_groups_nr) {
             elog(ERROR,
                  "blockmap_groupno=%" PRIu32 " >= index_header->blockmap_groups_nr=%" PRIu32,
                  blockmap_groupno,
                  index_header->blockmap_groups_nr);
         }
-        if(index_header->blockmap_groups[ blockmap_groupno ].blockmaps_initialized
-           != NumberOfBlockMapsInGroup(blockmap_groupno)) {
+        if(index_header->blockmap_groups[ blockmap_groupno ].blockmaps_initialized != number_of_blockmaps_in_group) {
             elog(ERROR,
                  "HnswBlockMapGroupDesc.blockmaps_initialized=%" PRIu32 " != NumberOfBlockMapsInGroup()=%" PRIu32
                  " for blockmap_groupno=%" PRIu32,
                  index_header->blockmap_groups[ blockmap_groupno ].blockmaps_initialized,
-                 NumberOfBlockMapsInGroup(blockmap_groupno),
+                 number_of_blockmaps_in_group,
                  blockmap_groupno);
         }
         /* TODO see the loop in CreateBlockMapGroup() */
-        BlockNumber number_of_blockmaps_in_group = 1u << blockmap_groupno;
         BlockNumber group_start = index_header->blockmap_groups[ blockmap_groupno ].first_block;
         for(unsigned blockmap_id = 0; blockmap_id < number_of_blockmaps_in_group; ++blockmap_id) {
             BlockNumber blockmap_block = group_start + blockmap_id;
