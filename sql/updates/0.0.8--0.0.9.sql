@@ -63,7 +63,6 @@ BEGIN
 	END;
 	$$ LANGUAGE plpgsql VOLATILE;
 
-	-- replace is with overloaded version
 	-- Check if the vector type from pgvector exists
 	SELECT EXISTS (
 		SELECT 1

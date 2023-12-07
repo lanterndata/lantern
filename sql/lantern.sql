@@ -11,7 +11,7 @@ CREATE FUNCTION l2sq_dist(real[], real[]) RETURNS real
 
 -- this function is needed, as we should also use <-> operator
 -- with integer[] type (to overwrite hamming dist function in our hooks)
--- and if we do create l2sq_dist for integer[] type it will fail to cast in pgvector_compat mode
+-- and if we do not create l2sq_dist for integer[] type it will fail to cast in pgvector_compat mode
 CREATE FUNCTION l2sq_dist(integer[], integer[]) RETURNS real
 	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 

@@ -17,7 +17,6 @@
 #include <utils/rel.h>
 #include <utils/syscache.h>
 
-#include "../hnsw/options.h"
 #include "plan_tree_walker.h"
 #include "utils.h"
 
@@ -173,7 +172,6 @@ static Oid get_func_id_from_index(Relation index)
     // it doesn't enforce this invariant. Ideally we would call SearchCatCache1 directly but postgres doesn't expose
     // necessary constants
     CatCList *opList = SearchSysCacheList1(AMPROCNUM, ObjectIdGetDatum(opclassOid));
-    // assert(opList->n_members == 1);
     HeapTuple opTuple = &opList->members[ 0 ]->tuple;
     if(!HeapTupleIsValid(opTuple)) {
         index_close(index, AccessShareLock);
