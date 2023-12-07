@@ -104,8 +104,10 @@ usearch_metric_kind_t ldb_HnswGetMetricKind(Relation index)
     }
 }
 
-void pgvector_compat_assign_hook(bool status)
+void pgvector_compat_assign_hook(bool status, void *extra)
 {
+    LDB_UNUSED(extra);
+
     if(status) {
         post_parse_analyze_hook = original_post_parse_analyze_hook;
         ExecutorStart_hook = original_ExecutorStart_hook;
@@ -276,7 +278,7 @@ void _PG_init(void)
                              PGC_USERSET,
                              0,
                              NULL,
-                             (GucBoolAssignHook)pgvector_compat_assign_hook,
+                             pgvector_compat_assign_hook,
                              NULL);
 }
 

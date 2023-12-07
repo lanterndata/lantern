@@ -395,29 +395,9 @@ Datum       vector_cos_dist(PG_FUNCTION_ARGS)
     PG_RETURN_FLOAT8((double)vector_dist(a, b, usearch_metric_cos_k));
 }
 
-PGDLLEXPORT PG_FUNCTION_INFO_V1(vector_cos_dist_with_guard);
-Datum       vector_cos_dist_with_guard(PG_FUNCTION_ARGS)
-{
-    pgvector_compat_guard();
-    Vector *a = PG_GETARG_VECTOR_P(0);
-    Vector *b = PG_GETARG_VECTOR_P(1);
-
-    PG_RETURN_FLOAT8((double)vector_dist(a, b, usearch_metric_hamming_k));
-}
-
 PGDLLEXPORT PG_FUNCTION_INFO_V1(vector_hamming_dist);
 Datum       vector_hamming_dist(PG_FUNCTION_ARGS)
 {
-    Vector *a = PG_GETARG_VECTOR_P(0);
-    Vector *b = PG_GETARG_VECTOR_P(1);
-
-    PG_RETURN_FLOAT8((double)vector_dist(a, b, usearch_metric_hamming_k));
-}
-
-PGDLLEXPORT PG_FUNCTION_INFO_V1(vector_hamming_dist_with_guard);
-Datum       vector_hamming_dist_with_guard(PG_FUNCTION_ARGS)
-{
-    pgvector_compat_guard();
     Vector *a = PG_GETARG_VECTOR_P(0);
     Vector *b = PG_GETARG_VECTOR_P(1);
 

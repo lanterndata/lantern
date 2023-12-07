@@ -139,17 +139,11 @@ BEGIN
 		CREATE FUNCTION cos_dist(vector, vector) RETURNS float8
 			AS 'MODULE_PATHNAME', 'vector_cos_dist' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 			
-		CREATE FUNCTION cos_dist_with_guard(vector, vector) RETURNS float8
-			AS 'MODULE_PATHNAME', 'vector_cos_dist_with_guard' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
-
 		CREATE FUNCTION hamming_dist(vector, vector) RETURNS float8
 			AS 'MODULE_PATHNAME', 'vector_hamming_dist' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 			
-		CREATE FUNCTION hamming_dist_with_guard(vector, vector) RETURNS float8
-			AS 'MODULE_PATHNAME', 'vector_hamming_dist_with_guard' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
-			
 		CREATE OPERATOR <+> (
-			LEFTARG = vector, RIGHTARG = vector, PROCEDURE = hamming_dist_with_guard,
+			LEFTARG = vector, RIGHTARG = vector, PROCEDURE = hamming_dist,
 			COMMUTATOR = '<+>'
 		);
 
@@ -163,14 +157,14 @@ BEGIN
 			OPERATOR 1 <-> (vector, vector) FOR ORDER BY float_ops,
 			FUNCTION 1 cos_dist(vector, vector),
 			OPERATOR 2 <=> (vector, vector) FOR ORDER BY float_ops,
-			FUNCTION 2 cos_dist_with_guard(vector, vector);
+			FUNCTION 2 cos_dist(vector, vector);
 			
 		CREATE OPERATOR CLASS dist_vec_hamming_ops
 			FOR TYPE vector USING lantern_hnsw AS
 			OPERATOR 1 <-> (vector, vector) FOR ORDER BY float_ops,
 			FUNCTION 1 hamming_dist(vector, vector),
 			OPERATOR 2 <+> (vector, vector) FOR ORDER BY float_ops,
-			FUNCTION 2 hamming_dist_with_guard(vector, vector);
+			FUNCTION 2 hamming_dist(vector, vector);
 	END IF;
 
 
