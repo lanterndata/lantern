@@ -9,6 +9,7 @@
 #include <nodes/pg_list.h>
 #include <nodes/plannodes.h>
 
+#include "../hnsw/options.h"
 #include "../hnsw/utils.h"
 #include "op_rewrite.h"
 #include "plan_tree_walker.h"
@@ -69,6 +70,11 @@ void ExecutorStart_hook_with_operator_check(QueryDesc *queryDesc, int eflags)
 {
     if(original_ExecutorStart_hook) {
         original_ExecutorStart_hook(queryDesc, eflags);
+    }
+
+    if(ldb_pgvector_compat) {
+        standard_ExecutorStart(queryDesc, eflags);
+        return;
     }
 
     if(creating_extension) {

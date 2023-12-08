@@ -11,6 +11,7 @@ CREATE EXTENSION vector;
 SET client_min_messages=ERROR;
 CREATE EXTENSION lantern;
 RESET client_min_messages;
+SET lantern.pgvector_compat=FALSE;
 
 -- Verify basic functionality of pgvector
 SELECT '[1,2,3]'::vector;

@@ -11,6 +11,7 @@
 #include <utils/catcache.h>
 #include <utils/guc.h>
 
+#include "../hnsw/options.h"
 #include "utils.h"
 
 post_parse_analyze_hook_type original_post_parse_analyze_hook = NULL;
@@ -171,7 +172,7 @@ void post_parse_analyze_hook_with_operator_check(ParseState *pstate,
 #endif
     }
 
-    if(creating_extension) {
+    if(ldb_pgvector_compat || creating_extension) {
         return;
     }
 

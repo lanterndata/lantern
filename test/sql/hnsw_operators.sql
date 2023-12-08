@@ -7,6 +7,7 @@ SELECT * FROM op_test ORDER BY v <-> ARRAY[1,1,1];
 
 -- should throw error
 \set ON_ERROR_STOP off
+SET lantern.pgvector_compat=FALSE;
 SELECT * FROM op_test ORDER BY v <=> ARRAY[1,1,1];
 
 -- should throw error

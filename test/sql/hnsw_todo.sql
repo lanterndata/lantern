@@ -17,7 +17,8 @@ INSERT INTO small_world_l2 (id, vector) VALUES
     ('110', '{1,1,0}'),
     ('111', '{1,1,1}');
 
-SET enable_seqscan = false;
+SET enable_seqscan=FALSE;
+SET lantern.pgvector_compat=FALSE;
 
 \set ON_ERROR_STOP off
 

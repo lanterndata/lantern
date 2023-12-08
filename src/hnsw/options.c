@@ -104,33 +104,6 @@ usearch_metric_kind_t ldb_HnswGetMetricKind(Relation index)
     }
 }
 
-void pgvector_compat_assign_hook(bool status, void *extra)
-{
-    LDB_UNUSED(extra);
-
-    if(status) {
-        post_parse_analyze_hook = original_post_parse_analyze_hook;
-        ExecutorStart_hook = original_ExecutorStart_hook;
-        original_ExecutorStart_hook = NULL;
-        original_post_parse_analyze_hook = NULL;
-    } else {
-        // this checks are done because this function will be called when extension
-        // is first time initialized as well right after _PG_init
-        // so if we here just set original hook to ExecutorStart_hook
-        // which is already changed to our hook from _PG_init, it will have infinite recursion
-        // as original hook is called in our executor start hook
-        // also this bug could happen if  SET lantern.pgvector_compat=FALSE; was called twice
-        if(ExecutorStart_hook != ExecutorStart_hook_with_operator_check) {
-            original_ExecutorStart_hook = ExecutorStart_hook;
-            ExecutorStart_hook = ExecutorStart_hook_with_operator_check;
-        }
-        if(post_parse_analyze_hook != post_parse_analyze_hook_with_operator_check) {
-            original_post_parse_analyze_hook = post_parse_analyze_hook;
-            post_parse_analyze_hook = post_parse_analyze_hook_with_operator_check;
-        }
-    }
-}
-
 /*
  * Parse and validate the reloptions
  */
@@ -288,11 +261,11 @@ void _PG_init(void)
                              "Whether or not the operator <-> should automatically detect the right distance function",
                              "set this to 1 to disable operator rewriting hooks",
                              &ldb_pgvector_compat,
-                             false,
+                             true,
                              PGC_USERSET,
                              0,
                              NULL,
-                             pgvector_compat_assign_hook,
+                             NULL,
                              NULL);
 }
 
