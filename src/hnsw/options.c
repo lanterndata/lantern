@@ -111,6 +111,8 @@ void pgvector_compat_assign_hook(bool status, void *extra)
     if(status) {
         post_parse_analyze_hook = original_post_parse_analyze_hook;
         ExecutorStart_hook = original_ExecutorStart_hook;
+        original_ExecutorStart_hook = NULL;
+        original_post_parse_analyze_hook = NULL;
     } else {
         // this checks are done because this function will be called when extension
         // is first time initialized as well right after _PG_init
@@ -298,6 +300,14 @@ void _PG_init(void)
 void _PG_fini(void)
 {
     // Return back the original hook value.
-    post_parse_analyze_hook = original_post_parse_analyze_hook;
-    ExecutorStart_hook = original_ExecutorStart_hook;
+    // This check is because there might be case if while we stop the hooks (in pgvector_compat mode)
+    // Another extension will be loaded and it will overwrite the hooks
+    // And when lantern extension will be unloaded it will set the hooks to original values
+    // Overwriting the current changed hooks set by another extension
+    if(ExecutorStart_hook == ExecutorStart_hook_with_operator_check) {
+        ExecutorStart_hook = original_ExecutorStart_hook;
+    }
+    if(post_parse_analyze_hook == post_parse_analyze_hook_with_operator_check) {
+        post_parse_analyze_hook = original_post_parse_analyze_hook;
+    }
 }
