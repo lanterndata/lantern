@@ -92,7 +92,7 @@ Lantern supports several distance functions in the index and it has 2 modes for 
 
 Note that the operator `<->` is intended exclusively for use with index lookups. If you expect to not use the index in a query, just use the distance function directly (e.g. `l2sq_dist(v1, v2)`)
 
-> To switch between modes change `lantern.pgvector_compat` variable to `TRUE` or `FALSE`.
+> To switch between modes set `lantern.pgvector_compat` variable to `TRUE` or `FALSE`.
 
 There are four defined operator classes that can be employed during index creation:
 
