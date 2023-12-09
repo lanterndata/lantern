@@ -8,11 +8,7 @@ function setup_locale_and_install_packages() {
 }
 
 function setup_postgres() {
-  # This causes brew to error (Error: The `brew link` step did not complete successfully)
-  # Removing the symlink to avoid error
-  rm -rf '/usr/local/bin/2to3-3.12' || true
-  
-  cmd="brew install --overwrite postgresql@${PG_VERSION} clang-format"
+  cmd="brew install postgresql@${PG_VERSION} clang-format || true" # ignoring brew linking errors
   if [[ $USER == "root" ]]
   then
     # Runner is github CI user
