@@ -14,7 +14,8 @@ INSERT INTO small_world_l2 (id, vector) VALUES
     ('101', '{1,0,1}'),
     ('110', '{1,1,0}'),
     ('111', '{1,1,1}');
-SET enable_seqscan = false;
+SET enable_seqscan=FALSE;
+SET lantern.pgvector_compat=FALSE;
 \set ON_ERROR_STOP off
 CREATE INDEX ON small_world_l2 USING hnsw (vector dist_l2sq_ops);
 INFO:  done init usearch index
@@ -38,14 +39,13 @@ EXPLAIN (COSTS FALSE)
 SELECT id, ROUND(l2sq_dist(vector_int, array[0,1,0])::numeric, 2) as dist
 FROM small_world_l2
 ORDER BY vector_int <-> array[0,1,0] LIMIT 7;
-                              QUERY PLAN                               
------------------------------------------------------------------------
+                               QUERY PLAN                               
+------------------------------------------------------------------------
  Limit
-   ->  Result
-         ->  Sort
-               Sort Key: (l2sq_dist(vector_int, '{0,1,0}'::integer[]))
-               ->  Seq Scan on small_world_l2
-(5 rows)
+   ->  Sort
+         Sort Key: (public.l2sq_dist(vector_int, '{0,1,0}'::integer[]))
+         ->  Seq Scan on small_world_l2
+(4 rows)
 
 --- Test scenarious ---
 -----------------------------------------

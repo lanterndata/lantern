@@ -16,7 +16,8 @@ INSERT INTO small_world_l2 SELECT id, v FROM small_world;
 INSERT INTO small_world_cos SELECT id, v FROM small_world;
 INSERT INTO small_world_ham SELECT id, ARRAY[CAST(v[1] AS INTEGER), CAST(v[2] AS INTEGER), CAST(v[3] AS INTEGER)] FROM small_world;
 
-SET enable_seqscan = false;
+SET enable_seqscan=FALSE;
+SET lantern.pgvector_compat=FALSE;
 
 -- Verify that the distance functions work (check distances)
 SELECT ROUND(l2sq_dist(v, '{0,1,0}')::numeric, 2) FROM small_world_l2 ORDER BY v <-> '{0,1,0}';
@@ -39,7 +40,7 @@ EXPLAIN (COSTS false) SELECT id FROM small_world_ham ORDER BY v <-> '{0,1,0}';
 SELECT 1 FROM small_world_l2 ORDER BY v <-> '{0,1,0,1}' LIMIT 1;
 SELECT 1 FROM small_world_cos ORDER BY v <-> '{0,1,0,1}' LIMIT 1;
 SELECT 1 FROM small_world_ham ORDER BY v <-> '{0,1,0,1}' LIMIT 1;
-SELECT l2sq_dist('{1,1}', '{0,1,0}');
+SELECT l2sq_dist('{1,1}'::REAL[], '{0,1,0}'::REAL[]);
 SELECT cos_dist('{1,1}', '{0,1,0}');
 SELECT hamming_dist('{1,1}', '{0,1,0}');
 

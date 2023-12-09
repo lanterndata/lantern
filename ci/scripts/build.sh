@@ -41,7 +41,9 @@ function install_external_dependencies() {
     PGVECTOR_VERSION=0.5.0
     wget -O pgvector.tar.gz https://github.com/pgvector/pgvector/archive/refs/tags/v${PGVECTOR_VERSION}.tar.gz
     tar xzf pgvector.tar.gz
-    pushd pgvector-${PGVECTOR_VERSION}
+    rm -rf pgvector || true
+    mv pgvector-${PGVECTOR_VERSION} pgvector
+    pushd pgvector
       make && make install
     popd
   popd

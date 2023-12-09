@@ -10,6 +10,7 @@ CREATE EXTENSION vector;
 SET client_min_messages=ERROR;
 CREATE EXTENSION lantern;
 RESET client_min_messages;
+SET lantern.pgvector_compat=FALSE;
 -- Verify basic functionality of pgvector
 SELECT '[1,2,3]'::vector;
  vector  
@@ -240,5 +241,110 @@ SELECT id FROM small_world_arr ORDER BY v <-> ARRAY[0,0,0];
   1
   2
   3
+(3 rows)
+
+-- Test pgvector in lantern.pgvector_compat=TRUE mode
+DROP TABLE small_world;
+\ir utils/small_world_vector.sql
+CREATE TABLE small_world (
+    id VARCHAR(3),
+    b BOOLEAN,
+    v VECTOR(3)
+);
+INSERT INTO small_world (id, b, v) VALUES
+    ('000', TRUE,  '[0,0,0]'),
+    ('001', TRUE,  '[0,0,1]'),
+    ('010', FALSE, '[0,1,0]'),
+    ('011', TRUE,  '[0,1,1]'),
+    ('100', FALSE, '[1,0,0]'),
+    ('101', FALSE, '[1,0,1]'),
+    ('110', FALSE, '[1,1,0]'),
+    ('111', TRUE,  '[1,1,1]');
+-- Distance functions
+SET lantern.pgvector_compat=TRUE;
+SET enable_seqscan=OFF;
+-- Note:
+-- For l2sqs and cosine distances in SELECT statement 
+-- It is better to use the function by name like cos_dist or l2sq_dist
+-- As operators for vector types are provided from pgvector, so it may cause undefined behaviour
+-- l2sq index
+CREATE INDEX l2_idx ON small_world USING lantern_hnsw (v) WITH (dim=3, M=5, ef=20, ef_construction=20);
+INFO:  done init usearch index
+INFO:  inserted 8 elements
+INFO:  done saving 8 vectors
+SELECT ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
+ dist 
+------
+ 0.00
+ 1.00
+ 1.00
+ 1.00
+ 2.00
+ 2.00
+ 2.00
+(7 rows)
+
+EXPLAIN (COSTS FALSE) SELECT ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
+                  QUERY PLAN                  
+----------------------------------------------
+ Limit
+   ->  Index Scan using l2_idx on small_world
+         Order By: (v <-> '[0,1,0]'::vector)
+(3 rows)
+
+-- cosine index
+CREATE INDEX cos_idx ON small_world  USING lantern_hnsw (v dist_vec_cos_ops);
+INFO:  done init usearch index
+INFO:  inserted 8 elements
+INFO:  done saving 8 vectors
+SELECT ROUND(cos_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+FROM small_world ORDER BY v <=> '[0,1,0]'::VECTOR LIMIT 7;
+ dist 
+------
+ 0.00
+ 0.29
+ 0.29
+ 0.42
+ 1.00
+ 1.00
+ 1.00
+(7 rows)
+
+EXPLAIN (COSTS FALSE) SELECT ROUND(cos_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
+FROM small_world ORDER BY v <=> '[0,1,0]'::VECTOR LIMIT 7;
+                  QUERY PLAN                   
+-----------------------------------------------
+ Limit
+   ->  Index Scan using cos_idx on small_world
+         Order By: (v <=> '[0,1,0]'::vector)
+(3 rows)
+
+-- hamming index
+CREATE INDEX hamming_idx ON small_world  USING lantern_hnsw (v dist_vec_hamming_ops);
+INFO:  done init usearch index
+INFO:  inserted 8 elements
+INFO:  done saving 8 vectors
+SELECT ROUND((v <+> '[0,1,0]'::VECTOR)::numeric, 2) as dist
+FROM small_world ORDER BY v <+> '[0,1,0]'::VECTOR LIMIT 7;
+ dist  
+-------
+  0.00
+  7.00
+  7.00
+  7.00
+ 14.00
+ 14.00
+ 14.00
+(7 rows)
+
+EXPLAIN (COSTS FALSE) SELECT ROUND((v <+> '[0,1,0]'::VECTOR)::numeric, 2) as dist
+FROM small_world ORDER BY v <+> '[0,1,0]'::VECTOR LIMIT 7;
+                    QUERY PLAN                     
+---------------------------------------------------
+ Limit
+   ->  Index Scan using hamming_idx on small_world
+         Order By: (v <+> '[0,1,0]'::vector)
 (3 rows)
 

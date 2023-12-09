@@ -54,5 +54,6 @@ bytea* ldb_amoptions(Datum reloptions, bool validate);
 extern int  ldb_hnsw_init_k;
 extern int  ldb_hnsw_ef_search;
 extern bool ldb_is_test;
+extern bool ldb_pgvector_compat;
 
 #endif  // LDB_HNSW_OPTIONS_H

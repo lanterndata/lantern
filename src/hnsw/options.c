@@ -31,6 +31,10 @@ static relopt_kind ldb_hnsw_index_withopts;
 int ldb_hnsw_init_k;
 int ldb_hnsw_ef_search;
 
+// if this variable is set to true
+// our operator rewriting hooks will be disabled
+bool ldb_pgvector_compat;
+
 // this variable is only set during testing and controls whether
 // certain elog() calls are made
 // see ldb_dlog() definition and callsites for details
@@ -91,9 +95,9 @@ usearch_metric_kind_t ldb_HnswGetMetricKind(Relation index)
 
     if(fnaddr == l2sq_dist || fnaddr == vector_l2sq_dist) {
         return usearch_metric_l2sq_k;
-    } else if(fnaddr == hamming_dist) {
+    } else if(fnaddr == hamming_dist || fnaddr == vector_hamming_dist) {
         return usearch_metric_hamming_k;
-    } else if(fnaddr == cos_dist) {
+    } else if(fnaddr == cos_dist || fnaddr == vector_cos_dist) {
         return usearch_metric_cos_k;
     } else {
         elog(ERROR, "could not find distance function for index");
@@ -252,12 +256,31 @@ void _PG_init(void)
                              NULL,
                              NULL,
                              NULL);
+
+    DefineCustomBoolVariable("lantern.pgvector_compat",
+                             "Whether or not the operator <-> should automatically detect the right distance function",
+                             "set this to 1 to disable operator rewriting hooks",
+                             &ldb_pgvector_compat,
+                             true,
+                             PGC_USERSET,
+                             0,
+                             NULL,
+                             NULL,
+                             NULL);
 }
 
 // Called with extension unload.
 void _PG_fini(void)
 {
     // Return back the original hook value.
-    post_parse_analyze_hook = original_post_parse_analyze_hook;
-    ExecutorStart_hook = original_ExecutorStart_hook;
+    // This check is because there might be case if while we stop the hooks (in pgvector_compat mode)
+    // Another extension will be loaded and it will overwrite the hooks
+    // And when lantern extension will be unloaded it will set the hooks to original values
+    // Overwriting the current changed hooks set by another extension
+    if(ExecutorStart_hook == ExecutorStart_hook_with_operator_check) {
+        ExecutorStart_hook = original_ExecutorStart_hook;
+    }
+    if(post_parse_analyze_hook == post_parse_analyze_hook_with_operator_check) {
+        post_parse_analyze_hook = original_post_parse_analyze_hook;
+    }
 }

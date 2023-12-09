@@ -15,7 +15,8 @@ INSERT INTO test1 (v) VALUES ('{5,3}');
 INSERT INTO test2 (v) VALUES ('{5,4}');
 CREATE INDEX ON test1 USING hnsw (v);
 
-SET enable_seqscan = false;
+SET enable_seqscan=FALSE;
+SET lantern.pgvector_compat=FALSE;
 
 -- Verify that basic queries still work given our query parser and planner hooks
 SELECT 0 + 1;
