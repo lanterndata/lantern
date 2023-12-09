@@ -8,7 +8,7 @@ function setup_locale_and_install_packages() {
 }
 
 function setup_postgres() {
-  cmd="brew install postgresql@${PG_VERSION} clang-format"
+  cmd="brew install postgresql@${PG_VERSION} clang-format --force --overwrite"
   if [[ $USER == "root" ]]
   then
     # Runner is github CI user
