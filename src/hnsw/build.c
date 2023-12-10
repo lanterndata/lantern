@@ -119,7 +119,15 @@ static void BuildCallback(
     Relation index, CALLBACK_ITEM_POINTER, Datum *values, bool *isnull, bool tupleIsAlive, void *state)
 {
     HnswBuildState *buildstate = (HnswBuildState *)state;
-    MemoryContext   oldCtx;
+    // If this is a postponed index build, we only want to read the first tuple and build the index from that. This is
+    // relevant when we have postponed an index build (on an empty table) and then the first insert occurs as part of a
+    // batch (like \COPY from a csv file). When this happens, the batch of tuples will be in the heap by the time the
+    // first aminsert runs, and we only want to build the index with the first tuple since aminsert will return for only
+    // that tuple. All the other tuples will subsequently be inserted normally via aminsert after this
+    if(buildstate->postponed && buildstate->reltuples > 0) {
+        return;
+    }
+    MemoryContext oldCtx;
     // we can later use this for some optimizations I think
     LDB_UNUSED(tupleIsAlive);
 
@@ -257,6 +265,8 @@ static int GetArrayLengthFromHeap(Relation heap, int indexCol, IndexInfo *indexI
     return n_items;
 }
 
+// Attempts to get the number of dimensions from the index, and if that fails, falls back on a heap scan to fetch the
+// first tuple, and get the length of the vector from that tuple
 int GetHnswIndexDimensions(Relation index, IndexInfo *indexInfo)
 {
     HnswColumnType columnType = GetIndexColumnType(index);
@@ -344,19 +354,19 @@ static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation i
     buildstate->index = index;
     buildstate->indexInfo = indexInfo;
     buildstate->columnType = GetIndexColumnType(index);
-    buildstate->dimensions = GetHnswIndexDimensions(index, indexInfo);
+    if(!buildstate->postponed) {
+        buildstate->dimensions = GetHnswIndexDimensions(index, indexInfo);
+    }
     buildstate->index_file_path = ldb_HnswGetIndexFilePath(index);
 
     // If a dimension wasn't specified try to infer it
-    if(buildstate->dimensions < 1) {
+    if(buildstate->dimensions < 1 && !buildstate->postponed) {
         buildstate->dimensions = InferDimension(heap, indexInfo);
     }
-    /* Require column to have dimensions to be indexed */
-    if(buildstate->dimensions < 1) elog(ERROR, "column does not have dimensions, please specify one");
 
     // not supported because of 8K page limit in postgres WAL pages
     // can pass this limit once quantization is supported
-    if(buildstate->dimensions > HNSW_MAX_DIM)
+    if(buildstate->dimensions > HNSW_MAX_DIM && !buildstate->postponed)
         elog(ERROR,
              "vector dimension %d is too large. "
              "LanternDB currently supports up to %ddim vectors",
@@ -408,14 +418,26 @@ static void ScanTable(HnswBuildState *buildstate)
 /*
  * Build the index
  */
-static void BuildIndex(
-    Relation heap, Relation index, IndexInfo *indexInfo, HnswBuildState *buildstate, ForkNumber forkNum)
+void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, HnswBuildState *buildstate, ForkNumber forkNum)
 {
     usearch_error_t        error = NULL;
     usearch_init_options_t opts;
     MemSet(&opts, 0, sizeof(opts));
+    bool empty_table = RelationGetNumberOfBlocks(heap) == 0;
 
     InitBuildState(buildstate, heap, index, indexInfo);
+
+    if(buildstate->dimensions < 1 && !empty_table && !buildstate->postponed) {
+        elog(ERROR, "Failed to infer dimensions from non-empty table, please specify one");
+        return;
+    }
+
+    if(empty_table && buildstate->dimensions < 1 && !buildstate->postponed) {
+        // Postpone creation of the index until the first insert, where we can get the dimension from that inserted
+        // vector and then build the index with that dimension
+        return;
+    }
+
     opts.dimensions = buildstate->dimensions;
     PopulateUsearchOpts(index, &opts);
 
@@ -424,7 +446,7 @@ static void BuildIndex(
     assert(error == NULL);
 
     buildstate->hnsw = NULL;
-    if(buildstate->index_file_path) {
+    if(buildstate->index_file_path && !buildstate->postponed) {
         if(access(buildstate->index_file_path, F_OK) != 0) {
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), errmsg("Invalid index file path ")));
         }
@@ -444,7 +466,7 @@ static void BuildIndex(
     } else {
         BlockNumber numBlocks = RelationGetNumberOfBlocks(heap);
         uint32_t    estimated_row_count = 0;
-        if(numBlocks > 0) {
+        if(numBlocks > 0 && !buildstate->postponed) {
             // Read the first block
             Buffer buffer = ReadBufferExtended(heap, MAIN_FORKNUM, 0, RBM_NORMAL, NULL);
             // Lock buffer so there won't be any new writes during this operation
@@ -512,6 +534,7 @@ IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInf
 {
     IndexBuildResult *result;
     HnswBuildState    buildstate;
+    buildstate.postponed = false;
 
     BuildIndex(heap, index, indexInfo, &buildstate, MAIN_FORKNUM);
 

@@ -70,6 +70,7 @@ bool ldb_aminsert(Relation         index,
     GenericXLogState      *state;
     uint32                 new_tuple_id;
     HnswIndexTuple        *new_tuple;
+    HnswColumnType         column_type;
     usearch_init_options_t opts = {0};
     LDB_UNUSED(heap);
 #if PG_VERSION_NUM >= 140000
@@ -88,7 +89,45 @@ bool ldb_aminsert(Relation         index,
     if(isnull[ 0 ]) {
         return false;
     }
-    // todo:: thre is room for optimization for when indexUnchanged is true
+    // todo:: there is room for optimization for when indexUnchanged is true
+
+    datum = PointerGetDatum(PG_DETOAST_DATUM(values[ 0 ]));
+    column_type = GetIndexColumnType(index);
+
+    int  index_ndims = ldb_HnswGetDim(index);
+    bool index_ndims_exists = index_ndims >= 1;
+    bool index_empty = RelationGetNumberOfBlocks(index) == 0;
+    bool postponed = index_empty && !index_ndims_exists;
+
+    // TODO: what if there are concurrent inserts? can that result in issues with creating this postponed index?
+    if(postponed) {
+        int ndims = DatumGetLength(datum, column_type);
+
+        if(ndims < 1) {
+            elog(ERROR, "Could not identify dimension of inserted vector!");
+            return false;
+        }
+
+        if(ndims > HNSW_MAX_DIM) {
+            elog(ERROR,
+                 "Vector dimension %d of inserted vector is too large. "
+                 "LanternDB currently supports up to %ddim vectors",
+                 ndims,
+                 HNSW_MAX_DIM);
+            return false;
+        }
+
+        // We now build the postponed index, using ndims
+        HnswBuildState buildstate;
+        buildstate.postponed = true;
+        buildstate.dimensions = ndims;
+
+        BuildIndex(heap, index, indexInfo, &buildstate, MAIN_FORKNUM);
+
+        // Building the index already inserted this vector since it was written to the heap prior to this function
+        // being called, so we can return to avoid inserting twice
+        return false;
+    }
 
     insertCtx = AllocSetContextCreate(CurrentMemoryContext, "LanternInsertContext", ALLOCSET_DEFAULT_SIZES);
     oldCtx = MemoryContextSwitchTo(insertCtx);
@@ -103,7 +142,7 @@ bool ldb_aminsert(Relation         index,
     hdr = (HnswIndexHeaderPage *)PageGetContents(hdr_page);
     assert(hdr->magicNumber == LDB_WAL_MAGIC_NUMBER);
 
-    opts.dimensions = GetHnswIndexDimensions(index, indexInfo);
+    opts.dimensions = hdr->vector_dim;
     CheckHnswIndexDimensions(index, values[ 0 ], opts.dimensions);
     PopulateUsearchOpts(index, &opts);
     opts.retriever_ctx = ldb_wal_retriever_area_init(index, hdr);
@@ -125,14 +164,13 @@ bool ldb_aminsert(Relation         index,
 
     insertstate->uidx = uidx;
     insertstate->retriever_ctx = opts.retriever_ctx;
-    insertstate->columnType = GetIndexColumnType(index);
+    insertstate->columnType = column_type;
 
     hdr_page = NULL;
 
     meta = usearch_metadata(uidx, &error);
     assert(!error);
 
-    datum = PointerGetDatum(PG_DETOAST_DATUM(values[ 0 ]));
     void *vector = DatumGetSizedArray(datum, insertstate->columnType, opts.dimensions);
 
 #if LANTERNDB_COPYNODES
