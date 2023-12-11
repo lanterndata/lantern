@@ -6,6 +6,7 @@ INFO:  done init usearch index
 INFO:  inserted 2 elements
 INFO:  done saving 2 vectors
 -- should rewrite operator
+SET lantern.pgvector_compat=FALSE;
 SELECT * FROM op_test ORDER BY v <-> ARRAY[1,1,1];
     v    
 ---------
@@ -27,6 +28,63 @@ ERROR:  Operator <-> is invalid outside of ORDER BY context
 SET lantern.pgvector_compat=TRUE;
 SET enable_seqscan=OFF;
 \set ON_ERROR_STOP on
+-- one-off vector distance calculations should work with relevant operator
+-- with integer arrays:
+SELECT ARRAY[0,0,0] <-> ARRAY[2,3,-4];
+ ?column? 
+----------
+       29
+(1 row)
+
+-- with float arrays:
+SELECT ARRAY[0,0,0] <-> ARRAY[2,3,-4]::real[];
+ ?column? 
+----------
+       29
+(1 row)
+
+SELECT ARRAY[0,0,0]::real[] <-> ARRAY[2,3,-4]::real[];
+ ?column? 
+----------
+       29
+(1 row)
+
+SELECT '{1,0,1}' <-> '{0,1,0}'::integer[];
+ ?column? 
+----------
+        3
+(1 row)
+
+SELECT '{1,0,1}' <=> '{0,1,0}'::integer[];
+ ?column? 
+----------
+        1
+(1 row)
+
+SELECT ROUND(num::NUMERIC, 2) FROM (SELECT '{1,1,1}' <=> '{0,1,0}'::INTEGER[] AS num) _sub;
+ round 
+-------
+  0.42
+(1 row)
+
+SELECT ARRAY[.1,0,0] <=> ARRAY[0,.5,0];
+ ?column? 
+----------
+        1
+(1 row)
+
+SELECT cos_dist(ARRAY[.1,0,0]::real[], ARRAY[0,.5,0]::real[]);
+ cos_dist 
+----------
+        1
+(1 row)
+
+SELECT ARRAY[1,0,0] <+> ARRAY[0,1,0];
+ ?column? 
+----------
+        2
+(1 row)
+
 -- NOW THIS IS TRIGGERING INDEX SCAN AS WELL
 -- BECAUSE WE ARE REGISTERING <-> FOR ALL OPERATOR CLASSES
 -- IDEALLY THIS SHOULD NOT TRIGGER INDEX SCAN WHEN lantern.pgvector_compat=TRUE

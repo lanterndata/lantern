@@ -295,9 +295,12 @@ static float4 array_dist(ArrayType *a, ArrayType *b, usearch_metric_kind_t metri
     }
 
     float4 result;
-    bool   is_int_array = (metric_kind == usearch_metric_hamming_k);
 
-    if(is_int_array) {
+    if(metric_kind == usearch_metric_hamming_k) {
+        // when computing hamming distance, array element type must be an integer type
+        if(ARR_ELEMTYPE(a) != INT4OID || ARR_ELEMTYPE(b) != INT4OID) {
+            elog(ERROR, "expected integer array but got array with element type %d", ARR_ELEMTYPE(a));
+        }
         int32 *ax_int = (int32 *)ARR_DATA_PTR(a);
         int32 *bx_int = (int32 *)ARR_DATA_PTR(b);
 
@@ -305,10 +308,9 @@ static float4 array_dist(ArrayType *a, ArrayType *b, usearch_metric_kind_t metri
         // the hamming distance in usearch actually ignores the scalar type
         // and it will get casted appropriately in usearch even with this scalar type
         result = usearch_dist(ax_int, bx_int, metric_kind, a_dim, usearch_scalar_f32_k);
-
     } else {
-        float4 *ax = (float4 *)ARR_DATA_PTR(a);
-        float4 *bx = (float4 *)ARR_DATA_PTR(b);
+        float4 *ax = ToFloat4Array(a);
+        float4 *bx = ToFloat4Array(b);
 
         result = usearch_dist(ax, bx, metric_kind, a_dim, usearch_scalar_f32_k);
     }

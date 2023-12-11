@@ -3,6 +3,7 @@
 #include "utils.h"
 
 #include <assert.h>
+#include <catalog/pg_type_d.h>
 #include <math.h>
 #include <miscadmin.h>
 #include <regex.h>
@@ -79,5 +80,26 @@ void CheckMem(int limit, Relation index, usearch_index_t uidx, uint32 n_nodes, c
     // This is a guess, but it's a reasonably good one
     if(pg_mem + node_size * n_nodes > (uint32)limit * 1024UL) {
         elog(WARNING, "%s", msg);
+    }
+}
+
+// if the element type of the passed array is already float4, this function just returns that pointer
+// otherwise, it allocates a new array, casts all elements to float4 and returns the resulting array
+float4 *ToFloat4Array(ArrayType *arr)
+{
+    Oid element_type = ARR_ELEMTYPE(arr);
+    if(element_type == FLOAT4OID) {
+        return (float4 *)ARR_DATA_PTR(arr);
+    } else if(element_type == INT4OID) {
+        int arr_dim = ArrayGetNItems(ARR_NDIM(arr), ARR_DIMS(arr));
+
+        float4 *result = palloc(arr_dim * sizeof(int32));
+        int32  *typed_src = (int32 *)ARR_DATA_PTR(arr);
+        for(int i = 0; i < arr_dim; i++) {
+            result[ i ] = typed_src[ i ];
+        }
+        return result;
+    } else {
+        elog(ERROR, "unsupported element type: %d", element_type);
     }
 }

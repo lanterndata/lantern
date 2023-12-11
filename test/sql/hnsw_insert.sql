@@ -10,8 +10,14 @@ set client_min_messages = 'ERROR';
 
 CREATE TABLE small_world (
     id SERIAL PRIMARY KEY,
-    v REAL[2]
+    v REAL[2] -- this demonstates that postgres actually does not enforce real[] length as we actually insert vectors of length 3
 );
+
+CREATE TABLE small_world_int (
+    id SERIAL PRIMARY KEY,
+    v INTEGER[]
+);
+
 CREATE INDEX ON small_world USING hnsw (v) WITH (dim=3);
 SELECT _lantern_internal.validate_index('small_world_v_idx', false);
 
@@ -21,6 +27,8 @@ INSERT INTO small_world (v) VALUES (NULL);
 
 -- Attempt to insert a row with an incorrect vector length
 \set ON_ERROR_STOP off
+-- Cannot create an hnsw index with implicit typecasts (trying to cast integer[] to real[], in this case)
+CREATE INDEX ON small_world_int USING hnsw (v dist_l2sq_ops) WITH (dim=3);
 INSERT INTO small_world (v) VALUES ('{1,1,1,1}');
 \set ON_ERROR_STOP on
 
