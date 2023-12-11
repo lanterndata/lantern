@@ -95,7 +95,7 @@ usearch_metric_kind_t ldb_HnswGetMetricKind(Relation index)
 
     if(fnaddr == l2sq_dist || fnaddr == vector_l2sq_dist) {
         return usearch_metric_l2sq_k;
-    } else if(fnaddr == hamming_dist || fnaddr == vector_hamming_dist) {
+    } else if(fnaddr == hamming_dist) {
         return usearch_metric_hamming_k;
     } else if(fnaddr == cos_dist || fnaddr == vector_cos_dist) {
         return usearch_metric_cos_k;

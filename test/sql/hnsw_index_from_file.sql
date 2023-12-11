@@ -21,17 +21,18 @@ CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_ind
 SELECT _lantern_internal.validate_index('hnsw_l2_index', false);
 SELECT * FROM ldb_get_indexes('sift_base1k');
 
-SET enable_seqscan = false;
+SET enable_seqscan=FALSE;
+SET lantern.pgvector_compat=FALSE;
 
 SELECT v AS v777 FROM sift_base1k WHERE id = 777 \gset
-EXPLAIN (COSTS FALSE) SELECT ROUND(l2sq_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <-> :'v777' LIMIT 10;
-SELECT ROUND(l2sq_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <-> :'v777' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT ROUND(l2sq_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <?> :'v777' LIMIT 10;
+SELECT ROUND(l2sq_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <?> :'v777' LIMIT 10;
 -- Validate that inserting rows on index created from file works as expected
 INSERT INTO sift_base1k (id, v) VALUES 
 (1001, array_fill(1, ARRAY[128])),
 (1002, array_fill(2, ARRAY[128]));
 SELECT v AS v1001 FROM sift_base1k WHERE id = 1001 \gset
-SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <-> :'v1001' LIMIT 10;
+SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <?> :'v1001' LIMIT 10;
 
 -- Drop and recreate table
 DROP TABLE sift_base1k CASCADE;
@@ -43,8 +44,8 @@ SELECT _lantern_internal.validate_index('hnsw_cos_index', false);
 SELECT * FROM ldb_get_indexes('sift_base1k');
 
 SELECT v AS v777 FROM sift_base1k WHERE id = 777 \gset
-EXPLAIN (COSTS FALSE) SELECT ROUND(cos_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <-> :'v777' LIMIT 10;
-SELECT ROUND(cos_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <-> :'v777' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT ROUND(cos_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <?> :'v777' LIMIT 10;
+SELECT ROUND(cos_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <?> :'v777' LIMIT 10;
 
 --- Test scenarious ---
 -----------------------------------------
@@ -59,4 +60,4 @@ DELETE FROM sift_base1k WHERE id=777;
 CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2.usearch');
 SELECT _lantern_internal.validate_index('hnsw_l2_index', false);
 -- This should not throw error, but the first result will not be 0 as vector 777 is deleted from the table
-SELECT ROUND(l2sq_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <-> :'v777' LIMIT 10;
+SELECT ROUND(l2sq_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <?> :'v777' LIMIT 10;

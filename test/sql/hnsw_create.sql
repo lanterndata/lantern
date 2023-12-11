@@ -13,9 +13,11 @@ SELECT _lantern_internal.validate_index('sift_base1k_v_idx', false);
 
 -- Validate that index creation works with a larger number of vectors
 \ir utils/sift10k_array.sql
+SET lantern.pgvector_compat=FALSE;
+
 CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=4, dim=128);
 SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
-EXPLAIN (COSTS FALSE) SELECT * FROM sift_base10k order by v <-> :'v4444' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT * FROM sift_base10k order by v <?> :'v4444' LIMIT 10;
 SELECT _lantern_internal.validate_index('hnsw_idx', false);
 
 --- Validate that M values inside the allowed range [2, 128] do not throw an error

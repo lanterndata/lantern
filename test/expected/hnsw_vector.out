@@ -31,7 +31,7 @@ INFO:  done init usearch index
 INFO:  inserted 3 elements
 INFO:  done saving 3 vectors
 INSERT INTO items (trait_ai) VALUES ('[10,10,10]'), (NULL);
-SELECT * FROM items ORDER BY trait_ai <-> '[0,0,0]' LIMIT 3;
+SELECT * FROM items ORDER BY trait_ai <?> '[0,0,0]' LIMIT 3;
  id | trait_ai 
 ----+----------
   1 | [1,2,3]
@@ -78,7 +78,7 @@ INSERT INTO small_world (v) VALUES ('[99,99,2]');
 INSERT INTO small_world (v) VALUES (NULL);
 -- Distance functions
 SELECT ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
-FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
+FROM small_world ORDER BY v <?> '[0,1,0]'::VECTOR LIMIT 7;
  dist 
 ------
  0.00
@@ -91,16 +91,16 @@ FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
 (7 rows)
 
 EXPLAIN (COSTS FALSE) SELECT ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
-FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
+FROM small_world ORDER BY v <?> '[0,1,0]'::VECTOR LIMIT 7;
                        QUERY PLAN                        
 ---------------------------------------------------------
  Limit
    ->  Index Scan using small_world_v_idx on small_world
-         Order By: (v <-> '[0,1,0]'::vector)
+         Order By: (v <?> '[0,1,0]'::vector)
 (3 rows)
 
 SELECT ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
-FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
+FROM small_world ORDER BY v <?> '[0,1,0]'::VECTOR LIMIT 7;
  dist 
 ------
  0.00
@@ -113,12 +113,12 @@ FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
 (7 rows)
 
 EXPLAIN (COSTS FALSE) SELECT ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
-FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
+FROM small_world ORDER BY v <?> '[0,1,0]'::VECTOR LIMIT 7;
                        QUERY PLAN                        
 ---------------------------------------------------------
  Limit
    ->  Index Scan using small_world_v_idx on small_world
-         Order By: (v <-> '[0,1,0]'::vector)
+         Order By: (v <?> '[0,1,0]'::vector)
 (3 rows)
 
 -- Verify that index creation on a large vector produces an error
@@ -138,18 +138,18 @@ INFO:  done init usearch index
 INFO:  inserted 10000 elements
 INFO:  done saving 10000 vectors
 SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
-EXPLAIN (COSTS FALSE) SELECT * FROM sift_base10k ORDER BY v <-> :'v4444' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT * FROM sift_base10k ORDER BY v <?> :'v4444' LIMIT 10;
                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                           
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit
    ->  Index Scan using hnsw_idx on sift_base10k
-         Order By: (v <-> '[55,61,11,4,5,2,13,24,65,49,13,9,23,37,94,38,54,11,14,14,40,31,50,44,53,4,0,0,27,17,8,34,12,10,4,4,22,52,68,53,9,2,0,0,2,116,119,64,119,2,0,0,2,30,119,119,116,5,0,8,47,9,5,60,7,7,10,23,56,50,23,5,28,68,6,18,24,65,50,9,119,75,3,0,1,8,12,85,119,11,4,6,8,9,5,74,25,11,8,20,18,12,2,21,11,90,25,32,33,15,2,9,84,67,8,4,22,31,11,33,119,30,3,6,0,0,0,26]'::vector)
+         Order By: (v <?> '[55,61,11,4,5,2,13,24,65,49,13,9,23,37,94,38,54,11,14,14,40,31,50,44,53,4,0,0,27,17,8,34,12,10,4,4,22,52,68,53,9,2,0,0,2,116,119,64,119,2,0,0,2,30,119,119,116,5,0,8,47,9,5,60,7,7,10,23,56,50,23,5,28,68,6,18,24,65,50,9,119,75,3,0,1,8,12,85,119,11,4,6,8,9,5,74,25,11,8,20,18,12,2,21,11,90,25,32,33,15,2,9,84,67,8,4,22,31,11,33,119,30,3,6,0,0,0,26]'::vector)
 (3 rows)
 
 -- Ensure we can query an index for more elements than the value of init_k
 SET hnsw.init_k = 4;
 WITH neighbors AS (
-    SELECT * FROM small_world order by v <-> '[1,0,0]' LIMIT 3
+    SELECT * FROM small_world order by v <?> '[1,0,0]' LIMIT 3
 ) SELECT COUNT(*) from neighbors;
  count 
 -------
@@ -157,7 +157,7 @@ WITH neighbors AS (
 (1 row)
 
 WITH neighbors AS (
-    SELECT * FROM small_world order by v <-> '[1,0,0]' LIMIT 15
+    SELECT * FROM small_world order by v <?> '[1,0,0]' LIMIT 15
 ) SELECT COUNT(*) from neighbors;
  count 
 -------
@@ -166,11 +166,11 @@ WITH neighbors AS (
 
 RESET client_min_messages;
 \set ON_ERROR_STOP off
--- Expect error due to improper use of the <-> operator outside of its supported context
-SELECT ARRAY[1,2,3] <-> ARRAY[3,2,1];
+-- Expect error due to improper use of the <?> operator outside of its supported context
+SELECT ARRAY[1,2,3] <?> ARRAY[3,2,1];
 ERROR:  Operator <-> is invalid outside of ORDER BY context
 -- Expect error due to mismatching vector dimensions
-SELECT 1 FROM small_world ORDER BY v <-> '[0,1,0,1]' LIMIT 1;
+SELECT 1 FROM small_world ORDER BY v <?> '[0,1,0,1]' LIMIT 1;
 ERROR:  Expected vector with dimension 3, got 4
 SELECT l2sq_dist('[1,1]'::vector, '[0,1,0]'::vector);
 ERROR:  expected equally sized vectors but got vectors with dimensions 2 and 3
@@ -202,14 +202,14 @@ CREATE INDEX l2_idx ON small_world_arr USING lantern_hnsw(v) WITH (dim=3, m=2);
 INFO:  done init usearch index
 INFO:  inserted 3 elements
 INFO:  done saving 3 vectors
-EXPLAIN (COSTS FALSE) SELECT id FROM small_world_arr ORDER BY v <-> ARRAY[0,0,0];
+EXPLAIN (COSTS FALSE) SELECT id FROM small_world_arr ORDER BY v <?> ARRAY[0,0,0];
                  QUERY PLAN                 
 --------------------------------------------
  Index Scan using l2_idx on small_world_arr
-   Order By: (v <-> '{0,0,0}'::real[])
+   Order By: (v <?> '{0,0,0}'::real[])
 (2 rows)
 
-SELECT id FROM small_world_arr ORDER BY v <-> ARRAY[0,0,0];
+SELECT id FROM small_world_arr ORDER BY v <?> ARRAY[0,0,0];
  id 
 ----
   1
@@ -222,7 +222,7 @@ CREATE INDEX cos_idx ON small_world_arr USING lantern_hnsw(v) WITH (m=2);
 INFO:  done init usearch index
 INFO:  inserted 3 elements
 INFO:  done saving 3 vectors
-SELECT id FROM small_world_arr ORDER BY v <-> ARRAY[0,0,0];
+SELECT id FROM small_world_arr ORDER BY v <?> ARRAY[0,0,0];
  id 
 ----
   1
@@ -235,7 +235,7 @@ CREATE INDEX ham_idx ON small_world_arr USING lantern_hnsw(v) WITH (m=3);
 INFO:  done init usearch index
 INFO:  inserted 3 elements
 INFO:  done saving 3 vectors
-SELECT id FROM small_world_arr ORDER BY v <-> ARRAY[0,0,0];
+SELECT id FROM small_world_arr ORDER BY v <?> ARRAY[0,0,0];
  id 
 ----
   1

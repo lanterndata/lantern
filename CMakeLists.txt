@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.3)
 
-set(LANTERNDB_VERSION 0.0.9)
+set(LANTERNDB_VERSION 0.0.10)
 
 project(
   LanternDB
@@ -190,6 +190,7 @@ set (_update_files
   sql/updates/0.0.6--0.0.7.sql
   sql/updates/0.0.7--0.0.8.sql
   sql/updates/0.0.8--0.0.9.sql
+  sql/updates/0.0.9--0.0.10.sql
 )
 
 add_custom_command(

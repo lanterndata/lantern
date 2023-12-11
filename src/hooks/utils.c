@@ -9,7 +9,7 @@ List *ldb_get_operator_oids()
 {
     List *oidList = NIL;
 
-    List *nameList = lappend(NIL, makeString("<->"));
+    List *nameList = lappend(NIL, makeString("<?>"));
 
     Oid intOperator = LookupOperName(NULL, nameList, INT4ARRAYOID, INT4ARRAYOID, true, -1);
     Oid floatOperator = LookupOperName(NULL, nameList, FLOAT4ARRAYOID, FLOAT4ARRAYOID, true, -1);
