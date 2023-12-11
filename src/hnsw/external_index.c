@@ -809,12 +809,12 @@ BlockNumber getDataBlockNumber(RetrieverCtx *ctx, int id, bool add_to_extra_dirt
     // middle of an insert and the insert operation has the block we need under a lock
     page = extra_dirtied_get(ctx->extra_dirted, blockmapno, NULL);
     if(page == NULL) {
-        buf = ReadBufferExtended(ctx->index_rel, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
-        const int mode = add_to_extra_dirtied ? BUFFER_LOCK_EXCLUSIVE : BUFFER_LOCK_SHARE;
-        LockBuffer(buf, mode);
-        page = BufferGetPage(buf);
         if(add_to_extra_dirtied) {
-            extra_dirtied_add(ctx->extra_dirted, blockmapno, buf, page);
+            extra_dirtied_add_wal_read_buffer(ctx->extra_dirted, ctx->index_rel, MAIN_FORKNUM, blockmapno, &buf, &page);
+        } else {
+            buf = ReadBufferExtended(ctx->index_rel, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
+            LockBuffer(buf, BUFFER_LOCK_SHARE);
+            page = BufferGetPage(buf);
         }
     } else {
         idx_pagemap_prelocked = true;
@@ -926,11 +926,7 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, int id)
 
     page = extra_dirtied_get(ctx->extra_dirted, data_block_no, NULL);
     if(page == NULL) {
-        buf = ReadBufferExtended(ctx->index_rel, MAIN_FORKNUM, data_block_no, RBM_NORMAL, NULL);
-        LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
-        // todo:: has to be under WAL!!
-        page = BufferGetPage(buf);
-        extra_dirtied_add(ctx->extra_dirted, data_block_no, buf, page);
+        extra_dirtied_add_wal_read_buffer(ctx->extra_dirted, ctx->index_rel, MAIN_FORKNUM, data_block_no, &buf, &page);
     } else {
         idx_page_prelocked = true;
     }
