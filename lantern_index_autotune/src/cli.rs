@@ -26,7 +26,7 @@ pub struct IndexAutotuneArgs {
 
     /// Target recall
     #[arg(long, default_value_t = 98)]
-    pub recall: u64,
+    pub recall: usize,
 
     /// K limit of elements for query
     #[arg(long, default_value_t = 10)]
@@ -63,4 +63,8 @@ pub struct IndexAutotuneArgs {
     /// Table name to export results, table will be created if not exists
     #[arg(long, default_value = "lantern_autotune_results")]
     pub export_table_name: String,
+
+    /// Model name to save in results
+    #[arg(long)]
+    pub model_name: Option<String>,
 }

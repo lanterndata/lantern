@@ -3,7 +3,7 @@ use std::pin::Pin;
 use tokio_postgres::Row;
 
 #[derive(Debug)]
-pub struct Job {
+pub struct EmbeddingJob {
     pub id: i32,
     pub is_init: bool,
     pub db_uri: String,
@@ -16,8 +16,8 @@ pub struct Job {
     pub batch_size: Option<usize>,
 }
 
-impl Job {
-    pub fn new(row: Row) -> Job {
+impl EmbeddingJob {
+    pub fn new(row: Row) -> EmbeddingJob {
         Self {
             id: row.get::<&str, i32>("id"),
             db_uri: row.get::<&str, String>("db_uri"),
@@ -34,6 +34,43 @@ impl Job {
 
     pub fn set_filter(&mut self, filter: &str) {
         self.filter = Some(filter.to_owned());
+    }
+
+    pub fn set_is_init(&mut self, is_init: bool) {
+        self.is_init = is_init;
+    }
+}
+
+#[derive(Debug)]
+pub struct AutotuneJob {
+    pub id: i32,
+    pub is_init: bool,
+    pub db_uri: String,
+    pub schema: String,
+    pub table: String,
+    pub column: String,
+    pub metric_kind: String,
+    pub model_name: Option<String>,
+    pub recall: usize,
+    pub k: u16,
+    pub create_index: bool,
+}
+
+impl AutotuneJob {
+    pub fn new(row: Row) -> AutotuneJob {
+        Self {
+            id: row.get::<&str, i32>("id"),
+            db_uri: row.get::<&str, String>("db_uri"),
+            schema: row.get::<&str, String>("schema"),
+            table: row.get::<&str, String>("table"),
+            column: row.get::<&str, String>("column"),
+            metric_kind: row.get::<&str, String>("metric_kind"),
+            model_name: row.get::<&str, Option<String>>("model"),
+            recall: row.get::<&str, i32>("target_recall") as usize,
+            k: row.get::<&str, i32>("k") as u16,
+            create_index: row.get::<&str, bool>("create_index"),
+            is_init: true,
+        }
     }
 
     pub fn set_is_init(&mut self, is_init: bool) {

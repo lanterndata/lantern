@@ -9,6 +9,23 @@ pub enum UMetricKind {
 }
 
 impl UMetricKind {
+    pub fn from(metric_kind: &str) -> Result<UMetricKind, anyhow::Error> {
+        match metric_kind {
+            "l2sq" => {
+                return Ok(UMetricKind::L2sq);
+            }
+            "cos" => {
+                return Ok(UMetricKind::Cos);
+            }
+            "cosine" => {
+                return Ok(UMetricKind::Cos);
+            }
+            "hamming" => {
+                return Ok(UMetricKind::Hamming);
+            }
+            _ => anyhow::bail!("Invalid metric {metric_kind}"),
+        }
+    }
     pub fn value(&self) -> MetricKind {
         match self {
             UMetricKind::L2sq => {

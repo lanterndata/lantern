@@ -1,6 +1,6 @@
 [package]
 name = "lantern_daemon"
-version = "0.0.3"
+version = "0.0.4"
 edition = "2021"
 
 [lib]
@@ -13,6 +13,8 @@ clap = { version = "4.4.0", features = ["derive"] }
 anyhow = "1.0.75"
 tokio-postgres = "0.7.10"
 lantern_embeddings = { path = "../lantern_embeddings" }
+lantern_index_autotune = { path = "../lantern_index_autotune" }
+lantern_create_index = { path = "../lantern_create_index" }
 futures = "0.3.28"
 tokio = { version = "1.33.0", features = ["full"] }
 lantern_logger = { path = "../lantern_logger" }

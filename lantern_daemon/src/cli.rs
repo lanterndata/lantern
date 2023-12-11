@@ -27,16 +27,20 @@ impl LogLevel {
     }
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(version, about, long_about = None)]
 pub struct DaemonArgs {
     /// Fully associated database connection string including db name to get jobs
     #[arg(short, long)]
     pub uri: String,
 
-    /// Jobs table name
-    #[arg(short, long)]
-    pub table: String,
+    /// Embedding jobs table name
+    #[arg(long)]
+    pub embedding_table: Option<String>,
+
+    /// Autotune jobs table name
+    #[arg(long)]
+    pub autotune_table: Option<String>,
 
     /// Schema name
     #[arg(short, long, default_value = "public")]

@@ -38,7 +38,7 @@ fn main() {
         cli::Commands::AutotuneIndex(args) => {
             let logger = Logger::new("Lantern Index Autotune", LogLevel::Debug);
             _main_logger = Some(logger.clone());
-            lantern_index_autotune::autotune_index(&args, Some(logger))
+            lantern_index_autotune::autotune_index(&args, None, Some(logger))
         }
         cli::Commands::StartDaemon(args) => {
             let logger = Logger::new("Lantern Daemon", args.log_level.value());
