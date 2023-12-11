@@ -77,7 +77,7 @@ BEGIN
 	IF pgvector_exists THEN
 		am_name := 'lantern_hnsw';
     -- these go for good.
-    DROP OPERATOR CLASS IF EXISTS dist_vec_hamming_ops USING hnsw CASCADE;
+    DROP OPERATOR CLASS IF EXISTS dist_vec_hamming_ops USING lantern_hnsw CASCADE;
     DROP FUNCTION IF EXISTS hamming_dist(vector, vector);
     DROP OPERATOR <+> (vector, vector) CASCADE;
 	END IF;
