@@ -27,8 +27,8 @@ INFO:  validate_index() done, no issues found.
 
 -- now let's crash after a buffer for a blockmap is allocated during insert,
 -- but it hasn't been recorded yet
-SELECT _lantern_internal.failure_point_enable('CreateBlockMapGroup', 'crash_after_buf_allocation');
-INFO:  Failure point (func=CreateBlockMapGroup name=crash_after_buf_allocation) is enabled.
+SELECT _lantern_internal.failure_point_enable('ContinueBlockMapGroupInitialization', 'just_after_extending_the_index_relation');
+INFO:  Failure point (func=ContinueBlockMapGroupInitialization name=just_after_extending_the_index_relation remaining=0) is enabled.
  failure_point_enable 
 ----------------------
  
@@ -37,10 +37,28 @@ INFO:  Failure point (func=CreateBlockMapGroup name=crash_after_buf_allocation) 
 -- here is the insert where the crash happens
 \set ON_ERROR_STOP off
 INSERT INTO small_world (v) VALUES ('{2,2,2}');
-INFO:  Failure point (func=CreateBlockMapGroup name=crash_after_buf_allocation) has been triggered.
+INFO:  Failure point (func=ContinueBlockMapGroupInitialization name=just_after_extending_the_index_relation) has been triggered.
 ERROR:  ldb_failure_point_crash()
 \set ON_ERROR_STOP on
 -- now we see that the index has an extra free page, so the index validation fails
+\set ON_ERROR_STOP off
 SELECT _lantern_internal.validate_index('small_world_v_idx', false);
 INFO:  validate_index() start for small_world_v_idx
-ERROR:  vi_blocks[48].vp_type == LDB_VI_BLOCK_UNKNOWN (but it should be known now)
+ERROR:  HnswBlockMapGroupDesc.blockmaps_initialized=0 != NumberOfBlockMapsInGroup()=2 for blockmap_groupno=1
+\set ON_ERROR_STOP on
+-- now let's continue and finish the blockmap creation and then validate the index again
+SELECT _lantern_internal.continue_blockmap_group_initialization('small_world_v_idx');
+INFO:  The last blockmap group has been successfully initialized.
+ continue_blockmap_group_initialization 
+----------------------------------------
+ 
+(1 row)
+
+SELECT _lantern_internal.validate_index('small_world_v_idx', false);
+INFO:  validate_index() start for small_world_v_idx
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+

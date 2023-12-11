@@ -129,19 +129,29 @@ static void ldb_vi_read_blockmaps(Relation             index,
     uint32 group_node_first_index = 0;
     uint32 nodes_remaining = nodes_nr;
     uint32 batch_size = HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
+    bool   last_group_node_is_used = true;
 
     if(blocks_nr == 0) return;
     vi_blocks[ 0 ].vp_type = LDB_VI_BLOCK_HEADER;
-    while(nodes_remaining != 0) {
-        if(blockmap_groupno > index_header->blockmap_page_groups) {
+    while(nodes_remaining != 0 || (last_group_node_is_used && blockmap_groupno < index_header->blockmap_groups_nr)) {
+        BlockNumber number_of_blockmaps_in_group = NumberOfBlockMapsInGroup(blockmap_groupno);
+
+        if(blockmap_groupno >= index_header->blockmap_groups_nr) {
             elog(ERROR,
-                 "blockmap_groupno=%d > index_header->blockmap_page_groups=%d",
+                 "blockmap_groupno=%" PRIu32 " >= index_header->blockmap_groups_nr=%" PRIu32,
                  blockmap_groupno,
-                 index_header->blockmap_page_groups);
+                 index_header->blockmap_groups_nr);
+        }
+        if(index_header->blockmap_groups[ blockmap_groupno ].blockmaps_initialized != number_of_blockmaps_in_group) {
+            elog(ERROR,
+                 "HnswBlockMapGroupDesc.blockmaps_initialized=%" PRIu32 " != NumberOfBlockMapsInGroup()=%" PRIu32
+                 " for blockmap_groupno=%" PRIu32,
+                 index_header->blockmap_groups[ blockmap_groupno ].blockmaps_initialized,
+                 number_of_blockmaps_in_group,
+                 blockmap_groupno);
         }
         /* TODO see the loop in CreateBlockMapGroup() */
-        BlockNumber number_of_blockmaps_in_group = 1u << blockmap_groupno;
-        BlockNumber group_start = index_header->blockmap_page_group_index[ blockmap_groupno ];
+        BlockNumber group_start = index_header->blockmap_groups[ blockmap_groupno ].first_block;
         for(unsigned blockmap_id = 0; blockmap_id < number_of_blockmaps_in_group; ++blockmap_id) {
             BlockNumber blockmap_block = group_start + blockmap_id;
             BlockNumber expected_special_nextblockno;
@@ -181,11 +191,13 @@ static void ldb_vi_read_blockmaps(Relation             index,
                 elog(ERROR,
                      "blockmap->first_id=%" PRIu32
                      " != "
-                     "group_node_first_index=%d + blockmap_id=%u * HNSW_BLOCKMAP_BLOCKS_PER_PAGE=%d",
+                     "group_node_first_index=%d + blockmap_id=%u * HNSW_BLOCKMAP_BLOCKS_PER_PAGE=%d for "
+                     "blockmap_groupno=%" PRIu32,
                      blockmap->first_id,
                      group_node_first_index,
                      blockmap_id,
-                     HNSW_BLOCKMAP_BLOCKS_PER_PAGE);
+                     HNSW_BLOCKMAP_BLOCKS_PER_PAGE,
+                     blockmap_groupno);
             }
             HnswIndexPageSpecialBlock *special = (HnswIndexPageSpecialBlock *)PageGetSpecialPointer(page);
             if(special->firstId != blockmap->first_id) {
@@ -232,6 +244,11 @@ static void ldb_vi_read_blockmaps(Relation             index,
 
             UnlockReleaseBuffer(buf);
         }
+        /*
+         * This is for the case when the last blockmap group is initialized,
+         * but PostgreSQL process crashed before something was added to it.
+         */
+        last_group_node_is_used = batch_size == nodes_remaining;
         nodes_remaining -= Min(batch_size, nodes_remaining);
         group_node_first_index += batch_size;
         batch_size = batch_size * 2;
@@ -640,7 +657,7 @@ void ldb_validate_index(Oid indrelid, bool print_info)
         elog(INFO,
              "index_header = HnswIndexHeaderPage("
              "version=%" PRIu32 " vector_dim=%" PRIu32 " m=%" PRIu32 " ef_construction=%" PRIu32 " ef=%" PRIu32
-             " metric_kind=%d num_vectors=%" PRIu32 " last_data_block=%" PRIu32 " blockmap_page_groups=%" PRIu32 ")",
+             " metric_kind=%d num_vectors=%" PRIu32 " last_data_block=%" PRIu32 " blockmap_groups_nr=%" PRIu32 ")",
              index_header->version,
              index_header->vector_dim,
              index_header->m,
@@ -649,7 +666,14 @@ void ldb_validate_index(Oid indrelid, bool print_info)
              index_header->metric_kind,
              index_header->num_vectors,
              index_header->last_data_block,
-             index_header->blockmap_page_groups);
+             index_header->blockmap_groups_nr);
+        for(uint32 i = 0; i < index_header->blockmap_groups_nr; ++i) {
+            elog(INFO,
+                 "blockmap_groups[%" PRIu32 "]=(first_block=%" PRIu32 ", blockmaps_initialized=%" PRIu32 "),",
+                 i,
+                 index_header->blockmap_groups[ i ].first_block,
+                 index_header->blockmap_groups[ i ].blockmaps_initialized);
+        }
     }
 
     blocks_nr = RelationGetNumberOfBlocksInFork(index, MAIN_FORKNUM);
@@ -657,7 +681,7 @@ void ldb_validate_index(Oid indrelid, bool print_info)
     if(print_info) {
         elog(INFO, "blocks_nr=%" PRIu32 " nodes_nr=%" PRIu32, blocks_nr, nodes_nr);
     }
-    /* TODO check nodes_nr against index_header->blockmap_page_groups */
+    /* TODO check nodes_nr against index_header->blockmap_groups_nr */
 
     vi_blocks = palloc0_array(typeof(*vi_blocks), blocks_nr);
     vi_nodes = palloc0_array(typeof(*vi_nodes), nodes_nr);
