@@ -44,17 +44,19 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+SET lantern.pgvector_compat=FALSE;
+
 -- Goal: make sure query cost estimate is accurate
 -- when index is created with varying costruction parameters.
 SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
-\set explain_query_template 'EXPLAIN SELECT * FROM sift_base10k ORDER BY v <-> ''%s'' LIMIT 10'
+\set explain_query_template 'EXPLAIN SELECT * FROM sift_base10k ORDER BY v <?> ''%s'' LIMIT 10'
 \set enable_seqscan = off;
 
 -- Case 0, sanity check. No data.
 CREATE TABLE empty_table(id SERIAL PRIMARY KEY, v REAL[2]);
 CREATE INDEX empty_idx ON empty_table USING hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=2, dim=2);
 SET _lantern_internal.is_test = true;
-SELECT is_cost_estimate_within_error('EXPLAIN SELECT * FROM empty_table ORDER BY v <-> ''{1,2}'' LIMIT 10', 0.47);
+SELECT is_cost_estimate_within_error('EXPLAIN SELECT * FROM empty_table ORDER BY v <?> ''{1,2}'' LIMIT 10', 0.47);
 SELECT _lantern_internal.validate_index('empty_idx', false);
 DROP INDEX empty_idx;
 

@@ -40,14 +40,12 @@ ORDER BY 1, 3, 2;
  schema1   | reindex_lantern_indexes                | _lantern_internal
  schema1   | validate_index                         | _lantern_internal
  schema1   | cos_dist                               | schema1
- schema1   | cos_dist_with_guard                    | schema1
  schema1   | hamming_dist                           | schema1
- schema1   | hamming_dist_with_guard                | schema1
  schema1   | hnsw_handler                           | schema1
  schema1   | l2sq_dist                              | schema1
- schema1   | l2sq_dist                              | schema1
  schema1   | ldb_generic_dist                       | schema1
-(13 rows)
+ schema1   | ldb_generic_dist                       | schema1
+(11 rows)
 
 -- show all the extension operators
 SELECT ne.nspname AS extschema, op.oprname, np.nspname AS proschema
@@ -60,11 +58,12 @@ WHERE d.deptype = 'e' AND e.extname = 'lantern'
 ORDER BY 1, 3;
  extschema | oprname | proschema 
 -----------+---------+-----------
- schema1   | <->     | schema1
+ schema1   | <?>     | schema1
+ schema1   | <?>     | schema1
  schema1   | <->     | schema1
  schema1   | <=>     | schema1
  schema1   | <+>     | schema1
-(4 rows)
+(5 rows)
 
 SET search_path TO public, schema1;
 -- extension function is accessible
@@ -105,11 +104,12 @@ WHERE d.deptype = 'e' AND e.extname = 'lantern'
 ORDER BY 1, 3;
  extschema | oprname | proschema 
 -----------+---------+-----------
- schema1   | <->     | schema1
+ schema1   | <?>     | schema1
+ schema1   | <?>     | schema1
  schema1   | <->     | schema1
  schema1   | <=>     | schema1
  schema1   | <+>     | schema1
-(4 rows)
+(5 rows)
 
 SET search_path TO public, schema2;
 --extension access method is still accessible since access methods are not schema-qualified

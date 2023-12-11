@@ -34,7 +34,6 @@ PGDLLEXPORT Datum hamming_dist_with_guard(PG_FUNCTION_ARGS);
 PGDLLEXPORT Datum cos_dist(PG_FUNCTION_ARGS);
 PGDLLEXPORT Datum cos_dist_with_guard(PG_FUNCTION_ARGS);
 PGDLLEXPORT Datum vector_cos_dist(PG_FUNCTION_ARGS);
-PGDLLEXPORT Datum vector_hamming_dist(PG_FUNCTION_ARGS);
 
 HnswColumnType GetColumnTypeFromOid(Oid oid);
 HnswColumnType GetIndexColumnType(Relation index);

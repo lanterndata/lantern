@@ -11,7 +11,9 @@ INSERT INTO small_world (v) VALUES ('{0,0}'), ('{1,1}'), ('{2,2}'), ('{3,3}');
 
 -- Create index
 CREATE INDEX ON small_world USING hnsw (v dist_l2sq_ops) WITH (dim=2, M=4);
-SET enable_seqscan = false;
+SET enable_seqscan=FALSE;
+SET lantern.pgvector_compat=FALSE;
+
 
 -- Get the results without the index
 CREATE TEMP TABLE results_wo_index AS
@@ -25,7 +27,7 @@ FROM
 -- Get the results with the index
 CREATE TEMP TABLE results_w_index AS
 SELECT
-    ROW_NUMBER() OVER (ORDER BY v <-> '{0,0}') AS row_num,
+    ROW_NUMBER() OVER (ORDER BY v <?> '{0,0}') AS row_num,
     id,
     l2sq_dist(v, '{0,0}') AS dist
 FROM

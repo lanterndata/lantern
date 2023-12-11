@@ -6,48 +6,41 @@ CREATE FUNCTION hnsw_handler(internal) RETURNS index_am_handler
 CREATE FUNCTION ldb_generic_dist(real[], real[]) RETURNS real
 	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 	
-CREATE FUNCTION l2sq_dist(real[], real[]) RETURNS real
+CREATE FUNCTION ldb_generic_dist(integer[], integer[]) RETURNS real
 	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
-
--- this function is needed, as we should also use <-> operator
--- with integer[] type (to overwrite hamming dist function in our hooks)
--- and if we do not create l2sq_dist for integer[] type it will fail to cast in pgvector_compat mode
-CREATE FUNCTION l2sq_dist(integer[], integer[]) RETURNS real
+	
+CREATE FUNCTION l2sq_dist(real[], real[]) RETURNS real
 	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 
 CREATE FUNCTION cos_dist(real[], real[]) RETURNS real
 	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 
--- functions _with_guard suffix are used to forbid operator usage
--- if operator hooks are enabled (lantern.pgvector_compat=FALSE)
-CREATE FUNCTION cos_dist_with_guard(real[], real[]) RETURNS real
-	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
-
 CREATE FUNCTION hamming_dist(integer[], integer[]) RETURNS integer
-	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
-
-
-CREATE FUNCTION hamming_dist_with_guard(integer[], integer[]) RETURNS integer
 	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 	
 -- operators
+CREATE OPERATOR <?> (
+	LEFTARG = real[], RIGHTARG = real[], PROCEDURE = ldb_generic_dist,
+	COMMUTATOR = '<?>'
+);
+
+CREATE OPERATOR <?> (
+	LEFTARG = integer[], RIGHTARG = integer[], PROCEDURE = ldb_generic_dist,
+	COMMUTATOR = '<?>'
+);
+
 CREATE OPERATOR <-> (
 	LEFTARG = real[], RIGHTARG = real[], PROCEDURE = l2sq_dist,
 	COMMUTATOR = '<->'
 );
 
-CREATE OPERATOR <-> (
-	LEFTARG = integer[], RIGHTARG = integer[], PROCEDURE = l2sq_dist,
-	COMMUTATOR = '<->'
-);
-
 CREATE OPERATOR <=> (
-	LEFTARG = real[], RIGHTARG = real[], PROCEDURE = cos_dist_with_guard,
+	LEFTARG = real[], RIGHTARG = real[], PROCEDURE = cos_dist,
 	COMMUTATOR = '<=>'
 );
 
 CREATE OPERATOR <+> (
-	LEFTARG = integer[], RIGHTARG = integer[], PROCEDURE = hamming_dist_with_guard,
+	LEFTARG = integer[], RIGHTARG = integer[], PROCEDURE = hamming_dist,
 	COMMUTATOR = '<+>'
 );
 
@@ -74,28 +67,28 @@ BEGIN
     dist_l2sq_ops := '
         CREATE OPERATOR CLASS dist_l2sq_ops
         DEFAULT FOR TYPE real[] USING ' || access_method_name || ' AS
-        OPERATOR 1 <-> (real[], real[]) FOR ORDER BY float_ops,
-        FUNCTION 1 l2sq_dist(real[], real[]);
+        OPERATOR 1 <?> (real[], real[]) FOR ORDER BY float_ops,
+        FUNCTION 1 l2sq_dist(real[], real[]),
+        OPERATOR 2 <-> (real[], real[]) FOR ORDER BY float_ops,
+        FUNCTION 2 l2sq_dist(real[], real[]);
     ';
     
     dist_cos_ops := '
         CREATE OPERATOR CLASS dist_cos_ops
         FOR TYPE real[] USING ' || access_method_name || ' AS
-        OPERATOR 1 <-> (real[], real[]) FOR ORDER BY float_ops,
+        OPERATOR 1 <?> (real[], real[]) FOR ORDER BY float_ops,
         FUNCTION 1 cos_dist(real[], real[]),
-        -- it is important to set the function with guard the second
-        -- as op rewriting hook takes the first function to use
         OPERATOR 2 <=> (real[], real[]) FOR ORDER BY float_ops,
-        FUNCTION 2 cos_dist_with_guard(real[], real[]);
+        FUNCTION 2 cos_dist(real[], real[]);
     ';
     
     dist_hamming_ops := '
         CREATE OPERATOR CLASS dist_hamming_ops
         FOR TYPE integer[] USING ' || access_method_name || ' AS
-        OPERATOR 1 <-> (integer[], integer[]) FOR ORDER BY float_ops,
+        OPERATOR 1 <?> (integer[], integer[]) FOR ORDER BY float_ops,
         FUNCTION 1 hamming_dist(integer[], integer[]),
         OPERATOR 2 <+> (integer[], integer[]) FOR ORDER BY integer_ops,
-        FUNCTION 2 hamming_dist_with_guard(integer[], integer[]);
+        FUNCTION 2 hamming_dist(integer[], integer[]);
     ';
 
     -- Execute the dynamic SQL statement.
@@ -142,16 +135,25 @@ BEGIN
 		CREATE FUNCTION cos_dist(vector, vector) RETURNS float8
 			AS 'MODULE_PATHNAME', 'vector_cos_dist' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 			
-		-- pgvecor's vector type requires floats and we cannot define hamming distance for floats
+		CREATE FUNCTION ldb_generic_dist(vector, vector) RETURNS real
+			AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+			
+		CREATE OPERATOR <?> (
+			LEFTARG = vector, RIGHTARG = vector, PROCEDURE = ldb_generic_dist,
+			COMMUTATOR = '<?>'
+		);
 
+	 -- pgvecor's vector type requires floats and we cannot define hamming distance for floats
 		CREATE OPERATOR CLASS dist_vec_l2sq_ops
 			DEFAULT FOR TYPE vector USING lantern_hnsw AS
-			OPERATOR 1 <-> (vector, vector) FOR ORDER BY float_ops,
-			FUNCTION 1 l2sq_dist(vector, vector);
+			OPERATOR 1 <?> (vector, vector) FOR ORDER BY float_ops,
+			FUNCTION 1 l2sq_dist(vector, vector),
+			OPERATOR 2 <-> (vector, vector) FOR ORDER BY float_ops,
+			FUNCTION 2 l2sq_dist(vector, vector);
 			
 		CREATE OPERATOR CLASS dist_vec_cos_ops
 			FOR TYPE vector USING lantern_hnsw AS
-			OPERATOR 1 <-> (vector, vector) FOR ORDER BY float_ops,
+			OPERATOR 1 <?> (vector, vector) FOR ORDER BY float_ops,
 			FUNCTION 1 cos_dist(vector, vector),
 			OPERATOR 2 <=> (vector, vector) FOR ORDER BY float_ops,
 			FUNCTION 2 cos_dist(vector, vector);
