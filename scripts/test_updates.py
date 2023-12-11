@@ -3,6 +3,7 @@ import subprocess
 import getpass
 import git
 import os
+from functools import cmp_to_key
 
 
 INCOMPATIBLE_VERSIONS = {
@@ -37,8 +38,7 @@ def update_from_tag(from_version: str, to_version: str):
     res = shell(f"psql postgres -U {args.user} -c 'CREATE DATABASE {args.db};'")
     res = shell(f"psql postgres -U {args.user} -c 'DROP EXTENSION IF EXISTS lantern CASCADE; CREATE EXTENSION lantern;' -d {args.db};")
 
-    # run begin of parallel tests. Run this while the from_tag version of the binary is installed and loaded
-    # run begin on {from_version}
+    # run begin of parallel tests. Run this while the from_tag version of the binary is installed and loaded run begin on {from_version}
     if from_tag != "v0.0.4":
         # the source code at 0.0.4 did not yet have parallel tests
         res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-parallel FILTER=begin")
@@ -58,6 +58,12 @@ def incompatible_version(pg_version, version_tag):
     if not pg_version or pg_version not in INCOMPATIBLE_VERSIONS:
         return False
     return version_tag in INCOMPATIBLE_VERSIONS[pg_version]
+
+def sort_versions(v1, v2):
+    a = int(v1.replace('.', ''))
+    b = int(v2.replace('.', ''))
+
+    return a - b
 
 if __name__ == "__main__":
 
@@ -88,8 +94,9 @@ if __name__ == "__main__":
 
     # test updates from all tags
     tag_pairs = [update_fname.split("--") for update_fname in os.listdir("sql/updates")]
-    from_tags = list(sorted([p[0] for p in tag_pairs], reverse=True))
-    to_tags = list(sorted([p[1].split(".sql")[0] for p in tag_pairs]))
+    from_tags = list(sorted([p[0] for p in tag_pairs], key=cmp_to_key(sort_versions)))
+    from_tags.reverse()
+    to_tags = list(sorted([p[1].split(".sql")[0] for p in tag_pairs], key=cmp_to_key(sort_versions)))
     latest_version = to_tags[-1]
     print("Updating from tags", from_tags, "to ", latest_version)
 
