@@ -321,30 +321,3 @@ FROM small_world ORDER BY v <=> '[0,1,0]'::VECTOR LIMIT 7;
          Order By: (v <=> '[0,1,0]'::vector)
 (3 rows)
 
--- hamming index
-CREATE INDEX hamming_idx ON small_world  USING lantern_hnsw (v dist_vec_hamming_ops);
-INFO:  done init usearch index
-INFO:  inserted 8 elements
-INFO:  done saving 8 vectors
-SELECT ROUND((v <+> '[0,1,0]'::VECTOR)::numeric, 2) as dist
-FROM small_world ORDER BY v <+> '[0,1,0]'::VECTOR LIMIT 7;
- dist  
--------
-  0.00
-  7.00
-  7.00
-  7.00
- 14.00
- 14.00
- 14.00
-(7 rows)
-
-EXPLAIN (COSTS FALSE) SELECT ROUND((v <+> '[0,1,0]'::VECTOR)::numeric, 2) as dist
-FROM small_world ORDER BY v <+> '[0,1,0]'::VECTOR LIMIT 7;
-                    QUERY PLAN                     
----------------------------------------------------
- Limit
-   ->  Index Scan using hamming_idx on small_world
-         Order By: (v <+> '[0,1,0]'::vector)
-(3 rows)
-

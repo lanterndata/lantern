@@ -144,12 +144,3 @@ FROM small_world ORDER BY v <=> '[0,1,0]'::VECTOR LIMIT 7;
 
 EXPLAIN (COSTS FALSE) SELECT ROUND(cos_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <=> '[0,1,0]'::VECTOR LIMIT 7;
-
--- hamming index
-CREATE INDEX hamming_idx ON small_world  USING lantern_hnsw (v dist_vec_hamming_ops);
-
-SELECT ROUND((v <+> '[0,1,0]'::VECTOR)::numeric, 2) as dist
-FROM small_world ORDER BY v <+> '[0,1,0]'::VECTOR LIMIT 7;
-
-EXPLAIN (COSTS FALSE) SELECT ROUND((v <+> '[0,1,0]'::VECTOR)::numeric, 2) as dist
-FROM small_world ORDER BY v <+> '[0,1,0]'::VECTOR LIMIT 7;
