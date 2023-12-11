@@ -1,5 +1,7 @@
 #!/bin/bash
 IFS=$'\n\t'
+YELLOW='\033[0;33m'
+RESET_COLOR='\033[0m'
 
 TESTDB=testdb
 PSQL=psql
@@ -91,21 +93,11 @@ fi
 
 FIRST_TEST=1
 function print_test {
-    if [ "$PARALLEL" -eq 1 ]; then
-        if [ $1 == end ]; then
-            echo -e "\ntest: $1" >> $2
-        elif [ $1 == begin ]; then
-            echo -e "\ntest: $1" >> $2
-        else
-            if [ "$FIRST_TEST" -eq 1 ]; then
-                echo -n "test: $1" >> $2
-                FIRST_TEST=0
-            else
-                echo -n " $1" >> $2
-            fi
-        fi
+    if [ "$FIRST_TEST" -eq 1 ]; then
+        echo -en "\ntest: $1" >> $2
+        FIRST_TEST=0
     else
-        echo "test: $1" >> $2
+        echo -n " $1" >> $2
     fi
 }
 
@@ -118,16 +110,40 @@ else
 fi
 if [[ -n "$FILTER" || -n "$EXCLUDE" ]]; then
     if [ "$PARALLEL" -eq 1 ]; then
-    	TEST_FILES=$(cat $SCHEDULE | grep -E '^(test:|test_begin:|test_end:)' | sed -E -e 's/^test:|test_begin:|test_end://' | tr " " "\n" | sed -e '/^$/d')
+    	TEST_FILES=$(cat $SCHEDULE | grep -E '^(test:|test_begin:|test_end:)' | sed -E -e 's/^test_begin:|test_end:/test:/' | tr " " "\n" | sed -e '/^$/d')
+
+        # begin.sql isn't really optional. There may be cases where we want to drop it, but users should probably have to be very explicit about this
+        INCLUDE_BEGIN=1
+        if [[ "begin" != *"$FILTER"* ]]; then
+            while true; do
+                read -p "[33m Warning: you have excluded the 'begin' script this will likely cause tests to fail. Would you like to include it [y/n] [0m" response
+                case $response in
+                    [Nn]* ) INCLUDE_BEGIN=0; 
+                        echo -e "${YELLOW} !!!Proceeding without initialization SQL!!! ${RESET_COLOR}";
+                        break
+                        ;;
+                    [Yy]* ) break;;
+                    * ) echo "Unrecognized input";;
+                esac
+            done
+            if [ "$INCLUDE_BEGIN" -eq 1 ]; then
+                print_test "begin" $TMP_OUTDIR/schedule.txt $FIRST_TEST
+                $FIRST_TEST=1
+            fi
+        fi
     else
         if [[ "$pgvector_installed" == "1" ]]; then
-            TEST_FILES=$(cat $SCHEDULE | grep -E '^(test:|test_pgvector:)' | sed -E -e 's/^test:|test_pgvector://' | tr " " "\n" | sed -e '/^$/d')
+            TEST_FILES=$(cat $SCHEDULE | grep -E '^(test:|test_pgvector:)' | sed -e 's/^test_pgvector:/test:/' | tr " " "\n" | sed -e '/^$/d')
         else
-            TEST_FILES=$(cat $SCHEDULE | grep '^test:' | sed -e 's/^test://' | tr " " "\n" | sed -e '/^$/d')
+            TEST_FILES=$(cat $SCHEDULE | grep '^test:' | tr " " "\n" | sed -e '/^$/d')
         fi
     fi
 
     while IFS= read -r f; do
+        if [ "$f" == "test:" ]; then
+            FIRST_TEST=1
+            continue
+        fi
         if [ -n "$FILTER" ]; then
             if [[ $f == *"$FILTER"* ]]; then
                 print_test $f $TMP_OUTDIR/schedule.txt $FIRST_TEST
