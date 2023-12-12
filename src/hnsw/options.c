@@ -178,7 +178,7 @@ void _PG_init(void)
     add_int_reloption(ldb_hnsw_index_withopts,
                       "m",
                       "HNSW M hyperparameter",
-                      NULL,
+                      0,
                       2,
                       HNSW_MAX_M
 #if PG_VERSION_NUM >= 130000
@@ -189,7 +189,7 @@ void _PG_init(void)
     add_int_reloption(ldb_hnsw_index_withopts,
                       "ef_construction",
                       "HNSW ef-construction hyperparameter",
-                      NULL,
+                      0,
                       1,
                       HNSW_MAX_EF_CONSTRUCTION
 #if PG_VERSION_NUM >= 130000
@@ -201,7 +201,7 @@ void _PG_init(void)
     add_int_reloption(ldb_hnsw_index_withopts,
                       "ef",
                       "HNSW ef-search hyperparameter",
-                      NULL,
+                      0,
                       1,
                       HNSW_MAX_EF
 #if PG_VERSION_NUM >= 130000
