@@ -81,10 +81,8 @@ then
          lock_key bigint := 65432;
          update_needed boolean;
      BEGIN
-         BEGIN;
-
          -- Try to get the lock, if we can't another process will handle the update
-         IF pg_try_advisory_xact_lock(lock_key) THEN
+         IF pg_try_advisory_lock(lock_key) THEN
 
              -- Check to see if this update has been run already
              SELECT INTO update_needed NOT EXISTS(SELECT TRUE FROM updated WHERE version = '$UPDATE_TO');
@@ -96,13 +94,12 @@ then
                  -- Set a flag so that if a process is late it doesn't unecessarily reindex
                  INSERT INTO updated(version) VALUES ('$UPDATE_TO');
              END IF;
-
-             COMMIT;
+             PERFORM pg_advisory_unlock(lock_key);
          ELSE
            -- If we can't acquire the lock exclusively wait till we can get a shared version
            -- This way we don't run tests while the reindexing is occuring
-           PERFORM pg_advisory_xact_lock_shared(lock_key);
-           ROLLBACK;
+           PERFORM pg_advisory_lock_shared(lock_key);
+           PERFORM pg_advisory_unlock_shared(lock_key);
          END IF;
      END;
      \$\$;"
