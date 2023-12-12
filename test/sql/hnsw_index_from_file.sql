@@ -15,9 +15,19 @@ CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_ind
 CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2-0.0.0.usearch');
 -- Validate error on invalid file
 CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2-corrupted.usearch');
+-- Validate that you can not pass different hnsw params defined in index file 
+CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2.usearch', m=5);
+CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2.usearch', ef=20);
+CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2.usearch', ef_construction=30);
+CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2.usearch', m=5, ef=20, ef_construction=12);
 \set ON_ERROR_STOP on
 -- Validate that creating an index from file works
 CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2.usearch');
+SELECT _lantern_internal.validate_index('hnsw_l2_index', false);
+SELECT * FROM ldb_get_indexes('sift_base1k');
+DROP INDEX hnsw_l2_index;
+-- Validate that creating an index from file works with params passed
+CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2.usearch', m=16, ef=32, ef_construction=64, dim=128);
 SELECT _lantern_internal.validate_index('hnsw_l2_index', false);
 SELECT * FROM ldb_get_indexes('sift_base1k');
 

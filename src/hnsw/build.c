@@ -386,6 +386,93 @@ static void FreeBuildState(HnswBuildState *buildstate)
 }
 
 /*
+ * This function will be called when an external file will be passed (_experimental_index_file_path param)
+ * we should check if user has also passed index params verify that it matches with the ones defined in index file
+ * header With this we ensure that on REINDEX operation, if we use that params to construct the index
+ * it will match
+ */
+static void ValidateIndexFileParams(Relation index, usearch_init_options_t *opts)
+{
+    ldb_HnswOptions *index_options = (ldb_HnswOptions *)index->rd_options;
+    assert(index_options != NULL);
+
+    if(index_options->ef && (size_t)index_options->ef != opts->expansion_search) {
+        elog(ERROR,
+             "Index option 'ef'(%u) does not match with the index file option 'ef'(%lu)",
+             index_options->ef,
+             opts->expansion_search);
+    }
+
+    if(index_options->ef_construction && (size_t)index_options->ef_construction != opts->expansion_add) {
+        elog(ERROR,
+             "Index option 'ef_construction'(%u) does not match with the index file option 'ef_construction'(%lu)",
+             index_options->ef_construction,
+             opts->expansion_add);
+    }
+
+    if(index_options->m && (size_t)index_options->m != opts->connectivity) {
+        elog(ERROR,
+             "Index option 'm'(%u) does not match with the index file option 'm'(%lu)",
+             index_options->m,
+             opts->connectivity);
+    }
+
+    if(index_options->dim && (size_t)index_options->dim != opts->dimensions) {
+        elog(ERROR,
+             "Index option `dim`(%u) does not match with the index file option 'dim'(%lu)",
+             index_options->dim,
+             opts->dimensions);
+    }
+}
+
+static bool IsExternalIndex(Relation index, HnswBuildState *buildstate, usearch_init_options_t *opts)
+{
+    if(!buildstate->index_file_path) return false;
+    usearch_error_t error = NULL;
+    // TODO:: check if create_external_index function exists from lantern extras
+    // call it to create a new external index and continue flow
+    if(access(buildstate->index_file_path, F_OK) != 0) {
+        // Check if any of the required options does not exist
+        // Throw error as we do not have any other way to construct this index
+        ldb_HnswOptions *index_options = (ldb_HnswOptions *)index->rd_options;
+        assert(index_options != NULL);
+
+        if(!index_options->m || !index_options->ef || !index_options->ef_construction) {
+            ereport(ERROR,
+                    errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                    errmsg("Invalid index file path. "
+                           "If this is REINDEX operation you should drop and recreate this index"),
+                    errhint("Pass index options (dim, m, ef, ef_construction) when using "
+                            "'_experimental_index_file_path' to fallback to local index creation"));
+        }
+        elog(INFO, "index file not found, creating index locally");
+        return false;
+    }
+
+    // Load index from file and populate usearch options
+    usearch_load(buildstate->usearch_index, buildstate->index_file_path, &error);
+    if(error != NULL) {
+        elog(ERROR, "%s", error);
+    }
+    elog(INFO, "done loading usearch index");
+
+    usearch_metadata_t metadata = usearch_metadata(buildstate->usearch_index, &error);
+    assert(error == NULL);
+
+    opts->connectivity = metadata.connectivity;
+    // Currently usearch returns the dimension passed while initializing index
+    // It should read from the file header, as if we pass different dimensions than it is in the file
+    // It will fail assertion causing server crash
+    opts->dimensions = metadata.dimensions;
+    opts->expansion_add = metadata.expansion_add;
+    opts->expansion_search = metadata.expansion_search;
+    opts->metric_kind = metadata.metric_kind;
+
+    ValidateIndexFileParams(index, opts);
+    return true;
+}
+
+/*
  * Scan table for tuples to index
  */
 static void ScanTable(HnswBuildState *buildstate)
@@ -412,6 +499,7 @@ static void BuildIndex(
     Relation heap, Relation index, IndexInfo *indexInfo, HnswBuildState *buildstate, ForkNumber forkNum)
 {
     usearch_error_t        error = NULL;
+    bool                   is_external_index = false;
     usearch_init_options_t opts;
     MemSet(&opts, 0, sizeof(opts));
 
@@ -424,24 +512,10 @@ static void BuildIndex(
     assert(error == NULL);
 
     buildstate->hnsw = NULL;
-    if(buildstate->index_file_path) {
-        if(access(buildstate->index_file_path, F_OK) != 0) {
-            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), errmsg("Invalid index file path ")));
-        }
-        usearch_load(buildstate->usearch_index, buildstate->index_file_path, &error);
-        if(error != NULL) {
-            elog(ERROR, "%s", error);
-        }
-        elog(INFO, "done loading usearch index");
 
-        usearch_metadata_t metadata = usearch_metadata(buildstate->usearch_index, &error);
-        assert(error == NULL);
-        opts.connectivity = metadata.connectivity;
-        opts.dimensions = metadata.dimensions;
-        opts.expansion_add = metadata.expansion_add;
-        opts.expansion_search = metadata.expansion_search;
-        opts.metric_kind = metadata.metric_kind;
-    } else {
+    is_external_index = IsExternalIndex(index, buildstate, &opts);
+
+    if(!is_external_index) {
         BlockNumber numBlocks = RelationGetNumberOfBlocks(heap);
         uint32_t    estimated_row_count = 0;
         if(numBlocks > 0) {

@@ -5,6 +5,7 @@
 #include <string.h>
 
 // Include your test files here
+#include "test_external_index_reindex.c"
 #include "test_op_rewrite.c"
 // ===========================
 
@@ -100,7 +101,8 @@ int main()
     struct TestCase current_case;
     struct TestCase test_cases[] = {
         // Add new test files here to be run
-        {.name = "test_op_rewrite", .func = (TestCaseFunction)test_op_rewrite}
+        {.name = "test_op_rewrite", .func = (TestCaseFunction)test_op_rewrite},
+        {.name = "test_external_index_reindex", .func = (TestCaseFunction)test_external_index_reindex}
         // ================================
     };
 

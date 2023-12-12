@@ -50,21 +50,21 @@ int ldb_HnswGetDim(Relation index)
 int ldb_HnswGetM(Relation index)
 {
     ldb_HnswOptions *opts = (ldb_HnswOptions *)index->rd_options;
-    if(opts) return opts->m;
+    if(opts && opts->m) return opts->m;
     return HNSW_DEFAULT_M;
 }
 
 int ldb_HnswGetEfConstruction(Relation index)
 {
     ldb_HnswOptions *opts = (ldb_HnswOptions *)index->rd_options;
-    if(opts) return opts->ef_construction;
+    if(opts && opts->ef_construction) return opts->ef_construction;
     return HNSW_DEFAULT_EF_CONSTRUCTION;
 }
 
 int ldb_HnswGetEf(Relation index)
 {
     ldb_HnswOptions *opts = (ldb_HnswOptions *)index->rd_options;
-    if(opts) return opts->ef;
+    if(opts && opts->ef) return opts->ef;
     return HNSW_DEFAULT_EF;
 }
 
@@ -178,7 +178,7 @@ void _PG_init(void)
     add_int_reloption(ldb_hnsw_index_withopts,
                       "m",
                       "HNSW M hyperparameter",
-                      HNSW_DEFAULT_M,
+                      NULL,
                       2,
                       HNSW_MAX_M
 #if PG_VERSION_NUM >= 130000
@@ -189,7 +189,7 @@ void _PG_init(void)
     add_int_reloption(ldb_hnsw_index_withopts,
                       "ef_construction",
                       "HNSW ef-construction hyperparameter",
-                      HNSW_DEFAULT_EF_CONSTRUCTION,
+                      NULL,
                       1,
                       HNSW_MAX_EF_CONSTRUCTION
 #if PG_VERSION_NUM >= 130000
@@ -201,7 +201,7 @@ void _PG_init(void)
     add_int_reloption(ldb_hnsw_index_withopts,
                       "ef",
                       "HNSW ef-search hyperparameter",
-                      HNSW_DEFAULT_EF,
+                      NULL,
                       1,
                       HNSW_MAX_EF
 #if PG_VERSION_NUM >= 130000
