@@ -74,7 +74,7 @@ then
      # and recreates the extension so whatever we do here is ignored
      # parallel tests run into issues when multiple instances of the runner simultaneously reindex, we need to track when
      # this occurs and make the process conditional on it
-     psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -c "SET client_min_messages=error; CREATE TABLE IF NOT EXISTS updated (version VARCHAR);"
+     psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -c "SET client_min_messages=error; "
      psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -c "SET client_min_messages=error;
      DO \$\$
      DECLARE
@@ -85,6 +85,7 @@ then
          IF pg_try_advisory_lock(lock_key) THEN
 
              -- Check to see if this update has been run already
+             CREATE TABLE IF NOT EXISTS updated (version VARCHAR);
              SELECT INTO update_needed NOT EXISTS(SELECT TRUE FROM updated WHERE version = '$UPDATE_TO');
 
              IF update_needed THEN
@@ -102,7 +103,7 @@ then
            PERFORM pg_advisory_unlock_shared(lock_key);
          END IF;
      END;
-     \$\$;"
+     \$\$;" 2>/dev/null
      run_regression_test $@
 else
 
