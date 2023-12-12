@@ -72,7 +72,40 @@ then
      # upgrade to the new version of the extension and make sure that all existing tests still pass
      # todo:: this approach currently is broken for pgvector-compat related upgrade scripts as that regression test drops
      # and recreates the extension so whatever we do here is ignored
-     psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -c "SET client_min_messages=error; ALTER EXTENSION lantern UPDATE TO '$UPDATE_TO';"
+     # parallel tests run into issues when multiple instances of the runner simultaneously reindex, we need to track when
+     # this occurs and make the process conditional on it
+     psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -c "SET client_min_messages=error; CREATE TABLE IF NOT EXISTS updated (version VARCHAR);"
+     psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -c "SET client_min_messages=error;
+     DO \$\$
+     DECLARE
+         lock_key bigint := 65432;
+         update_needed boolean;
+     BEGIN
+         BEGIN;
+
+         -- Try to get the lock, if we can't another process will handle the update
+         IF pg_try_advisory_xact_lock(lock_key) THEN
+
+             -- Check to see if this update has been run already
+             SELECT INTO update_needed NOT EXISTS(SELECT TRUE FROM updated WHERE version = '$UPDATE_TO');
+
+             IF update_needed THEN
+                 SET client_min_messages = error;
+                 ALTER EXTENSION lantern UPDATE TO '$UPDATE_TO';
+
+                 -- Set a flag so that if a process is late it doesn't unecessarily reindex
+                 INSERT INTO updated(version) VALUES ('$UPDATE_TO');
+             END IF;
+
+             COMMIT;
+         ELSE
+           -- If we can't acquire the lock exclusively wait till we can get a shared version
+           -- This way we don't run tests while the reindexing is occuring
+           PERFORM pg_advisory_xact_lock_shared(lock_key);
+           ROLLBACK;
+         END IF;
+     END;
+     \$\$;"
      run_regression_test $@
 else
 
