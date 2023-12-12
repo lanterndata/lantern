@@ -439,11 +439,11 @@ static bool IsExternalIndex(Relation index, HnswBuildState *buildstate, usearch_
 
         if(!index_options->m || !index_options->ef || !index_options->ef_construction) {
             ereport(ERROR,
-                    errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                    errmsg("Invalid index file path. "
-                           "If this is REINDEX operation you should drop and recreate this index"),
-                    errhint("Pass index options (dim, m, ef, ef_construction) when using "
-                            "'_experimental_index_file_path' to fallback to local index creation"));
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("Invalid index file path. "
+                            "If this is REINDEX operation you should drop and recreate this index"),
+                     errhint("Pass index options (dim, m, ef, ef_construction) when using "
+                             "'_experimental_index_file_path' to fallback to local index creation")));
         }
         elog(INFO, "index file not found, creating index locally");
         return false;
