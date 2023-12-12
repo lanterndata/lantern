@@ -25,12 +25,6 @@ CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_ind
 CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2.usearch');
 SELECT _lantern_internal.validate_index('hnsw_l2_index', false);
 SELECT * FROM ldb_get_indexes('sift_base1k');
-DROP INDEX hnsw_l2_index;
--- Validate that creating an index from file works with params passed
-CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2.usearch', m=16, ef=32, ef_construction=64, dim=128);
-SELECT _lantern_internal.validate_index('hnsw_l2_index', false);
-SELECT * FROM ldb_get_indexes('sift_base1k');
-
 SET enable_seqscan=FALSE;
 SET lantern.pgvector_compat=FALSE;
 
@@ -56,6 +50,13 @@ SELECT * FROM ldb_get_indexes('sift_base1k');
 SELECT v AS v777 FROM sift_base1k WHERE id = 777 \gset
 EXPLAIN (COSTS FALSE) SELECT ROUND(cos_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <?> :'v777' LIMIT 10;
 SELECT ROUND(cos_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <?> :'v777' LIMIT 10;
+
+-- Validate that creating an index from file works with params passed
+CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2.usearch', m=16, ef=32, ef_construction=64, dim=128);
+SELECT _lantern_internal.validate_index('hnsw_l2_index', false);
+SELECT * FROM ldb_get_indexes('sift_base1k');
+DROP INDEX hnsw_l2_index;
+
 
 --- Test scenarious ---
 -----------------------------------------

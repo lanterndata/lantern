@@ -61,26 +61,6 @@ SELECT * FROM ldb_get_indexes('sift_base1k');
  hnsw_l2_index | 720 kB | CREATE INDEX hnsw_l2_index ON public.sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2.usearch') | 720 kB
 (1 row)
 
-DROP INDEX hnsw_l2_index;
--- Validate that creating an index from file works with params passed
-CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2.usearch', m=16, ef=32, ef_construction=64, dim=128);
-INFO:  done init usearch index
-INFO:  done loading usearch index
-INFO:  done saving 1000 vectors
-SELECT _lantern_internal.validate_index('hnsw_l2_index', false);
-INFO:  validate_index() start for hnsw_l2_index
-INFO:  validate_index() done, no issues found.
- validate_index 
-----------------
- 
-(1 row)
-
-SELECT * FROM ldb_get_indexes('sift_base1k');
-   indexname   |  size  |                                                                                            indexdef                                                                                            | total_index_size 
----------------+--------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+------------------
- hnsw_l2_index | 720 kB | CREATE INDEX hnsw_l2_index ON public.sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2.usearch', m='16', ef='32', ef_construction='64', dim='128') | 720 kB
-(1 row)
-
 SET enable_seqscan=FALSE;
 SET lantern.pgvector_compat=FALSE;
 SELECT v AS v777 FROM sift_base1k WHERE id = 777 \gset
@@ -117,14 +97,14 @@ SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <?>
 -----------
       0.00
     128.00
+ 249249.00
  249285.00
  249418.00
  249457.00
  249515.00
  249589.00
  249647.00
- 249675.00
- 249695.00
+ 249652.00
 (10 rows)
 
 -- Drop and recreate table
@@ -178,6 +158,27 @@ SELECT ROUND(cos_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <?> :
   0.26
 (10 rows)
 
+-- Validate that creating an index from file works with params passed
+CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2.usearch', m=16, ef=32, ef_construction=64, dim=128);
+INFO:  done init usearch index
+INFO:  done loading usearch index
+INFO:  done saving 1000 vectors
+SELECT _lantern_internal.validate_index('hnsw_l2_index', false);
+INFO:  validate_index() start for hnsw_l2_index
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
+SELECT * FROM ldb_get_indexes('sift_base1k');
+   indexname    |  size  |                                                                                            indexdef                                                                                            | total_index_size 
+----------------+--------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+------------------
+ hnsw_cos_index | 720 kB | CREATE INDEX hnsw_cos_index ON public.sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-cos.usearch')                                                 | 1440 kB
+ hnsw_l2_index  | 720 kB | CREATE INDEX hnsw_l2_index ON public.sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2.usearch', m='16', ef='32', ef_construction='64', dim='128') | 1440 kB
+(2 rows)
+
+DROP INDEX hnsw_l2_index;
 --- Test scenarious ---
 -----------------------------------------
 -- Case:
