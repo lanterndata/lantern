@@ -1,5 +1,5 @@
-SET work_mem='10MB';
+-- SET work_mem='10MB';
 BEGIN;
 INSERT INTO sift_base10k (id, v) VALUES 
-    (10001, random_array(128, 0, 128)),
+    (10001, random_array(128, 0, 128));
 COMMIT;
