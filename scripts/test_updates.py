@@ -40,10 +40,12 @@ def update_from_tag(from_version: str, to_version: str):
     res = shell(f"psql postgres -U {args.user} -c 'DROP EXTENSION IF EXISTS lantern CASCADE; CREATE EXTENSION lantern;' -d {args.db};")
 
     # run begin of parallel tests. Run this while the from_tag version of the binary is installed and loaded run begin on {from_version}
-    print(f'from_tag={from_tag} from_version={from_version} to_version={to_version}')
     if from_tag != "v0.0.4":
         # the source code at 0.0.4 did not yet have parallel tests
         res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-parallel FILTER=begin")
+    else:
+        # if we aren't running begin the following tests won't behave correctly
+        return
 
     repo.git.checkout(sha_before)
     res = shell(f"cd {args.builddir} ; git submodule update && cmake .. && make -j4 && make install")
