@@ -220,13 +220,17 @@ pub fn create_usearch_index(
         let oid = large_object.oid.clone();
         let mut reader = fs::File::open(Path::new(&args.out))?;
         io::copy(&mut reader, &mut large_object)?;
+        fs::remove_file(Path::new(&args.out))?;
         large_object.finish(
             &get_full_table_name(&args.schema, &args.table),
             &quote_ident(&args.column),
             args.index_name.as_deref(),
+            args.ef,
+            args.efc,
+            args.dims,
+            args.m,
         )?;
         LargeObject::remove_from_remote_fs(&mut client, oid.unwrap(), &index_path)?;
-        fs::remove_file(Path::new(&args.out))?;
         logger.info(&format!(
             "Index imported to table {} and removed from filesystem",
             &args.table
