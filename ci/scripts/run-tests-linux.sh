@@ -79,3 +79,13 @@ function start_pg() {
 }
 # Wait for start and run tests
 start_pg && wait_for_pg && run_db_tests
+
+if [[ "$RUN_REPLICA_TESTS" == "1" ]]
+then
+  export PATH="$PATH:$(pg_config --bindir)"
+  source $WORKDIR/ci/scripts/bitnami-utils.sh
+  start_postgres_master
+  start_postgres_replica
+  cd $WORKDIR/build && \
+  ENABLE_REPLICA=1 REPLICA_PORT=5443 DB_PORT=5442 make test-client
+fi

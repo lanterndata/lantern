@@ -1,7 +1,11 @@
 #include <libpq-fe.h>
 
-int test_op_rewrite(PGconn *conn)
+#include "runner.h"
+
+int test_op_rewrite(TestCaseState *state)
 {
+    PGconn *conn = state->conn;
+
     const char *query
         = "SELECT tablename, reltuples "
           "FROM pg_tables "
