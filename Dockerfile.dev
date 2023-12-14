@@ -17,7 +17,7 @@ WORKDIR /lantern
 
 USER root
 ENV DEBIAN_FRONTEND=noninteractive
-RUN pip install GitPython libtmux  && \
+RUN apt update && apt install curl -y && pip install GitPython libtmux  && \
     wget -O pgvector.tar.gz https://github.com/pgvector/pgvector/archive/refs/tags/v${PGVECTOR_VERSION}.tar.gz && \
     tar xzf pgvector.tar.gz && \
     cd pgvector-${PGVECTOR_VERSION} && \
@@ -29,7 +29,7 @@ COPY . .
 RUN rm -rf build \
     && mkdir build \
     && cd build \
-    && cmake -DUSEARCH_NO_MARCH_NATIVE=ON -DCMAKE_BUILD_TYPE=Debug .. \
+    && cmake -DUSEARCH_NO_MARCH_NATIVE=ON -DCMAKE_BUILD_TYPE=Debug -DBUILD_C_TESTS=ON .. \
     && make install
 
 # Install benchmarking tools in build folder

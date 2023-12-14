@@ -7,6 +7,7 @@ TMP_ROOT=/tmp/lantern
 TMP_OUTDIR=$TMP_ROOT/tmp_output
 FILTER="${FILTER:-}"
 EXCLUDE="${EXCLUDE:-}"
+DB_PORT="${DB_PORT:-5432}"
 # $USER is not set in docker containers, so use whoami
 DEFAULT_USER=$(whoami)
 
@@ -69,7 +70,7 @@ then
 fi
 
 # Check if pgvector is available
-pgvector_installed=$($PSQL -U $DB_USER -d postgres -c "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'" -tA | tail -n 1 | tr -d '\n')
+pgvector_installed=$($PSQL -U $DB_USER -p $DB_PORT -d postgres -c "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'" -tA | tail -n 1 | tr -d '\n')
 
 # Settings
 REGRESSION=0
@@ -85,7 +86,7 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 if [ "$C_TESTS" -eq 1 ]; then
-    DB_USER=$DB_USER TEST_DB_NAME=$TESTDB ./bin/lantern_c_tests
+    DB_USER=$DB_USER DB_PORT=$DB_PORT REPLICA_PORT=$REPLICA_PORT TEST_DB_NAME=$TESTDB ENABLE_REPLICA=$ENABLE_REPLICA ./bin/lantern_c_tests
     exit $?
 fi
 
