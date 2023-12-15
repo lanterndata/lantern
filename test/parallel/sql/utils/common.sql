@@ -1,8 +1,12 @@
+-- N.B.: This file shall be maintained such that it can safely be rerun without throwing an error
+--      This is because in upgrade tests we may run this multiple times in preparation for sequential
+--      and parallel upgrade tests
+
 -- test helper functions that should exist in all test runs live here
 -- there is no need to explicitly include this file in other tests as the test runner will
 -- run this before running the actual test
 
-CREATE EXTENSION pageinspect;
+CREATE EXTENSION IF NOT EXISTS pageinspect;
 
 \set ON_ERROR_STOP on
 
@@ -57,5 +61,30 @@ BEGIN
         END IF;
     END LOOP;
     RETURN found;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Determine if the two  queries provided return the same results
+-- At the moment this only works on queries that return rows with the same entries as one another
+-- if you try to compare uneven numbers of columns or columns of different types it will generate an error
+CREATE OR REPLACE FUNCTION results_match(left_query text, right_query text) RETURNS boolean AS $$
+DECLARE
+    left_cursor REFCURSOR;
+    left_row RECORD;
+
+    right_cursor REFCURSOR;
+    right_row RECORD;
+BEGIN
+    OPEN left_cursor FOR EXECUTE left_query;
+    OPEN right_cursor FOR EXECUTE right_query;
+    LOOP
+        FETCH NEXT FROM left_cursor INTO left_row;
+        FETCH NEXT FROM right_cursor INTO right_row;
+        IF left_row != right_row THEN
+            RETURN false;
+        ELSEIF left_row IS NULL AND right_row IS NULL THEN
+            RETURN true;
+        END IF;
+    END LOOP;
 END;
 $$ LANGUAGE plpgsql;

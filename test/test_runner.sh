@@ -68,13 +68,11 @@ then
      # psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -q -c "SELECT * FROM pg_extension_update_paths('lantern');" 2>/dev/null
      # install the old version of the extension and sanity-check that all tests pass
      psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -c "SET client_min_messages=error; CREATE EXTENSION IF NOT EXISTS lantern VERSION '$UPDATE_FROM';"
-     psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -f utils/common.sql 2>/dev/null
      # upgrade to the new version of the extension and make sure that all existing tests still pass
      # todo:: this approach currently is broken for pgvector-compat related upgrade scripts as that regression test drops
      # and recreates the extension so whatever we do here is ignored
      # parallel tests run into issues when multiple instances of the runner simultaneously reindex, we need to track when
      # this occurs and make the process conditional on it
-     psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -c "SET client_min_messages=error; "
      psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -c "SET client_min_messages=error;
      DO \$\$
      DECLARE
@@ -90,6 +88,7 @@ then
 
              IF update_needed THEN
                  SET client_min_messages = error;
+                 \\i utils/common.sql;
                  ALTER EXTENSION lantern UPDATE TO '$UPDATE_TO';
 
                  -- Set a flag so that if a process is late it doesn't unecessarily reindex

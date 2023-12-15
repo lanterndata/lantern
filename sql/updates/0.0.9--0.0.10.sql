@@ -91,7 +91,7 @@ BEGIN
       EXIT WHEN NOT FOUND;
 
       -- Append index name to the array
-      index_names := array_append(index_names, r.indexname);
+      index_names := array_append(index_names, r.indexname::text);
       index_definitions := array_append(index_definitions, r.indexdef);
   END LOOP;
 
