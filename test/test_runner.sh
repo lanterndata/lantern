@@ -80,7 +80,7 @@ then
          if flock -xn 200; then
              if [ ! -f "$FINISHEDFILE" ]; then
                  psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -f utils/common.sql 2>/dev/null
-                 psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -c "SET client_min_messages=error; ALTER EXTENSION lantern UPDATE TO '$UPDATE_TO';"
+                 psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -c "SET client_min_messages=error; ALTER EXTENSION lantern UPDATE TO '$UPDATE_TO';" 2>/dev/null
                  touch $FINISHEDFILE
              fi
          fi
