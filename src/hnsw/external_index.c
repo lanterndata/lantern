@@ -478,6 +478,17 @@ void StoreExternalIndex(Relation                index,
     memcpy(headerp->usearch_header, data, USEARCH_HEADER_SIZE);
     ((PageHeader)header_page)->pd_lower = ((char *)headerp + sizeof(HnswIndexHeaderPage)) - (char *)header_page;
 
+    // Flush header page to WAL, because StoreExternalIndexBlockMapGroup references header page
+    // In wal logs when adding block map groups, and WAL redo crashes in replica as header page record
+    // Would not exist yet
+
+    MarkBufferDirty(header_buf);
+    GenericXLogFinish(state);
+
+    state = GenericXLogStart(index);
+    header_page = GenericXLogRegisterBuffer(state, header_buf, GENERIC_XLOG_FULL_IMAGE);
+    headerp = (HnswIndexHeaderPage *)PageGetContents(header_page);
+
     uint64   progress = USEARCH_HEADER_SIZE;  // usearch header size
     unsigned blockmap_groupno = 0;
     uint32   group_node_first_index = 0;
