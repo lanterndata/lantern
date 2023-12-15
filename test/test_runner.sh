@@ -73,6 +73,7 @@ then
      # and recreates the extension so whatever we do here is ignored
      # parallel tests run into issues when multiple instances of the runner simultaneously reindex, we need to track when
      # this occurs and make the process conditional on it
+     COMMON=`cat utils/common.sql`
      psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -c "SET client_min_messages=error;
      DO \$\$
      DECLARE
@@ -88,7 +89,9 @@ then
 
              IF update_needed THEN
                  SET client_min_messages = error;
-                 \\i utils/common.sql;
+                 
+                 $COMMON
+
                  ALTER EXTENSION lantern UPDATE TO '$UPDATE_TO';
 
                  -- Set a flag so that if a process is late it doesn't unecessarily reindex
