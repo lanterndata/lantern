@@ -203,6 +203,15 @@ add_custom_command(
 
 add_custom_target(phony_always_runs ALL DEPENDS ${CMAKE_BINARY_DIR}/${_script_file})
 
+add_custom_target(
+    generate_version_header
+    COMMAND ${CMAKE_SOURCE_DIR}/scripts/version_header.sh ${LANTERNDB_VERSION} ${CMAKE_BINARY_DIR}
+    COMMENT "Generating binary version header"
+)
+
+add_dependencies(lantern generate_version_header)
+target_include_directories(lantern PUBLIC ${CMAKE_BINARY_DIR}/include)
+
 
 # AUTO-GENERATE lantern.control file for PostgreSQL
 set(CONTROL_TEMPLATE "${CMAKE_MODULE_PATH}/lantern.control.template")

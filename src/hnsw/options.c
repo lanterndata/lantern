@@ -146,6 +146,11 @@ void _PG_init(void)
              "Make sure to restart the server before running ALTER EXTENSION lantern UPDATE");
     }
 
+    if(!VersionsMatch()) {
+        elog(WARNING,
+             "LanternDB binary version does not match the version in SQL. This can cause errors as the two APIs may "
+             "differ. Please run `ALTER EXTENSION lantern UPDATE` before attempting to work with indices");
+    }
     original_post_parse_analyze_hook = post_parse_analyze_hook;
     original_ExecutorStart_hook = ExecutorStart_hook;
 

@@ -4,10 +4,12 @@
 
 #include <assert.h>
 #include <catalog/pg_type_d.h>
+#include <executor/spi.h>
 #include <math.h>
 #include <miscadmin.h>
 #include <regex.h>
 #include <string.h>
+#include <utils/builtins.h>
 
 #if PG_VERSION_NUM >= 130000
 #include <utils/memutils.h>
@@ -17,6 +19,10 @@
 #include "hnsw.h"
 #include "options.h"
 #include "usearch.h"
+#include "version.h"
+
+bool versions_match = false;
+bool version_checked = false;
 
 void LogUsearchOptions(usearch_init_options_t *opts)
 {
@@ -101,5 +107,64 @@ float4 *ToFloat4Array(ArrayType *arr)
         return result;
     } else {
         elog(ERROR, "unsupported element type: %d", element_type);
+    }
+}
+
+// Check if the binary version matches the schema version caching the result after the first check
+// This is used to prevent interacting with the index when the two don't match
+bool VersionsMatch()
+{
+    if(likely(version_checked)) {
+        return versions_match;
+    } else {
+        const char *query;
+        const char *version;
+        bool        isnull;
+        int         version_length;
+        int         spi_result;
+        int         comparison;
+        Datum       val;
+        text       *version_text;
+
+        if(SPI_connect() != SPI_OK_CONNECT) {
+            elog(ERROR, "could not connect to executor to check binary version");
+        }
+
+        query = "SELECT extversion FROM pg_extension WHERE extname = 'lantern'";
+
+        // Execute the query to figure out what version of lantern is in use in SQL
+        // todo: it would be nice to get this without actually executing a query
+        // unfortunately the system catalog does not make this information accessible
+        spi_result = SPI_execute(query, true, 0);
+        if(spi_result != SPI_OK_SELECT) {
+            elog(ERROR, "SPI_execute returned %s for %s", SPI_result_code_string(spi_result), query);
+        }
+
+        // Global containing the number of rows processed, should be just 1
+        if(SPI_processed != 1) {
+            elog(ERROR, "SQL version query did not return any values");
+        }
+
+        // SPI_tuptable is a global populated by SPI_execute
+        val = SPI_getbinval(SPI_tuptable->vals[ 0 ], SPI_tuptable->tupdesc, 1, &isnull);
+        SPI_finish();
+
+        if(isnull) {
+            elog(ERROR, "Version query returned null");
+        }
+
+        // Grab the result and check that it matches the version in the generated header
+        version_text = DatumGetTextP(val);
+        version = text_to_cstring(version_text);
+        version_length = strlen(version);
+        if(sizeof(LDB_BINARY_VERSION) >= (unsigned)version_length) {
+            version_length = sizeof(LDB_BINARY_VERSION);
+        }
+        comparison = strncmp(version, LDB_BINARY_VERSION, version_length);
+        if(comparison == 0) {
+            versions_match = true;
+        }
+        version_checked = true;
+        return versions_match;
     }
 }
