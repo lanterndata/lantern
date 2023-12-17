@@ -30,7 +30,7 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     if(!VersionsMatch()) {
         elog(ERROR,
              "Attempting to scan lantern index, but the SQL version and binary version do not match. This can cause "
-             "errors. Please run `ALTER EXTENSION lantern UPDATE");
+             "errors. Please run `ALTER EXTENSION lantern UPDATE and reconnect");
     }
 
     RetrieverCtx *retriever_ctx = ldb_wal_retriever_area_init(index, NULL);
