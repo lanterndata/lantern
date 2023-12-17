@@ -49,7 +49,7 @@ def update_from_tag(from_version: str, to_version: str):
     res = shell('rm -f /tmp/ldb_update_finished')
     res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-parallel FILTER=begin")
 
-    if from_tag not in ['v0.0.4','v0.0.5','v0.0.6','v0.0.7','v0.0.8','v0.0.9']:
+    if from_tag not in ['v0.0.4','v0.0.5','v0.0.6','v0.0.7','v0.0.8','v0.0.9', 'v0.0.10']:
         # misc tests added at v0.0.10, won't work before that
         # initialize misc tests to ensure that version mismatch results in an error
         res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-misc FILTER=begin")
@@ -57,7 +57,7 @@ def update_from_tag(from_version: str, to_version: str):
     repo.git.checkout(sha_before)
     res = shell(f"cd {args.builddir} ; git submodule update && cmake .. && make -j4 && make install")
     # res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={to_version} make test")
-    if from_tag not in ['v0.0.4','v0.0.5','v0.0.6','v0.0.7','v0.0.8','v0.0.9']:
+    if from_tag not in ['v0.0.4','v0.0.5','v0.0.6','v0.0.7','v0.0.8','v0.0.9', 'v0.0.10']:
         res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-misc FILTER=version_mismatch")
 
     # run the actual parallel tests after the upgrade
