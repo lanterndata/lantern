@@ -147,7 +147,6 @@ bool VersionsMatch()
 
         // SPI_tuptable is a global populated by SPI_execute
         val = SPI_getbinval(SPI_tuptable->vals[ 0 ], SPI_tuptable->tupdesc, 1, &isnull);
-        SPI_finish();
 
         if(isnull) {
             elog(ERROR, "Version query returned null");
@@ -165,6 +164,8 @@ bool VersionsMatch()
             versions_match = true;
         }
         version_checked = true;
+
+        SPI_finish();
         return versions_match;
     }
 }
