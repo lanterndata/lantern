@@ -48,9 +48,14 @@ def update_from_tag(from_version: str, to_version: str):
     res = shell('rm -f /tmp/ldb_update.lock')
     res = shell('rm -f /tmp/ldb_update_finished')
     res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-parallel FILTER=begin")
+
+    # initialize misc tests to ensure that version mismatch results in an error
+    res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-misc FILTER=begin")
+
     repo.git.checkout(sha_before)
     res = shell(f"cd {args.builddir} ; git submodule update && cmake .. && make -j4 && make install")
     # res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={to_version} make test")
+    res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-misc FILTER=version_mismatch")
 
     # run the actual parallel tests after the upgrade
     res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={to_version} make test-parallel EXCLUDE=begin")

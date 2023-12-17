@@ -77,11 +77,13 @@ pgvector_installed=$($PSQL -U $DB_USER -p $DB_PORT -d postgres -c "SELECT 1 FROM
 # Settings
 REGRESSION=0
 PARALLEL=0
+MISC=0
 C_TESTS=0
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --regression) REGRESSION=1 ;;
         --parallel) PARALLEL=1 ;;
+        --misc) MISC=1 ;;
         --client) C_TESTS=1 ;;
     esac
     shift
@@ -106,9 +108,12 @@ function print_test {
 rm -rf $TMP_OUTDIR/schedule.txt
 if [ "$PARALLEL" -eq 1 ]; then
     SCHEDULE='parallel_schedule.txt'
+elif [ "$MISC" -eq 1 ]; then
+    SCHEDULE='misc_schedule.txt'
 else
     SCHEDULE='schedule.txt'
 fi
+
 if [[ -n "$FILTER" || -n "$EXCLUDE" ]]; then
     if [ "$PARALLEL" -eq 1 ]; then
     	TEST_FILES=$(cat $SCHEDULE | grep -E '^(test:|test_begin:|test_end:)' | sed -E -e 's/^test_begin:|test_end:/test:/' | tr " " "\n" | sed -e '/^$/d')
@@ -163,6 +168,11 @@ if [[ -n "$FILTER" || -n "$EXCLUDE" ]]; then
         exit 0
     fi
 else
+    if [ "$MISC" -eq 1 ]; then
+        echo "misc tests are not intended to be run in parallel, please include a FILTER"
+        exit 1
+    fi
+
     while IFS= read -r line; do
         if [[ "$line" =~ ^test_pgvector: ]]; then
             test_name=$(echo "$line" | sed -e 's/test_pgvector://')
@@ -199,7 +209,10 @@ trap print_diff ERR
 
 if [ "$PARALLEL" -eq 1 ]; then
     cd parallel
-    PARALLEL=$PARALLEL DB_USER=$DB_USER $(pg_config --pkglibdir)/pgxs/src/test/regress/pg_regress --user=$DB_USER --schedule=$SCHEDULE --outputdir=$TMP_OUTDIR --launcher=../test_runner.sh
+    MISC=$MISC PARALLEL=$PARALLEL DB_USER=$DB_USER $(pg_config --pkglibdir)/pgxs/src/test/regress/pg_regress --user=$DB_USER --schedule=$SCHEDULE --outputdir=$TMP_OUTDIR --launcher=../test_runner.sh
+elif [ "$MISC" -eq 1 ]; then
+    cd misc
+    MISC=$MISC PARALLEL=$PARALLEL DB_USER=$DB_USER $(pg_config --pkglibdir)/pgxs/src/test/regress/pg_regress --user=$DB_USER --schedule=$SCHEDULE --outputdir=$TMP_OUTDIR --launcher=../test_runner.sh
 else
-    PARALLEL=$PARALLEL DB_USER=$DB_USER $(pg_config --pkglibdir)/pgxs/src/test/regress/pg_regress --user=$DB_USER --schedule=$SCHEDULE --outputdir=$TMP_OUTDIR --launcher=./test_runner.sh
+    MISC=$MISC PARALLEL=$PARALLEL DB_USER=$DB_USER $(pg_config --pkglibdir)/pgxs/src/test/regress/pg_regress --user=$DB_USER --schedule=$SCHEDULE --outputdir=$TMP_OUTDIR --launcher=./test_runner.sh
 fi

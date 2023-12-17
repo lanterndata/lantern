@@ -1,0 +1,4 @@
+-- Validate that creating an index with mismatched versions fails
+CREATE INDEX ON sift_base1k USING hnsw (v) WITH (dim=128, M=4);
+WARNING:  LanternDB binary version does not match the version in SQL. This can cause errors as the two APIs may differ. Please run `ALTER EXTENSION lantern UPDATE` and reconnect before attempting to work with indices
+ERROR:  Attempting to build lantern index, but the SQL version and binary version do not match. This can cause errors. Please run `ALTER EXTENSION lantern UPDATE and reconnect

@@ -256,6 +256,13 @@ add_custom_target(
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/test
 )
 
+
+add_custom_target(
+  test-misc
+  COMMAND ${CMAKE_SOURCE_DIR}/scripts/run_all_tests.sh --misc
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/test
+)
+
 # BENCHMARK
 add_custom_target(
   benchmark
