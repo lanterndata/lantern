@@ -14,7 +14,8 @@ function setup_postgres() {
     # Runner is github CI user
     sh -c "sudo -u runner -i $cmd"
     sh -c "sudo -u runner -i brew reinstall gettext"
-    sh -c "sudo -u runner -i brew unlink gettext && brew link gettext --force"
+    sh -c "sudo -u runner -i brew unlink gettext"
+    sh -c "sudo -u runner -i brew link gettext --force"
   else
     sh -c $cmd
   fi
