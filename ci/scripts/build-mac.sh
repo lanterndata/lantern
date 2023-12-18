@@ -18,9 +18,12 @@ function setup_postgres() {
   fi
 }
 
+function install_platform_specific_dependencies() {
+  :
+}
+
 function package_if_necessary() {
   :
-  # TODO make and publish homebrew formula
 }
 
 function cleanup_environment() {

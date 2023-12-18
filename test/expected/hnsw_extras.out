@@ -1,0 +1,67 @@
+------------------------------------------------------------------------------
+-- Test Functions exported from lantern_extras extension
+------------------------------------------------------------------------------
+\ir utils/sift1k_array.sql
+CREATE TABLE IF NOT EXISTS sift_base1k (
+    id SERIAL,
+    v REAL[]
+);
+COPY sift_base1k (v) FROM '/tmp/lantern/vector_datasets/sift_base1k_arrays.csv' WITH csv;
+\set ON_ERROR_STOP off
+CREATE EXTENSION lantern_extras;
+-- Validate error on invalid params
+SELECT lantern_create_external_index('v','sift_base1k', 'public', 'invalid_metric',  3, 10, 10, 10);
+ERROR:  Invalid metric invalid_metric
+SELECT lantern_create_external_index('v','sift_base1k', 'public', 'l2sq',  3, -1, 10, 10);
+ERROR:  m should be in range [2, 128]
+SELECT lantern_create_external_index('v','sift_base1k', 'public', 'l2sq',  3, 10, -2, 10);
+ERROR:  ef_construction should be in range [1, 400]
+SELECT lantern_create_external_index('v','sift_base1k', 'public', 'l2sq',  3, 10, 10, -1);
+ERROR:  ef should be in range [1, 400]
+\set ON_ERROR_STOP on
+-- Create with defaults
+SELECT lantern_create_external_index('v', 'sift_base1k');
+ lantern_create_external_index 
+-------------------------------
+ 
+(1 row)
+
+SELECT _lantern_internal.validate_index('sift_base1k_v_idx', false);
+INFO:  validate_index() start for sift_base1k_v_idx
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
+DROP INDEX sift_base1k_v_idx;
+-- Create with params
+SELECT lantern_create_external_index('v', 'sift_base1k', 'public', 'l2sq', 128, 10, 10, 10, 'hnsw_l2_index');
+ lantern_create_external_index 
+-------------------------------
+ 
+(1 row)
+
+SELECT _lantern_internal.validate_index('hnsw_l2_index', false);
+INFO:  validate_index() start for hnsw_l2_index
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
+-- Reindex external index
+SELECT lantern_reindex_external_index('hnsw_l2_index');
+ lantern_reindex_external_index 
+--------------------------------
+ 
+(1 row)
+
+SELECT _lantern_internal.validate_index('hnsw_l2_index', false);
+INFO:  validate_index() start for hnsw_l2_index
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+

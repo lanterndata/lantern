@@ -73,6 +73,7 @@ fi
 
 # Check if pgvector is available
 pgvector_installed=$($PSQL -U $DB_USER -p $DB_PORT -d postgres -c "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'" -tA | tail -n 1 | tr -d '\n')
+lantern_extras_installed=$($PSQL -U $DB_USER -p $DB_PORT -d postgres -c "SELECT 1 FROM pg_available_extensions WHERE name = 'lantern_extras'" -tA | tail -n 1 | tr -d '\n')
 
 # Settings
 REGRESSION=0
@@ -133,10 +134,14 @@ if [[ -n "$FILTER" || -n "$EXCLUDE" ]]; then
             fi
         fi
     else
+        NEWLINE=$'\n'
+        TEST_FILES=$(cat $SCHEDULE | grep '^test:' | tr " " "\n" | sed -e '/^$/d')
         if [[ "$pgvector_installed" == "1" ]]; then
-            TEST_FILES=$(cat $SCHEDULE | grep -E '^(test:|test_pgvector:)' | sed -e 's/^test_pgvector:/test:/' | tr " " "\n" | sed -e '/^$/d')
-        else
-            TEST_FILES=$(cat $SCHEDULE | grep '^test:' | tr " " "\n" | sed -e '/^$/d')
+            TEST_FILES="${TEST_FILES}${NEWLINE}$(cat $SCHEDULE | grep -E '^(test_pgvector:)' | sed -e 's/^test_pgvector:/test:/' | tr " " "\n" | sed -e '/^$/d')"
+        fi
+
+        if [[ "$lantern_extras_installed" ]]; then
+            TEST_FILES="${TEST_FILES}${NEWLINE}$(cat $SCHEDULE | grep -E '^(test_extras:)' | sed -e 's/^test_extras:/test:/' | tr " " "\n" | sed -e '/^$/d')"
         fi
     fi
 
@@ -169,6 +174,11 @@ else
             if [ "$pgvector_installed" == "1" ]; then
                 echo "test: $test_name" >> $TMP_OUTDIR/schedule.txt
             fi
+        elif [[ "$line" =~ ^test_extras: ]]; then
+            test_name=$(echo "$line" | sed -e 's/test_extras://')
+            if [ "$lantern_extras_installed" == "1" ]; then
+                echo "test: $test_name" >> $TMP_OUTDIR/schedule.txt
+            fi
         elif [[ "$line" =~ ^test_begin: ]]; then
             test_name=$(echo "$line" | sed -e 's/test_begin:/test:/')
             echo "$test_name" >> $TMP_OUTDIR/schedule.txt
@@ -180,7 +190,7 @@ else
         fi
     done < $SCHEDULE
 fi
-unset $SCHEDULE
+unset SCHEDULE
 SCHEDULE=$TMP_OUTDIR/schedule.txt
 
 function print_diff {
