@@ -133,8 +133,6 @@ bool VersionsMatch()
         query = "SELECT extversion FROM pg_extension WHERE extname = 'lantern'";
 
         // Execute the query to figure out what version of lantern is in use in SQL
-        // todo: it would be nice to get this without actually executing a query
-        // unfortunately the system catalog does not make this information accessible
         spi_result = SPI_execute(query, true, 0);
         if(spi_result != SPI_OK_SELECT) {
             elog(ERROR, "SPI_execute returned %s for %s", SPI_result_code_string(spi_result), query);

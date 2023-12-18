@@ -203,13 +203,10 @@ add_custom_command(
 
 add_custom_target(phony_always_runs ALL DEPENDS ${CMAKE_BINARY_DIR}/${_script_file})
 
-add_custom_target(
-    generate_version_header
-    COMMAND ${CMAKE_SOURCE_DIR}/scripts/version_header.sh ${LANTERNDB_VERSION} ${CMAKE_BINARY_DIR}
-    COMMENT "Generating binary version header"
-)
+set(VERSION_HEADER_TEMPLATE "${CMAKE_MODULE_PATH}/version.h.template")
+set(VERSION_HEADER_OUTPUT "${CMAKE_BINARY_DIR}/include/version.h")
+configure_file(${VERSION_HEADER_TEMPLATE} ${VERSION_HEADER_OUTPUT})
 
-add_dependencies(lantern generate_version_header)
 target_include_directories(lantern PUBLIC ${CMAKE_BINARY_DIR}/include)
 
 

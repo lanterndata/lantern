@@ -18,31 +18,19 @@ class Version:
             if v < other.version_numbers[i]:
                 return True
         return False
-    def __le__(self, other):
-        for i, v in enumerate(self.version_numbers):
-            if v > other.version_numbers[i]:
-                return False
-        return True
     def __eq__(self, other):
         for i, v in enumerate(self.version_numbers):
             if v != other.version_numbers[i]:
                 return False
         return True
+    def __le__(self, other):
+        return self < other or self == other
     def __ne__(self, other):
-        for i, v in enumerate(self.version_numbers):
-            if v != other.version_numbers[i]:
-                return True
-        return False
+        return not self == other
     def __gt__(self, other):
-        for i, v in enumerate(self.version_numbers):
-            if v > other.version_numbers[i]:
-                return True
-        return False
+        return not self == other and not self < other
     def __ge__(self, other):
-        for i, v in enumerate(self.version_numbers):
-            if v < other.version_numbers[i]:
-                return False
-        return True
+        return not self < other
 
 def shell(cmd, exit_on_error=True):
     res = subprocess.run(cmd, shell=True)
