@@ -2,6 +2,9 @@
 CREATE FUNCTION hnsw_handler(internal) RETURNS index_am_handler
 	AS 'MODULE_PATHNAME' LANGUAGE C;
 
+CREATE FUNCTION lantern_reindex_external_index(index regclass) RETURNS VOID
+	AS 'MODULE_PATHNAME', 'lantern_reindex_external_index' LANGUAGE C STABLE STRICT PARALLEL UNSAFE;
+
 -- functions
 CREATE FUNCTION ldb_generic_dist(real[], real[]) RETURNS real
 	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;

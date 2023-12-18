@@ -43,9 +43,10 @@ ORDER BY 1, 3, 2;
  schema1   | hamming_dist                           | schema1
  schema1   | hnsw_handler                           | schema1
  schema1   | l2sq_dist                              | schema1
+ schema1   | lantern_reindex_external_index         | schema1
  schema1   | ldb_generic_dist                       | schema1
  schema1   | ldb_generic_dist                       | schema1
-(11 rows)
+(12 rows)
 
 -- show all the extension operators
 SELECT ne.nspname AS extschema, op.oprname, np.nspname AS proschema

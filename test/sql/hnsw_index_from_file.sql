@@ -61,3 +61,6 @@ CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_ind
 SELECT _lantern_internal.validate_index('hnsw_l2_index', false);
 -- This should not throw error, but the first result will not be 0 as vector 777 is deleted from the table
 SELECT ROUND(l2sq_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <?> :'v777' LIMIT 10;
+
+-- Should throw error when lantern_extras is not installed
+SELECT lantern_reindex_external_index('hnsw_l2_index');
