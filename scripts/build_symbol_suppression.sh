@@ -15,7 +15,7 @@ SYMBOLS=$(echo "$EXPORTS" | sort -u | tr '\n' ';')
 
 # build version script 
 # this script will place everything except undefined symbols and 
-echo "LANTERN {
+echo "LANTERN_V1 {
 global: Pg_magic_func; pg_finfo*; $SYMBOLS
 local: *;
 };" > $2
