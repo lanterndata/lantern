@@ -163,7 +163,7 @@ bool VersionsMatch()
         if(comparison == 0) {
             versions_match = true;
         } else {
-            elog(WARNING, "Binary version = %s | SQL version = %s", LDB_BINARY_VERSION, version);
+            elog(ERROR, "Binary version = %s | SQL version = %s", LDB_BINARY_VERSION, version);
         }
         version_checked = true;
 
