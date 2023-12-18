@@ -9,6 +9,20 @@ pub enum UMetricKind {
 }
 
 impl UMetricKind {
+    pub fn from_ops(ops: &str) -> Result<UMetricKind, anyhow::Error> {
+        match ops {
+            "dist_l2sq_ops" => {
+                return Ok(UMetricKind::L2sq);
+            }
+            "dist_cos_ops" => {
+                return Ok(UMetricKind::Cos);
+            }
+            "dist_hamming_ops" => {
+                return Ok(UMetricKind::Hamming);
+            }
+            _ => anyhow::bail!("Invalid ops {ops}"),
+        }
+    }
     pub fn from(metric_kind: &str) -> Result<UMetricKind, anyhow::Error> {
         match metric_kind {
             "l2sq" => {
@@ -24,6 +38,19 @@ impl UMetricKind {
                 return Ok(UMetricKind::Hamming);
             }
             _ => anyhow::bail!("Invalid metric {metric_kind}"),
+        }
+    }
+    pub fn to_string(&self) -> String {
+        match self {
+            UMetricKind::L2sq => {
+                return "l2sq".to_owned();
+            }
+            UMetricKind::Cos => {
+                return "cos".to_owned();
+            }
+            UMetricKind::Hamming => {
+                return "hamming".to_owned();
+            }
         }
     }
     pub fn value(&self) -> MetricKind {
@@ -86,7 +113,7 @@ pub struct CreateIndexArgs {
     pub ef: usize,
 
     /// Dimensions of vector
-    #[arg(short)]
+    #[arg(short, default_value_t = 0)]
     pub dims: usize,
 
     /// Distance algorithm

@@ -1,10 +1,10 @@
 use lantern_utils::quote_ident;
-use postgres::{Client, Transaction};
+use postgres::Transaction;
 use postgres_types::Oid;
 use std::{cmp, io};
 
 pub struct LargeObject<'a> {
-    transaction: Option<Transaction<'a>>,
+    pub transaction: Option<Transaction<'a>>,
     fd: Option<i32>,
     pub oid: Option<Oid>,
     index_path: String,
@@ -41,8 +41,7 @@ impl<'a> LargeObject<'a> {
         dim: usize,
         m: usize,
     ) -> crate::AnyhowVoidResult {
-        let transaction = self.transaction;
-        let mut transaction = transaction.unwrap();
+        let mut transaction = self.transaction.unwrap();
         transaction.execute(
             "SELECT pg_catalog.lo_export($1, $2)",
             &[&self.oid.unwrap(), &self.index_path],
@@ -52,6 +51,7 @@ impl<'a> LargeObject<'a> {
 
         if let Some(name) = index_name {
             idx_name = quote_ident(name);
+            transaction.execute(&format!("DROP INDEX IF EXISTS {idx_name}"), &[])?;
         }
 
         transaction.execute(
@@ -59,16 +59,16 @@ impl<'a> LargeObject<'a> {
             &[],
         )?;
 
+        LargeObject::remove_from_remote_fs(&mut transaction, self.oid.unwrap(), &self.index_path)?;
         transaction.commit()?;
         Ok(())
     }
 
     pub fn remove_from_remote_fs(
-        client: &mut Client,
+        transaction: &mut Transaction<'a>,
         oid: Oid,
         path: &str,
     ) -> crate::AnyhowVoidResult {
-        let mut transaction = client.transaction()?;
         transaction.execute("SELECT pg_catalog.lo_unlink($1)", &[&oid])?;
         transaction.execute("DROP TABLE IF EXISTS _rm_lantern_index_output", &[])?;
         transaction.execute("CREATE TABLE _rm_lantern_index_output(out TEXT)", &[])?;
@@ -77,7 +77,6 @@ impl<'a> LargeObject<'a> {
             &[],
         )?;
         transaction.execute("DROP TABLE _rm_lantern_index_output", &[])?;
-        transaction.commit()?;
         Ok(())
     }
 }
