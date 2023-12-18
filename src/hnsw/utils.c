@@ -157,11 +157,11 @@ bool VersionsMatch()
         if(sizeof(LDB_BINARY_VERSION) >= (unsigned)version_length) {
             version_length = sizeof(LDB_BINARY_VERSION);
         }
+
         comparison = strncmp(version, LDB_BINARY_VERSION, version_length);
+
         if(comparison == 0) {
             versions_match = true;
-        } else {
-            elog(ERROR, "Binary version = %s | SQL version = %s", LDB_BINARY_VERSION, version);
         }
         version_checked = true;
 
