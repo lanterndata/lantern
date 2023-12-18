@@ -8,13 +8,18 @@
 #include <catalog/namespace.h>
 #include <catalog/pg_type.h>
 #include <executor/executor.h>
+#include <fmgr.h>
 #include <funcapi.h>
 #include <miscadmin.h>
 #include <nodes/execnodes.h>
+#include <stdint.h>
 #include <storage/bufmgr.h>
 #include <utils/array.h>
+#include <utils/builtins.h>
 #include <utils/lsyscache.h>
 #include <utils/memutils.h>
+
+#include "usearch.h"
 
 #ifdef _WIN32
 #define access _access
@@ -530,4 +535,76 @@ void ldb_ambuildunlogged(Relation index)
     LDB_UNUSED(index);
     // todo::
     elog(ERROR, "hnsw index on unlogged tables is currently not supported");
+}
+
+void ldb_reindex_external_index(Oid indrelid)
+{
+    BlockNumber          HEADER_BLOCK = 0;
+    Relation             index_rel;
+    Buffer               buf;
+    Page                 page;
+    char                *metric_kind;
+    char                *index_name;
+    HnswIndexHeaderPage *headerp;
+    FmgrInfo             reindex_finfo = {0};
+    char    *function_sig = "_lantern_reindex_external_index(text, text, integer, integer, integer, integer)";
+    Oid      function_oid;
+    uint32_t dim = 0;
+    uint32_t m = 0;
+    uint32_t ef_construction = 0;
+    uint32_t ef = 0;
+
+    PG_TRY();
+    {
+        function_oid = DatumGetObjectId(DirectFunctionCall1(regprocedurein, CStringGetDatum(function_sig)));
+    }
+    PG_CATCH();
+    {
+        elog(ERROR, "Please install 'lantern_extras' extension or update it to the latest version");
+    }
+    PG_END_TRY();
+
+    index_rel = relation_open(indrelid, AccessShareLock);
+    buf = ReadBuffer(index_rel, HEADER_BLOCK);
+    LockBuffer(buf, BUFFER_LOCK_SHARE);
+    page = BufferGetPage(buf);
+    headerp = (HnswIndexHeaderPage *)PageGetContents(page);
+
+    assert(headerp->magicNumber == LDB_WAL_MAGIC_NUMBER);
+
+    switch(headerp->metric_kind) {
+        case usearch_metric_l2sq_k:
+            metric_kind = "l2sq";
+            break;
+        case usearch_metric_cos_k:
+            metric_kind = "cos";
+            break;
+        case usearch_metric_hamming_k:
+            metric_kind = "hamming";
+            break;
+        default:
+            metric_kind = NULL;
+            ldb_invariant(true, "Unsupported metric kind");
+    }
+
+    index_name = pstrdup(RelationGetRelationName(index_rel));
+    dim = headerp->vector_dim;
+    m = headerp->m;
+    ef = headerp->ef;
+    ef_construction = headerp->ef_construction;
+
+    UnlockReleaseBuffer(buf);
+    relation_close(index_rel, AccessShareLock);
+
+    fmgr_info(function_oid, &reindex_finfo);
+
+    assert(reindex_finfo.fn_addr != NULL);
+
+    DirectFunctionCall6(reindex_finfo.fn_addr,
+                        CStringGetTextDatum(index_name),
+                        CStringGetTextDatum(metric_kind),
+                        Int32GetDatum(dim),
+                        Int32GetDatum(m),
+                        Int32GetDatum(ef_construction),
+                        Int32GetDatum(ef));
 }

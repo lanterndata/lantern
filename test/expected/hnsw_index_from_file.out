@@ -183,3 +183,6 @@ SELECT ROUND(l2sq_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <?> 
  132813.00
 (10 rows)
 
+-- Should throw error when lantern_extras is not installed
+SELECT lantern_reindex_external_index('hnsw_l2_index');
+ERROR:  Please install 'lantern_extras' extension or update it to the latest version
