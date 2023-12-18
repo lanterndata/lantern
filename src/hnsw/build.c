@@ -431,7 +431,12 @@ static void BuildIndex(
     buildstate->hnsw = NULL;
     if(buildstate->index_file_path) {
         if(access(buildstate->index_file_path, F_OK) != 0) {
-            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), errmsg("Invalid index file path ")));
+            ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("Invalid index file path. "
+                            "If this is REINDEX operation call `SELECT "
+                            "lantern_reindex_external_index('%s')` to recreate index",
+                            RelationGetRelationName(index))));
         }
         usearch_load(buildstate->usearch_index, buildstate->index_file_path, &error);
         if(error != NULL) {
