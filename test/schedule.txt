@@ -5,3 +5,4 @@
 
 test: hnsw_config hnsw_correct hnsw_create hnsw_create_expr hnsw_dist_func hnsw_insert hnsw_select hnsw_todo hnsw_index_from_file hnsw_cost_estimate ext_relocation hnsw_ef_search hnsw_failure_point hnsw_operators hnsw_blockmap_create
 test_pgvector: hnsw_vector
+test_extras: hnsw_extras
