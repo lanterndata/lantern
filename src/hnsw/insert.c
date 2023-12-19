@@ -70,8 +70,10 @@ bool ldb_aminsert(Relation         index,
     GenericXLogState      *state;
     uint32                 new_tuple_id;
     HnswIndexTuple        *new_tuple;
+    HnswColumnType         column_type;
     usearch_init_options_t opts = {0};
     LDB_UNUSED(heap);
+    LDB_UNUSED(indexInfo);
 #if PG_VERSION_NUM >= 140000
     LDB_UNUSED(indexUnchanged);
 #endif
@@ -103,8 +105,23 @@ bool ldb_aminsert(Relation         index,
     hdr = (HnswIndexHeaderPage *)PageGetContents(hdr_page);
     assert(hdr->magicNumber == LDB_WAL_MAGIC_NUMBER);
 
-    opts.dimensions = GetHnswIndexDimensions(index, indexInfo);
-    CheckHnswIndexDimensions(index, values[ 0 ], opts.dimensions);
+    datum = PointerGetDatum(PG_DETOAST_DATUM(values[ 0 ]));
+    column_type = GetIndexColumnType(index);
+
+    // Check if we created an index on an empty-table with no dimension specified
+    if(hdr->vector_dim == 0) {
+        opts.dimensions = DatumGetLength(datum, column_type);
+        if(opts.dimensions < 1)
+            elog(ERROR,
+                 "Failed to infer dimension of inserted vector upon first insert on an empty table with no index "
+                 "dimension specified.");
+        // update the index header (we mark hdr_buf dirty later)
+        hdr->vector_dim = opts.dimensions;
+    } else {
+        opts.dimensions = hdr->vector_dim;
+        CheckHnswIndexDimensions(index, values[ 0 ], opts.dimensions);
+    }
+
     PopulateUsearchOpts(index, &opts);
     opts.retriever_ctx = ldb_wal_retriever_area_init(index, hdr);
     opts.retriever = ldb_wal_index_node_retriever;
@@ -125,14 +142,13 @@ bool ldb_aminsert(Relation         index,
 
     insertstate->uidx = uidx;
     insertstate->retriever_ctx = opts.retriever_ctx;
-    insertstate->columnType = GetIndexColumnType(index);
+    insertstate->columnType = column_type;
 
     hdr_page = NULL;
 
     meta = usearch_metadata(uidx, &error);
     assert(!error);
 
-    datum = PointerGetDatum(PG_DETOAST_DATUM(values[ 0 ]));
     void *vector = DatumGetSizedArray(datum, insertstate->columnType, opts.dimensions);
 
 #if LANTERNDB_COPYNODES
