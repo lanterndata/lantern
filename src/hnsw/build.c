@@ -552,8 +552,6 @@ void ldb_reindex_external_index(Oid indrelid)
     Relation             index_rel;
     Buffer               buf;
     Page                 page;
-    HeapTuple            proc_tup;
-    Form_pg_proc         procform;
     Oid                  lantern_extras_schema_oid = InvalidOid;
     Oid                  function_oid;
     Oid                  function_argtypes_oid[ 6 ];
@@ -564,11 +562,12 @@ void ldb_reindex_external_index(Oid indrelid)
     uint32_t             m = 0;
     uint32_t             ef_construction = 0;
     uint32_t             ef = 0;
+    char *ext_not_found_err = "Please install 'lantern_extras' extension or update it to the latest version";
 
     lantern_extras_schema_oid = get_namespace_oid(lantern_extras_schema, true);
 
     if(!OidIsValid(lantern_extras_schema_oid)) {
-        elog(ERROR, "Schema %s not found", lantern_extras_schema);
+        elog(ERROR, "%s", ext_not_found_err);
     }
 
     // Check if _reindex_external_index function exists in lantern schema
@@ -579,20 +578,16 @@ void ldb_reindex_external_index(Oid indrelid)
     function_argtypes_oid[ 4 ] = INT4OID;
     function_argtypes_oid[ 5 ] = INT4OID;
     function_argtypes = buildoidvector(function_argtypes_oid, 6);
-    proc_tup = SearchSysCache3(PROCNAMEARGSNSP,
-                               PointerGetDatum("_reindex_external_index"),
-                               PointerGetDatum(function_argtypes),
-                               ObjectIdGetDatum(lantern_extras_schema_oid));
 
-    if(!HeapTupleIsValid(proc_tup)) {
-        ReleaseSysCache(proc_tup);
-        elog(ERROR, "Please install 'lantern_extras' extension or update it to the latest version");
+    function_oid = GetSysCacheOid3(PROCNAMEARGSNSP,
+                                   Anum_pg_proc_oid,
+                                   PointerGetDatum("_reindex_external_index"),
+                                   PointerGetDatum(function_argtypes),
+                                   ObjectIdGetDatum(lantern_extras_schema_oid));
+
+    if(!OidIsValid(function_oid)) {
+        elog(ERROR, "%s", ext_not_found_err);
     }
-
-    procform = (Form_pg_proc)GETSTRUCT(proc_tup);
-    function_oid = procform->oid;
-    ReleaseSysCache(proc_tup);
-
     // Get index params from index header page
     index_rel = relation_open(indrelid, AccessShareLock);
     buf = ReadBuffer(index_rel, HEADER_BLOCK);
