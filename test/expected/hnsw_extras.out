@@ -18,6 +18,10 @@ SELECT lantern_create_external_index('v','sift_base1k', 'public', 'l2sq',  3, 10
 ERROR:  ef_construction should be in range [1, 400]
 SELECT lantern_create_external_index('v','sift_base1k', 'public', 'l2sq',  3, 10, 10, -1);
 ERROR:  ef should be in range [1, 400]
+-- Validate error on empty table
+CREATE TABLE empty (v REAL[]);
+SELECT lantern_create_external_index('v', 'empty');
+ERROR:  Can not create external index on empty table
 \set ON_ERROR_STOP on
 -- Create with defaults
 SELECT lantern_create_external_index('v', 'sift_base1k');
