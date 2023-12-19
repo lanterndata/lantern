@@ -11,6 +11,10 @@ SELECT lantern_create_external_index('v','sift_base1k', 'public', 'invalid_metri
 SELECT lantern_create_external_index('v','sift_base1k', 'public', 'l2sq',  3, -1, 10, 10);
 SELECT lantern_create_external_index('v','sift_base1k', 'public', 'l2sq',  3, 10, -2, 10);
 SELECT lantern_create_external_index('v','sift_base1k', 'public', 'l2sq',  3, 10, 10, -1);
+
+-- Validate error on empty table
+CREATE TABLE empty (v REAL[]);
+SELECT lantern_create_external_index('v', 'empty');
 \set ON_ERROR_STOP on
 
 -- Create with defaults

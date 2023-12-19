@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <catalog/index.h>
 #include <catalog/namespace.h>
+#include <catalog/pg_proc.h>
 #include <catalog/pg_type.h>
 #include <executor/executor.h>
 #include <fmgr.h>
@@ -18,6 +19,7 @@
 #include <utils/builtins.h>
 #include <utils/lsyscache.h>
 #include <utils/memutils.h>
+#include <utils/syscache.h>
 
 #include "usearch.h"
 
@@ -544,31 +546,54 @@ void ldb_ambuildunlogged(Relation index)
 
 void ldb_reindex_external_index(Oid indrelid)
 {
+    HnswIndexHeaderPage *headerp;
+    FmgrInfo             reindex_finfo = {0};
     BlockNumber          HEADER_BLOCK = 0;
     Relation             index_rel;
     Buffer               buf;
     Page                 page;
+    HeapTuple            proc_tup;
+    Form_pg_proc         procform;
+    Oid                  lantern_extras_schema_oid = InvalidOid;
+    Oid                  function_oid;
+    Oid                  function_argtypes_oid[ 6 ];
+    oidvector           *function_argtypes;
     char                *metric_kind;
-    char                *index_name;
-    HnswIndexHeaderPage *headerp;
-    FmgrInfo             reindex_finfo = {0};
-    char    *function_sig = "_lantern_reindex_external_index(text, text, integer, integer, integer, integer)";
-    Oid      function_oid;
-    uint32_t dim = 0;
-    uint32_t m = 0;
-    uint32_t ef_construction = 0;
-    uint32_t ef = 0;
+    const char          *lantern_extras_schema = "lantern_extras";
+    uint32_t             dim = 0;
+    uint32_t             m = 0;
+    uint32_t             ef_construction = 0;
+    uint32_t             ef = 0;
 
-    PG_TRY();
-    {
-        function_oid = DatumGetObjectId(DirectFunctionCall1(regprocedurein, CStringGetDatum(function_sig)));
+    lantern_extras_schema_oid = get_namespace_oid(lantern_extras_schema, true);
+
+    if(!OidIsValid(lantern_extras_schema_oid)) {
+        elog(ERROR, "Schema %s not found", lantern_extras_schema);
     }
-    PG_CATCH();
-    {
+
+    // Check if _reindex_external_index function exists in lantern schema
+    function_argtypes_oid[ 0 ] = REGCLASSOID;
+    function_argtypes_oid[ 1 ] = TEXTOID;
+    function_argtypes_oid[ 2 ] = INT4OID;
+    function_argtypes_oid[ 3 ] = INT4OID;
+    function_argtypes_oid[ 4 ] = INT4OID;
+    function_argtypes_oid[ 5 ] = INT4OID;
+    function_argtypes = buildoidvector(function_argtypes_oid, 6);
+    proc_tup = SearchSysCache3(PROCNAMEARGSNSP,
+                               PointerGetDatum("_reindex_external_index"),
+                               function_argtypes,
+                               ObjectIdGetDatum(lantern_extras_schema_oid));
+
+    if(!HeapTupleIsValid(proc_tup)) {
+        ReleaseSysCache(proc_tup);
         elog(ERROR, "Please install 'lantern_extras' extension or update it to the latest version");
     }
-    PG_END_TRY();
 
+    procform = (Form_pg_proc)GETSTRUCT(proc_tup);
+    function_oid = procform->oid;
+    ReleaseSysCache(proc_tup);
+
+    // Get index params from index header page
     index_rel = relation_open(indrelid, AccessShareLock);
     buf = ReadBuffer(index_rel, HEADER_BLOCK);
     LockBuffer(buf, BUFFER_LOCK_SHARE);
@@ -577,6 +602,7 @@ void ldb_reindex_external_index(Oid indrelid)
 
     assert(headerp->magicNumber == LDB_WAL_MAGIC_NUMBER);
 
+    // Convert metric_kind enum to string representation
     switch(headerp->metric_kind) {
         case usearch_metric_l2sq_k:
             metric_kind = "l2sq";
@@ -592,7 +618,6 @@ void ldb_reindex_external_index(Oid indrelid)
             ldb_invariant(true, "Unsupported metric kind");
     }
 
-    index_name = pstrdup(RelationGetRelationName(index_rel));
     dim = headerp->vector_dim;
     m = headerp->m;
     ef = headerp->ef;
@@ -601,12 +626,18 @@ void ldb_reindex_external_index(Oid indrelid)
     UnlockReleaseBuffer(buf);
     relation_close(index_rel, AccessShareLock);
 
+    // We can not have external index without knowing dimensions
+    if(dim <= 0) {
+        elog(ERROR, "Column does not have dimensions: can not create external index on empty table");
+    }
+
+    // Get _reindex_external_index function info to do direct call into it
     fmgr_info(function_oid, &reindex_finfo);
 
     assert(reindex_finfo.fn_addr != NULL);
 
     DirectFunctionCall6(reindex_finfo.fn_addr,
-                        CStringGetTextDatum(index_name),
+                        ObjectIdGetDatum(indrelid),
                         CStringGetTextDatum(metric_kind),
                         Int32GetDatum(dim),
                         Int32GetDatum(m),
