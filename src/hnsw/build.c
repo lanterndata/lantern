@@ -581,7 +581,7 @@ void ldb_reindex_external_index(Oid indrelid)
     function_argtypes = buildoidvector(function_argtypes_oid, 6);
     proc_tup = SearchSysCache3(PROCNAMEARGSNSP,
                                PointerGetDatum("_reindex_external_index"),
-                               function_argtypes,
+                               PointerGetDatum(function_argtypes),
                                ObjectIdGetDatum(lantern_extras_schema_oid));
 
     if(!HeapTupleIsValid(proc_tup)) {
