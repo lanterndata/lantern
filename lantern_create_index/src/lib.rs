@@ -115,10 +115,13 @@ pub fn create_usearch_index(
         &[],
     )?;
 
-    let rows = transaction.query(&format!("SELECT COUNT(*) FROM {full_table_name};",), &[])?;
+    let rows = transaction.query(&format!("SELECT ARRAY_LENGTH({col}, 1) as dim FROM {full_table_name} WHERE {col} IS NOT NULL LIMIT 1",col=quote_ident(&args.column)), &[])?;
 
-    let row = transaction.query_one(&format!("SELECT ARRAY_LENGTH({col}, 1) as dim FROM {full_table_name} WHERE {col} IS NOT NULL LIMIT 1",col=quote_ident(&args.column)), &[])?;
+    if rows.len() == 0 {
+        anyhow::bail!("Cannot create an external index on empty table");
+    }
 
+    let row = rows.first().unwrap();
     let infered_dimensions = row.try_get::<usize, i32>(0)? as usize;
 
     if args.dims != 0 && infered_dimensions != args.dims {
@@ -145,6 +148,7 @@ pub fn create_usearch_index(
     };
     let index = new_index(&options)?;
 
+    let rows = transaction.query(&format!("SELECT COUNT(*) FROM {full_table_name};",), &[])?;
     let count: i64 = rows[0].get(0);
     // reserve enough memory on index
     index.reserve(count as usize)?;

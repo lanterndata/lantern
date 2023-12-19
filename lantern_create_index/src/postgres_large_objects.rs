@@ -70,13 +70,14 @@ impl<'a> LargeObject<'a> {
         path: &str,
     ) -> crate::AnyhowVoidResult {
         transaction.execute("SELECT pg_catalog.lo_unlink($1)", &[&oid])?;
-        transaction.execute("DROP TABLE IF EXISTS _rm_lantern_index_output", &[])?;
-        transaction.execute("CREATE TABLE _rm_lantern_index_output(out TEXT)", &[])?;
+        transaction.execute(
+            "CREATE TEMPORARY TABLE IF NOT EXISTS _rm_lantern_index_output(out TEXT)",
+            &[],
+        )?;
         transaction.execute(
             &format!("COPY _rm_lantern_index_output FROM PROGRAM 'rm -rf {path}'"),
             &[],
         )?;
-        transaction.execute("DROP TABLE _rm_lantern_index_output", &[])?;
         Ok(())
     }
 }

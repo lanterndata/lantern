@@ -95,59 +95,64 @@ fn lantern_create_external_index<'a>(
 
     Ok(())
 }
+#[pg_schema]
+mod lantern_extras {
+    use crate::lantern_create_external_index;
+    use pgrx::prelude::*;
+    use pgrx::{PgBuiltInOids, PgRelation, Spi};
 
-#[pg_extern(immutable, parallel_unsafe)]
-fn _lantern_reindex_external_index<'a>(
-    index_name: &'a str,
-    metric_kind: &'a str,
-    dim: i32,
-    m: i32,
-    ef_construction: i32,
-    ef: i32,
-) -> Result<(), anyhow::Error> {
-    let (schema, table, column) = Spi::connect(|client| {
-        let rows = client.select(
-            "
-                SELECT idxs.schemaname::text          AS schema_name,
-                       idx.indrelid::regclass::text   AS table_name,
+    #[pg_extern(immutable, parallel_unsafe)]
+    fn _reindex_external_index<'a>(
+        index: PgRelation,
+        metric_kind: &'a str,
+        dim: i32,
+        m: i32,
+        ef_construction: i32,
+        ef: i32,
+    ) -> Result<(), anyhow::Error> {
+        let index_name = index.name().to_owned();
+        let schema = index.namespace().to_owned();
+        let (table, column) = Spi::connect(|client| {
+            let rows = client.select(
+                "
+                SELECT idx.indrelid::regclass::text   AS table_name,
                        att.attname::text              AS column_name
                 FROM   pg_index AS idx
                        JOIN pg_attribute AS att
                          ON att.attrelid = idx.indrelid
                             AND att.attnum = ANY(idx.indkey)
-                       INNER JOIN pg_indexes AS idxs
-                               ON idxs.indexname = $1
-                WHERE  idx.indexrelid = idxs.indexname::regclass",
-            None,
-            Some(vec![(
-                PgBuiltInOids::TEXTOID.oid(),
-                index_name.into_datum(),
-            )]),
-        )?;
+                WHERE  idx.indexrelid = $1",
+                None,
+                Some(vec![(
+                    PgBuiltInOids::OIDOID.oid(),
+                    index.oid().into_datum(),
+                )]),
+            )?;
 
-        if rows.len() == 0 {
-            error!("Index {index_name} not found");
-        }
+            if rows.len() == 0 {
+                error!("Index with oid {:?} not found", index.oid());
+            }
 
-        let row = rows.first();
+            let row = rows.first();
 
-        let schema = row.get_by_name::<String, &str>("schema_name")?.unwrap();
-        let table = row.get_by_name::<String, &str>("table_name")?.unwrap();
-        let column = row.get_by_name::<String, &str>("column_name")?.unwrap();
-        Ok::<(String, String, String), anyhow::Error>((schema, table, column))
-    })?;
+            let table = row.get_by_name::<String, &str>("table_name")?.unwrap();
+            let column = row.get_by_name::<String, &str>("column_name")?.unwrap();
+            Ok::<(String, String), anyhow::Error>((table, column))
+        })?;
 
-    lantern_create_external_index(
-        &column,
-        &table,
-        &schema,
-        metric_kind,
-        dim,
-        m,
-        ef_construction,
-        ef,
-        index_name,
-    )
+        drop(index);
+        lantern_create_external_index(
+            &column,
+            &table,
+            &schema,
+            metric_kind,
+            dim,
+            m,
+            ef_construction,
+            ef,
+            &index_name,
+        )
+    }
 }
 
 #[pg_extern(immutable, parallel_safe)]
