@@ -552,7 +552,7 @@ void ldb_reindex_external_index(Oid indrelid)
     Relation             index_rel;
     Buffer               buf;
     Page                 page;
-    Oid                  lantern_extras_schema_oid = InvalidOid;
+    Oid                  lantern_extras_namespace_oid = InvalidOid;
     Oid                  function_oid;
     Oid                  function_argtypes_oid[ 6 ];
     oidvector           *function_argtypes;
@@ -564,9 +564,9 @@ void ldb_reindex_external_index(Oid indrelid)
     uint32_t             ef = 0;
     char *ext_not_found_err = "Please install 'lantern_extras' extension or update it to the latest version";
 
-    lantern_extras_schema_oid = get_namespace_oid(lantern_extras_schema, true);
+    lantern_extras_namespace_oid = get_namespace_oid(lantern_extras_schema, true);
 
-    if(!OidIsValid(lantern_extras_schema_oid)) {
+    if(!OidIsValid(lantern_extras_namespace_oid)) {
         elog(ERROR, "%s", ext_not_found_err);
     }
 
@@ -579,11 +579,14 @@ void ldb_reindex_external_index(Oid indrelid)
     function_argtypes_oid[ 5 ] = INT4OID;
     function_argtypes = buildoidvector(function_argtypes_oid, 6);
 
-    function_oid = GetSysCacheOid3(PROCNAMEARGSNSP,
-                                   Anum_pg_proc_oid,
-                                   PointerGetDatum("_reindex_external_index"),
-                                   PointerGetDatum(function_argtypes),
-                                   ObjectIdGetDatum(lantern_extras_schema_oid));
+    function_oid = GetSysCacheOid(PROCNAMEARGSNSP,
+#if PG_VERSION_NUM >= 120000
+                                  Anum_pg_proc_oid,
+#endif
+                                  CStringGetDatum("_reindex_external_index"),
+                                  PointerGetDatum(function_argtypes),
+                                  ObjectIdGetDatum(lantern_extras_namespace_oid),
+                                  0);
 
     if(!OidIsValid(function_oid)) {
         elog(ERROR, "%s", ext_not_found_err);
