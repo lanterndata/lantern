@@ -32,7 +32,7 @@ pub async fn toggle_client_job(
     job_insert_queue_tx: Option<Sender<JobInsertNotification>>,
     enable: bool,
 ) -> AnyhowVoidResult {
-    let logger = Arc::new(Logger::new(&format!("Job {job_id}"), log_level));
+    let logger = Arc::new(Logger::new(&format!("Embedding Job {job_id}"), log_level));
     let job_logger = logger.clone();
     if enable {
         let job_insert_queue_tx = job_insert_queue_tx.unwrap();

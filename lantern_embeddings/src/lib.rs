@@ -7,7 +7,7 @@ use std::hint;
 use std::io::Write;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{mpsc, Arc};
+use std::sync::{mpsc, Arc, RwLock};
 use std::thread::JoinHandle;
 use std::time::Instant;
 
@@ -155,6 +155,7 @@ fn embedding_worker(
     args: Arc<cli::EmbeddingArgs>,
     rx: Receiver<Vec<Row>>,
     tx: Sender<Vec<EmbeddingRecord>>,
+    is_canceled: Option<Arc<RwLock<bool>>>,
     logger: Arc<Logger>,
 ) -> Result<JoinHandle<AnyhowVoidResult>, anyhow::Error> {
     let handle = std::thread::spawn(move || {
@@ -164,6 +165,12 @@ fn embedding_worker(
         let mut start = Instant::now();
 
         while let Ok(rows) = rx.recv() {
+            if is_canceled.is_some() && *is_canceled.as_ref().unwrap().read().unwrap() {
+                // This variable will be changed from outside to gracefully
+                // exit job on next chunk
+                anyhow::bail!("Job canceled");
+            }
+
             if count == 0 {
                 // mark exact start time
                 start = Instant::now();
@@ -416,6 +423,7 @@ pub fn create_embeddings_from_db(
     args: cli::EmbeddingArgs,
     track_progress: bool,
     progress_cb: Option<ProgressCbFn>,
+    is_canceled: Option<Arc<RwLock<bool>>>,
     logger: Option<Logger>,
 ) -> AnyhowU64Result {
     let logger = Arc::new(logger.unwrap_or(Logger::new("Lantern Embeddings", LogLevel::Debug)));
@@ -462,7 +470,13 @@ pub fn create_embeddings_from_db(
     // Collect the thread handles in a vector to wait them
     let handles = vec![
         producer_handle,
-        embedding_worker(args.clone(), producer_rx, embedding_tx, logger.clone())?,
+        embedding_worker(
+            args.clone(),
+            producer_rx,
+            embedding_tx,
+            is_canceled,
+            logger.clone(),
+        )?,
     ];
 
     for handle in handles {

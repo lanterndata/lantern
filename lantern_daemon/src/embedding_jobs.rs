@@ -24,7 +24,7 @@ use crate::cli;
 use crate::client_embedding_jobs::toggle_client_job;
 use crate::helpers::{db_notification_listener, startup_hook};
 use crate::types::{
-    AnyhowVoidResult, EmbeddingJob, JobInsertNotification, JobUpdateNotification, VoidFuture,
+    AnyhowVoidResult, EmbeddingJob, JobInsertNotification, JobUpdateNotification, VoidFuture, EmbeddingJobTaskCancelTx, 
 };
 use futures::future;
 use itertools::Itertools;
@@ -38,14 +38,33 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::SystemTime;
 use tokio::fs;
-use tokio::sync::Mutex;
 use tokio::sync::{
+    Mutex,
     mpsc,
     mpsc::{Receiver, Sender},
+    RwLock
 };
 use tokio_postgres::{Client, NoTls};
 
 const EMB_LOCK_TABLE_NAME: &'static str = "_lantern_emb_job_locks";
+
+lazy_static! {
+    static ref JOBS: RwLock<HashMap<i32, EmbeddingJobTaskCancelTx>> = RwLock::new(HashMap::new());
+    static ref JOB_BATCHING_HASHMAP: Arc<Mutex<HashMap<i32, Vec<String>>>> =
+        Arc::new(Mutex::new(HashMap::new()));
+}
+
+async fn set_job_handle(job_id: i32, handle: EmbeddingJobTaskCancelTx) -> AnyhowVoidResult {
+    let mut jobs = JOBS.write().await;
+    jobs.insert(job_id, handle);
+    Ok(())
+}
+
+async fn remove_job_handle(job_id: i32) -> AnyhowVoidResult {
+    let mut jobs = JOBS.write().await;
+    jobs.remove(&job_id);
+    Ok(())
+}
 
 async fn lock_row(
     client: Arc<Client>,
@@ -115,29 +134,62 @@ async fn embedding_worker(
             };
 
             let task_logger = Logger::new(&format!("Embedding Job {}", job.id), logger.level.clone());
-            let result = lantern_embeddings::create_embeddings_from_db(EmbeddingArgs {
-                pk: String::from("id"),
-                model: job.model.clone(),
-                schema: job.schema.clone(),
-                uri: job.db_uri.clone(),
-                out_uri: Some(job.db_uri.clone()),
-                table: job.table.clone(),
-                out_table: Some(job.table.clone()),
-                column: job.column.clone(),
-                out_column: job.out_column.clone(),
-                batch_size: job.batch_size,
-                data_path: Some(data_path),
-                visual: false,
-                stream: true,
-                create_column: false,
-                out_csv: None,
-                filter: job.filter.clone(),
-                limit: None
-            }, progress_callback.is_some(), progress_callback, Some(task_logger));
+            let job_clone = job.clone();
+            
+            let (cancel_tx, mut cancel_rx) = mpsc::channel(1);
+            let cancel_tx_clone = cancel_tx.clone();
 
+            // We will spawn 2 tasks
+            // The first one will run embedding generation job and as soon as it finish
+            // It will send the result via job_tx channel
+            // The second task will listen to cancel_rx channel, so if someone send a message
+            // via cancel_tx channel it will change is_canceled to true
+            // And embedding job will be cancelled on next cycle
+            // We will keep the cancel_tx in static hashmap, so we can cancel the job if
+            // canceled_at will be changed to true
 
-            match result {
+            let task_handle = tokio::spawn(async move {
+                let is_canceled = Arc::new(std::sync::RwLock::new(false));
+                let is_canceled_clone = is_canceled.clone();
+                let embedding_task = tokio::spawn(async move {
+                    let result = lantern_embeddings::create_embeddings_from_db(EmbeddingArgs {
+                            pk: String::from("id"),
+                            model: job_clone.model.clone(),
+                            schema: job_clone.schema.clone(),
+                            uri: job_clone.db_uri.clone(),
+                            out_uri: Some(job_clone.db_uri.clone()),
+                            table: job_clone.table.clone(),
+                            out_table: Some(job_clone.table.clone()),
+                            column: job_clone.column.clone(),
+                            out_column: job_clone.out_column.clone(),
+                            batch_size: job_clone.batch_size,
+                            data_path: Some(data_path),
+                            visual: false,
+                            stream: true,
+                            create_column: false,
+                            out_csv: None,
+                            filter: job_clone.filter.clone(),
+                            limit: None
+                        }, progress_callback.is_some(), progress_callback, Some(is_canceled_clone), Some(task_logger));
+                    cancel_tx_clone.send(false).await?;
+                    result
+                });
+
+                while let Some(should_cancel) = cancel_rx.recv().await {
+                    if should_cancel {
+                        *is_canceled.write().unwrap() = true;
+                    }
+                    break;
+                }
+
+                embedding_task.await?
+            });
+
+            set_job_handle(job.id, cancel_tx).await?;
+      
+            match task_handle.await? {
                 Ok(processed_cnt) => {
+                    remove_job_handle(job.id).await?;
                     if job.is_init {
                         // mark success
                         client_ref.execute(&format!("UPDATE {jobs_table_name} SET init_finished_at=NOW(), updated_at=NOW() WHERE id=$1"), &[&job.id]).await?;
@@ -154,6 +206,7 @@ async fn embedding_worker(
                     }
                 },
                 Err(e) => {
+                    remove_job_handle(job.id).await?;
                     if job.is_init {
                         // update failure reason
                         client_ref.execute(&format!("UPDATE {jobs_table_name} SET init_failed_at=NOW(), updated_at=NOW(), init_failure_reason=$1 WHERE id=$2"), &[&e.to_string(), &job.id]).await?;
@@ -219,9 +272,6 @@ async fn job_insert_processor(
     // batch jobs for the rows. This will optimize embedding generation as if there will be lots of
     // inserts to the table between 10 seconds all that rows will be batched.
 
-    let job_batching_hashmap: Arc<Mutex<HashMap<i32, Vec<String>>>> =
-        Arc::new(Mutex::new(HashMap::new()));
-
     let full_table_name = Arc::new(get_full_table_name(&schema, &table));
     let job_query_sql = Arc::new(format!("SELECT id, db_connection as db_uri, src_column as \"column\", dst_column, \"table\", \"schema\", embedding_model as model FROM {0}", &full_table_name));
 
@@ -231,7 +281,7 @@ async fn job_insert_processor(
     let job_tx_r1 = job_tx.clone();
     let logger_r1 = logger.clone();
     let lock_table_name = Arc::new(get_full_table_name(&lock_table_schema, EMB_LOCK_TABLE_NAME));
-    let job_batching_hashmap_r1 = job_batching_hashmap.clone();
+    let job_batching_hashmap_r1 = JOB_BATCHING_HASHMAP.clone();
 
     let insert_processor_task = tokio::spawn(async move {
         while let Some(notification) = notifications_rx.recv().await {
@@ -314,6 +364,7 @@ async fn job_insert_processor(
         Ok(()) as AnyhowVoidResult
     });
 
+    let job_batching_hashmap = JOB_BATCHING_HASHMAP.clone();
     let batch_collector_task = tokio::spawn(async move {
         loop {
             let mut job_map = job_batching_hashmap.lock().await;
@@ -378,6 +429,20 @@ async fn job_update_processor(
 
             if init_finished_at.is_some() {
               toggle_client_job(id, row.get::<&str, String>("db_uri").to_owned(), row.get::<&str, String>("table").to_owned(), row.get::<&str, String>("schema").to_owned(), logger.level.clone(), Some(job_insert_queue_tx.clone()), canceled_at.is_none()).await?;
+            } else if canceled_at.is_some() {
+                // Cancel ongoing job
+                let jobs = JOBS.read().await;
+                let job = jobs.get(&id);
+
+                if let Some(tx) = job {
+                   tx.send(true).await?;
+                }
+                drop(jobs);
+
+                // Cancel collected jobs
+                let mut job_map = JOB_BATCHING_HASHMAP.lock().await;
+                job_map.remove(&id);
+                drop(job_map);
             }
 
             if canceled_at.is_none() && notification.generate_missing {

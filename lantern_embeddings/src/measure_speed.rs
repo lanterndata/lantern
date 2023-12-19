@@ -45,7 +45,7 @@ fn measure_model_speed(
             filter: None,
         };
         let start = Instant::now();
-        let processed = crate::create_embeddings_from_db(args, false, None, Some(logger))?;
+        let processed = crate::create_embeddings_from_db(args, false, None, None, Some(logger))?;
         let elapsed = start.elapsed();
 
         if i == 0 {
