@@ -2,6 +2,7 @@ use futures::stream::StreamExt;
 use image::imageops::FilterType;
 use image::io::Reader as ImageReader;
 use image::GenericImageView;
+use isahc::{prelude::*, HttpClient};
 use itertools::Itertools;
 use ndarray::{s, Array2, Array4, CowArray, Dim};
 use nvml_wrapper::Nvml;
@@ -34,6 +35,7 @@ pub struct EncoderOptions {
 }
 
 const DATA_PATH: &'static str = ".ldb_extras_data/";
+const MAX_IMAGE_SIZE: usize = 1024 * 1024 * 10; // 10 MB
 
 struct ModelInfo {
     url: String,
@@ -382,19 +384,21 @@ impl EncoderService {
 
 pub mod clip {
 
+    use isahc::config::RedirectPolicy;
     use std::{fs::create_dir_all, sync::Mutex, time::Duration};
     use url::Url;
 
     fn download_file(url: &str, path: &PathBuf) -> Result<(), anyhow::Error> {
-        let client = reqwest::blocking::Client::builder()
+        let client = HttpClient::builder()
             .timeout(Duration::from_secs(600))
+            .redirect_policy(RedirectPolicy::Limit(2))
             .build()?;
 
-        let response = client.get(url).send()?;
-        let mut content = Cursor::new(response.bytes()?);
+        let mut response = client.get(url)?;
+        // Copy the response body to the local file
         create_dir_all(path.parent().unwrap())?;
         let mut file = std::fs::File::create(path)?;
-        std::io::copy(&mut content, &mut file).expect("Failed writing response to file");
+        std::io::copy(response.body_mut(), &mut file).expect("Failed writing response to file");
         Ok(())
     }
 
@@ -564,7 +568,12 @@ pub mod clip {
 
     async fn get_image_buffer(path_or_url: &str) -> Result<Vec<u8>, anyhow::Error> {
         if let Ok(url) = Url::parse(path_or_url) {
-            let response = reqwest::get(url).await;
+            let client = HttpClient::builder()
+                .timeout(Duration::from_secs(3))
+                .redirect_policy(RedirectPolicy::Limit(2))
+                .build()?;
+
+            let response = client.get_async(&url.to_string()).await;
 
             if let Err(e) = response {
                 anyhow::bail!(
@@ -573,13 +582,25 @@ pub mod clip {
                     e
                 );
             }
-            return Ok(response.unwrap().bytes().await?.to_vec());
-        } else {
+
+            let response = response?.bytes().await?;
+
+            if response.len() > MAX_IMAGE_SIZE {
+                anyhow::bail!(
+                    "[X] Maximum supported image size is {}MB, downloaded file size is {}MB",
+                    MAX_IMAGE_SIZE / 1024 / 1024,
+                    response.len() / 1024 / 1024
+                );
+            }
+            return Ok(response.to_vec());
+        } else if Path::new(path_or_url).is_absolute() {
             let response = fs::read(path_or_url).await;
             if let Err(e) = response {
                 anyhow::bail!("[X] Error while reading file \"{}\" - {}", path_or_url, e);
             }
             return Ok(response.unwrap());
+        } else {
+            anyhow::bail!("[X] Expected URL or absolute path got: {path_or_url}");
         }
     }
 

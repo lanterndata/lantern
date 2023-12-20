@@ -9,7 +9,6 @@ crate-type = ["lib"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-reqwest = { version = "0.11", default-features = false, features = ["blocking"] }
 itertools = "0.11"
 ndarray = "0.15.0"
 url = "2.2"
@@ -23,3 +22,4 @@ tokio = { version = "1.33.0", features=["rt-multi-thread", "fs"]}
 futures = "0.3.28"
 sysinfo = "0.29.11"
 nvml-wrapper = "0.9.0"
+isahc = "1.7.2"
