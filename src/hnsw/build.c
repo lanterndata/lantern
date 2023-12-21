@@ -348,7 +348,7 @@ static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation i
     buildstate->index_file_path = ldb_HnswGetIndexFilePath(index);
 
     // If a dimension wasn't specified try to infer it
-    if(buildstate->dimensions < 1) {
+    if(heap != NULL && buildstate->dimensions < 1) {
         buildstate->dimensions = InferDimension(heap, indexInfo);
     }
     /* Require column to have dimensions to be indexed */
@@ -406,10 +406,9 @@ static void ScanTable(HnswBuildState *buildstate)
 }
 
 /*
- * Build the index
+ * Build the index, writing to the main fork
  */
-static void BuildIndex(
-    Relation heap, Relation index, IndexInfo *indexInfo, HnswBuildState *buildstate, ForkNumber forkNum)
+static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, HnswBuildState *buildstate)
 {
     usearch_error_t        error = NULL;
     usearch_init_options_t opts;
@@ -493,9 +492,41 @@ static void BuildIndex(
 
     //****************************** saving to WAL BEGIN ******************************//
     UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_LOAD);
-    StoreExternalIndex(index, buildstate->usearch_index, forkNum, result_buf, &opts, num_added_vectors);
+    StoreExternalIndex(index, buildstate->usearch_index, MAIN_FORKNUM, result_buf, &opts, num_added_vectors);
 
     //****************************** saving to WAL END ******************************//
+
+    usearch_free(buildstate->usearch_index, &error);
+    free(result_buf);
+    assert(error == NULL);
+    buildstate->usearch_index = NULL;
+
+    FreeBuildState(buildstate);
+}
+
+/*
+ * Build an empty index, writing to the init fork
+ */
+static void BuildEmptyIndex(Relation index, IndexInfo *indexInfo, HnswBuildState *buildstate)
+{
+    usearch_error_t        error = NULL;
+    usearch_init_options_t opts;
+    MemSet(&opts, 0, sizeof(opts));
+
+    InitBuildState(buildstate, NULL, index, indexInfo);
+    opts.dimensions = buildstate->dimensions;
+    PopulateUsearchOpts(index, &opts);
+
+    buildstate->usearch_index = usearch_init(&opts, &error);
+    assert(error == NULL);
+
+    buildstate->hnsw = NULL;
+
+    char *result_buf = NULL;
+    usearch_save(buildstate->usearch_index, NULL, &result_buf, &error);
+    assert(error == NULL && result_buf != NULL);
+
+    StoreExternalEmptyIndex(index, INIT_FORKNUM, result_buf, &opts);
 
     usearch_free(buildstate->usearch_index, &error);
     free(result_buf);
@@ -513,7 +544,7 @@ IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInf
     IndexBuildResult *result;
     HnswBuildState    buildstate;
 
-    BuildIndex(heap, index, indexInfo, &buildstate, MAIN_FORKNUM);
+    BuildIndex(heap, index, indexInfo, &buildstate);
 
     result = (IndexBuildResult *)palloc(sizeof(IndexBuildResult));
     result->heap_tuples = buildstate.reltuples;
@@ -523,11 +554,11 @@ IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInf
 }
 
 /*
- * Build the index for an unlogged table
+ * Build an empty index for an unlogged table
  */
 void ldb_ambuildunlogged(Relation index)
 {
-    LDB_UNUSED(index);
-    // todo::
-    elog(ERROR, "hnsw index on unlogged tables is currently not supported");
+    HnswBuildState buildstate;
+    IndexInfo     *indexInfo = BuildIndexInfo(index);
+    BuildEmptyIndex(index, indexInfo, &buildstate);
 }

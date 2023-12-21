@@ -119,11 +119,13 @@ static void UpdateHeaderBlockMapGroupDesc(
     hdr_copy->blockmap_groups[ groupno ] = *desc;
 
     log_rec_ptr = GenericXLogFinish(state);
-    assert(log_rec_ptr != InvalidXLogRecPtr);
-    if(flush_log) {
-        LDB_FAILURE_POINT_CRASH_IF_ENABLED("just_before_wal_flush");
-        XLogFlush(log_rec_ptr);
-        LDB_FAILURE_POINT_CRASH_IF_ENABLED("just_after_wal_flush");
+    if(RelationNeedsWAL(index)) {
+        assert(log_rec_ptr != InvalidXLogRecPtr);
+        if(flush_log) {
+            LDB_FAILURE_POINT_CRASH_IF_ENABLED("just_before_wal_flush");
+            XLogFlush(log_rec_ptr);
+            LDB_FAILURE_POINT_CRASH_IF_ENABLED("just_after_wal_flush");
+        }
     }
     ReleaseBuffer(hdr_buf);
 }
@@ -418,7 +420,9 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
         // When the blockmap page group was created, header block was updated accordingly in
         // ContinueBlockMapGroupInitialization call above.
         const BlockNumber blockmapno = blockmap_id + headerp->blockmap_groups[ blockmap_groupno ].first_block;
-        Buffer            buf = ReadBufferExtended(index, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
+        // todo:: should MAIN_FORKNUM be hardcoded here or use the forkNum parameter, from a code readability standpoint
+        // (other places in this file as well)
+        Buffer buf = ReadBufferExtended(index, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
         LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 
         GenericXLogState *state = GenericXLogStart(index);
@@ -432,6 +436,63 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
         GenericXLogFinish(state);
         UnlockReleaseBuffer(buf);
     }
+}
+
+void StoreExternalEmptyIndex(Relation index, ForkNumber forkNum, char *data, usearch_init_options_t *opts)
+{
+    // this method is intended to store empty indexes for unlogged tables (ambuildempty method) and should hence be
+    // called with forkNum = INIT_FORKNUM
+
+    Buffer header_buf = ReadBufferExtended(index, forkNum, P_NEW, RBM_NORMAL, NULL);
+
+    // even when we are creating a new page, it must always be the first page we create
+    // and should therefore have BlockNumber 0
+    assert(BufferGetBlockNumber(header_buf) == 0);
+
+    LockBuffer(header_buf, BUFFER_LOCK_EXCLUSIVE);
+
+    Page header_page = BufferGetPage(header_buf);
+
+    PageInit(header_page, BufferGetPageSize(header_buf), 0);
+
+    HnswIndexHeaderPage *headerp = (HnswIndexHeaderPage *)PageGetContents(header_page);
+
+    headerp->magicNumber = LDB_WAL_MAGIC_NUMBER;
+    headerp->version = LDB_WAL_VERSION_NUMBER;
+    headerp->vector_dim = opts->dimensions;
+    headerp->m = opts->connectivity;
+    headerp->ef_construction = opts->expansion_add;
+    headerp->ef = opts->expansion_search;
+    headerp->metric_kind = opts->metric_kind;
+
+    headerp->num_vectors = 0;
+    headerp->blockmap_groups_nr = 0;
+
+    for(uint32 i = 0; i < lengthof(headerp->blockmap_groups); ++i) {
+        headerp->blockmap_groups[ i ] = (HnswBlockMapGroupDesc){
+            .first_block = InvalidBlockNumber,
+            .blockmaps_initialized = 0,
+        };
+    }
+
+    headerp->last_data_block = InvalidBlockNumber;
+
+    memcpy(headerp->usearch_header, data, USEARCH_HEADER_SIZE);
+    ((PageHeader)header_page)->pd_lower = ((char *)headerp + sizeof(HnswIndexHeaderPage)) - (char *)header_page;
+
+    MarkBufferDirty(header_buf);
+
+    // write a WAL record containing a full image of the page
+    // even though this is an unlogged table that doesn't use WAL, this line appears to flush changes to disc
+    // immediately (and not waiting after the first checkpoint) this is important because this empty index will live in
+    // the init fork, where it will be used to reset the unlogged index after a crash, and so we need this written to
+    // disc in order to have proper crash recovery functionality available immediately. Otherwise, if a crash occurs
+    // before the first postgres checkpoint, postgres can't read the init fork from disc and we will have a corrupted
+    // index. This is also what nbtree access method's implementation does for empty unlogged indexes (ambuildempty
+    // implementation)
+    log_newpage_buffer(header_buf, true);
+
+    UnlockReleaseBuffer(header_buf);
 }
 
 void StoreExternalIndex(Relation                index,

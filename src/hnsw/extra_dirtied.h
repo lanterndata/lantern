@@ -33,6 +33,7 @@ void extra_dirtied_add_wal_read_buffer(
     ExtraDirtiedBufs* ed, Relation index, ForkNumber forkNum, BlockNumber blockno, Buffer* buf, Page* page);
 Page extra_dirtied_get(ExtraDirtiedBufs* ed, BlockNumber blockno, Buffer* out_buf);
 void extra_dirtied_release_all(ExtraDirtiedBufs* ed);
+void extra_dirtied_release_all_no_xlog_check(ExtraDirtiedBufs* ed);
 void extra_dirtied_free(ExtraDirtiedBufs* ed);
 
 #endif  // LDB_HNSW_EXTRA_DIRTIED_H
