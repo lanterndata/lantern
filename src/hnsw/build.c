@@ -496,8 +496,9 @@ static void BuildIndex(
     assert(error == NULL);
 
     if(buildstate->index_file_path == NULL) {
-        index_file_path = palloc0(sizeof("/tmp/ldb-index-.bin") + sizeof(index->rd_rel->relname.data) + 1);
-        sprintf(index_file_path, "/tmp/ldb-index-%s.bin", index->rd_rel->relname.data);
+        // size of static name + max digits of uint32 (Oid) + 1 for nullbyte
+        index_file_path = palloc0(sizeof("/tmp/ldb-index-.bin") + 10 + 1);
+        sprintf(index_file_path, "/tmp/ldb-index-%d.bin", index->rd_rel->relfilenode);
         usearch_save(buildstate->usearch_index, index_file_path, NULL, &error);
         assert(error == NULL);
     } else {
