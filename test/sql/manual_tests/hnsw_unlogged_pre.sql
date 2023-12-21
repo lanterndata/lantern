@@ -77,29 +77,14 @@ SELECT _lantern_internal.validate_index('unlogged_world1_hnsw_idx', true);
 SELECT _lantern_internal.validate_index('unlogged_world3_hnsw_idx', true);
 SELECT _lantern_internal.validate_index('unlogged_world4_hnsw_idx', true);
 
--- CRASH...
-
--- select 1+1;
--- Ctrl + C
--- exit
--- psq -U postgres
--- (actually restart)
--- psq -U postgres
--- \c lantern_unlogged_crash_test
--- select * from small_world4;
--- set enable_seqscan = true;
--- set enable_indexscan = false;
--- select * from small_world4;
--- SELECT _lantern_internal.validate_index('small_world4_hnsw_idx', true);
-
-
-
 
 -- Now, we crash the database (todo:: find a way to do this programatically from within this .sql file?)
--- kill -9 (pid of master pg process)
--- (you can find the pid of the master pg process by running `ps aux | grep postgres` and looking whatever executes the `main` executable inside the postgres directory)
+-- We can do this in one of two ways. Either:
+-- 1. Find pid of master pg process using `ps aux | grep postgres` and then kill it with `kill -9`
+-- OR
+-- 2. `pg_ctl stop -D {PGDATA DIRECTORY} -m immediate`
 
 -- After crashing, restart it with:
 -- sudo systemctl restart postgresql
 
--- Then, let's verify the following: 
+-- Then, run `hnsw_unlogged_post.sql` 
