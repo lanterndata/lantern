@@ -419,7 +419,7 @@ static void BuildIndex(
     struct stat            index_file_stat;
     char                  *result_buf = NULL;
     char                  *index_file_path = NULL;
-    File                   index_file_fd;
+    int                    index_file_fd;
     usearch_metadata_t     metadata;
     size_t                 num_added_vectors;
 
