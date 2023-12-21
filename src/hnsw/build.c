@@ -12,6 +12,9 @@
 #include <miscadmin.h>
 #include <nodes/execnodes.h>
 #include <storage/bufmgr.h>
+#include <sys/fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 #include <utils/array.h>
 #include <utils/lsyscache.h>
 #include <utils/memutils.h>
@@ -413,6 +416,13 @@ static void BuildIndex(
 {
     usearch_error_t        error = NULL;
     usearch_init_options_t opts;
+    struct stat            index_file_stat;
+    char                  *result_buf = NULL;
+    char                  *index_file_path = NULL;
+    File                   index_file_fd;
+    usearch_metadata_t     metadata;
+    size_t                 num_added_vectors;
+
     MemSet(&opts, 0, sizeof(opts));
 
     InitBuildState(buildstate, heap, index, indexInfo);
@@ -434,7 +444,7 @@ static void BuildIndex(
         }
         elog(INFO, "done loading usearch index");
 
-        usearch_metadata_t metadata = usearch_metadata(buildstate->usearch_index, &error);
+        metadata = usearch_metadata(buildstate->usearch_index, &error);
         assert(error == NULL);
         opts.connectivity = metadata.connectivity;
         opts.dimensions = metadata.dimensions;
@@ -482,25 +492,49 @@ static void BuildIndex(
         assert(error == NULL);
     }
 
-    char *result_buf = NULL;
-    usearch_save(buildstate->usearch_index, NULL, &result_buf, &error);
-    assert(error == NULL && result_buf != NULL);
-
-    size_t num_added_vectors = usearch_size(buildstate->usearch_index, &error);
+    metadata = usearch_metadata(buildstate->usearch_index, &error);
     assert(error == NULL);
 
+    if(buildstate->index_file_path == NULL) {
+        index_file_path = palloc0(sizeof("/tmp/ldb-index-.bin") + sizeof(index->rd_rel->relname.data) + 1);
+        sprintf(index_file_path, "/tmp/ldb-index-%s.bin", index->rd_rel->relname.data);
+        usearch_save(buildstate->usearch_index, index_file_path, NULL, &error);
+        assert(error == NULL);
+    } else {
+        index_file_path = buildstate->index_file_path;
+    }
+
+    num_added_vectors = usearch_size(buildstate->usearch_index, &error);
+    assert(error == NULL);
     elog(INFO, "done saving %ld vectors", num_added_vectors);
+
+    //****************************** mmap index to memory BEGIN ******************************//
+    index_file_fd = open(index_file_path, O_RDONLY);
+    assert(index_file_fd > 0);
+
+    fstat(index_file_fd, &index_file_stat);
+    result_buf = mmap(NULL, index_file_stat.st_size, PROT_READ, MAP_PRIVATE, index_file_fd, 0);
+    assert(result_buf != MAP_FAILED);
+
+    usearch_free(buildstate->usearch_index, &error);
+    assert(error == NULL);
+    buildstate->usearch_index = NULL;
+    //****************************** mmap index to memory END ******************************//
 
     //****************************** saving to WAL BEGIN ******************************//
     UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_LOAD);
-    StoreExternalIndex(index, buildstate->usearch_index, forkNum, result_buf, &opts, num_added_vectors);
+    StoreExternalIndex(index, &metadata, forkNum, result_buf, &opts, num_added_vectors);
 
     //****************************** saving to WAL END ******************************//
 
-    usearch_free(buildstate->usearch_index, &error);
-    free(result_buf);
-    assert(error == NULL);
-    buildstate->usearch_index = NULL;
+    munmap(result_buf, index_file_stat.st_size);
+    close(index_file_fd);
+
+    if(buildstate->index_file_path == NULL) {
+        // remove index file if it was not externally provided
+        unlink(index_file_path);
+        pfree(index_file_path);
+    }
 
     FreeBuildState(buildstate);
 }
