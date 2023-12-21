@@ -227,9 +227,12 @@ pub fn create_usearch_index(
     index_arc.save(&args.out)?;
     logger.info(&format!("Index saved under {}", &args.out));
 
+    drop(index_arc);
+    drop(portal);
+    drop(rx_arc);
+
     if args.import {
-        // Close portal, so we will be able to create index
-        transaction.execute("CLOSE ALL", &[])?;
+        logger.info("Copying index file into database server...");
         let mut rng = rand::thread_rng();
         let index_path = format!("/tmp/index-{}.usearch", rng.gen_range(0..1000));
         let mut large_object = LargeObject::new(transaction, &index_path);
@@ -237,6 +240,8 @@ pub fn create_usearch_index(
         let mut reader = fs::File::open(Path::new(&args.out))?;
         io::copy(&mut reader, &mut large_object)?;
         fs::remove_file(Path::new(&args.out))?;
+        drop(reader);
+        logger.info("Creating index from file...");
         large_object.finish(
             &get_full_table_name(&args.schema, &args.table),
             &quote_ident(&args.column),

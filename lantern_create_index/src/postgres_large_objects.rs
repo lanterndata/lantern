@@ -46,6 +46,7 @@ impl<'a> LargeObject<'a> {
             "SELECT pg_catalog.lo_export($1, $2)",
             &[&self.oid.unwrap(), &self.index_path],
         )?;
+        transaction.execute("SELECT pg_catalog.lo_unlink($1)", &[&self.oid.unwrap()])?;
 
         let mut idx_name = "".to_owned();
 
@@ -59,25 +60,14 @@ impl<'a> LargeObject<'a> {
             &[],
         )?;
 
-        LargeObject::remove_from_remote_fs(&mut transaction, self.oid.unwrap(), &self.index_path)?;
-        transaction.commit()?;
-        Ok(())
-    }
+        transaction.batch_execute(&format!(
+            "
+                CREATE TEMPORARY TABLE _rm_lantern_index_output(output TEXT);
+                COPY _rm_lantern_index_output FROM PROGRAM 'rm -rf {path}'",
+            path = &self.index_path
+        ))?;
 
-    pub fn remove_from_remote_fs(
-        transaction: &mut Transaction<'a>,
-        oid: Oid,
-        path: &str,
-    ) -> crate::AnyhowVoidResult {
-        transaction.execute("SELECT pg_catalog.lo_unlink($1)", &[&oid])?;
-        transaction.execute(
-            "CREATE TEMPORARY TABLE IF NOT EXISTS _rm_lantern_index_output(out TEXT)",
-            &[],
-        )?;
-        transaction.execute(
-            &format!("COPY _rm_lantern_index_output FROM PROGRAM 'rm -rf {path}'"),
-            &[],
-        )?;
+        transaction.commit()?;
         Ok(())
     }
 }

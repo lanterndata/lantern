@@ -13,7 +13,7 @@ type AnyhowVoidResult = Result<(), anyhow::Error>;
 type GroundTruth = Vec<(Vec<f32>, Vec<String>)>;
 pub type ProgressCbFn = Box<dyn Fn(u8) + Send + Sync>;
 
-static INTERNAL_SCHEMA_NAME: &'static str = "lantern";
+static INTERNAL_SCHEMA_NAME: &'static str = "lantern_cli";
 static CONNECTION_PARAMS: &'static str = "connect_timeout=10";
 
 #[derive(Debug)]
@@ -43,6 +43,7 @@ fn create_test_table(
     client: &mut Client,
     tmp_table_name: &str,
     src_table_name: &str,
+    pk: &str,
     column_name: &str,
     test_data_size: usize,
 ) -> Result<usize, anyhow::Error> {
@@ -50,14 +51,13 @@ fn create_test_table(
         "
       CREATE SCHEMA IF NOT EXISTS {INTERNAL_SCHEMA_NAME};
       DROP TABLE IF EXISTS {tmp_table_name};
-      SELECT * INTO {tmp_table_name} FROM {src_table_name} LIMIT {test_data_size};
-    "
+      SELECT {pk} as id, {column_name} as v INTO {tmp_table_name} FROM {src_table_name} LIMIT {test_data_size};
+    ",
+    column_name = quote_ident(column_name),
+    pk = quote_ident(pk)
     ))?;
     let dims = client.query_one(
-        &format!(
-            "SELECT ARRAY_LENGTH({column_name}, 1) FROM {tmp_table_name} LIMIT 1",
-            column_name = quote_ident(column_name)
-        ),
+        &format!("SELECT ARRAY_LENGTH(v, 1) FROM {tmp_table_name} WHERE v IS NOT NULL LIMIT 1",),
         &[],
     )?;
     let dims: i32 = dims.get(0);
@@ -202,8 +202,6 @@ fn find_best_variant(autotune_results: &Vec<AutotuneResult>, target_recall: f64)
 
 fn calculate_ground_truth(
     client: &mut Client,
-    pk: &str,
-    emb_col: &str,
     tmp_table_name: &str,
     truth_table_name: &str,
     distance_function: &str,
@@ -212,18 +210,13 @@ fn calculate_ground_truth(
     client.batch_execute(&format!(
         "
          DROP TABLE IF EXISTS {truth_table_name};
-         SELECT tmp.{pk} as id, tmp.{emb_col}::real[] as v, ARRAY(SELECT {pk}::text FROM {tmp_table_name} tmp2 ORDER BY {distance_function}(tmp.{emb_col}, tmp2.{emb_col}) LIMIT {k}) as neighbors
+         SELECT tmp.id, tmp.v::real[] as v, ARRAY(SELECT id::text FROM {tmp_table_name} tmp2 ORDER BY {distance_function}(tmp.v, tmp2.v) LIMIT {k}) as neighbors
          INTO {truth_table_name}
          FROM {tmp_table_name} tmp
-         WHERE {pk} IN (SELECT {pk} FROM {tmp_table_name} ORDER BY RANDOM() LIMIT 10)",
-        pk = quote_ident(pk),
-        emb_col = quote_ident(emb_col),
+         WHERE id IN (SELECT id FROM {tmp_table_name} ORDER BY RANDOM() LIMIT 10)",
     ))?;
     let ground_truth = client.query(
-        &format!(
-            "SELECT {emb_col}, neighbors FROM {truth_table_name}",
-            emb_col = quote_ident(emb_col)
-        ),
+        &format!("SELECT v, neighbors FROM {truth_table_name}",),
         &[],
     )?;
 
@@ -322,6 +315,7 @@ pub fn autotune_index(
         &mut client,
         &tmp_table_full_name,
         &src_table_name,
+        &args.pk,
         &args.column,
         args.test_data_size,
     )?;
@@ -331,8 +325,6 @@ pub fn autotune_index(
     // This table will be used to calculate recall for index variant
     let ground_truth = calculate_ground_truth(
         &mut client,
-        &args.pk,
-        &args.column,
         &tmp_table_full_name,
         &truth_table_name,
         &args.metric_kind.sql_function(),
@@ -444,7 +436,7 @@ pub fn autotune_index(
                     ef: variant.ef,
                     m: variant.m,
                     uri: uri.clone(),
-                    column: args.column.clone(),
+                    column: "v".to_owned(),
                     dims: column_dims as usize,
                     index_name: Some(index_name.clone()),
                 },
