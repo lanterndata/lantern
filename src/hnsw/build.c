@@ -418,10 +418,13 @@ static void BuildIndex(
     usearch_init_options_t opts;
     struct stat            index_file_stat;
     char                  *result_buf = NULL;
-    char                  *index_file_path = NULL;
-    int                    index_file_fd;
-    usearch_metadata_t     metadata;
-    size_t                 num_added_vectors;
+    char                  *tmp_index_file_path = NULL;
+    const char            *tmp_index_file_fmt_str = "/tmp/ldb-index-%d.bin";
+    // size of static name + max digits of uint32 (Oid) 10 + 1 for nullbyte and - 2 for %d format specifier
+    const uint32       tmp_index_file_char_cnt = strlen(tmp_index_file_fmt_str) + 9;
+    int                index_file_fd;
+    usearch_metadata_t metadata;
+    size_t             num_added_vectors;
 
     MemSet(&opts, 0, sizeof(opts));
 
@@ -496,45 +499,46 @@ static void BuildIndex(
     assert(error == NULL);
 
     if(buildstate->index_file_path == NULL) {
-        // size of static name + max digits of uint32 (Oid) + 1 for nullbyte
-        index_file_path = palloc0(sizeof("/tmp/ldb-index-.bin") + 10 + 1);
-        sprintf(index_file_path, "/tmp/ldb-index-%d.bin", index->rd_rel->relfilenode);
-        usearch_save(buildstate->usearch_index, index_file_path, NULL, &error);
+        // Save index into temporary file
+        // To later mmap it into memory
+        // Filename is /tmp/ldb-index-$relfilenode.bin
+        // The file will be removed in the end
+        tmp_index_file_path = palloc0(tmp_index_file_char_cnt);
+        sprintf(tmp_index_file_path, tmp_index_file_fmt_str, index->rd_rel->relfilenode);
+        usearch_save(buildstate->usearch_index, tmp_index_file_path, NULL, &error);
         assert(error == NULL);
+        index_file_fd = open(tmp_index_file_path, O_RDONLY);
     } else {
-        index_file_path = buildstate->index_file_path;
+        index_file_fd = open(buildstate->index_file_path, O_RDONLY);
     }
+    assert(index_file_fd > 0);
 
     num_added_vectors = usearch_size(buildstate->usearch_index, &error);
     assert(error == NULL);
     elog(INFO, "done saving %ld vectors", num_added_vectors);
 
     //****************************** mmap index to memory BEGIN ******************************//
-    index_file_fd = open(index_file_path, O_RDONLY);
-    assert(index_file_fd > 0);
+    usearch_free(buildstate->usearch_index, &error);
+    assert(error == NULL);
+    buildstate->usearch_index = NULL;
 
     fstat(index_file_fd, &index_file_stat);
     result_buf = mmap(NULL, index_file_stat.st_size, PROT_READ, MAP_PRIVATE, index_file_fd, 0);
     assert(result_buf != MAP_FAILED);
-
-    usearch_free(buildstate->usearch_index, &error);
-    assert(error == NULL);
-    buildstate->usearch_index = NULL;
     //****************************** mmap index to memory END ******************************//
 
     //****************************** saving to WAL BEGIN ******************************//
     UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_LOAD);
     StoreExternalIndex(index, &metadata, forkNum, result_buf, &opts, num_added_vectors);
-
     //****************************** saving to WAL END ******************************//
 
-    munmap(result_buf, index_file_stat.st_size);
+    assert(munmap(result_buf, index_file_stat.st_size) == 0);
     close(index_file_fd);
 
-    if(buildstate->index_file_path == NULL) {
+    if(tmp_index_file_path) {
         // remove index file if it was not externally provided
-        unlink(index_file_path);
-        pfree(index_file_path);
+        unlink(tmp_index_file_path);
+        pfree(tmp_index_file_path);
     }
 
     FreeBuildState(buildstate);
