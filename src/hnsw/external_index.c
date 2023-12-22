@@ -451,6 +451,8 @@ void StoreExternalEmptyIndex(Relation index, ForkNumber forkNum, char *data, use
 
     LockBuffer(header_buf, BUFFER_LOCK_EXCLUSIVE);
 
+    START_CRIT_SECTION();
+
     Page header_page = BufferGetPage(header_buf);
 
     PageInit(header_page, BufferGetPageSize(header_buf), 0);
@@ -482,15 +484,18 @@ void StoreExternalEmptyIndex(Relation index, ForkNumber forkNum, char *data, use
 
     MarkBufferDirty(header_buf);
 
-    // write a WAL record containing a full image of the page
-    // even though this is an unlogged table that doesn't use WAL, this line appears to flush changes to disc
-    // immediately (and not waiting after the first checkpoint) this is important because this empty index will live in
-    // the init fork, where it will be used to reset the unlogged index after a crash, and so we need this written to
-    // disc in order to have proper crash recovery functionality available immediately. Otherwise, if a crash occurs
-    // before the first postgres checkpoint, postgres can't read the init fork from disc and we will have a corrupted
-    // index. This is also what nbtree access method's implementation does for empty unlogged indexes (ambuildempty
-    // implementation)
-    log_newpage_buffer(header_buf, true);
+    // Write a WAL record containing a full image of the page. Even though this is an unlogged table that doesn't use
+    // WAL, this line appears to flush changes to disc immediately (and not waiting after the first checkpoint). This is
+    // important because this empty index will live in the init fork, where it will be used to reset the unlogged index
+    // after a crash, and so we need this written to disc in order to have proper crash recovery functionality available
+    // immediately. Otherwise, if a crash occurs before the first postgres checkpoint, postgres can't read the init fork
+    // from disc and we will have a corrupted index when postgres attempts recovery. This is also what nbtree access
+    // method's implementation does for empty unlogged indexes (ambuildempty implementation).
+    // NOTE: we MUST have this be inside a crit section, or else an assertion inside this method will fail and crash the
+    // db
+    log_newpage_buffer(header_buf, false);
+
+    END_CRIT_SECTION();
 
     UnlockReleaseBuffer(header_buf);
 }
