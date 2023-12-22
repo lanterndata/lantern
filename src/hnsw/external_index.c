@@ -8,6 +8,7 @@
 #include <assert.h>
 #include <common/relpath.h>
 #include <hnsw/fa_cache.h>
+#include <miscadmin.h>       // START_CRIT_SECTION, END_CRIT_SECTION
 #include <pg_config.h>       // BLCKSZ
 #include <storage/bufmgr.h>  // Buffer
 #include <utils/hsearch.h>
