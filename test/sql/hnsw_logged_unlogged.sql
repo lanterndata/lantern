@@ -8,16 +8,16 @@ CREATE TABLE small_world (
     vector real[]
 );
 
--- Insert
+-- Insert (we insert data such that each vector has a unique distance from (0,0,0)
 INSERT INTO small_world (id, vector) VALUES
 ('000', '{1,0,0,0}'),
 ('001', '{1,0,0,1}'),
-('010', '{1,0,1,0}'),
-('011', '{1,0,1,1}'),
-('100', '{1,1,0,0}'),
-('101', '{1,1,0,1}'),
-('110', '{1,1,1,0}'),
-('111', '{1,1,1,1}');
+('010', '{1,1,1,0}'),
+('011', '{1,1,1,1}'),
+('100', '{2,1,0,0}'),
+('101', '{1,2,0,1}'),
+('110', '{1,2,1,1}'),
+('111', '{2,2,2,0}');
 
 
 -- Create an index
@@ -28,7 +28,7 @@ SELECT _lantern_internal.validate_index('small_world_idx', false);
 
 -- Query
 SET enable_seqscan = false;
-SELECT * FROM small_world ORDER BY vector <-> ARRAY[0, 0, 0, 0] LIMIT 10; 
+SELECT id, l2sq_dist(vector, '{0, 0, 0, 0}'), vector  FROM small_world ORDER BY vector <-> ARRAY[0, 0, 0, 0] LIMIT 10; 
 
 
 -- Switch table to be unlogged
@@ -42,10 +42,10 @@ SELECT _lantern_internal.validate_index('small_world_idx', false);
 SELECT _lantern_internal.validate_index('small_world_idx2', false);
 
 -- Insert
-INSERT INTO small_world (id, vector) VALUES ('002', '{0,1,1,1}');
+INSERT INTO small_world (id, vector) VALUES ('002', '{0,3,1,1}');
 
 -- Query
-SELECT * FROM small_world ORDER BY vector <-> ARRAY[0, 0, 0, 0] LIMIT 10; 
+SELECT id, l2sq_dist(vector, '{0, 0, 0, 0}'), vector  FROM small_world ORDER BY vector <-> ARRAY[0, 0, 0, 0] LIMIT 10; 
 
 
 -- Switch table to be logged again
@@ -60,10 +60,10 @@ SELECT _lantern_internal.validate_index('small_world_idx2', false);
 SELECT _lantern_internal.validate_index('small_world_idx3', false);
 
 -- Insert
-INSERT INTO small_world (id, vector) VALUES ('020', '{0,0,2,0}');
+INSERT INTO small_world (id, vector) VALUES ('020', '{0,0,4,0}');
 
 -- Query
-SELECT * FROM small_world ORDER BY vector <-> ARRAY[0, 0, 0, 0] LIMIT 10; 
+SELECT id, l2sq_dist(vector, '{0, 0, 0, 0}'), vector  FROM small_world ORDER BY vector <-> ARRAY[0, 0, 0, 0] LIMIT 10; 
 
 
 -- --------------------------
@@ -96,7 +96,7 @@ SELECT _lantern_internal.validate_index('small_world_idx', false);
 
 -- Query
 SET enable_seqscan = false;
-SELECT * FROM small_world ORDER BY vector <-> ARRAY[0, 0, 0, 0] LIMIT 10; 
+SELECT id, l2sq_dist(vector, '{0, 0, 0, 0}'), vector FROM small_world ORDER BY vector <-> ARRAY[0, 0, 0, 0] LIMIT 10; 
 
 
 -- Switch table to be logged
@@ -113,7 +113,8 @@ SELECT _lantern_internal.validate_index('small_world_idx2', false);
 INSERT INTO small_world (id, vector) VALUES ('002', '{0,3,1,1}');
 
 -- Query
-SELECT * FROM small_world ORDER BY vector <-> ARRAY[0, 0, 0, 0] LIMIT 10; 
+SELECT id, l2sq_dist(vector, '{0, 0, 0, 0}'), vector FROM small_world ORDER BY vector <-> ARRAY[0, 0, 0, 0] LIMIT 10; 
+
 
 
 -- Switch table to be unlogged again
@@ -131,6 +132,7 @@ SELECT _lantern_internal.validate_index('small_world_idx3', false);
 INSERT INTO small_world (id, vector) VALUES ('020', '{0,0,4,0}');
 
 -- Query
-SELECT * FROM small_world ORDER BY vector <-> ARRAY[0, 0, 0, 0] LIMIT 10; 
+SELECT id, l2sq_dist(vector, '{0, 0, 0, 0}'), vector FROM small_world ORDER BY vector <-> ARRAY[0, 0, 0, 0] LIMIT 10; 
+
 
 
