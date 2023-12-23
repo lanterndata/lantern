@@ -128,6 +128,10 @@ if __name__ == "__main__":
 
     # test updates from all tags
     tag_pairs = [update_fname.split("--") for update_fname in os.listdir("sql/updates")]
+    repo = git.Repo(search_parent_directories=True)
+    tags_actual = [tag.name for tag in repo.tags]
+    tags_actual = [name[1:] if name[0] == 'v' else name for name in tags_actual]
+    tag_pairs = [(from_tag, to_tag) for from_tag, to_tag in tag_pairs if from_tag in tags_actual and to_tag in tags_actual]
     from_tags = list(sorted([p[0] for p in tag_pairs], key=cmp_to_key(sort_versions)))
     from_tags.reverse()
     to_tags = list(sorted([p[1].split(".sql")[0] for p in tag_pairs], key=cmp_to_key(sort_versions)))
