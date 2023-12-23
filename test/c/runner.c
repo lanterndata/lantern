@@ -9,6 +9,7 @@
 
 // Include your test files here
 #include "replica_test_index.c"
+#include "replica_test_unlogged.c"
 #include "test_op_rewrite.c"
 // ===========================
 
@@ -98,6 +99,7 @@ int main()
     struct TestCase      test_cases[] = {
         // Add new test files here to be run
         {.name = "test_op_rewrite", .func = (TestCaseFunction)test_op_rewrite},
+        {.name = "replica_test_unlogged", .func = (TestCaseFunction)replica_test_unlogged},
         {.name = "replica_test_index", .func = (TestCaseFunction)replica_test_index}
         // ================================
     };
