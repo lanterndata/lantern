@@ -504,7 +504,7 @@ static void BuildIndex(
         // Filename is /tmp/ldb-index-$relfilenode.bin
         // The file will be removed in the end
         tmp_index_file_path = palloc0(tmp_index_file_char_cnt);
-        sprintf(tmp_index_file_path, tmp_index_file_fmt_str, index->rd_rel->relfilenode);
+        snprintf(tmp_index_file_path, tmp_index_file_char_cnt, tmp_index_file_fmt_str, index->rd_rel->relfilenode);
         usearch_save(buildstate->usearch_index, tmp_index_file_path, NULL, &error);
         assert(error == NULL);
         index_file_fd = open(tmp_index_file_path, O_RDONLY);
