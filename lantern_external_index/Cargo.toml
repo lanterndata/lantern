@@ -1,5 +1,5 @@
 [package]
-name = "lantern_create_index"
+name = "lantern_external_index"
 version = "0.0.2"
 edition = "2021"
 

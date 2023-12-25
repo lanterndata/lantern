@@ -2,6 +2,7 @@ mod autotune_jobs;
 pub mod cli;
 mod client_embedding_jobs;
 mod embedding_jobs;
+mod external_index_jobs;
 mod helpers;
 mod migrations;
 mod types;
@@ -20,11 +21,16 @@ pub fn start(args: cli::DaemonArgs, logger: Option<Logger>) -> AnyhowVoidResult 
 
     let embedding_args = args.clone();
     let autotune_args = args.clone();
+    let external_index_args = args.clone();
     let embedding_logger = Arc::new(Logger::new(
         "Lantern Daemon Embeddings",
         logger.level.clone(),
     ));
     let autotune_logger = Arc::new(Logger::new("Lantern Daemon Autotune", logger.level.clone()));
+    let external_index_logger = Arc::new(Logger::new(
+        "Lantern Daemon External Index",
+        logger.level.clone(),
+    ));
     let mut handles = Vec::with_capacity(2);
 
     logger.info("Starting Daemon");
@@ -47,6 +53,17 @@ pub fn start(args: cli::DaemonArgs, logger: Option<Logger>) -> AnyhowVoidResult 
             if let Err(e) = autotune_jobs::start(autotune_args, autotune_logger) {
                 autotune_error_sender
                     .send(format!("Autotune Error: {e}"))
+                    .unwrap();
+            }
+        }));
+    }
+
+    if args.external_index_table.is_some() {
+        let external_index_error_sender = error_sender.clone();
+        handles.push(std::thread::spawn(move || {
+            if let Err(e) = external_index_jobs::start(external_index_args, external_index_logger) {
+                external_index_error_sender
+                    .send(format!("External Index Error: {e}"))
                     .unwrap();
             }
         }));

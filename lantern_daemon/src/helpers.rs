@@ -1,10 +1,14 @@
-use crate::types::{AnyhowVoidResult, JobInsertNotification, JobUpdateNotification};
+use crate::types::JobTaskCancelTx;
+use crate::types::{
+    AnyhowVoidResult, JobCancellationHandlersMap, JobInsertNotification, JobUpdateNotification,
+};
 use futures::StreamExt;
 use lantern_logger::Logger;
 use lantern_utils::get_full_table_name;
 use lantern_utils::quote_ident;
 use std::sync::Arc;
-use tokio::sync::mpsc::Sender;
+use std::time::SystemTime;
+use tokio::sync::mpsc::{Receiver, Sender};
 use tokio_postgres::AsyncMessage;
 use tokio_postgres::Client;
 
@@ -168,5 +172,91 @@ pub async fn startup_hook(
             .await?;
     }
 
+    Ok(())
+}
+
+pub async fn collect_pending_index_jobs(
+    client: Arc<Client>,
+    insert_notification_tx: Sender<JobInsertNotification>,
+    table: String,
+) -> AnyhowVoidResult {
+    // Get all pending jobs and set them in queue
+    let rows = client
+        .query(
+            &format!("SELECT id, started_at FROM {table} WHERE failed_at IS NULL and finished_at IS NULL ORDER BY id"),
+            &[],
+        )
+        .await?;
+
+    for row in rows {
+        insert_notification_tx
+            .send(JobInsertNotification {
+                id: row.get::<usize, i32>(0).to_owned(),
+                init: true,
+                row_id: None,
+                filter: None,
+                limit: None,
+                // if we do not provide this
+                // and some job will be terminated while running
+                // on next start of daemon the job will not be picked as
+                // it will already have started_at set
+                generate_missing: row.get::<usize, Option<SystemTime>>(1).is_some(),
+            })
+            .await?;
+    }
+
+    Ok(())
+}
+
+pub async fn index_job_update_processor(
+    client: Arc<Client>,
+    mut update_queue_rx: Receiver<JobUpdateNotification>,
+    schema: String,
+    table: String,
+    job_cancelleation_handlers: &'static JobCancellationHandlersMap,
+) -> AnyhowVoidResult {
+    tokio::spawn(async move {
+        while let Some(notification) = update_queue_rx.recv().await {
+            let full_table_name = get_full_table_name(&schema, &table);
+            let id = notification.id;
+            let row = client
+                .query_one(
+                    &format!("SELECT canceled_at FROM {0} WHERE id=$1", &full_table_name),
+                    &[&id],
+                )
+                .await?;
+
+            let canceled_at: Option<SystemTime> = row.get("canceled_at");
+
+            if canceled_at.is_some() {
+                // Cancel ongoing job
+                let jobs = job_cancelleation_handlers.read().await;
+                let job = jobs.get(&id);
+
+                if let Some(tx) = job {
+                    tx.send(true).await?;
+                }
+                drop(jobs);
+            }
+        }
+        Ok(()) as AnyhowVoidResult
+    })
+    .await??;
+    Ok(())
+}
+
+pub async fn set_job_handle(
+    map: &JobCancellationHandlersMap,
+    job_id: i32,
+    handle: JobTaskCancelTx,
+) -> AnyhowVoidResult {
+    let mut jobs = map.write().await;
+    jobs.insert(job_id, handle);
+    Ok(())
+}
+
+pub async fn remove_job_handle(map: &JobCancellationHandlersMap, job_id: i32) -> AnyhowVoidResult {
+    let mut jobs = map.write().await;
+    jobs.remove(&job_id);
     Ok(())
 }

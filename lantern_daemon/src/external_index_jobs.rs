@@ -1,17 +1,17 @@
 /*
-    Autotune Jobs Table should have the following structure:
-    CREATE TABLE "public"."index_autotune_jobs" (
+    External Index Jobs Table should have the following structure:
+    CREATE TABLE "public"."index_jobs" (
         "id" SERIAL PRIMARY KEY,
         "database_id" text NOT NULL,
         "db_connection" text NOT NULL,
         "schema" text NOT NULL,
         "table" text NOT NULL,
         "column" text NOT NULL,
-        "metric_kind" text NOT NULL,
-        "target_recall" int NOT NULL,
-        "k" int NOT NULL,
-        "create_index" bool NOT NULL,
-        "embedding_model" text NULL,
+        "index" text,
+        "operator" text NOT NULL,
+        "efc" INT NOT NULL,
+        "ef" INT NOT NULL,
+        "m" INT NOT NULL,
         "created_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updated_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "canceled_at" timestamp,
@@ -24,12 +24,11 @@
 */
 
 use crate::cli;
-use crate::helpers::{db_notification_listener, startup_hook, set_job_handle, collect_pending_index_jobs, index_job_update_processor, remove_job_handle};
-use crate::types::{AnyhowVoidResult, AutotuneJob, JobInsertNotification, VoidFuture, JobUpdateNotification,  JobCancellationHandlersMap};
+use crate::helpers::{db_notification_listener, startup_hook, collect_pending_index_jobs, index_job_update_processor};
+use crate::types::{AnyhowVoidResult, ExternalIndexJob, JobInsertNotification, VoidFuture, JobUpdateNotification, JobTaskCancelTx, JobCancellationHandlersMap};
 use futures::future;
-use lantern_external_index::cli::UMetricKind;
-use lantern_index_autotune::cli::IndexAutotuneArgs;
-use lantern_logger::Logger;
+use lantern_external_index::cli::CreateIndexArgs;
+use lantern_logger::{Logger, LogLevel};
 use lantern_utils::get_full_table_name;
 use tokio::sync::RwLock;
 use std::collections::HashMap;
@@ -45,11 +44,21 @@ lazy_static! {
     static ref JOBS: JobCancellationHandlersMap = RwLock::new(HashMap::new());
 }
 
-async fn autotune_worker(
-    mut job_queue_rx: Receiver<AutotuneJob>,
+async fn set_job_handle(job_id: i32, handle: JobTaskCancelTx) -> AnyhowVoidResult {
+    let mut jobs = JOBS.write().await;
+    jobs.insert(job_id, handle);
+    Ok(())
+}
+
+async fn remove_job_handle(job_id: i32) -> AnyhowVoidResult {
+    let mut jobs = JOBS.write().await;
+    jobs.remove(&job_id);
+    Ok(())
+}
+
+async fn external_index_worker(
+    mut job_queue_rx: Receiver<ExternalIndexJob>,
     client: Arc<Client>,
-    export_db_uri: String,
-    internal_schema: String,
     schema: String,
     table: String,
     logger: Arc<Logger>,
@@ -59,17 +68,15 @@ async fn autotune_worker(
     let jobs_table_name = Arc::new(get_full_table_name(&schema, &table));
 
     tokio::spawn(async move {
-        logger.info("Autotune worker started");
+        logger.info("External index worker started");
         while let Some(job) = job_queue_rx.recv().await {
-            logger.info(&format!("Starting execution of autotune job {}", job.id));
+            logger.info(&format!("Starting execution of index creation job {}", job.id));
             let client_ref = client.clone();
             let client_ref2 = client.clone();
             let logger_ref = logger.clone();
             let job = Arc::new(job);
             let job_ref = job.clone();
             let jobs_table_name_r1 = jobs_table_name.clone();
-            let internal_schema = internal_schema.clone();
-            let export_db_uri = export_db_uri.clone();
 
             let progress_callback = move |progress: u8| {
                 // Passed progress in a format string to avoid type casts between
@@ -89,25 +96,22 @@ async fn autotune_worker(
                 }
             };
 
-            let progress_callback = if job.is_init {
-                Some(Box::new(progress_callback) as lantern_index_autotune::ProgressCbFn)
-            } else {
-                None
-            };
+            let progress_callback = 
+                Some(Box::new(progress_callback) as lantern_external_index::ProgressCbFn);
 
             let task_logger =
-                Logger::new(&format!("Autotune Job {}", job.id), logger.level.clone());
+                Logger::new(&format!("External Index Job {}", job.id), LogLevel::Info);
             let job_clone = job.clone();
             
             let (cancel_tx, mut cancel_rx) = mpsc::channel(1);
             let cancel_tx_clone = cancel_tx.clone();
 
             // We will spawn 2 tasks
-            // The first one will run autotune job and as soon as it finish
+            // The first one will run index creation job and as soon as it finish
             // It will send the result via job_tx channel
             // The second task will listen to cancel_rx channel, so if someone send a message
             // via cancel_tx channel it will change is_canceled to true
-            // And autotune job will be cancelled on next cycle
+            // And index job will be cancelled on next cycle
             // We will keep the cancel_tx in static hashmap, so we can cancel the job if
             // canceled_at will be changed to true
 
@@ -115,23 +119,21 @@ async fn autotune_worker(
                 let is_canceled = Arc::new(std::sync::RwLock::new(false));
                 let is_canceled_clone = is_canceled.clone();
                 let task = tokio::task::spawn_blocking(move || {
-                    let result = lantern_index_autotune::autotune_index(&IndexAutotuneArgs {
-                        pk: "id".to_owned(),
-                        job_id: Some(job_clone.id.to_string()),
-                        model_name: job_clone.model_name.clone(),
+                    let val: u32  = rand::random();
+                    let index_path = format!("/tmp/daemon-index-{val}.usearch");
+                    let result = lantern_external_index::create_usearch_index(&CreateIndexArgs {
                         schema: job_clone.schema.clone(),
                         uri: job_clone.db_uri.clone(),
-                        export_db_uri: Some(export_db_uri),
-                        export_schema_name: internal_schema,
-                        export_table_name: "lantern_autotune_results".to_owned(),
                         table: job_clone.table.clone(),
                         column: job_clone.column.clone(),
-                        test_data_size: 10000,
-                        create_index: job_clone.create_index,
-                        export: true,
-                        k: job_clone.k,
-                        recall: job_clone.recall,
-                        metric_kind: UMetricKind::from(&job_clone.metric_kind)?
+                        metric_kind: job_clone.metric_kind.clone(),
+                        index_name: job_clone.index_name.clone(),
+                        m: job_clone.m,
+                        ef: job_clone.ef,
+                        efc: job_clone.efc,
+                        import: true,
+                        dims: 0,
+                        out: index_path
                     }, progress_callback, Some(is_canceled_clone), Some(task_logger));
                     futures::executor::block_on(cancel_tx_clone.send(false))?;
                     result
@@ -147,16 +149,16 @@ async fn autotune_worker(
                 task.await?
             });
 
-            set_job_handle(&JOBS, job.id, cancel_tx).await?;
+            set_job_handle(job.id, cancel_tx).await?;
       
             match task_handle.await? {
                 Ok(_) => {
-                    remove_job_handle(&JOBS, job.id).await?;
+                    remove_job_handle(job.id).await?;
                     // mark success
                     client_ref.execute(&format!("UPDATE {jobs_table_name} SET finished_at=NOW(), updated_at=NOW() WHERE id=$1"), &[&job.id]).await?;
                 },
                 Err(e) => {
-                    remove_job_handle(&JOBS, job.id).await?;
+                    remove_job_handle(job.id).await?;
                     // update failure reason
                     client_ref.execute(&format!("UPDATE {jobs_table_name} SET failed_at=NOW(), updated_at=NOW(), failure_reason=$1 WHERE id=$2"), &[&e.to_string(), &job.id]).await?;
                 }
@@ -168,22 +170,23 @@ async fn autotune_worker(
     Ok(())
 }
 
+
 async fn job_insert_processor(
     client: Arc<Client>,
     mut notifications_rx: Receiver<JobInsertNotification>,
-    job_tx: Sender<AutotuneJob>,
+    job_tx: Sender<ExternalIndexJob>,
     schema: String,
     table: String,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
     // This function will handle newcoming jobs
-    // It will update started_at create autotune job from the row
-    // And pass to autotune_worker
+    // It will update started_at create external index job from the row
+    // And pass to external_index_worker
     // On startup this function will also be called for unfinished jobs
 
     tokio::spawn(async move {
         let full_table_name = Arc::new(get_full_table_name(&schema, &table));
-        let job_query_sql = Arc::new(format!("SELECT id, db_connection as db_uri, \"column\",  \"table\", \"schema\", embedding_model as model, target_recall, k, create_index, metric_kind  FROM {0}", &full_table_name));
+        let job_query_sql = Arc::new(format!("SELECT id, db_connection as db_uri, \"column\", \"table\", \"schema\", operator, efc, ef, m, \"index\"  FROM {0}", &full_table_name));
         while let Some(notification) = notifications_rx.recv().await {
             let id = notification.id;
 
@@ -203,7 +206,7 @@ async fn job_insert_processor(
                 .await;
 
             if let Ok(row) = job_result {
-                job_tx.send(AutotuneJob::new(row)).await?;
+                job_tx.send(ExternalIndexJob::new(row)?).await?;
             } else {
                 logger.error(&format!(
                     "Error while getting job {id}: {}",
@@ -217,16 +220,17 @@ async fn job_insert_processor(
     Ok(())
 }
 
+
 #[tokio::main]
 pub async fn start(args: cli::DaemonArgs, logger: Arc<Logger>) -> AnyhowVoidResult {
-    logger.info("Starting Autotune Jobs");
+    logger.info("Starting External Index Jobs");
 
     let (main_db_client, connection) = tokio_postgres::connect(&args.uri, NoTls).await?;
 
     tokio::spawn(async move { connection.await.unwrap() });
 
     let main_db_client = Arc::new(main_db_client);
-    let notification_channel = "lantern_cloud_autotune_jobs";
+    let notification_channel = "lantern_cloud_index_jobs";
 
     let (insert_notification_queue_tx, insert_notification_queue_rx): (
         Sender<JobInsertNotification>,
@@ -237,10 +241,10 @@ pub async fn start(args: cli::DaemonArgs, logger: Arc<Logger>) -> AnyhowVoidResu
         Receiver<JobUpdateNotification>,
     ) = mpsc::channel(args.queue_size);
 
-    let (job_queue_tx, job_queue_rx): (Sender<AutotuneJob>, Receiver<AutotuneJob>) =
+    let (job_queue_tx, job_queue_rx): (Sender<ExternalIndexJob>, Receiver<ExternalIndexJob>) =
         mpsc::channel(args.queue_size);
 
-    let table = args.autotune_table.unwrap();
+    let table = args.external_index_table.unwrap();
 
     startup_hook(
         main_db_client.clone(),
@@ -276,11 +280,9 @@ pub async fn start(args: cli::DaemonArgs, logger: Arc<Logger>) -> AnyhowVoidResu
             table.clone(),
             &JOBS
         )) as VoidFuture,
-        Box::pin(autotune_worker(
+        Box::pin(external_index_worker(
             job_queue_rx,
             main_db_client.clone(),
-            args.uri.clone(),
-            args.internal_schema.clone(),
             args.schema.clone(),
             table.clone(),
             logger.clone(),

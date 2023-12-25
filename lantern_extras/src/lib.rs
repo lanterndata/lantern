@@ -2,9 +2,8 @@ use pgrx::prelude::*;
 
 use flate2::read::GzDecoder;
 use ftp::FtpStream;
-use lantern_create_index::cli::CreateIndexArgs;
-use lantern_create_index::cli::UMetricKind;
 use lantern_embeddings_core;
+use lantern_external_index::cli::{CreateIndexArgs, UMetricKind};
 use tar::Archive;
 
 pgrx::pg_module_magic!();
@@ -70,7 +69,7 @@ fn lantern_create_external_index<'a>(
         Some(index_name.to_owned())
     };
 
-    let res = lantern_create_index::create_usearch_index(
+    let res = lantern_external_index::create_usearch_index(
         &CreateIndexArgs {
             import: true,
             out: "/tmp/index.usearch".to_owned(),
@@ -85,6 +84,7 @@ fn lantern_create_external_index<'a>(
             dims: dim as usize,
             index_name,
         },
+        None,
         None,
         None,
     );
@@ -309,6 +309,7 @@ fn download_gzipped_ftp(
 #[pg_schema]
 mod tests {
     // use pgrx::prelude::*;
+    use pgrx::pg_test;
 
     #[pg_test]
     fn test_hello_lantern_extras() {

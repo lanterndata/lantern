@@ -1,7 +1,7 @@
 use clap::Parser;
-use lantern_create_index;
 use lantern_daemon;
 use lantern_embeddings;
+use lantern_external_index;
 use lantern_logger::{LogLevel, Logger};
 mod cli;
 
@@ -12,7 +12,7 @@ fn main() {
         cli::Commands::CreateIndex(args) => {
             let logger = Logger::new("Lantern Index", LogLevel::Debug);
             _main_logger = Some(logger.clone());
-            lantern_create_index::create_usearch_index(&args, Some(logger), None)
+            lantern_external_index::create_usearch_index(&args, None, None, Some(logger))
         }
         cli::Commands::CreateEmbeddings(args) => {
             let logger = Logger::new("Lantern Embeddings", LogLevel::Debug);
@@ -39,7 +39,7 @@ fn main() {
         cli::Commands::AutotuneIndex(args) => {
             let logger = Logger::new("Lantern Index Autotune", LogLevel::Debug);
             _main_logger = Some(logger.clone());
-            lantern_index_autotune::autotune_index(&args, None, Some(logger))
+            lantern_index_autotune::autotune_index(&args, None, None, Some(logger))
         }
         cli::Commands::StartDaemon(args) => {
             let logger = Logger::new("Lantern Daemon", args.log_level.value());

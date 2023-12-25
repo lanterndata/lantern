@@ -1,6 +1,6 @@
 [package]
 name = "lantern_extras"
-version = "0.0.6"
+version = "0.0.7"
 edition = "2021"
 
 [lib]
@@ -24,7 +24,7 @@ itertools = "0.11"
 backtrace = "0.3"
 url = "2.2"
 lantern_embeddings_core = { path = "../lantern_embeddings_core" }
-lantern_create_index = { path = "../lantern_create_index" }
+lantern_external_index = { path = "../lantern_external_index" }
 anyhow = "1.0.75"
 
 [dev-dependencies]

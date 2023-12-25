@@ -7,7 +7,7 @@ members = [
     "lantern_extras",
     "lantern_utils",
     "lantern_logger",
-    "lantern_create_index",
+    "lantern_external_index",
     "lantern_embeddings",
     "lantern_embeddings_core",
     "lantern_cli",

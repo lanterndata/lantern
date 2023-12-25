@@ -2,8 +2,9 @@ extern crate postgres;
 
 use rand::Rng;
 use std::path::Path;
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
+use std::sync::{mpsc, RwLock};
 use std::sync::{Arc, Mutex};
 use std::{fs, io};
 
@@ -21,6 +22,7 @@ mod utils;
 pub mod cli;
 
 type AnyhowVoidResult = Result<(), anyhow::Error>;
+pub type ProgressCbFn = Box<dyn Fn(u8) + Send + Sync>;
 
 #[derive(Debug)]
 struct Tid {
@@ -96,17 +98,26 @@ impl ThreadSafeIndex {
 unsafe impl Sync for ThreadSafeIndex {}
 unsafe impl Send for ThreadSafeIndex {}
 
+fn report_progress(progress_cb: &Option<ProgressCbFn>, logger: &Logger, progress: u8) {
+    logger.info(&format!("Progress {progress}%"));
+    if progress_cb.is_some() {
+        let cb = progress_cb.as_ref().unwrap();
+        cb(progress);
+    }
+}
+
 pub fn create_usearch_index(
     args: &cli::CreateIndexArgs,
+    progress_cb: Option<ProgressCbFn>,
+    is_canceled: Option<Arc<RwLock<bool>>>,
     logger: Option<Logger>,
-    client: Option<Client>,
 ) -> Result<(), anyhow::Error> {
     let logger = Arc::new(logger.unwrap_or(Logger::new("Lantern Index", LogLevel::Debug)));
     let num_cores: usize = std::thread::available_parallelism().unwrap().into();
     logger.info(&format!("Number of available CPU cores: {}", num_cores));
 
     // get all row count
-    let mut client = client.unwrap_or(Client::connect(&args.uri, NoTls)?);
+    let mut client = Client::connect(&args.uri, NoTls)?;
     let mut transaction = client.transaction()?;
     let full_table_name = get_full_table_name(&args.schema, &args.table);
 
@@ -163,12 +174,31 @@ pub fn create_usearch_index(
 
     let (tx, rx): (Sender<Vec<Row>>, Receiver<Vec<Row>>) = mpsc::channel();
     let rx_arc = Arc::new(Mutex::new(rx));
+    let is_canceled = is_canceled.unwrap_or(Arc::new(RwLock::new(false)));
+    let (progress_tx, progress_rx): (Sender<u8>, Receiver<u8>) = mpsc::channel();
+    let progress_logger = logger.clone();
+    let should_create_index = args.import;
 
+    std::thread::spawn(move || -> AnyhowVoidResult {
+        for progress in progress_rx {
+            report_progress(&progress_cb, &progress_logger, progress);
+
+            if progress == 100 {
+                break;
+            }
+        }
+        Ok(())
+    });
+
+    let processed_cnt = Arc::new(AtomicU64::new(0));
     for n in 0..num_cores {
         // spawn thread
         let index_ref = index_arc.clone();
         let logger_ref = logger.clone();
         let receiver = rx_arc.clone();
+        let is_canceled = is_canceled.clone();
+        let progress_tx = progress_tx.clone();
+        let processed_cnt = processed_cnt.clone();
 
         let handle = std::thread::spawn(move || -> AnyhowVoidResult {
             loop {
@@ -187,8 +217,26 @@ pub fn create_usearch_index(
                     // channel has been closed
                     break;
                 }
+
+                if *is_canceled.read().unwrap() {
+                    // This variable will be changed from outside to gracefully
+                    // exit job on next chunk
+                    anyhow::bail!("Job canceled");
+                }
+
                 let rows = rows.unwrap();
+                let rows_cnt = rows.len();
                 index_chunk(rows, n, index_ref.clone(), logger_ref.clone())?;
+                let all_count = processed_cnt.fetch_add(rows_cnt as u64, Ordering::SeqCst);
+                let mut progress = (all_count as f64 / count as f64 * 100.0) as u8;
+                if should_create_index {
+                    // reserve 20% progress for index import
+                    progress = if progress > 20 { progress - 20 } else { 0 };
+                }
+
+                if progress > 0 {
+                    progress_tx.send(progress)?;
+                }
             }
             Ok(())
         });
@@ -211,6 +259,11 @@ pub fn create_usearch_index(
         if rows.len() == 0 {
             break;
         }
+        if *is_canceled.read().unwrap() {
+            // This variable will be changed from outside to gracefully
+            // exit job on next chunk
+            anyhow::bail!("Job canceled");
+        }
         tx.send(rows)?;
     }
 
@@ -220,7 +273,7 @@ pub fn create_usearch_index(
     // Wait for all threads to finish processing
     for handle in handles {
         if let Err(e) = handle.join() {
-            anyhow::bail!("Erro while joining thread: {:?}", e);
+            anyhow::bail!("{:?}", e);
         }
     }
 
@@ -240,6 +293,7 @@ pub fn create_usearch_index(
         let mut reader = fs::File::open(Path::new(&args.out))?;
         io::copy(&mut reader, &mut large_object)?;
         fs::remove_file(Path::new(&args.out))?;
+        progress_tx.send(90)?;
         drop(reader);
         logger.info("Creating index from file...");
         large_object.finish(
@@ -251,6 +305,7 @@ pub fn create_usearch_index(
             dimensions,
             args.m,
         )?;
+        progress_tx.send(100)?;
         logger.info(&format!(
             "Index imported to table {} and removed from filesystem",
             &args.table

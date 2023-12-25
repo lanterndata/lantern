@@ -69,6 +69,7 @@ fn test_embedding_generation_from_db() {
         true,
         Some(Box::new(callback)),
         None,
+        None,
     )
     .unwrap();
 

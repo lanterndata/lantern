@@ -1,6 +1,7 @@
 use futures::Future;
-use std::pin::Pin;
-use tokio::sync::mpsc::Sender;
+use lantern_external_index::cli::UMetricKind;
+use std::{collections::HashMap, pin::Pin};
+use tokio::sync::{mpsc::Sender, RwLock};
 use tokio_postgres::Row;
 
 #[derive(Debug)]
@@ -73,9 +74,36 @@ impl AutotuneJob {
             is_init: true,
         }
     }
+}
 
-    pub fn set_is_init(&mut self, is_init: bool) {
-        self.is_init = is_init;
+#[derive(Debug)]
+pub struct ExternalIndexJob {
+    pub id: i32,
+    pub db_uri: String,
+    pub schema: String,
+    pub table: String,
+    pub column: String,
+    pub metric_kind: UMetricKind,
+    pub index_name: Option<String>,
+    pub ef: usize,
+    pub efc: usize,
+    pub m: usize,
+}
+
+impl ExternalIndexJob {
+    pub fn new(row: Row) -> Result<ExternalIndexJob, anyhow::Error> {
+        Ok(Self {
+            id: row.get::<&str, i32>("id"),
+            db_uri: row.get::<&str, String>("db_uri"),
+            schema: row.get::<&str, String>("schema"),
+            table: row.get::<&str, String>("table"),
+            column: row.get::<&str, String>("column"),
+            metric_kind: UMetricKind::from_ops(row.get::<&str, &str>("operator"))?,
+            index_name: row.get::<&str, Option<String>>("index"),
+            ef: row.get::<&str, i32>("ef") as usize,
+            efc: row.get::<&str, i32>("efc") as usize,
+            m: row.get::<&str, i32>("m") as usize,
+        })
     }
 }
 
@@ -94,5 +122,6 @@ pub struct JobUpdateNotification {
 }
 
 pub type AnyhowVoidResult = Result<(), anyhow::Error>;
-pub type EmbeddingJobTaskCancelTx = Sender<bool>;
+pub type JobTaskCancelTx = Sender<bool>;
 pub type VoidFuture = Pin<Box<dyn Future<Output = AnyhowVoidResult>>>;
+pub type JobCancellationHandlersMap = RwLock<HashMap<i32, JobTaskCancelTx>>;

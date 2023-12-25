@@ -1,5 +1,5 @@
 use clap::Parser;
-use lantern_create_index::cli::UMetricKind;
+use lantern_external_index::cli::UMetricKind;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]

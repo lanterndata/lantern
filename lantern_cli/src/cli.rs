@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
-use lantern_create_index::cli::CreateIndexArgs;
 use lantern_daemon::cli::DaemonArgs;
 use lantern_embeddings::cli::{EmbeddingArgs, MeasureModelSpeedArgs, ShowModelsArgs};
+use lantern_external_index::cli::CreateIndexArgs;
 use lantern_index_autotune::cli::IndexAutotuneArgs;
 
 #[derive(Subcommand, Debug)]

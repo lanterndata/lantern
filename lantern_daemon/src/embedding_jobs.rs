@@ -22,9 +22,9 @@
 
 use crate::cli;
 use crate::client_embedding_jobs::toggle_client_job;
-use crate::helpers::{db_notification_listener, startup_hook};
+use crate::helpers::{db_notification_listener, startup_hook, set_job_handle, remove_job_handle};
 use crate::types::{
-    AnyhowVoidResult, EmbeddingJob, JobInsertNotification, JobUpdateNotification, VoidFuture, EmbeddingJobTaskCancelTx, 
+    AnyhowVoidResult, EmbeddingJob, JobInsertNotification, JobUpdateNotification, VoidFuture,  JobCancellationHandlersMap, 
 };
 use futures::future;
 use itertools::Itertools;
@@ -49,21 +49,9 @@ use tokio_postgres::{Client, NoTls};
 const EMB_LOCK_TABLE_NAME: &'static str = "_lantern_emb_job_locks";
 
 lazy_static! {
-    static ref JOBS: RwLock<HashMap<i32, EmbeddingJobTaskCancelTx>> = RwLock::new(HashMap::new());
+    static ref JOBS: JobCancellationHandlersMap = RwLock::new(HashMap::new());
     static ref JOB_BATCHING_HASHMAP: Arc<Mutex<HashMap<i32, Vec<String>>>> =
         Arc::new(Mutex::new(HashMap::new()));
-}
-
-async fn set_job_handle(job_id: i32, handle: EmbeddingJobTaskCancelTx) -> AnyhowVoidResult {
-    let mut jobs = JOBS.write().await;
-    jobs.insert(job_id, handle);
-    Ok(())
-}
-
-async fn remove_job_handle(job_id: i32) -> AnyhowVoidResult {
-    let mut jobs = JOBS.write().await;
-    jobs.remove(&job_id);
-    Ok(())
 }
 
 async fn lock_row(
@@ -185,11 +173,11 @@ async fn embedding_worker(
                 embedding_task.await?
             });
 
-            set_job_handle(job.id, cancel_tx).await?;
-      
+            set_job_handle(&JOBS, job.id, cancel_tx).await?;
+     
             match task_handle.await? {
                 Ok(processed_cnt) => {
-                    remove_job_handle(job.id).await?;
+                    remove_job_handle(&JOBS, job.id).await?;
                     if job.is_init {
                         // mark success
                         client_ref.execute(&format!("UPDATE {jobs_table_name} SET init_finished_at=NOW(), updated_at=NOW() WHERE id=$1"), &[&job.id]).await?;
@@ -206,7 +194,7 @@ async fn embedding_worker(
                     }
                 },
                 Err(e) => {
-                    remove_job_handle(job.id).await?;
+                    remove_job_handle(&JOBS, job.id).await?;
                     if job.is_init {
                         // update failure reason
                         client_ref.execute(&format!("UPDATE {jobs_table_name} SET init_failed_at=NOW(), updated_at=NOW(), init_failure_reason=$1 WHERE id=$2"), &[&e.to_string(), &job.id]).await?;

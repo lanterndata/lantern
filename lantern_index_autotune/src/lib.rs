@@ -1,7 +1,11 @@
-use std::{collections::HashSet, time::Instant};
+use std::{
+    collections::HashSet,
+    sync::{Arc, RwLock},
+    time::Instant,
+};
 use uuid::Uuid;
 
-use lantern_create_index::cli::CreateIndexArgs;
+use lantern_external_index::cli::CreateIndexArgs;
 use lantern_logger::{LogLevel, Logger};
 use lantern_utils::{append_params_to_uri, get_full_table_name, quote_ident};
 use postgres::{types::ToSql, Client, NoTls};
@@ -293,6 +297,7 @@ fn report_progress(progress_cb: &Option<ProgressCbFn>, logger: &Logger, progress
 pub fn autotune_index(
     args: &cli::IndexAutotuneArgs,
     progress_cb: Option<ProgressCbFn>,
+    is_canceled: Option<Arc<RwLock<bool>>>,
     logger: Option<Logger>,
 ) -> AnyhowVoidResult {
     let logger = logger.unwrap_or(Logger::new("Lantern Index", LogLevel::Debug));
@@ -406,12 +411,13 @@ pub fn autotune_index(
     progress += 5;
     report_progress(&progress_cb, &logger, progress);
 
+    let is_canceled = is_canceled.unwrap_or(Arc::new(RwLock::new(false)));
     // 30% from progress is reserved for result export and index creation
     let progress_per_iter = (100 - progress - 30) / index_variants.len() as u8;
     if autotune_results.len() == 0 {
         // If no existing results were found, we will iterate over the variations and do the following:
         // 1. DROP previous iteration index if exists (if not the first iteration)
-        // 2. Start external index creation with lantern_create_index.
+        // 2. Start external index creation with lantern_external_index.
         //    It will have import flag, which means it will import the index file using large
         //    objects
         // 3. Calculate the index creation time, latency and recall for this variation
@@ -424,8 +430,15 @@ pub fn autotune_index(
                 ),
                 &[],
             )?;
+
+            if *is_canceled.read().unwrap() {
+                // This variable will be changed from outside to gracefully
+                // exit job on next chunk
+                anyhow::bail!("Job canceled");
+            }
+
             let start = Instant::now();
-            lantern_create_index::create_usearch_index(
+            lantern_external_index::create_usearch_index(
                 &CreateIndexArgs {
                     import: true,
                     out: index_path.clone(),
@@ -440,8 +453,9 @@ pub fn autotune_index(
                     dims: column_dims as usize,
                     index_name: Some(index_name.clone()),
                 },
-                Some(Logger::new(&logger.label, LogLevel::Info)),
                 None,
+                Some(is_canceled.clone()),
+                Some(Logger::new(&logger.label, LogLevel::Info)),
             )?;
             let indexing_duration = start.elapsed().as_secs() as usize;
             let (recall, latency) = calculate_recall_and_latency(
@@ -511,7 +525,7 @@ pub fn autotune_index(
             "Creating index with the best result for job {job_id}"
         ));
         let start = Instant::now();
-        lantern_create_index::create_usearch_index(
+        lantern_external_index::create_usearch_index(
             &CreateIndexArgs {
                 import: true,
                 out: index_path.clone(),
@@ -526,8 +540,9 @@ pub fn autotune_index(
                 dims: column_dims as usize,
                 index_name: None,
             },
-            Some(Logger::new(&logger.label, LogLevel::Info)),
             None,
+            Some(is_canceled.clone()),
+            Some(Logger::new(&logger.label, LogLevel::Info)),
         )?;
         let duration = start.elapsed().as_secs();
         logger.debug(&format!("Index for job {job_id} created in {duration}s"));

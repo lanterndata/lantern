@@ -42,6 +42,10 @@ pub struct DaemonArgs {
     #[arg(long)]
     pub autotune_table: Option<String>,
 
+    /// External index jobs table name
+    #[arg(long)]
+    pub external_index_table: Option<String>,
+
     /// Schema name
     #[arg(short, long, default_value = "public")]
     pub schema: String,
