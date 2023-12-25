@@ -535,6 +535,7 @@ static void BuildIndex(
 
     munmap_ret = munmap(result_buf, index_file_stat.st_size);
     assert(munmap_ret == 0);
+    LDB_UNUSED(munmap_ret);
     close(index_file_fd);
 
     if(tmp_index_file_path) {
