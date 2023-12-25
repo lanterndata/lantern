@@ -423,6 +423,7 @@ static void BuildIndex(
     // size of static name + max digits of uint32 (Oid) 10 + 1 for nullbyte and - 2 for %d format specifier
     const uint32       tmp_index_file_char_cnt = strlen(tmp_index_file_fmt_str) + 9;
     int                index_file_fd;
+    int                munmap_ret = 0;
     usearch_metadata_t metadata;
     size_t             num_added_vectors;
 
@@ -532,7 +533,8 @@ static void BuildIndex(
     StoreExternalIndex(index, &metadata, forkNum, result_buf, &opts, num_added_vectors);
     //****************************** saving to WAL END ******************************//
 
-    assert(munmap(result_buf, index_file_stat.st_size) == 0);
+    munmap_ret = munmap(result_buf, index_file_stat.st_size);
+    assert(munmap_ret == 0);
     close(index_file_fd);
 
     if(tmp_index_file_path) {
