@@ -38,7 +38,7 @@ jobs:
           submodules: "recursive"
       - name: Build
         id: build
-        run: sudo su -c "PG_VERSION=$PG_VERSION GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/build.sh"
+        run: sudo su -c "PG_VERSION=$PG_VERSION SETUP_POSTGRES=1 PACKAGE_EXTENSION=1 GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/build.sh"
         env:
           PG_VERSION: ${{ matrix.postgres }}
       - name: Build Lantern CLI

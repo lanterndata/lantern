@@ -37,12 +37,12 @@ macro_rules! text_embedding_test {
 }
 
 text_embedding_test! {
-  generate_clip_embeddings_small_text_single: ("clip/ViT-B-32-textual", HELLO_WORLD_TEXT.clone(), HELLO_WORLD_CLIP_EMB.clone().to_vec(), 1),
-  generate_clip_embeddings_small_text_batch: ("clip/ViT-B-32-textual", HELLO_WORLD_TEXT.clone(), HELLO_WORLD_CLIP_EMB.clone().to_vec(), 10),
-  generate_clip_embeddings_large_text_single: ("clip/ViT-B-32-textual", LOREM_TEXT.clone(), LOREM_CLIP_EMB.clone().to_vec(), 1),
-  generate_clip_embeddings_large_text_batch: ("clip/ViT-B-32-textual", LOREM_TEXT.clone(), LOREM_CLIP_EMB.clone().to_vec(), 50),
-  generate_bge_embeddings_small_text_single: ("BAAI/bge-small-en", HELLO_WORLD_TEXT.clone(), HELLO_WORLD_BGE_SMALL_EMB.clone().to_vec(), 1),
-  generate_bge_embeddings_small_text_batch: ("BAAI/bge-small-en", HELLO_WORLD_TEXT.clone(), HELLO_WORLD_BGE_SMALL_EMB.clone().to_vec(), 100),
-  generate_bge_embeddings_large_text_single: ("BAAI/bge-small-en", HELLO_WORLD_TEXT.clone(), LOREM_BGE_SMALL_EMB.clone().to_vec(), 1),
-  generate_bge_embeddings_large_text_batch: ("BAAI/bge-small-en", HELLO_WORLD_TEXT.clone(), LOREM_BGE_SMALL_EMB.clone().to_vec(), 100),
+  generate_clip_embeddings_small_text_single: ("clip/ViT-B-32-textual", HELLO_WORLD_TEXT, HELLO_WORLD_CLIP_EMB.to_vec(), 1),
+  generate_clip_embeddings_small_text_batch: ("clip/ViT-B-32-textual", HELLO_WORLD_TEXT, HELLO_WORLD_CLIP_EMB.to_vec(), 10),
+  generate_clip_embeddings_large_text_single: ("clip/ViT-B-32-textual", LOREM_TEXT, LOREM_CLIP_EMB.to_vec(), 1),
+  generate_clip_embeddings_large_text_batch: ("clip/ViT-B-32-textual", LOREM_TEXT, LOREM_CLIP_EMB.to_vec(), 50),
+  generate_bge_embeddings_small_text_single: ("BAAI/bge-small-en", HELLO_WORLD_TEXT, HELLO_WORLD_BGE_SMALL_EMB.to_vec(), 1),
+  generate_bge_embeddings_small_text_batch: ("BAAI/bge-small-en", HELLO_WORLD_TEXT, HELLO_WORLD_BGE_SMALL_EMB.to_vec(), 100),
+  generate_bge_embeddings_large_text_single: ("BAAI/bge-small-en", HELLO_WORLD_TEXT, LOREM_BGE_SMALL_EMB.to_vec(), 1),
+  generate_bge_embeddings_large_text_batch: ("BAAI/bge-small-en", HELLO_WORLD_TEXT, LOREM_BGE_SMALL_EMB.to_vec(), 100),
 }

@@ -1,0 +1,29 @@
+name: test
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+      - dev
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - postgres: 15
+            os: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: "recursive"
+      - name: Setup test env
+        run: sudo su -c "SETUP_POSTGRES=1 SETUP_TESTS=1 ./ci/scripts/build.sh"
+        env:
+          PG_VERSION: ${{ matrix.postgres }}
+      - name: Run tests
+        run: sudo su -c ". $HOME/.cargo/env && DB_URL='postgres://postgres@127.0.0.1:5432/postgres' cargo test --workspace --exclude lantern_extras --  --nocapture"

@@ -1,9 +1,27 @@
 #!/bin/bash
 
+set -e
+
 function setup_environment() {
   export DEBIAN_FRONTEND=noninteractive
   export PG_VERSION=${PG_VERSION:-15}
   export GITHUB_OUTPUT=${GITHUB_OUTPUT:-/dev/null}
+}
+
+function setup_onnx() {
+  pushd /tmp
+    ONNX_VERSION="1.16.1"
+    PACKAGE_URL="https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-linux-x64-${ONNX_VERSION}.tgz" && \
+    if [[ $ARCH == *"arm"* ]]; then PACKAGE_URL="https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-linux-aarch64-${ONNX_VERSION}.tgz"; fi && \
+    mkdir -p /usr/local/lib && \
+    cd /usr/local/lib && \
+    wget $PACKAGE_URL && \
+    tar xzf ./onnx*.tgz && \
+    rm -rf ./onnx*.tgz && \
+    mv ./onnx* ./onnxruntime && \
+    echo /usr/local/lib/onnxruntime/lib > /etc/ld.so.conf.d/onnx.conf && \
+    ldconfig
+  popd
 }
 
 function setup_locale_and_install_packages() {
@@ -27,6 +45,20 @@ function setup_postgres() {
   apt install -y postgresql-$PG_VERSION postgresql-server-dev-$PG_VERSION
   # Fix pg_config (sometimes it points to wrong version)
   rm -f /usr/bin/pg_config && ln -s /usr/lib/postgresql/$PG_VERSION/bin/pg_config /usr/bin/pg_config
+}
+
+function setup_lantern() {
+   LANTERN_VERSION=0.0.11
+    git clone --recursive https://github.com/lanterndata/lantern.git /tmp/lantern 
+    pushd /tmp/lantern
+      git checkout v${LANTERN_VERSION} && \ 
+      git submodule update --recursive && \
+      mkdir build 
+      pushd build
+        cmake -DUSEARCH_NO_MARCH_NATIVE=ON .. && \
+        make install
+      popd
+    popd
 }
 
 function setup_rust() {
@@ -99,6 +131,36 @@ function package_extension() {
   popd
 }
 
+function wait_for_pg(){
+ tries=0
+ until pg_isready -U postgres 2>/dev/null; do
+   if [ $tries -eq 10 ];
+   then
+     echo "Can not connect to postgres"
+     exit 1
+   fi
+   
+   sleep 1
+   tries=$((tries+1))
+ done
+}
+
+function configure_and_start_postgres() {
+  PGDATA=/etc/postgresql/$PG_VERSION/main
+  # Enable auth without password
+  echo "local   all             all                                     trust" >  $PGDATA/pg_hba.conf
+  echo "host    all             all             127.0.0.1/32            trust" >>  $PGDATA/pg_hba.conf
+  echo "host    all             all             ::1/128                 trust" >>  $PGDATA/pg_hba.conf
+  # Set port
+  echo "port = 5432" >> ${PGDATA}/postgresql.conf
+  # Start postgres
+  sudo service postgresql start
+  
+  wait_for_pg
+
+  psql -U postgres -c "CREATE EXTENSION lantern" postgres
+}
+
 setup_environment && \
 setup_locale_and_install_packages && \
 setup_rust
@@ -106,8 +168,22 @@ setup_rust
 if [ ! -z "$PACKAGE_CLI" ]
 then
  package_cli
-else
- setup_postgres && \
+fi
+
+if [ ! -z "$SETUP_POSTGRES" ]
+then
+ setup_postgres
+fi
+  
+if [ ! -z "$SETUP_TESTS" ]
+then
+  setup_lantern && \
+  setup_onnx && \
+  configure_and_start_postgres
+fi
+
+if [ ! -z "$PACKAGE_EXTENSION" ]
+then
  setup_cargo_deps && \
  package_extension
 fi
