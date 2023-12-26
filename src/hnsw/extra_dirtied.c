@@ -84,6 +84,25 @@ void extra_dirtied_release_all(ExtraDirtiedBufs *ed)
     ed->extra_dirtied_size = 0;
 }
 
+// Like extra_dirtied_release_all but does not perform a InvalidXLogRecPtr check.
+// Used for inserts on unlogged tables, which do not write to WAL
+void extra_dirtied_release_all_no_xlog_check(ExtraDirtiedBufs *ed)
+{
+    for(int i = 0; i < ed->extra_dirtied_state_size; ++i) {
+        GenericXLogFinish(ed->extra_dirtied_state[ i ]);
+    }
+
+    for(int i = 0; i < ed->extra_dirtied_size; i++) {
+        assert(BufferIsValid(ed->extra_dirtied_buf[ i ]));
+        // header is not considered extra. we know we should not have dirtied it
+        // sanity check callees that manimulate extra_dirtied did not violate this
+        assert(ed->extra_dirtied_blockno[ i ] != 0);
+        // MarkBufferDirty() had been called by by GenericXLogFinish() already
+        UnlockReleaseBuffer(ed->extra_dirtied_buf[ i ]);
+    }
+    ed->extra_dirtied_size = 0;
+}
+
 void extra_dirtied_free(ExtraDirtiedBufs *ed)
 {
     if(ed->extra_dirtied_size != 0) {

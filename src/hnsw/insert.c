@@ -72,6 +72,7 @@ bool ldb_aminsert(Relation         index,
     HnswIndexTuple        *new_tuple;
     usearch_init_options_t opts = {0};
     LDB_UNUSED(heap);
+    LDB_UNUSED(indexInfo);
 #if PG_VERSION_NUM >= 140000
     LDB_UNUSED(indexUnchanged);
 #endif
@@ -109,7 +110,7 @@ bool ldb_aminsert(Relation         index,
     hdr = (HnswIndexHeaderPage *)PageGetContents(hdr_page);
     assert(hdr->magicNumber == LDB_WAL_MAGIC_NUMBER);
 
-    opts.dimensions = GetHnswIndexDimensions(index, indexInfo);
+    opts.dimensions = hdr->vector_dim;
     CheckHnswIndexDimensions(index, values[ 0 ], opts.dimensions);
     PopulateUsearchOpts(index, &opts);
     opts.retriever_ctx = ldb_wal_retriever_area_init(index, hdr);
@@ -182,16 +183,23 @@ bool ldb_aminsert(Relation         index,
 
     ldb_wal_retriever_area_reset(insertstate->retriever_ctx, hdr);
 
+    int needs_wal = RelationNeedsWAL(index);
     // we only release the header buffer AFTER inserting is finished to make sure nobody else changes the block
     // structure. todo:: critical section here can definitely be shortened
     {
         // GenericXLogFinish also calls MarkBufferDirty(buf)
         XLogRecPtr ptr = GenericXLogFinish(state);
-        assert(ptr != InvalidXLogRecPtr);
+        if(needs_wal) {
+            assert(ptr != InvalidXLogRecPtr);
+        }
         LDB_UNUSED(ptr);
     }
 
-    extra_dirtied_release_all(insertstate->retriever_ctx->extra_dirted);
+    if(needs_wal) {
+        extra_dirtied_release_all(insertstate->retriever_ctx->extra_dirted);
+    } else {
+        extra_dirtied_release_all_no_xlog_check(insertstate->retriever_ctx->extra_dirted);
+    }
 
     usearch_free(insertstate->uidx, &error);
     if(error != NULL) {

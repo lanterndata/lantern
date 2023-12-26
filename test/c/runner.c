@@ -9,6 +9,7 @@
 
 // Include your test files here
 #include "replica_test_index.c"
+#include "replica_test_unlogged.c"
 #include "test_op_rewrite.c"
 // ===========================
 
@@ -98,7 +99,8 @@ int main()
     struct TestCase      test_cases[] = {
         // Add new test files here to be run
         {.name = "test_op_rewrite", .func = (TestCaseFunction)test_op_rewrite},
-        {.name = "replica_test_index", .func = (TestCaseFunction)replica_test_index}
+        {.name = "replica_test_index", .func = (TestCaseFunction)replica_test_index},
+        {.name = "replica_test_unlogged", .func = (TestCaseFunction)replica_test_unlogged}
         // ================================
     };
 
@@ -113,12 +115,6 @@ int main()
     const char *ROOT_DB_NAME = "postgres";
     PGconn     *root_conn = NULL;
 
-    root_conn = connect_database(DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, ROOT_DB_NAME);
-
-    if(root_conn == NULL) {
-        return 1;
-    }
-
     for(i = 0; i < sizeof(test_cases) / sizeof(struct TestCase); i++) {
         current_case = test_cases[ i ];
         current_case_state.REPLICA_PORT = REPLICA_PORT;
@@ -128,7 +124,14 @@ int main()
         current_case_state.DB_USER = DB_USER;
         current_case_state.TEST_DB_NAME = TEST_DB_NAME;
 
+        root_conn = connect_database(DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, ROOT_DB_NAME);
+
         printf("[+] Running test case '%s'...\n", current_case.name);
+
+        if(root_conn == NULL) {
+            fprintf(stderr, "[X] Can not connect to root database on port '%s'\n", DB_PORT);
+            return 1;
+        }
 
         // Create test database
         if(recreate_database(root_conn, TEST_DB_NAME)) {
@@ -144,7 +147,7 @@ int main()
                 continue;
             }
             // Wait for replica to sync with master or test db will not exist
-            sleep(3);
+            sleep(7);
             current_case_state.replica_conn
                 = connect_database(DB_HOST, REPLICA_PORT, DB_USER, DB_PASSWORD, TEST_DB_NAME);
             if(current_case_state.replica_conn == NULL) {
@@ -183,13 +186,13 @@ int main()
 
         // Close test connection
         PQfinish(current_case_state.conn);
+        PQfinish(root_conn);
         if(ENABLE_REPLICA) {
             PQfinish(current_case_state.replica_conn);
         }
         printf("[+] Test case '%s' passed\n", current_case.name);
     }
 
-    PQfinish(root_conn);
     printf("[+] All tests passed\n");
     return 0;
 }

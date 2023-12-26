@@ -1,0 +1,153 @@
+------------------------------------------------------------------------------
+-- Test HNSW index creation
+------------------------------------------------------------------------------
+-- Validate that index creation works with a small number of vectors
+\ir utils/small_world_array_unlogged.sql
+CREATE UNLOGGED TABLE small_world (
+    id VARCHAR(3),
+    b BOOLEAN,
+    v REAL[3]
+);
+INSERT INTO small_world (id, b, v) VALUES
+    ('000', TRUE,  '{0,0,0}'),
+    ('001', TRUE,  '{0,0,1}'),
+    ('010', FALSE, '{0,1,0}'),
+    ('011', TRUE,  '{0,1,1}'),
+    ('100', FALSE, '{1,0,0}'),
+    ('101', FALSE, '{1,0,1}'),
+    ('110', FALSE, '{1,1,0}'),
+    ('111', TRUE,  '{1,1,1}');
+\ir utils/sift1k_array_unlogged.sql
+CREATE UNLOGGED TABLE IF NOT EXISTS sift_base1k (
+    id SERIAL,
+    v REAL[]
+);
+COPY sift_base1k (v) FROM '/tmp/lantern/vector_datasets/sift_base1k_arrays.csv' WITH csv;
+-- Validate that creating a secondary index works
+CREATE INDEX ON sift_base1k USING hnsw (v) WITH (dim=128, M=4);
+INFO:  done init usearch index
+INFO:  inserted 1000 elements
+INFO:  done saving 1000 vectors
+SELECT * FROM ldb_get_indexes('sift_base1k');
+     indexname     |  size  |                                          indexdef                                           | total_index_size 
+-------------------+--------+---------------------------------------------------------------------------------------------+------------------
+ sift_base1k_v_idx | 632 kB | CREATE INDEX sift_base1k_v_idx ON public.sift_base1k USING hnsw (v) WITH (dim='128', m='4') | 632 kB
+(1 row)
+
+SELECT _lantern_internal.validate_index('sift_base1k_v_idx', false);
+INFO:  validate_index() start for sift_base1k_v_idx
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
+-- Validate that index creation works with a larger number of vectors
+\ir utils/sift10k_array_unlogged.sql
+CREATE UNLOGGED TABLE IF NOT EXISTS sift_base10k (
+     id SERIAL PRIMARY KEY,
+     v REAL[128]
+);
+\copy sift_base10k (v) FROM '/tmp/lantern/vector_datasets/siftsmall_base_arrays.csv' with csv;
+SET lantern.pgvector_compat=FALSE;
+CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=4, dim=128);
+INFO:  done init usearch index
+INFO:  inserted 10000 elements
+INFO:  done saving 10000 vectors
+SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
+EXPLAIN (COSTS FALSE) SELECT * FROM sift_base10k order by v <?> :'v4444' LIMIT 10;
+                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                           
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   ->  Index Scan using hnsw_idx on sift_base10k
+         Order By: (v <?> '{55,61,11,4,5,2,13,24,65,49,13,9,23,37,94,38,54,11,14,14,40,31,50,44,53,4,0,0,27,17,8,34,12,10,4,4,22,52,68,53,9,2,0,0,2,116,119,64,119,2,0,0,2,30,119,119,116,5,0,8,47,9,5,60,7,7,10,23,56,50,23,5,28,68,6,18,24,65,50,9,119,75,3,0,1,8,12,85,119,11,4,6,8,9,5,74,25,11,8,20,18,12,2,21,11,90,25,32,33,15,2,9,84,67,8,4,22,31,11,33,119,30,3,6,0,0,0,26}'::real[])
+(3 rows)
+
+SELECT _lantern_internal.validate_index('hnsw_idx', false);
+INFO:  validate_index() start for hnsw_idx
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
+--- Validate that M values inside the allowed range [2, 128] do not throw an error
+CREATE INDEX ON small_world USING hnsw (v) WITH (M=2);
+INFO:  done init usearch index
+INFO:  inserted 8 elements
+INFO:  done saving 8 vectors
+CREATE INDEX ON small_world USING hnsw (v) WITH (M=128);
+INFO:  done init usearch index
+INFO:  inserted 8 elements
+INFO:  done saving 8 vectors
+---- Validate that M values outside the allowed range [2, 128] throw an error
+\set ON_ERROR_STOP off
+CREATE INDEX ON small_world USING hnsw (v) WITH (M=1);
+ERROR:  value 1 out of bounds for option "m"
+CREATE INDEX ON small_world USING hnsw (v) WITH (M=129);
+ERROR:  value 129 out of bounds for option "m"
+\set ON_ERROR_STOP on
+-- Validate index dimension inference
+CREATE UNLOGGED TABLE small_world4 (
+    id varchar(3),
+    vector real[]
+);
+-- If the first row is NULL we do not infer a dimension
+\set ON_ERROR_STOP off
+CREATE INDEX ON small_world4 USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
+ERROR:  column does not have dimensions, please specify one
+begin;
+INSERT INTO small_world4 (id, vector) VALUES
+('000', NULL),
+('001', '{1,0,0,1}');
+CREATE INDEX ON small_world4 USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
+ERROR:  column does not have dimensions, please specify one
+rollback;
+\set ON_ERROR_STOP on
+INSERT INTO small_world4 (id, vector) VALUES
+('000', '{1,0,0,0}'),
+('001', '{1,0,0,1}'),
+('010', '{1,0,1,0}'),
+('011', '{1,0,1,1}'),
+('100', '{1,1,0,0}'),
+('101', '{1,1,0,1}'),
+('110', '{1,1,1,0}'),
+('111', '{1,1,1,1}');
+CREATE INDEX small_world4_hnsw_idx ON small_world4 USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
+INFO:  done init usearch index
+INFO:  inserted 8 elements
+INFO:  done saving 8 vectors
+SELECT * FROM ldb_get_indexes('small_world4');
+       indexname       | size  |                                                         indexdef                                                          | total_index_size 
+-----------------------+-------+---------------------------------------------------------------------------------------------------------------------------+------------------
+ small_world4_hnsw_idx | 24 kB | CREATE INDEX small_world4_hnsw_idx ON public.small_world4 USING hnsw (vector) WITH (m='14', ef='22', ef_construction='2') | 24 kB
+(1 row)
+
+-- the index will not allow changing the dimension of a vector element
+\set ON_ERROR_STOP off
+UPDATE small_world4 SET vector = '{0,0,0}' WHERE id = '000';
+ERROR:  Wrong number of dimensions: 3 instead of 4 expected
+UPDATE small_world4 SET vector = '{0,0,0}' WHERE id = '001';
+ERROR:  Wrong number of dimensions: 3 instead of 4 expected
+\set ON_ERROR_STOP on
+INSERT INTO small_world4 (id, vector) VALUES
+('000', '{1,0,0,0}'),
+('001', '{1,0,0,1}'),
+('010', '{1,0,1,0}');
+SELECT _lantern_internal.validate_index('small_world4_hnsw_idx', false);
+INFO:  validate_index() start for small_world4_hnsw_idx
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
+-- without the index, I can change the dimension of a vector element
+DROP INDEX small_world4_hnsw_idx;
+UPDATE small_world4 SET vector = '{0,0,0}' WHERE id = '001';
+-- but then, I cannot create the same dimension-inferred index
+\set ON_ERROR_STOP off
+CREATE INDEX ON small_world4 USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
+INFO:  done init usearch index
+ERROR:  Wrong number of dimensions: 3 instead of 4 expected
+\set ON_ERROR_STOP on
