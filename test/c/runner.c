@@ -186,13 +186,13 @@ int main()
 
         // Close test connection
         PQfinish(current_case_state.conn);
+        PQfinish(root_conn);
         if(ENABLE_REPLICA) {
             PQfinish(current_case_state.replica_conn);
         }
         printf("[+] Test case '%s' passed\n", current_case.name);
     }
 
-    PQfinish(root_conn);
     printf("[+] All tests passed\n");
     return 0;
 }
