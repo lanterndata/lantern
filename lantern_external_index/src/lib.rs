@@ -273,6 +273,7 @@ pub fn create_usearch_index(
     // Wait for all threads to finish processing
     for handle in handles {
         if let Err(e) = handle.join() {
+            logger.error("{e}");
             anyhow::bail!("{:?}", e);
         }
     }

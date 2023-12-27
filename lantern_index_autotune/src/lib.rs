@@ -50,7 +50,7 @@ fn create_test_table(
     pk: &str,
     column_name: &str,
     test_data_size: usize,
-) -> Result<usize, anyhow::Error> {
+) -> Result<(usize, i32), anyhow::Error> {
     client.batch_execute(&format!(
         "
       CREATE SCHEMA IF NOT EXISTS {INTERNAL_SCHEMA_NAME};
@@ -70,7 +70,10 @@ fn create_test_table(
         anyhow::bail!("Column does not have dimensions");
     }
 
-    Ok(dims as usize)
+    let sample_size = client.query_one(&format!("SELECT COUNT(*) FROM {tmp_table_name}"), &[])?;
+    let sample_size: i64 = sample_size.get(0);
+
+    Ok((dims as usize, sample_size as i32))
 }
 
 fn create_results_table(client: &mut Client, result_table_full_name: &str) -> AnyhowVoidResult {
@@ -316,7 +319,7 @@ pub fn autotune_index(
 
     // Create table where we will create intermediate index results
     // This temp table will contain random subset of rows in size of test_data_size from source table
-    let column_dims = create_test_table(
+    let (column_dims, sample_size) = create_test_table(
         &mut client,
         &tmp_table_full_name,
         &src_table_name,
@@ -392,7 +395,7 @@ pub fn autotune_index(
             &mut export_client,
             &model_name,
             args.k as i32,
-            args.test_data_size as i32,
+            sample_size,
             &result_table_name,
             &args.export_schema_name,
             &result_table_full_name,
@@ -472,7 +475,7 @@ pub fn autotune_index(
                 m: variant.m as i32,
                 k: args.k as i32,
                 dim: column_dims as i32,
-                sample_size: args.test_data_size as i32,
+                sample_size,
                 recall,
                 latency: latency as i32,
                 indexing_duration: indexing_duration as i32,
