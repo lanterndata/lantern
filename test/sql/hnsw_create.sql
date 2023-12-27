@@ -90,7 +90,11 @@ CREATE TABLE small_world5 (
 CREATE INDEX small_world5_hnsw_idx ON small_world5 USING hnsw (v dist_l2sq_ops);
 
 begin;
--- Our index then infers the dimension from the first inserted row
+-- Inserting a NULL vector should only insert it into the table and not into our index
+-- So, our index is still empty after and is yet to pick up a dimension
+INSERT INTO small_world5 (id, v) VALUES ('200', NULL);
+
+-- Our index then infers the dimension from the first inserted non-NULL row
 INSERT INTO small_world5 (id, v) VALUES
 ('000', '{1,0,0,0,1}'),
 ('001', '{1,0,0,1,2}'),
