@@ -298,7 +298,7 @@ static void ContinueBlockMapGroupInitialization(
 }
 
 void StoreExternalIndexBlockMapGroup(Relation             index,
-                                     usearch_index_t      external_index,
+                                     usearch_metadata_t  *metadata,
                                      HnswIndexHeaderPage *headerp,
                                      ForkNumber           forkNum,
                                      char                *data,
@@ -321,8 +321,7 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
     BlockNumber *l_wal_retriever_block_numbers
         = palloc0(sizeof(BlockNumber) * number_of_blockmaps_in_group * HNSW_BLOCKMAP_BLOCKS_PER_PAGE);
 
-    HnswIndexTuple    *bufferpage = palloc(BLCKSZ);
-    usearch_metadata_t metadata = usearch_metadata(external_index, NULL);
+    HnswIndexTuple *bufferpage = palloc(BLCKSZ);
 
     /* Add all the vectors to the WAL */
     for(uint32 node_id = first_node_index; node_id < first_node_index + num_added_vectors;) {
@@ -364,7 +363,7 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
             node = extract_node(data,
                                 *progress,
                                 dimension,
-                                &metadata,
+                                metadata,
                                 /*->>output*/ &node_size,
                                 &node_level);
             bufferpage->id = node_id;
@@ -435,7 +434,7 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
 }
 
 void StoreExternalIndex(Relation                index,
-                        usearch_index_t         external_index,
+                        usearch_metadata_t     *external_index_metadata,
                         ForkNumber              forkNum,
                         char                   *data,
                         usearch_init_options_t *opts,
@@ -496,7 +495,7 @@ void StoreExternalIndex(Relation                index,
     uint32   batch_size = HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
     while(num_added_vectors_remaining > 0) {
         StoreExternalIndexBlockMapGroup(index,
-                                        external_index,
+                                        external_index_metadata,
                                         headerp,
                                         forkNum,
                                         data,

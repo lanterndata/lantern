@@ -15,6 +15,9 @@
 #include <nodes/execnodes.h>
 #include <stdint.h>
 #include <storage/bufmgr.h>
+#include <sys/fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 #include <utils/array.h>
 #include <utils/builtins.h>
 #include <utils/lsyscache.h>
@@ -420,6 +423,17 @@ static void BuildIndex(
 {
     usearch_error_t        error = NULL;
     usearch_init_options_t opts;
+    struct stat            index_file_stat;
+    char                  *result_buf = NULL;
+    char                  *tmp_index_file_path = NULL;
+    const char            *tmp_index_file_fmt_str = "/tmp/ldb-index-%d.bin";
+    // size of static name + max digits of uint32 (Oid) 10 + 1 for nullbyte and - 2 for %d format specifier
+    const uint32       tmp_index_file_char_cnt = strlen(tmp_index_file_fmt_str) + 9;
+    int                index_file_fd;
+    int                munmap_ret;
+    usearch_metadata_t metadata;
+    size_t             num_added_vectors;
+
     MemSet(&opts, 0, sizeof(opts));
 
     InitBuildState(buildstate, heap, index, indexInfo);
@@ -446,7 +460,7 @@ static void BuildIndex(
         }
         elog(INFO, "done loading usearch index");
 
-        usearch_metadata_t metadata = usearch_metadata(buildstate->usearch_index, &error);
+        metadata = usearch_metadata(buildstate->usearch_index, &error);
         assert(error == NULL);
         opts.connectivity = metadata.connectivity;
         opts.dimensions = metadata.dimensions;
@@ -494,25 +508,53 @@ static void BuildIndex(
         assert(error == NULL);
     }
 
-    char *result_buf = NULL;
-    usearch_save(buildstate->usearch_index, NULL, &result_buf, &error);
-    assert(error == NULL && result_buf != NULL);
-
-    size_t num_added_vectors = usearch_size(buildstate->usearch_index, &error);
+    metadata = usearch_metadata(buildstate->usearch_index, &error);
     assert(error == NULL);
 
+    if(buildstate->index_file_path == NULL) {
+        // Save index into temporary file
+        // To later mmap it into memory
+        // Filename is /tmp/ldb-index-$relfilenode.bin
+        // The file will be removed in the end
+        tmp_index_file_path = palloc0(tmp_index_file_char_cnt);
+        snprintf(tmp_index_file_path, tmp_index_file_char_cnt, tmp_index_file_fmt_str, index->rd_rel->relfilenode);
+        usearch_save(buildstate->usearch_index, tmp_index_file_path, NULL, &error);
+        assert(error == NULL);
+        index_file_fd = open(tmp_index_file_path, O_RDONLY);
+    } else {
+        index_file_fd = open(buildstate->index_file_path, O_RDONLY);
+    }
+    assert(index_file_fd > 0);
+
+    num_added_vectors = usearch_size(buildstate->usearch_index, &error);
+    assert(error == NULL);
     elog(INFO, "done saving %ld vectors", num_added_vectors);
+
+    //****************************** mmap index to memory BEGIN ******************************//
+    usearch_free(buildstate->usearch_index, &error);
+    assert(error == NULL);
+    buildstate->usearch_index = NULL;
+
+    fstat(index_file_fd, &index_file_stat);
+    result_buf = mmap(NULL, index_file_stat.st_size, PROT_READ, MAP_PRIVATE, index_file_fd, 0);
+    assert(result_buf != MAP_FAILED);
+    //****************************** mmap index to memory END ******************************//
 
     //****************************** saving to WAL BEGIN ******************************//
     UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_LOAD);
-    StoreExternalIndex(index, buildstate->usearch_index, forkNum, result_buf, &opts, num_added_vectors);
-
+    StoreExternalIndex(index, &metadata, forkNum, result_buf, &opts, num_added_vectors);
     //****************************** saving to WAL END ******************************//
 
-    usearch_free(buildstate->usearch_index, &error);
-    free(result_buf);
-    assert(error == NULL);
-    buildstate->usearch_index = NULL;
+    munmap_ret = munmap(result_buf, index_file_stat.st_size);
+    assert(munmap_ret == 0);
+    LDB_UNUSED(munmap_ret);
+    close(index_file_fd);
+
+    if(tmp_index_file_path) {
+        // remove index file if it was not externally provided
+        unlink(tmp_index_file_path);
+        pfree(tmp_index_file_path);
+    }
 
     FreeBuildState(buildstate);
 }
