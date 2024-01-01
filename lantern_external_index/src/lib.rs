@@ -3,7 +3,7 @@ extern crate postgres;
 use rand::Rng;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::{Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender, SyncSender};
 use std::sync::{mpsc, RwLock};
 use std::sync::{Arc, Mutex};
 use std::{fs, io};
@@ -172,7 +172,7 @@ pub fn create_usearch_index(
     // Create a vector to store thread handles
     let mut handles = vec![];
 
-    let (tx, rx): (Sender<Vec<Row>>, Receiver<Vec<Row>>) = mpsc::channel();
+    let (tx, rx): (SyncSender<Vec<Row>>, Receiver<Vec<Row>>) = mpsc::sync_channel(num_cores);
     let rx_arc = Arc::new(Mutex::new(rx));
     let is_canceled = is_canceled.unwrap_or(Arc::new(RwLock::new(false)));
     let (progress_tx, progress_rx): (Sender<u8>, Receiver<u8>) = mpsc::channel();
