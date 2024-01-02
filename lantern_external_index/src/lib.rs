@@ -1,6 +1,7 @@
 extern crate postgres;
 
 use rand::Rng;
+use std::io::BufWriter;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender, SyncSender};
@@ -23,6 +24,8 @@ pub mod cli;
 
 type AnyhowVoidResult = Result<(), anyhow::Error>;
 pub type ProgressCbFn = Box<dyn Fn(u8) + Send + Sync>;
+// Used to control chunk size when copying index file to postgres server
+static COPY_BUFFER_CHUNK_SIZE: usize = 1024 * 1024 * 10; // 10MB
 
 #[derive(Debug)]
 struct Tid {
@@ -292,10 +295,12 @@ pub fn create_usearch_index(
         let mut large_object = LargeObject::new(transaction, &index_path);
         large_object.create()?;
         let mut reader = fs::File::open(Path::new(&args.out))?;
-        io::copy(&mut reader, &mut large_object)?;
+        let mut buf_writer = BufWriter::with_capacity(COPY_BUFFER_CHUNK_SIZE, &mut large_object);
+        io::copy(&mut reader, &mut buf_writer)?;
         fs::remove_file(Path::new(&args.out))?;
         progress_tx.send(90)?;
         drop(reader);
+        drop(buf_writer);
         logger.info("Creating index from file...");
         large_object.finish(
             &get_full_table_name(&args.schema, &args.table),
