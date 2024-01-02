@@ -142,11 +142,11 @@ SELECT hamming_dist('{1,1}', '{0,1,0}');
 ERROR:  expected equally sized arrays but got arrays with dimensions 2 and 3
 -- Expect errors due to improper use of the <?> operator outside of its supported context
 SELECT ARRAY[1,2,3] <?> ARRAY[3,2,1];
-ERROR:  Operator <-> is invalid outside of ORDER BY context
+ERROR:  Operator <?> is invalid outside of ORDER BY context
 SELECT ROUND((v <?> ARRAY[0,1,0])::numeric, 2) FROM small_world_cos ORDER BY v <?> '{0,1,0}' LIMIT 7;
-ERROR:  Operator <-> is invalid outside of ORDER BY context
+ERROR:  Operator <?> is invalid outside of ORDER BY context
 SELECT ROUND((v <?> ARRAY[0,1,0])::numeric, 2) FROM small_world_ham ORDER BY v <?> '{0,1,0}' LIMIT 7;
-ERROR:  Operator <-> is invalid outside of ORDER BY context
+ERROR:  Operator <?> is invalid outside of ORDER BY context
 \set ON_ERROR_STOP on
 -- More robust distance operator tests
 CREATE TABLE test1 (id SERIAL, v REAL[]);
@@ -169,63 +169,63 @@ SELECT 1 FROM test1 WHERE id = 0 + 1;
 \set ON_ERROR_STOP off
 -- Expect errors due to incorrect usage
 INSERT INTO test1 (v) VALUES (ARRAY['{1,2}'::REAL[] <?> '{4,2}'::REAL[], 0]);
-ERROR:  Operator <-> is invalid outside of ORDER BY context
+ERROR:  Operator <?> is invalid outside of ORDER BY context
 SELECT v <?> '{1,2}' FROM test1 ORDER BY v <?> '{1,3}';
-ERROR:  Operator <-> is invalid outside of ORDER BY context
+ERROR:  Operator <?> is invalid outside of ORDER BY context
 SELECT v <?> '{1,2}' FROM test1;
-ERROR:  Operator <-> is invalid outside of ORDER BY context
+ERROR:  Operator <?> is invalid outside of ORDER BY context
 WITH temp AS (SELECT v <?> '{1,2}' FROM test1) SELECT 1 FROM temp;
-ERROR:  Operator <-> is invalid outside of ORDER BY context
+ERROR:  Operator <?> is invalid outside of ORDER BY context
 SELECT t.res FROM (SELECT v <?> '{1,2}' AS res FROM test1) t;
-ERROR:  Operator <-> is invalid outside of ORDER BY context
+ERROR:  Operator <?> is invalid outside of ORDER BY context
 SELECT (SELECT v <?> '{1,2}' FROM test1 LIMIT 1) FROM test1;
-ERROR:  Operator <-> is invalid outside of ORDER BY context
+ERROR:  Operator <?> is invalid outside of ORDER BY context
 SELECT COALESCE(v <?> '{1,2}', 0) FROM test1;
-ERROR:  Operator <-> is invalid outside of ORDER BY context
+ERROR:  Operator <?> is invalid outside of ORDER BY context
 SELECT EXISTS (SELECT v <?> '{1,2}' FROM test1);
-ERROR:  Operator <-> is invalid outside of ORDER BY context
+ERROR:  Operator <?> is invalid outside of ORDER BY context
 SELECT test1.v <?> test2.v FROM test1 JOIN test2 USING (id);
-ERROR:  Operator <-> is invalid outside of ORDER BY context
+ERROR:  Operator <?> is invalid outside of ORDER BY context
 SELECT v <?> '{1,2}' FROM test1 UNION SELECT v <?> '{1,3}' FROM test1;
-ERROR:  Operator <-> is invalid outside of ORDER BY context
+ERROR:  Operator <?> is invalid outside of ORDER BY context
 (SELECT v <?> '{1,2}' FROM test1 WHERE id < 5) UNION (SELECT v <?> '{1,3}' FROM test1 WHERE id >= 5);
-ERROR:  Operator <-> is invalid outside of ORDER BY context
+ERROR:  Operator <?> is invalid outside of ORDER BY context
 SELECT MAX(v <?> '{1,2}') FROM test1;
-ERROR:  Operator <-> is invalid outside of ORDER BY context
+ERROR:  Operator <?> is invalid outside of ORDER BY context
 SELECT * FROM test1 JOIN test2 ON test1.v <?> test2.v < 0.5;
-ERROR:  Operator <-> is invalid outside of ORDER BY context
+ERROR:  Operator <?> is invalid outside of ORDER BY context
 SELECT test1.v FROM test1 JOIN test2 ON test1.v <?> '{1,2}' = test2.v <?> '{1,3}';
-ERROR:  Operator <-> is invalid outside of ORDER BY context
+ERROR:  Operator <?> is invalid outside of ORDER BY context
 SELECT (v <?> '{1,2}') + (v <?> '{1,3}') FROM test1;
-ERROR:  Operator <-> is invalid outside of ORDER BY context
+ERROR:  Operator <?> is invalid outside of ORDER BY context
 SELECT CASE WHEN v <?> '{1,2}' > 1 THEN 'High' ELSE 'Low' END FROM test1;
-ERROR:  Operator <-> is invalid outside of ORDER BY context
+ERROR:  Operator <?> is invalid outside of ORDER BY context
 INSERT INTO test1 (v) VALUES ('{2,3}') RETURNING v <?> '{1,2}';
-ERROR:  Operator <-> is invalid outside of ORDER BY context
+ERROR:  Operator <?> is invalid outside of ORDER BY context
 SELECT 1 FROM test1 GROUP BY v <?> '{1,3}';
-ERROR:  Operator <-> is invalid outside of ORDER BY context
+ERROR:  Operator <?> is invalid outside of ORDER BY context
 SELECT 1 FROM test1 ORDER BY (('{1,2}'::real[] <?> '{3,4}'::real[]) - 0);
-ERROR:  Operator <-> is invalid outside of ORDER BY context
+ERROR:  Operator <?> is invalid outside of ORDER BY context
 SELECT 1 FROM test1 ORDER BY '{1,2}'::REAL[] <?> '{3,4}'::REAL[];
-ERROR:  Operator <-> is invalid outside of ORDER BY context
+ERROR:  Operator <?> is invalid outside of ORDER BY context
 SELECT 1 FROM test1 ORDER BY v <?> ARRAY[(SELECT '{1,4}'::REAL[] <?> '{4,2}'::REAL[]), 3];
-ERROR:  Operator <-> is invalid outside of ORDER BY context
+ERROR:  Operator <?> is invalid outside of ORDER BY context
 -- Expect errors due to index not existing
 SELECT id FROM test1 ORDER BY v <?> '{1,2}';
-ERROR:  Operator <-> can only be used inside of an index
+ERROR:  Operator <?> can only be used inside of an index
 SELECT 1 FROM test1 ORDER BY v <?> (SELECT '{1,3}'::real[]);
-ERROR:  Operator <-> can only be used inside of an index
+ERROR:  Operator <?> can only be used inside of an index
 SELECT t2_results.id FROM test1 t1 JOIN LATERAL (SELECT t2.id FROM test2 t2 ORDER BY t1.v <?> t2.v LIMIT 1) t2_results ON TRUE;
-ERROR:  Operator <-> can only be used inside of an index
+ERROR:  Operator <?> can only be used inside of an index
 WITH t AS (SELECT id FROM test1 ORDER BY v <?> '{1,2}' LIMIT 1) SELECT DISTINCT id FROM t;
-ERROR:  Operator <-> can only be used inside of an index
+ERROR:  Operator <?> can only be used inside of an index
 WITH t AS (SELECT id FROM test1 ORDER BY v <?> '{1,2}' LIMIT 1) SELECT id, COUNT(*) FROM t GROUP BY 1;
-ERROR:  Operator <-> can only be used inside of an index
+ERROR:  Operator <?> can only be used inside of an index
 WITH t AS (SELECT id FROM test1 ORDER BY v <?> '{1,2}') SELECT id FROM t UNION SELECT id FROM t;
-ERROR:  Operator <-> can only be used inside of an index
+ERROR:  Operator <?> can only be used inside of an index
 -- issue #227
 SELECT * from test2 JOIN LATERAL (SELECT * FROM (SELECT id FROM test2 ORDER BY v <?> '{1,2}') as forall) haha on TRUE;
-ERROR:  Operator <-> can only be used inside of an index
+ERROR:  Operator <?> can only be used inside of an index
 -- more complex setup of the above
 SELECT forall.id, nearest_per_id.* FROM
 (SELECT * FROM
@@ -251,7 +251,7 @@ ORDER BY
   forall.id
 LIMIT
   9;
-ERROR:  Operator <-> can only be used inside of an index
+ERROR:  Operator <?> can only be used inside of an index
 \set ON_ERROR_STOP on
 -- cross-lateral joins work as expected when appropriate index exists
 -- nearest element for each vector
