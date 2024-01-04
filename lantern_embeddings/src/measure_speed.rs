@@ -19,6 +19,7 @@ fn measure_model_speed(
     db_uri: &str,
     table_name: &str,
     initial_limit: u32,
+    batch_size: Option<usize>,
 ) -> AnyhowU64Result {
     let mut limit = initial_limit;
     let speed: u64;
@@ -39,7 +40,7 @@ fn measure_model_speed(
             out_csv: None,
             out_table: None,
             data_path: data_path.clone(),
-            batch_size: None,
+            batch_size: batch_size.clone(),
             visual: false,
             limit: Some(limit.clone()),
             filter: None,
@@ -112,6 +113,7 @@ pub fn start_speed_test(args: &MeasureModelSpeedArgs, logger: Option<Logger>) ->
             &args.uri,
             &table_name_small,
             args.initial_limit,
+            args.batch_size,
         )?;
         let speed_min = measure_model_speed(
             &args.data_path,
@@ -119,6 +121,7 @@ pub fn start_speed_test(args: &MeasureModelSpeedArgs, logger: Option<Logger>) ->
             &args.uri,
             &table_name_large,
             args.initial_limit,
+            args.batch_size,
         )?;
         let speed_avg = (speed_min + speed_max) / 2;
 

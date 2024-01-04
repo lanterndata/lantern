@@ -108,4 +108,8 @@ pub struct MeasureModelSpeedArgs {
     /// Initial limit size for tests
     #[arg(short, long, default_value_t = 500)]
     pub initial_limit: u32,
+
+    /// Batch size
+    #[arg(short, long)]
+    pub batch_size: Option<usize>,
 }
