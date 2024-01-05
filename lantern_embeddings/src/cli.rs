@@ -112,4 +112,8 @@ pub struct MeasureModelSpeedArgs {
     /// Batch size
     #[arg(short, long)]
     pub batch_size: Option<usize>,
+
+    /// Maximum tokens for large text
+    #[arg(long, default_value_t = 1000)]
+    pub max_tokens: usize,
 }

@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::{cmp, time::Instant};
 
 use lantern_embeddings_core::clip::get_available_models;
 use lantern_logger::{LogLevel, Logger};
@@ -80,9 +80,18 @@ pub fn start_speed_test(args: &MeasureModelSpeedArgs, logger: Option<Logger>) ->
        INSERT INTO {table_name_small} SELECT generate_series(0, 5000), 'My small title text!';
        INSERT INTO {table_name_large} SELECT generate_series(0, 5000), 'title';
     "))?;
+
+    let mut text = LOREM_TEXT.to_owned();
+    let word_count = LOREM_TEXT.split(" ").collect::<Vec<_>>().len();
+
+    if args.max_tokens > word_count {
+        let repeat_cnt = cmp::max(args.max_tokens / word_count, 1);
+        text = LOREM_TEXT.repeat(repeat_cnt);
+    }
+
     client.execute(
         &format!("UPDATE {table_name_large} SET {COLUMN_NAME}=$1;"),
-        &[&LOREM_TEXT],
+        &[&text],
     )?;
 
     let models: Vec<_> = get_available_models(args.data_path.as_deref())
