@@ -4,6 +4,7 @@ use flate2::read::GzDecoder;
 use ftp::FtpStream;
 use lantern_embeddings_core;
 use lantern_external_index::cli::{CreateIndexArgs, UMetricKind};
+use rand::Rng;
 use tar::Archive;
 
 pgrx::pg_module_magic!();
@@ -40,14 +41,15 @@ fn lantern_create_external_index<'a>(
         validate_index_param("dim", dim, 1, 2000);
     }
 
-    let (db, user, socket_path, port) = Spi::connect(|client| {
+    let (db, user, socket_path, port, data_dir) = Spi::connect(|client| {
         let row = client
             .select(
                 "
            SELECT current_database()::text AS db,
            current_user::text AS user,
            (SELECT setting::text FROM pg_settings WHERE name = 'unix_socket_directories') AS socket_path,
-           (SELECT setting::text FROM pg_settings WHERE name = 'port') AS port",
+           (SELECT setting::text FROM pg_settings WHERE name = 'port') AS port,
+           (SELECT setting::text FROM pg_settings WHERE name = 'data_directory') as data_dir",
                 None,
                 None,
             )?
@@ -57,8 +59,15 @@ fn lantern_create_external_index<'a>(
         let user = row.get_by_name::<String, &str>("user")?.unwrap();
         let socket_path = row.get_by_name::<String, &str>("socket_path")?.unwrap();
         let port = row.get_by_name::<String, &str>("port")?.unwrap();
+        let data_dir = row.get_by_name::<String, &str>("data_dir")?.unwrap();
 
-        Ok::<(String, String, String, String), anyhow::Error>((db, user, socket_path, port))
+        Ok::<(String, String, String, String, String), anyhow::Error>((
+            db,
+            user,
+            socket_path,
+            port,
+            data_dir,
+        ))
     })?;
 
     let connection_string = format!("dbname={db} host={socket_path} user={user} port={port}");
@@ -69,10 +78,13 @@ fn lantern_create_external_index<'a>(
         Some(index_name.to_owned())
     };
 
+    let mut rng = rand::thread_rng();
+    let index_path = format!("{data_dir}/ldb-index-{}.usearch", rng.gen_range(0..1000));
+
     let res = lantern_external_index::create_usearch_index(
         &CreateIndexArgs {
             import: true,
-            out: "/tmp/index.usearch".to_owned(),
+            out: index_path,
             table: table.to_owned(),
             schema: schema.to_owned(),
             metric_kind: UMetricKind::from(metric_kind)?,
@@ -83,6 +95,7 @@ fn lantern_create_external_index<'a>(
             column: column.to_owned(),
             dims: dim as usize,
             index_name,
+            remote_database: false,
         },
         None,
         None,

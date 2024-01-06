@@ -18,7 +18,7 @@ use postgres_types::FromSql;
 use usearch::ffi::*;
 
 mod postgres_large_objects;
-mod utils;
+pub mod utils;
 
 pub mod cli;
 
@@ -289,28 +289,51 @@ pub fn create_usearch_index(
     drop(rx_arc);
 
     if args.import {
-        logger.info("Copying index file into database server...");
-        let mut rng = rand::thread_rng();
-        let index_path = format!("/tmp/index-{}.usearch", rng.gen_range(0..1000));
-        let mut large_object = LargeObject::new(transaction, &index_path);
-        large_object.create()?;
-        let mut reader = fs::File::open(Path::new(&args.out))?;
-        let mut buf_writer = BufWriter::with_capacity(COPY_BUFFER_CHUNK_SIZE, &mut large_object);
-        io::copy(&mut reader, &mut buf_writer)?;
-        fs::remove_file(Path::new(&args.out))?;
-        progress_tx.send(90)?;
-        drop(reader);
-        drop(buf_writer);
-        logger.info("Creating index from file...");
-        large_object.finish(
-            &get_full_table_name(&args.schema, &args.table),
-            &quote_ident(&args.column),
-            args.index_name.as_deref(),
-            args.ef,
-            args.efc,
-            dimensions,
-            args.m,
-        )?;
+        if args.remote_database {
+            logger.info("Copying index file into database server...");
+            let mut rng = rand::thread_rng();
+            let data_dir = transaction.query_one("SHOW data_directory", &[])?;
+            let data_dir: String = data_dir.try_get(0)?;
+            let index_path = format!("{data_dir}/ldb-index-{}.usearch", rng.gen_range(0..1000));
+            let mut large_object = LargeObject::new(transaction, &index_path);
+            large_object.create()?;
+            let mut reader = fs::File::open(Path::new(&args.out))?;
+            let mut buf_writer =
+                BufWriter::with_capacity(COPY_BUFFER_CHUNK_SIZE, &mut large_object);
+            io::copy(&mut reader, &mut buf_writer)?;
+            fs::remove_file(Path::new(&args.out))?;
+            progress_tx.send(90)?;
+            drop(reader);
+            drop(buf_writer);
+            logger.info("Creating index from file...");
+            large_object.finish(
+                &get_full_table_name(&args.schema, &args.table),
+                &quote_ident(&args.column),
+                args.index_name.as_deref(),
+                args.ef,
+                args.efc,
+                dimensions,
+                args.m,
+            )?;
+        } else {
+            // If job is run on the same server as database we can skip copying part
+            progress_tx.send(90)?;
+            logger.info("Creating index from file...");
+
+            let mut idx_name = "".to_owned();
+
+            if let Some(name) = &args.index_name {
+                idx_name = quote_ident(name);
+                transaction.execute(&format!("DROP INDEX IF EXISTS {idx_name}"), &[])?;
+            }
+
+            transaction.execute(
+            &format!("CREATE INDEX {idx_name} ON {table_name} USING hnsw({column_name}) WITH (_experimental_index_path='{index_path}', ef={ef}, dim={dim}, m={m}, ef_construction={ef_construction});", index_path=args.out, table_name=&get_full_table_name(&args.schema, &args.table),column_name=&quote_ident(&args.column), m=args.m, ef=args.ef, ef_construction=args.efc, dim=dimensions),
+            &[],
+            )?;
+
+            fs::remove_file(Path::new(&args.out))?;
+        }
         progress_tx.send(100)?;
         logger.info(&format!(
             "Index imported to table {} and removed from filesystem",

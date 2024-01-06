@@ -133,7 +133,8 @@ async fn external_index_worker(
                         efc: job_clone.efc,
                         import: true,
                         dims: 0,
-                        out: index_path
+                        out: index_path,
+                        remote_database: true,
                     }, progress_callback, Some(is_canceled_clone), Some(task_logger));
                     futures::executor::block_on(cancel_tx_clone.send(false))?;
                     result

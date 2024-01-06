@@ -128,6 +128,10 @@ pub struct CreateIndexArgs {
     #[arg(short, long, default_value_t = false)]
     pub import: bool,
 
+    /// If database is not on the same server where the job is running
+    #[arg(short, long, default_value_t = true)]
+    pub remote_database: bool,
+
     /// Index name to use when imporrting index to database
     #[arg(long)]
     pub index_name: Option<String>,

@@ -26,6 +26,7 @@ url = "2.2"
 lantern_embeddings_core = { path = "../lantern_embeddings_core" }
 lantern_external_index = { path = "../lantern_external_index" }
 anyhow = "1.0.75"
+rand = "0.8.5"
 
 [dev-dependencies]
 pgrx-tests = "=0.9.7"
