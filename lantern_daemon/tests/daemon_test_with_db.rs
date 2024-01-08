@@ -14,6 +14,7 @@ static EMBEDDING_JOBS_TABLE_NAME: &'static str = "_lantern_daemon_embedding_jobs
 static AUTOTUNE_JOBS_TABLE_NAME: &'static str = "_lantern_daemon_autotune_jobs";
 static INDEX_JOBS_TABLE_NAME: &'static str = "_lantern_daemon_index_jobs";
 static CLIENT_TABLE_NAME: &'static str = "_lantern_cloud_client1";
+static AUTOTUNE_RESULTS_TABLE_NAME: &'static str = "_lantern_daemon_autotune_results";
 
 async fn setup_db_tables(client: &mut Client) {
     client
@@ -22,6 +23,7 @@ async fn setup_db_tables(client: &mut Client) {
     DROP TABLE IF EXISTS {INDEX_JOBS_TABLE_NAME};
     DROP TABLE IF EXISTS {EMBEDDING_JOBS_TABLE_NAME};
     DROP TABLE IF EXISTS {AUTOTUNE_JOBS_TABLE_NAME};
+    DROP TABLE IF EXISTS {AUTOTUNE_RESULTS_TABLE_NAME};
     DROP TABLE IF EXISTS {CLIENT_TABLE_NAME};
     CREATE TABLE {INDEX_JOBS_TABLE_NAME} (
         \"id\" SERIAL PRIMARY KEY,
@@ -44,27 +46,30 @@ async fn setup_db_tables(client: &mut Client) {
         \"failure_reason\" text,
         \"progress\" INT2 DEFAULT 0
     );
+
     CREATE TABLE {AUTOTUNE_JOBS_TABLE_NAME} (
-        \"id\" SERIAL PRIMARY KEY,
-        \"database_id\" text NOT NULL,
-        \"db_connection\" text NOT NULL,
+        id SERIAL PRIMARY KEY,
+        database_id text NOT NULL,
+        db_connection text NOT NULL,
         \"schema\" text NOT NULL,
         \"table\" text NOT NULL,
         \"column\" text NOT NULL,
-        \"metric_kind\" text NOT NULL,
-        \"target_recall\" int NOT NULL,
-        \"k\" int NOT NULL,
-        \"create_index\" bool NOT NULL,
-        \"embedding_model\" text NULL,
-        \"created_at\" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        \"updated_at\" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        \"canceled_at\" timestamp,
-        \"started_at\" timestamp,
-        \"finished_at\" timestamp,
-        \"failed_at\" timestamp,
-        \"failure_reason\" text,
-        \"progress\" INT2 DEFAULT 0
+        \"operator\" text NOT NULL,
+        target_recall DOUBLE PRECISION NOT NULL,
+        embedding_model text NULL,
+        k int NOT NULL,
+        n int NOT NULL,
+        create_index bool NOT NULL,
+        created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        canceled_at timestamp,
+        started_at timestamp,
+        progress INT2 DEFAULT 0,
+        finished_at timestamp,
+        failed_at timestamp,
+        failure_reason text
     );
+
     CREATE TABLE {EMBEDDING_JOBS_TABLE_NAME} (
         \"id\" SERIAL PRIMARY KEY,
         \"database_id\" text NOT NULL,
@@ -88,6 +93,17 @@ async fn setup_db_tables(client: &mut Client) {
        title TEXT,
        title_embedding REAL[]
     );
+
+    CREATE TABLE {AUTOTUNE_RESULTS_TABLE_NAME} (
+        id SERIAL PRIMARY KEY,
+        experiment_id INT NOT NULL,
+        ef INT NOT NULL,
+        efc INT  NOT NULL,
+        m INT  NOT NULL,
+        recall DOUBLE PRECISION NOT NULL,
+        latency DOUBLE PRECISION NOT NULL,
+        build_time DOUBLE PRECISION NULL
+   );
 "
         ))
         .await
@@ -102,6 +118,7 @@ async fn drop_db_tables(client: &mut Client) {
         DROP TABLE IF EXISTS {EMBEDDING_JOBS_TABLE_NAME};
         DROP TABLE IF EXISTS {AUTOTUNE_JOBS_TABLE_NAME};
         DROP TABLE IF EXISTS {CLIENT_TABLE_NAME};
+        DROP TABLE IF EXISTS {AUTOTUNE_RESULTS_TABLE_NAME};
     "
         ))
         .await
@@ -145,6 +162,7 @@ fn start_daemon(
                     internal_schema: "lantern_test".to_owned(),
                     embedding_table,
                     autotune_table,
+                    autotune_results_table: Some(AUTOTUNE_RESULTS_TABLE_NAME.to_owned()),
                     external_index_table,
                     queue_size: 1,
                     log_level: LogLevel::Debug,
@@ -296,8 +314,8 @@ async fn test_index_autotune() {
     db_client
         .execute(&format!(
             "
-       INSERT INTO {AUTOTUNE_JOBS_TABLE_NAME} (database_id, db_connection, \"schema\", \"table\", \"column\", \"metric_kind\", target_recall, k, create_index) 
-        VALUES ('client1', $1, 'public', '{CLIENT_TABLE_NAME}', 'title_embedding', 'l2sq', 98, 10, true);
+       INSERT INTO {AUTOTUNE_JOBS_TABLE_NAME} (database_id, db_connection, \"schema\", \"table\", \"column\", \"operator\", target_recall, k, n, create_index, created_at, updated_at) 
+        VALUES ('client1', $1, 'public', '{CLIENT_TABLE_NAME}', 'title_embedding', 'dist_l2sq_ops', 98, 10, 100000, true, NOW(), NOW());
 "
         ), &[&db_uri])
         .await.unwrap();

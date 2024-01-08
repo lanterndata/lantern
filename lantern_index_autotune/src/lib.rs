@@ -3,7 +3,6 @@ use std::{
     sync::{Arc, RwLock},
     time::Instant,
 };
-use uuid::Uuid;
 
 use lantern_external_index::cli::CreateIndexArgs;
 use lantern_logger::{LogLevel, Logger};
@@ -29,18 +28,13 @@ struct IndexParams {
 
 #[derive(Debug, Clone)]
 struct AutotuneResult {
-    job_id: String,
-    model_name: Option<String>,
-    metric_kind: String,
+    job_id: i32,
     ef: i32,
     ef_construction: i32,
     m: i32,
-    k: i32,
-    dim: i32,
-    sample_size: i32,
     recall: f64,
-    latency: i32,
-    indexing_duration: i32,
+    latency: f64,
+    indexing_duration: f64,
 }
 
 fn create_test_table(
@@ -76,24 +70,19 @@ fn create_test_table(
     Ok((dims as usize, sample_size as i32))
 }
 
-fn create_results_table(client: &mut Client, result_table_full_name: &str) -> AnyhowVoidResult {
-    client.execute(&format!("CREATE TABLE IF NOT EXISTS {result_table_full_name} (id SERIAL PRIMARY KEY, job_id TEXT, model_name TEXT, ef INT, ef_construction INT, m INT, k INT, recall FLOAT, latency INT, dim INT, sample_size INT, indexing_duration INT, metric_kind TEXT)"), &[])?;
-    Ok(())
-}
-
 fn export_results(
     client: &mut Client,
     result_table_full_name: &str,
     autotune_results: Vec<AutotuneResult>,
 ) -> AnyhowVoidResult {
-    let mut query = format!("INSERT INTO {result_table_full_name} (job_id, model_name, ef, ef_construction, m, k, recall, latency, dim, sample_size, indexing_duration, metric_kind) VALUES ");
+    let mut query = format!("INSERT INTO {result_table_full_name} (experiment_id, ef, efc, m, recall, latency, build_time) VALUES ");
     let mut param_idx = 1;
     let params: Vec<&(dyn ToSql + Sync)> = autotune_results
         .iter()
         .flat_map(|row| {
             let comma_str = if param_idx == 1 { "" } else { "," };
             query = format!(
-                "{}{} (${},${},${},${},${},${},${},${},${},${},${},${})",
+                "{}{} (${},${},${},${},${},${},${})",
                 query,
                 comma_str,
                 param_idx,
@@ -103,27 +92,17 @@ fn export_results(
                 param_idx + 4,
                 param_idx + 5,
                 param_idx + 6,
-                param_idx + 7,
-                param_idx + 8,
-                param_idx + 9,
-                param_idx + 10,
-                param_idx + 11,
             );
 
-            param_idx += 12;
+            param_idx += 7;
             [
                 &row.job_id as &(dyn ToSql + Sync),
-                &row.model_name as &(dyn ToSql + Sync),
                 &row.ef,
                 &row.ef_construction,
                 &row.m,
-                &row.k,
                 &row.recall,
                 &row.latency,
-                &row.dim,
-                &row.sample_size,
                 &row.indexing_duration,
-                &row.metric_kind,
             ]
         })
         .collect();
@@ -141,15 +120,25 @@ fn get_existing_results_for_model(
     result_table_name: &str,
     result_table_schema: &str,
     result_table_full_name: &str,
+    jobs_table_name: &str,
+    jobs_table_schema: &str,
+    jobs_table_full_name: &str,
 ) -> Result<Option<Vec<AutotuneResult>>, anyhow::Error> {
-    let table_exists = client.query_one("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name=$1 AND table_schema=$2) AS table_existence", &[&result_table_name, &result_table_schema])?;
+    let results_table_exists = client.query_one("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name=$1 AND table_schema=$2) AS table_existence", &[&result_table_name, &result_table_schema])?;
+    let jobs_table_exists = client.query_one("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name=$1 AND table_schema=$2) AS table_existence", &[&jobs_table_name, &jobs_table_schema])?;
 
-    if !table_exists.get::<usize, bool>(0) {
+    if !results_table_exists.get::<usize, bool>(0) || !jobs_table_exists.get::<usize, bool>(0) {
         return Ok(None);
     }
 
     let rows = client.query(
-        &format!("SELECT * FROM {result_table_full_name} WHERE job_id=(SELECT job_id FROM {result_table_full_name} WHERE model_name=$1 AND k>=$2 AND sample_size>=$3 GROUP BY job_id, model_name LIMIT 1)"),
+        &format!(
+            "SELECT experiment_id, ef, efc, m, recall, latency, build_time FROM {result_table_full_name} 
+             WHERE experiment_id=(SELECT experiment_id FROM {result_table_full_name} 
+             INNER JOIN {jobs_table_full_name} job ON job.id=experiment_id AND job.embedding_model=$1 AND job.k>=$2 AND job.n>=$3 
+             GROUP BY experiment_id, job.embedding_model LIMIT 1)
+             GROUP BY experiment_id, ef, efc, m, recall, latency, build_time"
+        ),
         &[&model_name, &k, &sample_size],
     )?;
     if rows.len() == 0 {
@@ -160,20 +149,13 @@ fn get_existing_results_for_model(
 
     for row in rows {
         res.push(AutotuneResult {
-            job_id: row.get::<&str, &str>("job_id").to_owned(),
-            model_name: row
-                .get::<&str, Option<&str>>("model_name")
-                .map(str::to_string),
-            metric_kind: row.get::<&str, &str>("metric_kind").to_owned(),
+            job_id: row.get::<&str, i32>("experiment_id"),
             ef: row.get::<&str, i32>("ef"),
-            ef_construction: row.get::<&str, i32>("ef_construction"),
+            ef_construction: row.get::<&str, i32>("efc"),
             m: row.get::<&str, i32>("m"),
-            k: row.get::<&str, i32>("k"),
-            dim: row.get::<&str, i32>("dim"),
-            sample_size: row.get::<&str, i32>("sample_size"),
             recall: row.get::<&str, f64>("recall"),
-            latency: row.get::<&str, i32>("latency"),
-            indexing_duration: row.get::<&str, i32>("indexing_duration"),
+            latency: row.get::<&str, f64>("latency"),
+            indexing_duration: row.get::<&str, f64>("build_time"),
         });
     }
 
@@ -197,7 +179,7 @@ fn find_best_variant(autotune_results: &Vec<AutotuneResult>, target_recall: f64)
 
     // Then we will sort by latency + index creation time
     // So if the target recall is met we can create an index which will be faster
-    let mut filtered_results: Vec<(i32, &AutotuneResult)> = filtered_results
+    let mut filtered_results: Vec<(f64, &AutotuneResult)> = filtered_results
         .iter()
         .map(|r| (r.latency + r.indexing_duration, *r))
         .collect();
@@ -243,9 +225,9 @@ fn calculate_recall_and_latency(
     ground_truth: &GroundTruth,
     test_table_name: &str,
     k: u16,
-) -> Result<(f64, usize), anyhow::Error> {
+) -> Result<(f64, f64), anyhow::Error> {
     let mut recall: f64 = 0.0;
-    let mut latency: usize = 0;
+    let mut latency: f64 = 0.0;
 
     for (query, neighbors) in ground_truth {
         let start = Instant::now();
@@ -253,7 +235,7 @@ fn calculate_recall_and_latency(
             &format!("SELECT id::text FROM {test_table_name} ORDER BY $1<->v LIMIT {k}"),
             &[query],
         )?;
-        latency += start.elapsed().as_millis() as usize;
+        latency += start.elapsed().as_millis() as f64;
 
         let truth: HashSet<String> = neighbors.into_iter().map(|s| s.to_owned()).collect();
         let result: HashSet<String> = rows
@@ -267,8 +249,9 @@ fn calculate_recall_and_latency(
     }
 
     recall = recall / ground_truth.len() as f64;
-    latency = latency / ground_truth.len();
-    recall = f64::trunc(recall * 100.0) / 100.0; // rount to 2 decimal points
+    latency = latency / ground_truth.len() as f64;
+    recall = f64::trunc(recall * 100.0) / 100.0; // round to 2 decimal points
+    latency = f64::trunc(latency * 100.0) / 100.0; // round to 2 decimal points
 
     Ok((recall, latency))
 }
@@ -278,7 +261,7 @@ fn print_results(logger: &Logger, results: &Vec<AutotuneResult>) {
     logger.info(&format!("{:=<10} Results for job {job_id} {:=<10}", "", ""));
     for result in results {
         logger.info(&format!(
-            "result(recall={recall}%, latency={latency}ms, indexing_duration={indexing_duration}s) index_params(m={m}, ef={ef}, ef_construction={ef_construction})",
+            "result(recall={recall}%, latency={latency}ms, indexing_duration={indexing_duration}s) index_params(m={m}, ef={ef}, efc={ef_construction})",
             recall = result.recall,
             latency = result.latency,
             indexing_duration = result.indexing_duration,
@@ -315,7 +298,11 @@ pub fn autotune_index(
     let truth_table_name =
         get_full_table_name(INTERNAL_SCHEMA_NAME, &format!("_truth_{}", &args.table));
     let result_table_name = &args.export_table_name;
-    let result_table_full_name = get_full_table_name(&args.export_schema_name, &result_table_name);
+    let result_table_full_name = if let Some(table_name) = result_table_name {
+        Some(get_full_table_name(&args.export_schema_name, table_name))
+    } else {
+        None
+    };
 
     // Create table where we will create intermediate index results
     // This temp table will contain random subset of rows in size of test_data_size from source table
@@ -379,26 +366,32 @@ pub fn autotune_index(
     let mut rng = rand::thread_rng();
     let index_path = format!("/tmp/index-autotune-{}.usearch", rng.gen_range(0..1000));
     let index_name = format!("lantern_autotune_idx_{}", rng.gen_range(0..1000));
-    let uuid = Uuid::new_v4().to_string();
+    let uuid = rng.gen_range(0..1000000);
     let job_id = args.job_id.as_ref().unwrap_or(&uuid);
 
     // Create db client for exporting and finding existing results
     let mut autotune_results: Vec<AutotuneResult> = Vec::with_capacity(index_variants.len());
     let export_uri = args.export_db_uri.clone().unwrap_or(args.uri.clone());
-    let uri = append_params_to_uri(&export_uri, CONNECTION_PARAMS);
-    let mut export_client = Client::connect(&uri, NoTls)?;
+    let export_uri = append_params_to_uri(&export_uri, CONNECTION_PARAMS);
+    let mut export_client = Client::connect(&export_uri, NoTls)?;
 
     // If the model name is provided we will check if we already have results for that model
     // And if so we will instead use precomputed results
-    if let Some(model_name) = &args.model_name {
+    if args.model_name.is_some() && result_table_name.is_some() && args.job_table_name.is_some() {
+        let model_name = args.model_name.as_ref().unwrap();
+        let job_table_name = args.job_table_name.as_ref().unwrap();
+        let job_table_full_name = get_full_table_name(&args.job_schema_name, job_table_name);
         let existing_results = get_existing_results_for_model(
             &mut export_client,
             &model_name,
             args.k as i32,
             sample_size,
-            &result_table_name,
+            result_table_name.as_ref().unwrap(),
             &args.export_schema_name,
-            &result_table_full_name,
+            result_table_full_name.as_ref().unwrap(),
+            &job_table_name,
+            &args.job_schema_name,
+            &job_table_full_name,
         )?;
 
         if let Some(results) = existing_results {
@@ -461,7 +454,9 @@ pub fn autotune_index(
                 Some(is_canceled.clone()),
                 Some(Logger::new(&logger.label, LogLevel::Info)),
             )?;
-            let indexing_duration = start.elapsed().as_secs() as usize;
+            let mut indexing_duration = start.elapsed().as_secs() as f64;
+            indexing_duration = f64::trunc(indexing_duration * 100.0) / 100.0; // round to 2 decimal points
+
             let (recall, latency) = calculate_recall_and_latency(
                 &mut client,
                 &ground_truth,
@@ -470,17 +465,12 @@ pub fn autotune_index(
             )?;
             autotune_results.push(AutotuneResult {
                 job_id: job_id.clone(),
-                metric_kind: args.metric_kind.sql_function(),
                 ef: variant.ef as i32,
                 ef_construction: variant.ef_construction as i32,
                 m: variant.m as i32,
-                k: args.k as i32,
-                dim: column_dims as i32,
-                sample_size,
                 recall,
-                latency: latency as i32,
-                indexing_duration: indexing_duration as i32,
-                model_name: args.model_name.clone(),
+                latency,
+                indexing_duration,
             });
             progress += progress_per_iter;
             report_progress(&progress_cb, &logger, progress);
@@ -507,15 +497,15 @@ pub fn autotune_index(
     // if the export flag is provided
     // we will create the export table
     // and insert the results into that table
-    if args.export {
-        create_results_table(&mut export_client, &result_table_full_name)?;
+    if result_table_name.is_some() {
         export_results(
             &mut export_client,
-            &result_table_full_name,
+            &result_table_full_name.as_ref().unwrap(),
             autotune_results.clone(),
         )?;
         logger.debug(&format!(
-            "Results for job {job_id} exported to {result_table_name}"
+            "Results for job {job_id} exported to {result_table_name}",
+            result_table_name = result_table_name.as_ref().unwrap()
         ));
     }
 

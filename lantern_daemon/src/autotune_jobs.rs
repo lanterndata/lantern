@@ -7,20 +7,33 @@
         "schema" text NOT NULL,
         "table" text NOT NULL,
         "column" text NOT NULL,
-        "metric_kind" text NOT NULL,
-        "target_recall" int NOT NULL,
-        "k" int NOT NULL,
-        "create_index" bool NOT NULL,
+        "operator" text NOT NULL,
+        "target_recall" DOUBLE PRECISION NOT NULL,
         "embedding_model" text NULL,
+        "k" int NOT NULL,
+        "n" int NOT NULL,
+        "create_index" bool NOT NULL,
         "created_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updated_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "canceled_at" timestamp,
         "started_at" timestamp,
+        "progress" INT2 DEFAULT 0,
         "finished_at" timestamp,
         "failed_at" timestamp,
-        "failure_reason" text,
-        "progress" INT2 DEFAULT 0
+        "failure_reason" text
     );
+
+  Autotune results table should have the following structure:
+   CREATE TABLE "public"."index_parameter_experiment_results" (
+        id SERIAL PRIMARY KEY, 
+        experiment_id INT NOT NULL, -- reference to job.id
+        ef INT NOT NULL, 
+        efc INT  NOT NULL, 
+        m INT  NOT NULL, 
+        recall DOUBLE PRECISION NOT NULL,
+        latency DOUBLE PRECISION NOT NULL,
+        build_time DOUBLE PRECISION NULL
+   );
 */
 
 use crate::cli;
@@ -49,13 +62,14 @@ async fn autotune_worker(
     mut job_queue_rx: Receiver<AutotuneJob>,
     client: Arc<Client>,
     export_db_uri: String,
-    internal_schema: String,
     schema: String,
     table: String,
+    autotune_results_table: String,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
     let schema = Arc::new(schema);
     let table = Arc::new(table);
+    let autotune_results_table = Arc::new(autotune_results_table);
     let jobs_table_name = Arc::new(get_full_table_name(&schema, &table));
 
     tokio::spawn(async move {
@@ -68,7 +82,6 @@ async fn autotune_worker(
             let job = Arc::new(job);
             let job_ref = job.clone();
             let jobs_table_name_r1 = jobs_table_name.clone();
-            let internal_schema = internal_schema.clone();
             let export_db_uri = export_db_uri.clone();
 
             let progress_callback = move |progress: u8| {
@@ -111,27 +124,31 @@ async fn autotune_worker(
             // We will keep the cancel_tx in static hashmap, so we can cancel the job if
             // canceled_at will be changed to true
 
+            let schema = schema.clone();
+            let table = table.clone();
+            let results_table = autotune_results_table.clone();
             let task_handle = tokio::spawn(async move {
                 let is_canceled = Arc::new(std::sync::RwLock::new(false));
                 let is_canceled_clone = is_canceled.clone();
                 let task = tokio::task::spawn_blocking(move || {
                     let result = lantern_index_autotune::autotune_index(&IndexAutotuneArgs {
                         pk: "id".to_owned(),
-                        job_id: Some(job_clone.id.to_string()),
+                        job_id: Some(job_clone.id),
                         model_name: job_clone.model_name.clone(),
                         schema: job_clone.schema.clone(),
                         uri: job_clone.db_uri.clone(),
                         export_db_uri: Some(export_db_uri),
-                        export_schema_name: internal_schema,
-                        export_table_name: "lantern_autotune_results".to_owned(),
+                        export_schema_name: schema.to_string(),
+                        job_schema_name: schema.to_string(),
+                        export_table_name: Some(results_table.to_string()),
+                        job_table_name: Some(table.to_string()),
                         table: job_clone.table.clone(),
                         column: job_clone.column.clone(),
-                        test_data_size: 10000,
+                        test_data_size: job_clone.sample_size,
                         create_index: job_clone.create_index,
-                        export: true,
                         k: job_clone.k,
                         recall: job_clone.recall,
-                        metric_kind: UMetricKind::from(&job_clone.metric_kind)?
+                        metric_kind: UMetricKind::from_ops(&job_clone.metric_kind)?
                     }, progress_callback, Some(is_canceled_clone), Some(task_logger));
                     futures::executor::block_on(cancel_tx_clone.send(false))?;
                     result
@@ -156,6 +173,7 @@ async fn autotune_worker(
                     client_ref.execute(&format!("UPDATE {jobs_table_name} SET finished_at=NOW(), updated_at=NOW() WHERE id=$1"), &[&job.id]).await?;
                 },
                 Err(e) => {
+                    logger.error(&format!("Error while executing job {job_id}: {e}", job_id=job.id));
                     remove_job_handle(&JOBS, job.id).await?;
                     // update failure reason
                     client_ref.execute(&format!("UPDATE {jobs_table_name} SET failed_at=NOW(), updated_at=NOW(), failure_reason=$1 WHERE id=$2"), &[&e.to_string(), &job.id]).await?;
@@ -183,7 +201,7 @@ async fn job_insert_processor(
 
     tokio::spawn(async move {
         let full_table_name = Arc::new(get_full_table_name(&schema, &table));
-        let job_query_sql = Arc::new(format!("SELECT id, db_connection as db_uri, \"column\",  \"table\", \"schema\", embedding_model as model, target_recall, k, create_index, metric_kind  FROM {0}", &full_table_name));
+        let job_query_sql = Arc::new(format!("SELECT id, db_connection as db_uri, \"column\",  \"table\", \"schema\", embedding_model as model, target_recall, k, n as sample_size, create_index, operator as metric_kind  FROM {0}", &full_table_name));
         while let Some(notification) = notifications_rx.recv().await {
             let id = notification.id;
 
@@ -220,6 +238,12 @@ async fn job_insert_processor(
 #[tokio::main]
 pub async fn start(args: cli::DaemonArgs, logger: Arc<Logger>) -> AnyhowVoidResult {
     logger.info("Starting Autotune Jobs");
+
+    if args.autotune_results_table.is_none() {
+        anyhow::bail!("Argument `--autotune-results-table` is required");
+    }
+
+    let autotune_results_table = args.autotune_results_table.as_ref().unwrap();
 
     let (main_db_client, connection) = tokio_postgres::connect(&args.uri, NoTls).await?;
 
@@ -280,9 +304,9 @@ pub async fn start(args: cli::DaemonArgs, logger: Arc<Logger>) -> AnyhowVoidResu
             job_queue_rx,
             main_db_client.clone(),
             args.uri.clone(),
-            args.internal_schema.clone(),
             args.schema.clone(),
             table.clone(),
+            autotune_results_table.clone(),
             logger.clone(),
         )) as VoidFuture,
         Box::pin(collect_pending_index_jobs(

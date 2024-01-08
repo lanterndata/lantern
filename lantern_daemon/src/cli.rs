@@ -42,6 +42,10 @@ pub struct DaemonArgs {
     #[arg(long)]
     pub autotune_table: Option<String>,
 
+    /// Autotune results table name
+    #[arg(long)]
+    pub autotune_results_table: Option<String>,
+
     /// External index jobs table name
     #[arg(long)]
     pub external_index_table: Option<String>,

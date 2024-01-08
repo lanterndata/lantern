@@ -194,6 +194,7 @@ async fn embedding_worker(
                     }
                 },
                 Err(e) => {
+                    logger.error(&format!("Error while executing job {job_id}: {e}", job_id=job.id));
                     remove_job_handle(&JOBS, job.id).await?;
                     if job.is_init {
                         // update failure reason

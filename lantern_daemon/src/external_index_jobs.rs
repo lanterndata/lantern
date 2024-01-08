@@ -159,6 +159,7 @@ async fn external_index_worker(
                     client_ref.execute(&format!("UPDATE {jobs_table_name} SET finished_at=NOW(), updated_at=NOW() WHERE id=$1"), &[&job.id]).await?;
                 },
                 Err(e) => {
+                    logger.error(&format!("Error while executing job {job_id}: {e}", job_id=job.id));
                     remove_job_handle(job.id).await?;
                     // update failure reason
                     client_ref.execute(&format!("UPDATE {jobs_table_name} SET failed_at=NOW(), updated_at=NOW(), failure_reason=$1 WHERE id=$2"), &[&e.to_string(), &job.id]).await?;
