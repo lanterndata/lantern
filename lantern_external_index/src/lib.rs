@@ -338,6 +338,7 @@ pub fn create_usearch_index(
             &[],
             )?;
 
+            transaction.commit()?;
             fs::remove_file(Path::new(&args.out))?;
         }
         progress_tx.send(100)?;
