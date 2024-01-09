@@ -4,10 +4,11 @@ use image::io::Reader as ImageReader;
 use image::GenericImageView;
 use isahc::{prelude::*, HttpClient};
 use itertools::Itertools;
-use ndarray::{s, Array2, Array4, CowArray, Dim};
+use ndarray::{s, Array2, Array4, ArrayBase, CowArray, CowRepr, Dim, IxDynImpl};
 use nvml_wrapper::Nvml;
 use ort::session::Session;
 use ort::{Environment, ExecutionProvider, GraphOptimizationLevel, SessionBuilder, Value};
+use std::cmp;
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
@@ -19,8 +20,18 @@ use tokio::{fs, runtime};
 #[macro_use]
 extern crate lazy_static;
 
+type SessionInput<'a> = ArrayBase<CowRepr<'a, i64>, Dim<IxDynImpl>>;
+
+#[derive(Debug, Clone)]
+pub struct ModelParams {
+    layer_cnt: Option<usize>,
+    head_cnt: Option<usize>,
+    head_dim: Option<usize>,
+}
+
 pub struct EncoderService {
     name: String,
+    model_params: ModelParams,
     tokenizer: Option<Tokenizer>,
     vision_size: Option<usize>,
     encoder: Session,
@@ -39,6 +50,7 @@ const MAX_IMAGE_SIZE: usize = 1024 * 1024 * 10; // 10 MB
 
 struct ModelInfo {
     url: String,
+    params: ModelParams,
     tokenizer_url: Option<String>,
     encoder_args: EncoderOptions,
     encoder: Option<EncoderService>,
@@ -51,6 +63,9 @@ struct ModelInfoBuilder {
     input_image_size: Option<usize>,
     padding_params: Option<PaddingParams>,
     truncation_params: Option<TruncationParams>,
+    layer_cnt: Option<usize>,
+    head_cnt: Option<usize>,
+    head_dim: Option<usize>,
 }
 
 impl ModelInfoBuilder {
@@ -62,6 +77,9 @@ impl ModelInfoBuilder {
             input_image_size: None,
             padding_params: None,
             truncation_params: None,
+            layer_cnt: None,
+            head_cnt: None,
+            head_dim: None,
         }
     }
 
@@ -77,6 +95,21 @@ impl ModelInfoBuilder {
 
     fn with_input_image_size(&mut self, len: usize) -> &mut Self {
         self.input_image_size = Some(len);
+        self
+    }
+
+    fn with_layer_cnt(&mut self, layer_cnt: usize) -> &mut Self {
+        self.layer_cnt = Some(layer_cnt);
+        self
+    }
+
+    fn with_head_cnt(&mut self, head_cnt: usize) -> &mut Self {
+        self.head_cnt = Some(head_cnt);
+        self
+    }
+
+    fn with_head_dim(&mut self, head_dim: usize) -> &mut Self {
+        self.head_dim = Some(head_dim);
         self
     }
 
@@ -99,6 +132,11 @@ impl ModelInfoBuilder {
         ModelInfo {
             url: model_url,
             tokenizer_url,
+            params: ModelParams {
+                layer_cnt: self.layer_cnt.clone(),
+                head_cnt: self.head_cnt.clone(),
+                head_dim: self.head_dim.clone(),
+            },
             encoder: None,
             encoder_args,
         }
@@ -108,7 +146,7 @@ impl ModelInfoBuilder {
 lazy_static! {
     static ref MODEL_INFO_MAP: RwLock<HashMap<&'static str, ModelInfo>> = RwLock::new(HashMap::from([
         ("clip/ViT-B-32-textual", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/openai/ViT-B-32/textual").with_tokenizer(true).build()),
-        ("clip/ViT-B-32-visual", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/openai/ViT-B-32/visual").with_input_image_size(224).with_visual(true).build()),
+        ("clip/ViT-B-32-visual", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/openai/ViT-B-32/visual").with_visual(true).with_input_image_size(224).build()),
         ("BAAI/bge-small-en", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/BAAI/bge-small-en-v1.5").with_tokenizer(true).build()),
         ("BAAI/bge-base-en", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/BAAI/bge-base-en-v1.5").with_tokenizer(true).build()),
         ("BAAI/bge-large-en", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/BAAI/bge-large-en-v1.5").with_tokenizer(true).build()),
@@ -120,8 +158,8 @@ lazy_static! {
         ("microsoft/all-MiniLM-L12-v2", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/microsoft/all-MiniLM-L12-v2").with_tokenizer(true).build()),
         ("microsoft/all-mpnet-base-v2", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/microsoft/all-mpnet-base-v2").with_tokenizer(true).build()),
         ("transformers/multi-qa-mpnet-base-dot-v1", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/transformers/multi-qa-mpnet-base-dot-v1").with_tokenizer(true).build()),
-        ("jinaai/jina-embeddings-v2-small-en", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/jinaai/jina-embeddings-v2-small-en").with_tokenizer(true).build()),
-        ("jinaai/jina-embeddings-v2-base-en", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/jinaai/jina-embeddings-v2-base-en").with_tokenizer(true).build())
+        ("jinaai/jina-embeddings-v2-small-en", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/jinaai/jina-embeddings-v2-small-en").with_tokenizer(true).with_layer_cnt(4).with_head_cnt(4).with_head_dim(64).build()),
+        ("jinaai/jina-embeddings-v2-base-en", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/jinaai/jina-embeddings-v2-base-en").with_tokenizer(true).with_layer_cnt(12).with_head_cnt(12).with_head_dim(64).build())
     ]));
 }
 
@@ -150,6 +188,7 @@ impl EncoderService {
     pub fn new(
         environment: &Arc<Environment>,
         model_name: &str,
+        model_params: ModelParams,
         model_folder: &PathBuf,
         args: &EncoderOptions,
     ) -> Result<EncoderService, Box<dyn std::error::Error + Send + Sync>> {
@@ -184,21 +223,104 @@ impl EncoderService {
             name: model_name.to_string(),
             tokenizer,
             encoder,
+            model_params,
             vision_size: args.input_image_size,
         })
     }
 
+    fn get_required_memory(&self, seq_length: usize) -> usize {
+        let model_params = &self.model_params;
+
+        if model_params.head_cnt.is_none()
+            || model_params.head_dim.is_none()
+            || model_params.layer_cnt.is_none()
+        {
+            return 1;
+        }
+
+        let num_layers = model_params.layer_cnt.unwrap();
+        let num_heads = model_params.head_cnt.unwrap();
+        let head_dim = model_params.head_dim.unwrap();
+        /*
+        R = n_tr_blocks = number of transformer blocks in the model (e.g layers)
+        N = n_head = number of attention heads
+        D = dim = dimension of each attention head
+        S = sequence_length = input sequence length
+
+        memory modal = 4 * R * N^2 * D^2
+        memory activations = RBNS(S + 2D)
+        total memory required = ((4 * R * N^2 * D^2) + RBNS(S + 2D)) * float64 memory in bytes
+        Formula taken from: https://www.linkedin.com/pulse/estimating-memory-requirements-transformer-networks-schartz-rehan/
+        */
+        let float64_bytes = 8;
+        let total_memory = ((4 * num_layers * num_heads.pow(2) * head_dim.pow(2))
+            + num_layers * num_heads * seq_length * (seq_length + 2 * head_dim))
+            * float64_bytes;
+        // Add 20% additional memory for overhead
+        return (total_memory as f64 * 1.2) as usize;
+    }
+
+    fn chunk_session_input<'a>(
+        &self,
+        vecs: Vec<Vec<i64>>,
+        batch_size: usize,
+    ) -> Result<Vec<Vec<SessionInput>>, anyhow::Error> {
+        // Currently this function will only work for bert models
+        // get token count for each text
+        let token_cnt = vecs[0].len() / batch_size;
+        let input_cnt = vecs.len();
+        // Get available memory for GPU or RAM
+        let available_memory = self.get_available_memory()? as usize;
+        // Calculate memory consumption for one item
+        // Then devide GPU memory / memory needed
+        // Then devide array into chunks of that count
+        let memory_needed_for_one_input = self.get_required_memory(token_cnt as usize);
+        // Get max batch size
+        let max_batch_size = cmp::max(1, (available_memory / memory_needed_for_one_input) as usize);
+        // For models which does not need chunking the get_required_memory will return 1
+        // And max_batch_size will be higher than provided batch_size, so we will take
+        // The minimum of batch_size and max_batch_size
+        let max_batch_size = cmp::min(batch_size, max_batch_size);
+        let max_token_cnt = max_batch_size * token_cnt;
+
+        let mut inputs = Vec::with_capacity(batch_size / max_batch_size);
+        // Make vector of shape
+        // [
+        //   [tokenIds, tokenTypeIds, Mask],
+        //   [tokenIds, tokenTypeIds, Mask],
+        //   [tokenIds, tokenTypeIds, Mask]
+        // ]
+        for input in vecs {
+            for (index, chunk) in input.chunks(max_token_cnt).enumerate() {
+                if inputs.len() == index {
+                    inputs.push(Vec::with_capacity(input_cnt));
+                }
+                let group: &mut Vec<SessionInput> = inputs.get_mut(index).unwrap();
+                let group_batch_size = chunk.len() / token_cnt;
+                group.push(
+                    CowArray::from(Array2::from_shape_vec(
+                        (group_batch_size, token_cnt),
+                        chunk.to_vec(),
+                    )?)
+                    .into_dyn(),
+                );
+            }
+        }
+
+        Ok(inputs)
+    }
+
     fn process_text_bert(
         &self,
-        text: &Vec<&str>,
+        texts: &Vec<&str>,
     ) -> Result<Vec<Vec<f32>>, Box<dyn std::error::Error + Send + Sync>> {
         let session = &self.encoder;
-        let text_len = text.len();
+        let text_len = texts.len();
         let preprocessed = self
             .tokenizer
             .as_ref()
             .unwrap()
-            .encode_batch(text.clone(), true)?;
+            .encode_batch(texts.clone(), true)?;
 
         let mut vecs = Vec::with_capacity(session.inputs.len());
 
@@ -229,33 +351,39 @@ impl EncoderService {
                 _ => {}
             }
             if let Some(v) = val {
-                vecs.push(
-                    CowArray::from(Array2::from_shape_vec((text_len, v.len() / text_len), v)?)
-                        .into_dyn(),
-                );
+                vecs.push(v);
             }
         }
 
-        let inputs = vecs
+        let input_chunks = self.chunk_session_input(vecs, text_len)?;
+        let embeddings = input_chunks
             .iter()
-            .map(|v| Value::from_array(session.allocator(), &v).unwrap())
-            .collect();
+            .map(|chunk| {
+                // Iterate over each chunk and create embedding for that chunk
+                let inputs: Vec<Value<'_>> = chunk
+                    .iter()
+                    .map(|v| Value::from_array(session.allocator(), &v).unwrap())
+                    .collect();
 
-        let outputs = session.run(inputs)?;
+                let outputs = session.run(inputs).unwrap();
 
-        let binding = outputs[0].try_extract()?;
-        let embeddings = binding.view();
-        let embeddings = embeddings.slice(s![.., 0, ..]);
-        let embeddings: Vec<f32> = embeddings.iter().map(|s| *s).collect();
-        let output_dims = session.outputs[0].dimensions.last().unwrap().unwrap() as usize;
+                let binding = outputs[0].try_extract()?;
+                let embeddings = binding.view();
+                let embeddings = embeddings.slice(s![.., 0, ..]);
+                let embeddings: Vec<f32> = embeddings.iter().map(|s| *s).collect();
+                let output_dims = session.outputs[0].dimensions.last().unwrap().unwrap() as usize;
 
-        Ok(embeddings
-            .iter()
-            .map(|s| *s)
-            .chunks(output_dims)
-            .into_iter()
-            .map(|b| b.collect())
-            .collect())
+                Ok(embeddings
+                    .iter()
+                    .map(|s| *s)
+                    .chunks(output_dims)
+                    .into_iter()
+                    .map(|b| b.collect())
+                    .collect::<Vec<Vec<f32>>>())
+            })
+            .collect::<Result<Vec<Vec<Vec<f32>>>, anyhow::Error>>();
+
+        Ok(embeddings.map(|vec_vec| vec_vec.into_iter().flatten().collect())?)
     }
 
     fn process_text_clip(
@@ -310,13 +438,38 @@ impl EncoderService {
             .collect())
     }
 
+    fn get_available_memory(&self) -> Result<u64, anyhow::Error> {
+        let mut _nvml_instance = None;
+        let mut gpu_device = None;
+
+        if let Ok(nvml) = Nvml::init() {
+            _nvml_instance = Some(nvml);
+            let _nvml_insteance = _nvml_instance.as_mut().unwrap();
+            let nvml_device = _nvml_insteance.device_by_index(0);
+            if let Ok(device) = nvml_device {
+                gpu_device = Some(device);
+            }
+        }
+
+        if gpu_device.is_none() {
+            let mut sys = System::new_all();
+            sys.refresh_all();
+            return Ok(sys.total_memory() - sys.used_memory());
+        }
+
+        let gpu_device = gpu_device.as_ref().unwrap();
+
+        let mem_info = gpu_device.memory_info()?;
+        Ok(mem_info.free)
+    }
+
     fn process_text(
         &self,
-        text: &Vec<&str>,
+        texts: &Vec<&str>,
     ) -> Result<Vec<Vec<f32>>, Box<dyn std::error::Error + Send + Sync>> {
         match self.name.as_str() {
-            "clip/ViT-B-32-textual" => self.process_text_clip(text),
-            _ => self.process_text_bert(text),
+            "clip/ViT-B-32-textual" => self.process_text_clip(texts),
+            _ => self.process_text_bert(texts),
         }
     }
 
@@ -551,6 +704,7 @@ pub mod clip {
         let encoder = EncoderService::new(
             &ONNX_ENV,
             model_name,
+            model_info.params.clone(),
             &model_folder,
             &model_info.encoder_args,
         );

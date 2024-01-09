@@ -25,8 +25,7 @@ macro_rules! text_embedding_test {
                 None,
                 Some("/tmp/lantern-embeddings-core-test"),
                 false,
-            )
-            .unwrap();
+            ).unwrap();
 
             let expected_output: Vec<Vec<f32>> =
                 itertools::repeat_n(expected, batch_size).collect();

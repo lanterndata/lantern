@@ -1,0 +1,8 @@
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "link-args=-Wl,-rpath,/usr/local/lib/onnxruntime/lib"]
+[target.'cfg(target_os="macos")']
+# Postgres symbols won't be available until runtime
+rustflags = ["-Clink-arg=-Wl,-undefined,dynamic_lookup"]
+[env]
+ORT_STRATEGY = { value = "system" }
+ORT_LIB_LOCATION = { value = "/usr/local/lib/onnxruntime/lib" , relative = false }

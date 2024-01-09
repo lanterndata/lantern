@@ -4,5 +4,4 @@
 *.iml
 **/*.rs.bk
 Cargo.lock
-.cargo
 .ldb_extras_data
