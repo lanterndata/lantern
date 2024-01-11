@@ -51,6 +51,7 @@ function run_db_tests(){
   then
     cd $WORKDIR/build && \
     make test && \
+    make test-parallel && \
     make test-client && \
     run_pgvector_tests
 

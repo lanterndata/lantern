@@ -15,7 +15,7 @@ regression.*
 *.a
 test/tmp_output/
 .DS_Store
-build
+/build*/
 data
 sanitizer
 .vscode/
