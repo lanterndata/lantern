@@ -330,7 +330,6 @@ add_dependencies(archive lantern)
 
 # Debian packaging
 set(CPACK_GENERATOR "DEB")
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "postgresql-${PG_VERSION}, postgresql-${PG_VERSION}-pgvector")
 set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Lantern Data")
 include(CPack)
 
