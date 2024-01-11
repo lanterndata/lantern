@@ -112,7 +112,7 @@ The `M`, `ef`, and `ef_construction` parameters control the performance of the H
 
 ### Miscellaneous
 
-- If you have previously cloned Lantern and would like to update run `git pull && git submodule update`
+- If you have previously cloned Lantern and would like to update run `git pull && git submodule update --recursive`
 
 ## ⭐️ Features
 

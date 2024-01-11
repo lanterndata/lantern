@@ -1,7 +1,7 @@
 #!/bin/bash
 
 get_cmake_flags(){
- echo "-DUSEARCH_NO_MARCH_NATIVE=ON"
+ echo "-DMARCH_NATIVE=OFF"
 }
 
 export DEBIAN_FRONTEND=noninteractive
