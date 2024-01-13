@@ -192,6 +192,7 @@ set (_update_files
   sql/updates/0.0.8--0.0.9.sql
   sql/updates/0.0.9--0.0.10.sql
   sql/updates/0.0.10--0.0.11.sql
+  sql/updates/0.0.11--0.0.12.sql
 )
 
 add_custom_command(
@@ -202,6 +203,12 @@ add_custom_command(
 )
 
 add_custom_target(phony_always_runs ALL DEPENDS ${CMAKE_BINARY_DIR}/${_script_file})
+
+set(VERSION_HEADER_TEMPLATE "${CMAKE_MODULE_PATH}/version.h.template")
+set(VERSION_HEADER_OUTPUT "${CMAKE_BINARY_DIR}/include/version.h")
+configure_file(${VERSION_HEADER_TEMPLATE} ${VERSION_HEADER_OUTPUT})
+
+target_include_directories(lantern PUBLIC ${CMAKE_BINARY_DIR}/include)
 
 
 # AUTO-GENERATE lantern.control file for PostgreSQL
@@ -244,6 +251,13 @@ add_custom_target(
 add_custom_target(
   test-parallel
   COMMAND ${CMAKE_SOURCE_DIR}/scripts/run_all_tests.sh --parallel
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/test
+)
+
+
+add_custom_target(
+  test-misc
+  COMMAND ${CMAKE_SOURCE_DIR}/scripts/run_all_tests.sh --misc
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/test
 )
 

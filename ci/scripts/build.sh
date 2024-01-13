@@ -76,6 +76,7 @@ setup_environment
 setup_locale_and_install_packages
 setup_postgres
 install_external_dependencies
+install_platform_specific_dependencies
 clone_or_use_source
 build_and_install
 package_if_necessary

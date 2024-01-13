@@ -124,7 +124,7 @@ typedef struct
 uint32 UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, int level);
 void   StoreExternalEmptyIndex(Relation index, ForkNumber forkNum, char *data, usearch_init_options_t *opts);
 void   StoreExternalIndex(Relation                index,
-                          usearch_index_t         external_index,
+                          usearch_metadata_t     *external_index_metadata,
                           ForkNumber              forkNum,
                           char                   *data,
                           usearch_init_options_t *opts,
