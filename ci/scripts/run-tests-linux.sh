@@ -48,8 +48,11 @@ function run_db_tests(){
     cd $WORKDIR/build && \
     make test && \
     make test-client && \
-    run_pgvector_tests && \
-    killall postgres && \
+    run_pgvector_tests
+    pg_pid=$(fuser -a 5432/tcp 2>/dev/null | awk "{print $1}" | awk '{$1=$1};1')
+    if [[ ! -z "$pg_pid" ]]; then
+      kill -9 $pg_pid
+    fi
     gcovr -r $WORKDIR/src/ --object-directory $WORKDIR/build/ --xml /tmp/coverage.xml
   fi
 }
