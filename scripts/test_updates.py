@@ -10,6 +10,28 @@ INCOMPATIBLE_VERSIONS = {
     '16': ['0.0.4']
 }
 
+class Version:
+    def __init__(self, version: str):
+        self.version_numbers = [int(n) for n in version.split('.')]
+    def __lt__(self, other):
+        for i, v in enumerate(self.version_numbers):
+            if v < other.version_numbers[i]:
+                return True
+        return False
+    def __eq__(self, other):
+        for i, v in enumerate(self.version_numbers):
+            if v != other.version_numbers[i]:
+                return False
+        return True
+    def __le__(self, other):
+        return self < other or self == other
+    def __ne__(self, other):
+        return not self == other
+    def __gt__(self, other):
+        return not self == other and not self < other
+    def __ge__(self, other):
+        return not self < other
+
 def shell(cmd, exit_on_error=True):
     res = subprocess.run(cmd, shell=True)
     if res.returncode != 0:
@@ -48,9 +70,17 @@ def update_from_tag(from_version: str, to_version: str):
     res = shell('rm -f /tmp/ldb_update.lock')
     res = shell('rm -f /tmp/ldb_update_finished')
     res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-parallel FILTER=begin")
+
+    if Version(from_version) > Version('0.0.11'):
+        # misc tests added at v0.0.10, won't work before that
+        # initialize misc tests to ensure that version mismatch results in an error
+        res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-misc FILTER=begin")
+
     repo.git.checkout(sha_before)
     res = shell(f"cd {args.builddir} ; git submodule update && cmake .. && make -j4 && make install")
     # res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={to_version} make test")
+    if Version(from_version) > Version('0.0.11'):
+        res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-misc FILTER=version_mismatch")
 
     # run the actual parallel tests after the upgrade
     res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={to_version} make test-parallel EXCLUDE=begin")
@@ -98,9 +128,14 @@ if __name__ == "__main__":
 
     # test updates from all tags
     tag_pairs = [update_fname.split("--") for update_fname in os.listdir("sql/updates")]
+    tag_pairs = [(from_tag, to_tag.split('.sql')[0]) for from_tag, to_tag in tag_pairs]
+    repo = git.Repo(search_parent_directories=True)
+    tags_actual = [tag.name for tag in repo.tags]
+    tags_actual = [name[1:] if name[0] == 'v' else name for name in tags_actual]
+    tag_pairs = [(from_tag, to_tag) for from_tag, to_tag in tag_pairs if from_tag in tags_actual and to_tag in tags_actual]
     from_tags = list(sorted([p[0] for p in tag_pairs], key=cmp_to_key(sort_versions)))
     from_tags.reverse()
-    to_tags = list(sorted([p[1].split(".sql")[0] for p in tag_pairs], key=cmp_to_key(sort_versions)))
+    to_tags = list(sorted([p[1] for p in tag_pairs], key=cmp_to_key(sort_versions)))
     latest_version = to_tags[-1]
     print("Updating from tags", from_tags, "to ", latest_version)
 

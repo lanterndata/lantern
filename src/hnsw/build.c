@@ -6,15 +6,25 @@
 #include <assert.h>
 #include <catalog/index.h>
 #include <catalog/namespace.h>
+#include <catalog/pg_proc.h>
 #include <catalog/pg_type.h>
 #include <executor/executor.h>
+#include <fmgr.h>
 #include <funcapi.h>
 #include <miscadmin.h>
 #include <nodes/execnodes.h>
+#include <stdint.h>
 #include <storage/bufmgr.h>
+#include <sys/fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 #include <utils/array.h>
+#include <utils/builtins.h>
 #include <utils/lsyscache.h>
 #include <utils/memutils.h>
+#include <utils/syscache.h>
+
+#include "usearch.h"
 
 #ifdef _WIN32
 #define access _access
@@ -348,8 +358,7 @@ static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation i
     buildstate->index_file_path = ldb_HnswGetIndexFilePath(index);
 
     // If a dimension wasn't specified try to infer it
-    if(buildstate->dimensions < 1) {
-        // todo:: isn't calling InferDimension and GetHnswIndexDimensions above redundant?
+    if(heap != NULL && buildstate->dimensions < 1) {
         buildstate->dimensions = InferDimension(heap, indexInfo);
     }
 
@@ -412,13 +421,23 @@ static void ScanTable(HnswBuildState *buildstate)
 }
 
 /*
- * Build the index
+ * Build the index, writing to the main fork
  */
-static void BuildIndex(
-    Relation heap, Relation index, IndexInfo *indexInfo, HnswBuildState *buildstate, ForkNumber forkNum)
+static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, HnswBuildState *buildstate)
 {
     usearch_error_t        error = NULL;
     usearch_init_options_t opts;
+    struct stat            index_file_stat;
+    char                  *result_buf = NULL;
+    char                  *tmp_index_file_path = NULL;
+    const char            *tmp_index_file_fmt_str = "%s/ldb-index-%d.bin";
+    // parent_dir + max digits of uint32 (Oid) 10
+    const uint32       tmp_index_file_char_cnt = MAXPGPATH + strlen(tmp_index_file_fmt_str) + 10;
+    int                index_file_fd;
+    int                munmap_ret;
+    usearch_metadata_t metadata;
+    size_t             num_added_vectors;
+
     MemSet(&opts, 0, sizeof(opts));
 
     InitBuildState(buildstate, heap, index, indexInfo);
@@ -432,7 +451,12 @@ static void BuildIndex(
     buildstate->hnsw = NULL;
     if(buildstate->index_file_path) {
         if(access(buildstate->index_file_path, F_OK) != 0) {
-            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), errmsg("Invalid index file path ")));
+            ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("Invalid index file path. "
+                            "If this is REINDEX operation call `SELECT "
+                            "lantern_reindex_external_index('%s')` to recreate index",
+                            RelationGetRelationName(index))));
         }
         usearch_load(buildstate->usearch_index, buildstate->index_file_path, &error);
         if(error != NULL) {
@@ -440,7 +464,7 @@ static void BuildIndex(
         }
         elog(INFO, "done loading usearch index");
 
-        usearch_metadata_t metadata = usearch_metadata(buildstate->usearch_index, &error);
+        metadata = usearch_metadata(buildstate->usearch_index, &error);
         assert(error == NULL);
         opts.connectivity = metadata.connectivity;
         opts.dimensions = metadata.dimensions;
@@ -488,20 +512,81 @@ static void BuildIndex(
         assert(error == NULL);
     }
 
+    metadata = usearch_metadata(buildstate->usearch_index, &error);
+    assert(error == NULL);
+
+    if(buildstate->index_file_path == NULL) {
+        // Save index into temporary file
+        // To later mmap it into memory
+        // The file will be removed in the end
+        tmp_index_file_path = palloc0(tmp_index_file_char_cnt);
+        // Create index file directory string: $pg_data_dir/ldb_indexes/index-$relfilenode.bin
+        snprintf(
+            tmp_index_file_path, tmp_index_file_char_cnt, tmp_index_file_fmt_str, DataDir, index->rd_rel->relfilenode);
+        usearch_save(buildstate->usearch_index, tmp_index_file_path, NULL, &error);
+        assert(error == NULL);
+        index_file_fd = open(tmp_index_file_path, O_RDONLY);
+    } else {
+        index_file_fd = open(buildstate->index_file_path, O_RDONLY);
+    }
+    assert(index_file_fd > 0);
+
+    num_added_vectors = usearch_size(buildstate->usearch_index, &error);
+    assert(error == NULL);
+    elog(INFO, "done saving %ld vectors", num_added_vectors);
+
+    //****************************** mmap index to memory BEGIN ******************************//
+    usearch_free(buildstate->usearch_index, &error);
+    assert(error == NULL);
+    buildstate->usearch_index = NULL;
+
+    fstat(index_file_fd, &index_file_stat);
+    result_buf = mmap(NULL, index_file_stat.st_size, PROT_READ, MAP_PRIVATE, index_file_fd, 0);
+    assert(result_buf != MAP_FAILED);
+    //****************************** mmap index to memory END ******************************//
+
+    //****************************** saving to WAL BEGIN ******************************//
+    UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_LOAD);
+    StoreExternalIndex(index, &metadata, MAIN_FORKNUM, result_buf, &opts, num_added_vectors);
+    //****************************** saving to WAL END ******************************//
+
+    munmap_ret = munmap(result_buf, index_file_stat.st_size);
+    assert(munmap_ret == 0);
+    LDB_UNUSED(munmap_ret);
+    close(index_file_fd);
+
+    if(tmp_index_file_path) {
+        // remove index file if it was not externally provided
+        unlink(tmp_index_file_path);
+        pfree(tmp_index_file_path);
+    }
+
+    FreeBuildState(buildstate);
+}
+
+/*
+ * Build an empty index, writing to the init fork
+ */
+static void BuildEmptyIndex(Relation index, IndexInfo *indexInfo, HnswBuildState *buildstate)
+{
+    usearch_error_t        error = NULL;
+    usearch_init_options_t opts;
+    MemSet(&opts, 0, sizeof(opts));
+
+    InitBuildState(buildstate, NULL, index, indexInfo);
+    opts.dimensions = buildstate->dimensions;
+    PopulateUsearchOpts(index, &opts);
+
+    buildstate->usearch_index = usearch_init(&opts, &error);
+    assert(error == NULL);
+
+    buildstate->hnsw = NULL;
+
     char *result_buf = NULL;
     usearch_save(buildstate->usearch_index, NULL, &result_buf, &error);
     assert(error == NULL && result_buf != NULL);
 
-    size_t num_added_vectors = usearch_size(buildstate->usearch_index, &error);
-    assert(error == NULL);
-
-    elog(INFO, "done saving %ld vectors", num_added_vectors);
-
-    //****************************** saving to WAL BEGIN ******************************//
-    UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_LOAD);
-    StoreExternalIndex(index, buildstate->usearch_index, forkNum, result_buf, &opts, num_added_vectors);
-
-    //****************************** saving to WAL END ******************************//
+    StoreExternalEmptyIndex(index, INIT_FORKNUM, result_buf, &opts);
 
     usearch_free(buildstate->usearch_index, &error);
     free(result_buf);
@@ -519,7 +604,7 @@ IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInf
     IndexBuildResult *result;
     HnswBuildState    buildstate;
 
-    BuildIndex(heap, index, indexInfo, &buildstate, MAIN_FORKNUM);
+    BuildIndex(heap, index, indexInfo, &buildstate);
 
     result = (IndexBuildResult *)palloc(sizeof(IndexBuildResult));
     result->heap_tuples = buildstate.reltuples;
@@ -529,11 +614,110 @@ IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInf
 }
 
 /*
- * Build the index for an unlogged table
+ * Build an empty index for an unlogged table
  */
 void ldb_ambuildunlogged(Relation index)
 {
-    LDB_UNUSED(index);
-    // todo::
-    elog(ERROR, "hnsw index on unlogged tables is currently not supported");
+    HnswBuildState buildstate;
+    IndexInfo     *indexInfo = BuildIndexInfo(index);
+    BuildEmptyIndex(index, indexInfo, &buildstate);
+}
+
+void ldb_reindex_external_index(Oid indrelid)
+{
+    HnswIndexHeaderPage *headerp;
+    FmgrInfo             reindex_finfo = {0};
+    BlockNumber          HEADER_BLOCK = 0;
+    Relation             index_rel;
+    Buffer               buf;
+    Page                 page;
+    Oid                  lantern_extras_namespace_oid = InvalidOid;
+    Oid                  function_oid;
+    Oid                  function_argtypes_oid[ 6 ];
+    oidvector           *function_argtypes;
+    char                *metric_kind;
+    const char          *lantern_extras_schema = "lantern_extras";
+    uint32_t             dim = 0;
+    uint32_t             m = 0;
+    uint32_t             ef_construction = 0;
+    uint32_t             ef = 0;
+    char *ext_not_found_err = "Please install 'lantern_extras' extension or update it to the latest version";
+
+    lantern_extras_namespace_oid = get_namespace_oid(lantern_extras_schema, true);
+
+    if(!OidIsValid(lantern_extras_namespace_oid)) {
+        elog(ERROR, "%s", ext_not_found_err);
+    }
+
+    // Check if _reindex_external_index function exists in lantern schema
+    function_argtypes_oid[ 0 ] = REGCLASSOID;
+    function_argtypes_oid[ 1 ] = TEXTOID;
+    function_argtypes_oid[ 2 ] = INT4OID;
+    function_argtypes_oid[ 3 ] = INT4OID;
+    function_argtypes_oid[ 4 ] = INT4OID;
+    function_argtypes_oid[ 5 ] = INT4OID;
+    function_argtypes = buildoidvector(function_argtypes_oid, 6);
+
+    function_oid = GetSysCacheOid(PROCNAMEARGSNSP,
+#if PG_VERSION_NUM >= 120000
+                                  Anum_pg_proc_oid,
+#endif
+                                  CStringGetDatum("_reindex_external_index"),
+                                  PointerGetDatum(function_argtypes),
+                                  ObjectIdGetDatum(lantern_extras_namespace_oid),
+                                  0);
+
+    if(!OidIsValid(function_oid)) {
+        elog(ERROR, "%s", ext_not_found_err);
+    }
+    // Get index params from index header page
+    index_rel = relation_open(indrelid, AccessShareLock);
+    buf = ReadBuffer(index_rel, HEADER_BLOCK);
+    LockBuffer(buf, BUFFER_LOCK_SHARE);
+    page = BufferGetPage(buf);
+    headerp = (HnswIndexHeaderPage *)PageGetContents(page);
+
+    assert(headerp->magicNumber == LDB_WAL_MAGIC_NUMBER);
+
+    // Convert metric_kind enum to string representation
+    switch(headerp->metric_kind) {
+        case usearch_metric_l2sq_k:
+            metric_kind = "l2sq";
+            break;
+        case usearch_metric_cos_k:
+            metric_kind = "cos";
+            break;
+        case usearch_metric_hamming_k:
+            metric_kind = "hamming";
+            break;
+        default:
+            metric_kind = NULL;
+            ldb_invariant(true, "Unsupported metric kind");
+    }
+
+    dim = headerp->vector_dim;
+    m = headerp->m;
+    ef = headerp->ef;
+    ef_construction = headerp->ef_construction;
+
+    UnlockReleaseBuffer(buf);
+    relation_close(index_rel, AccessShareLock);
+
+    // We can not have external index without knowing dimensions
+    if(dim <= 0) {
+        elog(ERROR, "Column does not have dimensions: can not create external index on empty table");
+    }
+
+    // Get _reindex_external_index function info to do direct call into it
+    fmgr_info(function_oid, &reindex_finfo);
+
+    assert(reindex_finfo.fn_addr != NULL);
+
+    DirectFunctionCall6(reindex_finfo.fn_addr,
+                        ObjectIdGetDatum(indrelid),
+                        CStringGetTextDatum(metric_kind),
+                        Int32GetDatum(dim),
+                        Int32GetDatum(m),
+                        Int32GetDatum(ef_construction),
+                        Int32GetDatum(ef));
 }

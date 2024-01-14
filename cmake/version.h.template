@@ -1,0 +1,6 @@
+#ifndef LDB_HNSW_VERSION_H
+#define LDB_HNSW_VERSION_H
+
+#define LDB_BINARY_VERSION "@LANTERNDB_VERSION@"
+
+#endif

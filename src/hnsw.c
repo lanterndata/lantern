@@ -419,6 +419,14 @@ Datum       lantern_internal_continue_blockmap_group_initialization(PG_FUNCTION_
     PG_RETURN_VOID();
 }
 
+PGDLLEXPORT PG_FUNCTION_INFO_V1(lantern_reindex_external_index);
+Datum       lantern_reindex_external_index(PG_FUNCTION_ARGS)
+{
+    Oid indrelid = PG_GETARG_OID(0);
+    ldb_reindex_external_index(indrelid);
+    PG_RETURN_VOID();
+}
+
 /*
  * Get data type for give oid
  * */

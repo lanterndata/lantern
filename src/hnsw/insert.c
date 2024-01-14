@@ -78,6 +78,12 @@ bool ldb_aminsert(Relation         index,
     LDB_UNUSED(indexUnchanged);
 #endif
 
+    if(!VersionsMatch()) {
+        elog(ERROR,
+             "Attempting to insert into lantern index, but the SQL version and binary version do not match. This can "
+             "cause errors. Please run `ALTER EXTENSION lantern UPDATE and reconnect");
+    }
+
     HnswInsertState *insertstate = palloc0(sizeof(HnswInsertState));
 
     if(checkUnique != UNIQUE_CHECK_NO) {
@@ -192,16 +198,23 @@ bool ldb_aminsert(Relation         index,
 
     ldb_wal_retriever_area_reset(insertstate->retriever_ctx, hdr);
 
+    int needs_wal = RelationNeedsWAL(index);
     // we only release the header buffer AFTER inserting is finished to make sure nobody else changes the block
     // structure. todo:: critical section here can definitely be shortened
     {
         // GenericXLogFinish also calls MarkBufferDirty(buf)
         XLogRecPtr ptr = GenericXLogFinish(state);
-        assert(ptr != InvalidXLogRecPtr);
+        if(needs_wal) {
+            assert(ptr != InvalidXLogRecPtr);
+        }
         LDB_UNUSED(ptr);
     }
 
-    extra_dirtied_release_all(insertstate->retriever_ctx->extra_dirted);
+    if(needs_wal) {
+        extra_dirtied_release_all(insertstate->retriever_ctx->extra_dirted);
+    } else {
+        extra_dirtied_release_all_no_xlog_check(insertstate->retriever_ctx->extra_dirted);
+    }
 
     usearch_free(insertstate->uidx, &error);
     if(error != NULL) {

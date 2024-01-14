@@ -73,15 +73,18 @@ fi
 
 # Check if pgvector is available
 pgvector_installed=$($PSQL -U $DB_USER -p $DB_PORT -d postgres -c "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'" -tA | tail -n 1 | tr -d '\n')
+lantern_extras_installed=$($PSQL -U $DB_USER -p $DB_PORT -d postgres -c "SELECT 1 FROM pg_available_extensions WHERE name = 'lantern_extras'" -tA | tail -n 1 | tr -d '\n')
 
 # Settings
 REGRESSION=0
 PARALLEL=0
+MISC=0
 C_TESTS=0
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --regression) REGRESSION=1 ;;
         --parallel) PARALLEL=1 ;;
+        --misc) MISC=1 ;;
         --client) C_TESTS=1 ;;
     esac
     shift
@@ -106,9 +109,12 @@ function print_test {
 rm -rf $TMP_OUTDIR/schedule.txt
 if [ "$PARALLEL" -eq 1 ]; then
     SCHEDULE='parallel_schedule.txt'
+elif [ "$MISC" -eq 1 ]; then
+    SCHEDULE='misc_schedule.txt'
 else
     SCHEDULE='schedule.txt'
 fi
+
 if [[ -n "$FILTER" || -n "$EXCLUDE" ]]; then
     if [ "$PARALLEL" -eq 1 ]; then
     	TEST_FILES=$(cat $SCHEDULE | grep -E '^(test:|test_begin:|test_end:)' | sed -E -e 's/^test_begin:|test_end:/test:/' | tr " " "\n" | sed -e '/^$/d')
@@ -133,10 +139,14 @@ if [[ -n "$FILTER" || -n "$EXCLUDE" ]]; then
             fi
         fi
     else
+        NEWLINE=$'\n'
+        TEST_FILES=$(cat $SCHEDULE | grep '^test:' | tr " " "\n" | sed -e '/^$/d')
         if [[ "$pgvector_installed" == "1" ]]; then
-            TEST_FILES=$(cat $SCHEDULE | grep -E '^(test:|test_pgvector:)' | sed -e 's/^test_pgvector:/test:/' | tr " " "\n" | sed -e '/^$/d')
-        else
-            TEST_FILES=$(cat $SCHEDULE | grep '^test:' | tr " " "\n" | sed -e '/^$/d')
+            TEST_FILES="${TEST_FILES}${NEWLINE}$(cat $SCHEDULE | grep -E '^(test_pgvector:)' | sed -e 's/^test_pgvector:/test:/' | tr " " "\n" | sed -e '/^$/d')"
+        fi
+
+        if [[ "$lantern_extras_installed" ]]; then
+            TEST_FILES="${TEST_FILES}${NEWLINE}$(cat $SCHEDULE | grep -E '^(test_extras:)' | sed -e 's/^test_extras:/test:/' | tr " " "\n" | sed -e '/^$/d')"
         fi
     fi
 
@@ -163,10 +173,20 @@ if [[ -n "$FILTER" || -n "$EXCLUDE" ]]; then
         exit 0
     fi
 else
+    if [ "$MISC" -eq 1 ]; then
+        echo "misc tests are not intended to be run in parallel, please include a FILTER"
+        exit 1
+    fi
+
     while IFS= read -r line; do
         if [[ "$line" =~ ^test_pgvector: ]]; then
             test_name=$(echo "$line" | sed -e 's/test_pgvector://')
             if [ "$pgvector_installed" == "1" ]; then
+                echo "test: $test_name" >> $TMP_OUTDIR/schedule.txt
+            fi
+        elif [[ "$line" =~ ^test_extras: ]]; then
+            test_name=$(echo "$line" | sed -e 's/test_extras://')
+            if [ "$lantern_extras_installed" == "1" ]; then
                 echo "test: $test_name" >> $TMP_OUTDIR/schedule.txt
             fi
         elif [[ "$line" =~ ^test_begin: ]]; then
@@ -180,7 +200,7 @@ else
         fi
     done < $SCHEDULE
 fi
-unset $SCHEDULE
+unset SCHEDULE
 SCHEDULE=$TMP_OUTDIR/schedule.txt
 
 function print_diff {
@@ -199,7 +219,10 @@ trap print_diff ERR
 
 if [ "$PARALLEL" -eq 1 ]; then
     cd parallel
-    PARALLEL=$PARALLEL DB_USER=$DB_USER $(pg_config --pkglibdir)/pgxs/src/test/regress/pg_regress --user=$DB_USER --schedule=$SCHEDULE --outputdir=$TMP_OUTDIR --launcher=../test_runner.sh
+    MISC=$MISC PARALLEL=$PARALLEL DB_USER=$DB_USER $(pg_config --pkglibdir)/pgxs/src/test/regress/pg_regress --user=$DB_USER --schedule=$SCHEDULE --outputdir=$TMP_OUTDIR --launcher=../test_runner.sh
+elif [ "$MISC" -eq 1 ]; then
+    cd misc
+    MISC=$MISC PARALLEL=$PARALLEL DB_USER=$DB_USER $(pg_config --pkglibdir)/pgxs/src/test/regress/pg_regress --user=$DB_USER --schedule=$SCHEDULE --outputdir=$TMP_OUTDIR --launcher=../test_runner.sh
 else
-    PARALLEL=$PARALLEL DB_USER=$DB_USER $(pg_config --pkglibdir)/pgxs/src/test/regress/pg_regress --user=$DB_USER --schedule=$SCHEDULE --outputdir=$TMP_OUTDIR --launcher=./test_runner.sh
+    MISC=$MISC PARALLEL=$PARALLEL DB_USER=$DB_USER $(pg_config --pkglibdir)/pgxs/src/test/regress/pg_regress --user=$DB_USER --schedule=$SCHEDULE --outputdir=$TMP_OUTDIR --launcher=./test_runner.sh
 fi
