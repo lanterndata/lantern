@@ -63,8 +63,8 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 set(SOURCES_DIR "src")
 # todo:: list out all the files instead of glob
-file(GLOB SOURCES "${SOURCES_DIR}/**/*.c" "${SOURCES_DIR}/*.c")
-file(GLOB HEADER_FILES "${SOURCES_DIR}/**/*.h" "${SOURCES_DIR}/*.h")
+file(GLOB_RECURSE SOURCES "${SOURCES_DIR}/*.c" "*${SOURCES_DIR}/*.cpp")
+file(GLOB_RECURSE HEADER_FILES "${SOURCES_DIR}/*.h" "${SOURCES_DIR}/*.hpp")
 
 set(USEARCH_USE_SIMSIMD OFF)
 set(USEARCH_LOOKUP_LABEL OFF)
@@ -119,7 +119,11 @@ target_include_directories(
   lantern
   SYSTEM PRIVATE ${PostgreSQL_SERVER_INCLUDE_DIRS}
   PUBLIC ${CMAKE_SOURCE_DIR}/src
-  PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+  PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
+  PRIVATE "./third_party/usearch/c"
+  PRIVATE "./third_party/usearch/include/"
+  PRIVATE "./third_party/usearch/fp16/include/"
+  )
 
 set(_link_flags "${PostgreSQL_SHARED_LINK_OPTIONS}")
 foreach(_dir ${PostgreSQL_SERVER_LIBRARY_DIRS})
@@ -162,8 +166,6 @@ endif()
 
 set_target_properties(lantern PROPERTIES LINKER_LANGUAGE C)
 
-target_include_directories(lantern PRIVATE "./third_party/usearch/c")
-target_link_directories(lantern PRIVATE "./src")
 if (${BUILD_WITH_USEARCH})
   target_link_libraries(lantern PRIVATE usearch_c)
   target_compile_definitions(lantern PRIVATE LANTERN_USE_USEARCH)
