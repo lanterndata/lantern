@@ -856,6 +856,9 @@ crash_and_restart_postgres() {
   if [[ "$pid" != "" ]]; then
     kill -9 $pid
   fi
-
+  
+  # Be sure that postgres is stopped before starting again
+  pg_ctl stop -D $POSTGRESQL_DATA_DIR || true
+  
   postgresql_start_bg
 }
