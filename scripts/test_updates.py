@@ -136,14 +136,16 @@ if __name__ == "__main__":
     from_tags = list(sorted([p[0] for p in tag_pairs], key=cmp_to_key(sort_versions)))
     from_tags.reverse()
     to_tags = list(sorted([p[1] for p in tag_pairs], key=cmp_to_key(sort_versions)))
-    latest_version = to_tags[-1]
-    print("Updating from tags", from_tags, "to ", latest_version)
+    
+    if len(to_tags) > 0:
+        latest_version = to_tags[-1]
+        print("Updating from tags", from_tags, "to ", latest_version)
 
-    pg_version = None if not 'PG_VERSION' in os.environ else os.environ['PG_VERSION']
-    for from_tag in from_tags:
-        if incompatible_version(pg_version, from_tag):
-            continue
-        update_from_tag(from_tag, latest_version)
+        pg_version = None if not 'PG_VERSION' in os.environ else os.environ['PG_VERSION']
+        for from_tag in from_tags:
+            if incompatible_version(pg_version, from_tag):
+                continue
+            update_from_tag(from_tag, latest_version)
 
 
 

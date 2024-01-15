@@ -8,6 +8,10 @@ RUN_TESTS=${RUN_TESTS:-1}
 
 export PGDATA=/etc/postgresql/$PG_VERSION/main
 
+function stop_current_postgres() {
+  # Stop any existing processes
+  /usr/lib/postgresql/$PG_VERSION/bin/pg_ctl stop -D $PGDATA
+}
 function wait_for_pg(){
  tries=0
  until pg_isready -U postgres 2>/dev/null; do
@@ -49,10 +53,8 @@ function run_db_tests(){
     make test && \
     make test-client && \
     run_pgvector_tests
-    pg_pid=$(fuser -a 5432/tcp 2>/dev/null | awk "{print $1}" | awk '{$1=$1};1')
-    if [[ ! -z "$pg_pid" ]]; then
-      kill -9 $pg_pid
-    fi
+
+    stop_current_postgres && \
     gcovr -r $WORKDIR/src/ --object-directory $WORKDIR/build/ --xml /tmp/coverage.xml
   fi
 }
@@ -67,7 +69,6 @@ function start_pg() {
     sleep 1
     start_pg
   else
-    echo "port = 5432" >> ${PGDATA}/postgresql.conf
     # Enable auth without password
     echo "local   all             all                                     trust" >  $PGDATA/pg_hba.conf
     echo "host    all             all             127.0.0.1/32            trust" >>  $PGDATA/pg_hba.conf
@@ -81,6 +82,7 @@ function start_pg() {
   fi
 }
 # Wait for start and run tests
+cd /tmp
 start_pg && wait_for_pg && run_db_tests
 
 if [[ "$RUN_REPLICA_TESTS" == "1" ]]
