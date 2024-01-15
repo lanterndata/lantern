@@ -4,7 +4,7 @@
 
 \ir utils/sift1k_array.sql
 
-CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2.usearch');
+CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (M=5, ef=20, ef_construction=20);
 SELECT * FROM ldb_get_indexes('sift_base1k');
 
 INSERT INTO sift_base1k (id, v) VALUES 
