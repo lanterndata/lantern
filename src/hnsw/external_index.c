@@ -21,6 +21,7 @@
 #include "options.h"
 #include "retriever.h"
 #include "usearch.h"
+#include "usearch_storage.hpp"
 #include "utils.h"
 
 #if PG_VERSION_NUM >= 130000
@@ -28,34 +29,6 @@
 #endif
 
 static BlockNumber getBlockMapPageBlockNumber(const HnswBlockMapGroupDesc *blockmap_groups, int id);
-
-uint32 UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, int level)
-{
-    const int NODE_HEAD_BYTES = sizeof(usearch_label_t) + 4 /*sizeof dim */ + 4 /*sizeof level*/;
-    uint32    node_bytes = 0;
-    node_bytes += NODE_HEAD_BYTES + metadata->neighbors_base_bytes;
-    node_bytes += metadata->neighbors_bytes * level;
-    node_bytes += vector_bytes;
-    return node_bytes;
-}
-
-static char *extract_node(char               *data,
-                          uint64              progress,
-                          int                 dim,
-                          usearch_metadata_t *metadata,
-                          /*->>output*/ int  *node_size,
-                          int                *level)
-{
-    char *tape = data + progress;
-
-    int read_dim_bytes = -1;
-    memcpy(&read_dim_bytes, tape + sizeof(usearch_label_t), 4);  //+sizeof(label)
-    memcpy(level, tape + sizeof(usearch_label_t) + 4, 4);        //+sizeof(label)+sizeof(dim)
-    const int VECTOR_BYTES = dim * sizeof(float);
-    assert(VECTOR_BYTES == read_dim_bytes);
-    *node_size = UsearchNodeBytes(metadata, VECTOR_BYTES, *level);
-    return tape;
-}
 
 BlockNumber NumberOfBlockMapsInGroup(unsigned groupno)
 {
@@ -555,7 +528,7 @@ void StoreExternalIndex(Relation                index,
     header_page = GenericXLogRegisterBuffer(state, header_buf, GENERIC_XLOG_FULL_IMAGE);
     headerp = (HnswIndexHeaderPage *)PageGetContents(header_page);
 
-    uint64   progress = USEARCH_HEADER_SIZE;  // usearch header size
+    uint64   progress = USEARCH_HEADER_SIZE + 56;  // usearch header size + graph header size
     unsigned blockmap_groupno = 0;
     uint32   group_node_first_index = 0;
     uint32   num_added_vectors_remaining = num_added_vectors;
