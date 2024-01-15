@@ -10,7 +10,7 @@ export PGDATA=/etc/postgresql/$PG_VERSION/main
 
 function stop_current_postgres() {
   # Stop any existing processes
-  /usr/lib/postgresql/$PG_VERSION/bin/pg_ctl stop -D $PGDATA || true
+  /usr/lib/postgresql/$PG_VERSION/bin/pg_ctl stop -D $PGDATA
 }
 function wait_for_pg(){
  tries=0
@@ -78,7 +78,6 @@ function start_pg() {
     # Set port
     echo "port = 5432" >> ${PGDATA}/postgresql.conf
     # Run postgres database
-    stop_current_postgres && \
     GCOV_PREFIX=$WORKDIR/build/CMakeFiles/lantern.dir/ GCOV_PREFIX_STRIP=5 POSTGRES_HOST_AUTH_METHOD=trust /usr/lib/postgresql/$PG_VERSION/bin/postgres 1>/tmp/pg-out.log 2>/tmp/pg-error.log &
   fi
 }
