@@ -44,7 +44,6 @@ struct ldb_vi_node
     OffsetNumber    vn_offset; /* within vn_block */
     uint32          vn_id;     /* HnswIndexTuple.id */
     usearch_label_t vn_label;
-    uint32          vn_dim;          /* usearch index_gt::dim_t */
     uint32          vn_level;        /* HnswIndexTuple.level, usearch index_gt::level_t */
     uint32         *vn_neighbors_nr; /* number of neighbors for each level */
     uint32        **vn_neighbors;    /* array of arrays of neighbors for each level */
@@ -294,28 +293,15 @@ static void ldb_vi_read_node_carefully(void               *node_tape,
                                        uint32              nodes_nr)
 {
     unsigned tape_pos = 0;
-    uint32   level_on_tape;
+    uint16   level_on_tape;
     uint32   neighbors_nr;
     uint32   neighbors_max;
     uint32  *neighbors;
     uint32   unused;
 
     LDB_VI_READ_NODE_CHUNK(vi_node, vi_node->vn_label, node_tape, &tape_pos, node_tape_size);
-    LDB_VI_READ_NODE_CHUNK(vi_node, vi_node->vn_dim, node_tape, &tape_pos, node_tape_size);
     LDB_VI_READ_NODE_CHUNK(vi_node, level_on_tape, node_tape, &tape_pos, node_tape_size);
 
-    if(vi_node->vn_dim != vector_dim * scalar_size) {
-        elog(ERROR,
-             "vi_node->vn_dim=%" PRIu32 " != vector_dim=%" PRIu32
-             " * scalar_size=%zu "
-             "for node_id=%" PRIu32 " block=%" PRIu32 " offset=%" PRIu16,
-             vi_node->vn_dim,
-             vector_dim,
-             scalar_size,
-             vi_node->vn_id,
-             vi_node->vn_block,
-             vi_node->vn_offset);
-    }
     if(level_on_tape != vi_node->vn_level) {
         elog(ERROR,
              "level_on_tape=%" PRIu32 " != vi_node->vn_level=%" PRIu32
@@ -389,7 +375,7 @@ static void ldb_vi_read_node_carefully(void               *node_tape,
         vi_node->vn_neighbors[ level ] = neighbors;
     }
     /* the vector of floats is at the end */
-    tape_pos += vi_node->vn_dim;
+    tape_pos += vector_dim * scalar_size;
     if(tape_pos != node_tape_size) {
         elog(ERROR,
              "tape_pos=%u != node_tape_size=%u for "
