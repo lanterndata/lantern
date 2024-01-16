@@ -418,7 +418,14 @@ fn get_default_batch_size(model: &str) -> usize {
         "microsoft/all-MiniLM-L12-v2" => 1000,
         "microsoft/all-mpnet-base-v2" => 400,
         "transformers/multi-qa-mpnet-base-dot-v1" => 300,
-        "text-embedding-ada-002" => 30,
+        "openai/text-embedding-ada-002" => 30,
+        "cohere/embed-english-v3.0"
+        | "cohere/embed-multilingual-v3.0"
+        | "cohere/embed-english-light-v3.0"
+        | "cohere/embed-multilingual-light-v3.0"
+        | "cohere/embed-english-v2.0"
+        | "cohere/embed-english-light-v2.0"
+        | "cohere/embed-multilingual-v2.0" => 96,
         _ => 100,
     }
 }

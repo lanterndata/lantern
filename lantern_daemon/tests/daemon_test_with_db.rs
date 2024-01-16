@@ -410,10 +410,20 @@ async fn test_cleanup() {
 async fn test_daemon() {
     test_setup().await;
     test_embedding_generation_runtime("ort", "microsoft/all-MiniLM-L12-v2", 384, "").await;
-    test_embedding_generation_runtime("openai", "text-embedding-ada-002", 1536, "OPENAI_TOKEN")
-        .await;
-    test_embedding_generation_runtime("cohere", "embed-multilingual-v2.0", 768, "COHERE_TOKEN")
-        .await;
+    test_embedding_generation_runtime(
+        "openai",
+        "openai/text-embedding-ada-002",
+        1536,
+        "OPENAI_TOKEN",
+    )
+    .await;
+    test_embedding_generation_runtime(
+        "cohere",
+        "cohere/embed-multilingual-v2.0",
+        768,
+        "COHERE_TOKEN",
+    )
+    .await;
     test_index_creation().await;
     test_index_autotune().await;
     test_cleanup().await;

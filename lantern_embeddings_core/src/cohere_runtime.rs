@@ -4,6 +4,7 @@ use crate::{core::LoggerFn, runtime::EmbeddingRuntime, HTTPRuntime};
 use serde::{Deserialize, Serialize};
 
 struct ModelInfo {
+    name: String,
     sequence_len: usize,
     dimensions: usize,
 }
@@ -15,32 +16,40 @@ struct CohereResponse {
 
 impl ModelInfo {
     pub fn new(model_name: &str) -> Result<Self, anyhow::Error> {
+        let name = model_name.split("/").last().unwrap().to_owned();
         match model_name {
-            "embed-english-v3.0" => Ok(Self {
+            "cohere/embed-english-v3.0" => Ok(Self {
+                name,
                 sequence_len: 512,
                 dimensions: 1024,
             }),
-            "embed-multilingual-v3.0" => Ok(Self {
+            "cohere/embed-multilingual-v3.0" => Ok(Self {
+                name,
                 sequence_len: 512,
                 dimensions: 1024,
             }),
-            "embed-english-light-v3.0" => Ok(Self {
+            "cohere/embed-english-light-v3.0" => Ok(Self {
+                name,
                 sequence_len: 512,
                 dimensions: 384,
             }),
-            "embed-multilingual-light-v3.0" => Ok(Self {
+            "cohere/embed-multilingual-light-v3.0" => Ok(Self {
+                name,
                 sequence_len: 512,
                 dimensions: 384,
             }),
-            "embed-english-v2.0" => Ok(Self {
+            "cohere/embed-english-v2.0" => Ok(Self {
+                name,
                 sequence_len: 512,
                 dimensions: 4096,
             }),
-            "embed-english-light-v2.0" => Ok(Self {
+            "cohere/embed-english-light-v2.0" => Ok(Self {
+                name,
                 sequence_len: 512,
                 dimensions: 1024,
             }),
-            "embed-multilingual-v2.0" => Ok(Self {
+            "cohere/embed-multilingual-v2.0" => Ok(Self {
+                name,
                 sequence_len: 512,
                 dimensions: 768,
             }),
@@ -53,32 +62,32 @@ lazy_static! {
     static ref MODEL_INFO_MAP: RwLock<HashMap<&'static str, ModelInfo>> =
         RwLock::new(HashMap::from([
             (
-                "embed-english-v3.0",
-                ModelInfo::new("embed-english-v3.0").unwrap()
+                "cohere/embed-english-v3.0",
+                ModelInfo::new("cohere/embed-english-v3.0").unwrap()
             ),
             (
-                "embed-multilingual-v3.0",
-                ModelInfo::new("embed-multilingual-v3.0").unwrap()
+                "cohere/embed-multilingual-v3.0",
+                ModelInfo::new("cohere/embed-multilingual-v3.0").unwrap()
             ),
             (
-                "embed-multilingual-light-v3.0",
-                ModelInfo::new("embed-multilingual-light-v3.0").unwrap()
+                "cohere/embed-multilingual-light-v3.0",
+                ModelInfo::new("cohere/embed-multilingual-light-v3.0").unwrap()
             ),
             (
-                "embed-english-light-v3.0",
-                ModelInfo::new("embed-english-light-v3.0").unwrap()
+                "cohere/embed-english-light-v3.0",
+                ModelInfo::new("cohere/embed-english-light-v3.0").unwrap()
             ),
             (
-                "embed-english-v2.0",
-                ModelInfo::new("embed-english-v2.0").unwrap()
+                "cohere/embed-english-v2.0",
+                ModelInfo::new("cohere/embed-english-v2.0").unwrap()
             ),
             (
-                "embed-english-light-v2.0",
-                ModelInfo::new("embed-english-light-v2.0").unwrap()
+                "cohere/embed-english-light-v2.0",
+                ModelInfo::new("cohere/embed-english-light-v2.0").unwrap()
             ),
             (
-                "embed-multilingual-v2.0",
-                ModelInfo::new("embed-multilingual-v2.0").unwrap()
+                "cohere/embed-multilingual-v2.0",
+                ModelInfo::new("cohere/embed-multilingual-v2.0").unwrap()
             ),
         ]));
 }
@@ -136,7 +145,8 @@ impl<'a> CohereRuntime<'a> {
         if model_info.is_none() {
             anyhow::bail!("Unsupported model {model_name}");
         }
-        drop(model_map);
+        let model_info = model_info.unwrap();
+        let name = &model_info.name;
 
         let batch_tokens: Vec<String> = inputs
             .chunks(self.max_batch_size)
@@ -147,7 +157,7 @@ impl<'a> CohereRuntime<'a> {
                     r#"
                  {{
                    "texts": {json_string},
-                   "model": "{model_name}",
+                   "model": "{name}",
                    "input_type": "{input_type}",
                    "truncate": "END"
                  }}

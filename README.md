@@ -237,10 +237,10 @@ Lantern CLI also supports generating OpenAI and Cohere embeddings via API. For t
 
 ```bash
 # OpenAI
-lantern-cli create-embeddings  --model 'text-embedding-ada-002' --uri 'postgresql://postgres:postgres@localhost:5432/test' --table "images" --column "url" --out-column "embedding" --pk "id" --schema "public" --runtime openai --runtime-params '{ "api_token": "sk-xxx-xxxx" }'
+lantern-cli create-embeddings  --model 'openai/text-embedding-ada-002' --uri 'postgresql://postgres:postgres@localhost:5432/test' --table "images" --column "url" --out-column "embedding" --pk "id" --schema "public" --runtime openai --runtime-params '{ "api_token": "sk-xxx-xxxx" }'
 
 # Cohere
-lantern-cli create-embeddings  --model 'text-embedding-ada-002' --uri 'postgresql://postgres:postgres@localhost:5432/test' --table "images" --column "url" --out-column "embedding" --pk "id" --schema "public" --runtime cohere --runtime-params '{ "api_token": "xxx-xxxx" }'
+lantern-cli create-embeddings  --model 'openai/text-embedding-ada-002' --uri 'postgresql://postgres:postgres@localhost:5432/test' --table "images" --column "url" --out-column "embedding" --pk "id" --schema "public" --runtime cohere --runtime-params '{ "api_token": "xxx-xxxx" }'
 ```
 
 |> To get available runtimes use `bash lantern-cli show-runtimes`

@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use tiktoken_rs::{cl100k_base, CoreBPE};
 
 struct ModelInfo {
+    name: String,
     tokenizer: CoreBPE,
     sequence_len: usize,
     dimensions: usize,
@@ -22,8 +23,10 @@ struct OpenAiResponse {
 
 impl ModelInfo {
     pub fn new(model_name: &str) -> Result<Self, anyhow::Error> {
+        let name = model_name.split("/").last().unwrap().to_owned();
         match model_name {
-            "text-embedding-ada-002" => Ok(Self {
+            "openai/text-embedding-ada-002" => Ok(Self {
+                name,
                 tokenizer: cl100k_base()?,
                 sequence_len: 8192,
                 dimensions: 1536,
@@ -36,8 +39,8 @@ impl ModelInfo {
 lazy_static! {
     static ref MODEL_INFO_MAP: RwLock<HashMap<&'static str, ModelInfo>> =
         RwLock::new(HashMap::from([(
-            "text-embedding-ada-002",
-            ModelInfo::new("text-embedding-ada-002").unwrap()
+            "openai/text-embedding-ada-002",
+            ModelInfo::new("openai/text-embedding-ada-002").unwrap()
         ),]));
 }
 
@@ -132,6 +135,7 @@ impl<'a> OpenAiRuntime<'a> {
             })
             .collect();
 
+        let name = &model_info.name;
         let batch_tokens: Vec<String> = self
             .group_vectors_by_token_count(token_groups, model_info.sequence_len)
             .iter()
@@ -141,7 +145,7 @@ impl<'a> OpenAiRuntime<'a> {
                     r#"
                  {{
                    "input": {json_string},
-                   "model": "{model_name}"
+                   "model": "{name}"
                  }}
                 "#
                 )
