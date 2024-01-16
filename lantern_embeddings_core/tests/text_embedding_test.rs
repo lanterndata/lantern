@@ -1,4 +1,4 @@
-use lantern_embeddings_core;
+use lantern_embeddings_core::core::{get_runtime, Runtime};
 
 static HELLO_WORLD_TEXT: &'static str = "Hello world!";
 #[rustfmt::skip]
@@ -17,14 +17,12 @@ macro_rules! text_embedding_test {
     $(
         #[test]
         fn $name() {
+            let runtime = get_runtime(&Runtime::Ort, None, r#"{"data_path": "/tmp/lantern-embeddings-core-test"}"#).unwrap();
             let (model, input, expected, batch_size) = $value;
             let inputs = itertools::repeat_n(input, batch_size).collect();
-            let output = lantern_embeddings_core::clip::process(
+            let output = runtime.process(
                 model,
                 &inputs,
-                None,
-                Some("/tmp/lantern-embeddings-core-test"),
-                false,
             ).unwrap();
 
             let expected_output: Vec<Vec<f32>> =

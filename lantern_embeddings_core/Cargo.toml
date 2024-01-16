@@ -1,6 +1,6 @@
 [package]
 name = "lantern_embeddings_core"
-version = "0.0.3"
+version = "0.0.4"
 edition = "2021"
 
 [lib]
@@ -23,3 +23,7 @@ futures = "0.3.28"
 sysinfo = "0.29.11"
 nvml-wrapper = "0.9.0"
 isahc = "1.7.2"
+serde = { version = "1.0", features = ["derive"] }
+strum = { version = "0.25", features = ["derive"] }
+serde_json = "1.0.111"
+tiktoken-rs = "0.5.8"

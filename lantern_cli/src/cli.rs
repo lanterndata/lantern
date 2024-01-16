@@ -11,6 +11,8 @@ pub enum Commands {
     /// Create embeddings
     CreateEmbeddings(EmbeddingArgs),
     /// Show embedding models
+    ShowRuntimes,
+    /// Show embedding models
     ShowModels(ShowModelsArgs),
     /// Measure embedding geneartion speed
     MeasureModelSpeed(MeasureModelSpeedArgs),

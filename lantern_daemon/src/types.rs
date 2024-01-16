@@ -1,4 +1,5 @@
 use futures::Future;
+use lantern_embeddings::cli::Runtime;
 use lantern_external_index::cli::UMetricKind;
 use std::{collections::HashMap, pin::Pin};
 use tokio::sync::{mpsc::Sender, RwLock};
@@ -15,12 +16,22 @@ pub struct EmbeddingJob {
     pub filter: Option<String>,
     pub out_column: String,
     pub model: String,
+    pub runtime_params: String,
+    pub runtime: Runtime,
     pub batch_size: Option<usize>,
 }
 
 impl EmbeddingJob {
-    pub fn new(row: Row) -> EmbeddingJob {
-        Self {
+    pub fn new(row: Row, data_path: &str) -> Result<EmbeddingJob, anyhow::Error> {
+        let runtime = Runtime::try_from(row.get::<&str, Option<&str>>("runtime").unwrap_or("ort"))?;
+        let runtime_params = if runtime == Runtime::Ort {
+            format!(r#"{{ "data_path": "{data_path}" }}"#)
+        } else {
+            row.get::<&str, Option<String>>("runtime_params")
+                .unwrap_or("{}".to_owned())
+        };
+
+        Ok(Self {
             id: row.get::<&str, i32>("id"),
             db_uri: row.get::<&str, String>("db_uri"),
             schema: row.get::<&str, String>("schema"),
@@ -28,10 +39,12 @@ impl EmbeddingJob {
             column: row.get::<&str, String>("column"),
             out_column: row.get::<&str, String>("dst_column"),
             model: row.get::<&str, String>("model"),
+            runtime,
+            runtime_params,
             filter: None,
             is_init: true,
             batch_size: None,
-        }
+        })
     }
 
     pub fn set_filter(&mut self, filter: &str) {

@@ -1,5 +1,5 @@
 use csv::Writer;
-use lantern_embeddings_core::clip;
+use lantern_embeddings_core::core::{get_available_runtimes, get_runtime};
 use lantern_logger::{LogLevel, Logger};
 use lantern_utils::{append_params_to_uri, get_full_table_name, quote_ident};
 use rand::Rng;
@@ -161,8 +161,8 @@ fn embedding_worker(
     let handle = std::thread::spawn(move || {
         let mut count: u64 = 0;
         let model = &args.model;
-        let data_path = &args.data_path;
         let mut start = Instant::now();
+        let runtime = get_runtime(&args.runtime, None, &args.runtime_params)?;
 
         while let Ok(rows) = rx.recv() {
             if is_canceled.is_some() && *is_canceled.as_ref().unwrap().read().unwrap() {
@@ -190,8 +190,7 @@ fn embedding_worker(
                 continue;
             }
 
-            let response_embeddings =
-                clip::process(&model, &input_vectors, None, data_path.as_deref(), false);
+            let response_embeddings = runtime.process(&model, &input_vectors);
 
             if let Err(e) = response_embeddings {
                 anyhow::bail!("{}", e);
@@ -299,6 +298,7 @@ fn db_exporter_worker(
         let mut start = Instant::now();
         let mut collected_row_cnt = 0;
         let mut processed_row_cnt = 0;
+        let mut old_progress = 0;
 
         while let Ok(rows) = rx.recv() {
             for row in &rows {
@@ -316,7 +316,8 @@ fn db_exporter_worker(
             processed_row_cnt += rows.len();
             let progress = calculate_progress(item_count, processed_row_cnt);
 
-            if progress > 0 {
+            if progress > old_progress {
+                old_progress = progress;
                 logger.debug(&format!("Progress {progress}%",));
                 if progress_cb.is_some() {
                     let cb = progress_cb.as_ref().unwrap();
@@ -417,6 +418,7 @@ fn get_default_batch_size(model: &str) -> usize {
         "microsoft/all-MiniLM-L12-v2" => 1000,
         "microsoft/all-mpnet-base-v2" => 400,
         "transformers/multi-qa-mpnet-base-dot-v1" => 300,
+        "text-embedding-ada-002" => 30,
         _ => 100,
     }
 }
@@ -514,6 +516,16 @@ pub fn show_available_models(
 ) -> AnyhowVoidResult {
     let logger = logger.unwrap_or(Logger::new("Lantern Embeddings", LogLevel::Info));
     logger.info("Available Models\n");
-    logger.print_raw(&clip::get_available_models(args.data_path.as_deref()).0);
+    let runtime = get_runtime(&args.runtime, None, &args.runtime_params)?;
+    logger.print_raw(&runtime.get_available_models().0);
+    Ok(())
+}
+
+pub fn show_available_runtimes(logger: Option<Logger>) -> AnyhowVoidResult {
+    let logger = logger.unwrap_or(Logger::new("Lantern Embeddings", LogLevel::Info));
+    let mut runtimes_str = get_available_runtimes().join("\n");
+    runtimes_str.push_str("\n");
+    logger.info("Available Runtimes\n");
+    logger.print_raw(&runtimes_str);
     Ok(())
 }

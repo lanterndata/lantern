@@ -1,10 +1,13 @@
 use pgrx::prelude::*;
 
+use flate2::read::GzDecoder;
+use ftp::FtpStream;
 use itertools::Itertools;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::mem::size_of;
 use std::path::Path;
+use tar::Archive;
 
 trait VectorElement {
     fn from_le_bytes(bytes: &[u8]) -> Self;
@@ -132,4 +135,73 @@ fn parse_vecs<T: VectorElement>(f: &mut File, count: i32) -> std::io::Result<Vec
         ));
     }
     return Ok(vectors);
+}
+
+#[pg_extern]
+fn get_vectors<'a>(gzippath: &'a str) -> String {
+    let url = url::Url::parse(gzippath).unwrap();
+    if url.scheme() == "ftp" {
+        match download_gzipped_ftp(url) {
+            Ok(data) => {
+                return data
+                    .map(|b| b.unwrap().to_string())
+                    .take(10)
+                    .collect::<Vec<String>>()
+                    .join(" ");
+            }
+            Err(e) => {
+                return e.to_string();
+            }
+        }
+    }
+    return "not supported".to_string();
+}
+
+fn download_gzipped_ftp(
+    url: url::Url,
+) -> Result<impl Iterator<Item = Result<u8, std::io::Error>>, Box<dyn std::error::Error>> {
+    use std::io::prelude::*;
+    assert!(url.scheme() == "ftp");
+    let domain = url.host_str().expect("no host");
+    let port = url.port().unwrap_or(21);
+    let pathurl = url.join("./")?;
+    let path = pathurl.path();
+    let filename = url
+        .path_segments()
+        .expect("expected path segments in an ftp url")
+        .last()
+        .unwrap();
+
+    let mut ftp_stream = FtpStream::connect(format!("{}:{}", domain, port))?;
+    ftp_stream
+        .login("anonymous", "anonymous")
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::PermissionDenied, e.to_string()))?;
+    ftp_stream.cwd(path)?;
+    let file = ftp_stream.get(filename)?;
+
+    let dd = GzDecoder::new(file);
+    if false {
+        return Ok(dd.bytes());
+    }
+    let mut a = Archive::new(dd);
+    // a.unpack("/tmp/rustftp")?;
+    a.entries()
+        .unwrap()
+        .map(|entry| match entry {
+            Ok(e) => {
+                let s = String::new();
+                notice!("entry name {}", e.path().unwrap().display());
+                Ok(s)
+            }
+            Err(e) => Err(e),
+        })
+        .for_each(|e| match e {
+            Ok(s) => {
+                notice!("entry: {}", s);
+            }
+            Err(e) => {
+                notice!("entry: {}", e);
+            }
+        });
+    return Err("not implemented".into());
 }

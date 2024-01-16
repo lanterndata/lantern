@@ -1,6 +1,6 @@
 use std::{cmp, time::Instant};
 
-use lantern_embeddings_core::clip::get_available_models;
+use lantern_embeddings_core::core::{get_runtime, Runtime};
 use lantern_logger::{LogLevel, Logger};
 use postgres::{Client, NoTls};
 
@@ -14,7 +14,8 @@ static PK_NAME: &'static str = "id";
 static LOREM_TEXT: &'static str = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer efficitur sem dui, at ultricies velit congue nec. Aenean in neque nunc. Fusce a auctor elit. Proin convallis fringilla mauris ut congue. Donec pretium, justo lobortis pharetra finibus, nulla elit pretium magna, et elementum nisl turpis vitae arcu. Nam vitae enim non magna porttitor tristique. Suspendisse ac dapibus massa. Proin pulvinar felis sed lobortis sagittis. Etiam efficitur leo ut eros mollis, vel tempus justo faucibus. Integer iaculis sed elit vel blandit. Sed maximus libero tortor. Nam vitae dui euismod urna egestas tincidunt. Suspendisse ante felis, feugiat in metus ut, mollis consequat mi. Mauris quis augue vitae mi auctor rutrum. Nulla commodo pharetra erat, ac lacinia leo euismod a. Ut consequat mollis enim, id tristique metus vehicula vitae. Phasellus venenatis faucibus dolor. Morbi a metus odio. Aenean gravida eleifend ante. Proin at mi tristique, varius risus a, porttitor ligula. Vestibulum hendrerit pellentesque risus eu semper. Proin eu condimentum enim.";
 
 fn measure_model_speed(
-    data_path: &Option<String>,
+    runtime: &Runtime,
+    runtime_params: &String,
     model_name: &str,
     db_uri: &str,
     table_name: &str,
@@ -39,7 +40,8 @@ fn measure_model_speed(
             out_uri: None,
             out_csv: None,
             out_table: None,
-            data_path: data_path.clone(),
+            runtime: runtime.clone(),
+            runtime_params: runtime_params.to_owned(),
             batch_size: batch_size.clone(),
             visual: false,
             limit: Some(limit.clone()),
@@ -94,7 +96,10 @@ pub fn start_speed_test(args: &MeasureModelSpeedArgs, logger: Option<Logger>) ->
         &[&text],
     )?;
 
-    let models: Vec<_> = get_available_models(args.data_path.as_deref())
+    let runtime = get_runtime(&args.runtime, None, &args.runtime_params)?;
+
+    let models: Vec<_> = runtime
+        .get_available_models()
         .1
         .iter()
         .filter_map(|el| {
@@ -117,7 +122,8 @@ pub fn start_speed_test(args: &MeasureModelSpeedArgs, logger: Option<Logger>) ->
     let logger = logger.unwrap_or(Logger::new("Lantern Embeddings", LogLevel::Info));
     for model_name in models {
         let speed_max = measure_model_speed(
-            &args.data_path,
+            &args.runtime,
+            &args.runtime_params,
             &model_name,
             &args.uri,
             &table_name_small,
@@ -125,7 +131,8 @@ pub fn start_speed_test(args: &MeasureModelSpeedArgs, logger: Option<Logger>) ->
             args.batch_size,
         )?;
         let speed_min = measure_model_speed(
-            &args.data_path,
+            &args.runtime,
+            &args.runtime_params,
             &model_name,
             &args.uri,
             &table_name_large,

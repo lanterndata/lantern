@@ -6,6 +6,8 @@
         "db_connection" text NOT NULL,
         "schema" text NOT NULL,
         "table" text NOT NULL,
+        "runtime" text NOT NULL,
+        "runtime_params" jsonb,
         "src_column" text NOT NULL,
         "dst_column" text NOT NULL,
         "embedding_model" text NOT NULL,
@@ -85,7 +87,6 @@ async fn embedding_worker(
     client: Arc<Client>,
     schema: String,
     table: String,
-    data_path: String,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
     let schema = Arc::new(schema);
@@ -99,7 +100,6 @@ async fn embedding_worker(
             let client_ref = client.clone();
             let client_ref2 = client.clone();
             let logger_ref = logger.clone();
-            let data_path = data_path.clone();
             let job = Arc::new(job);
             let job_ref = job.clone();
             let jobs_table_name_r1 = jobs_table_name.clone();
@@ -121,7 +121,7 @@ async fn embedding_worker(
                 None
             };
 
-            let task_logger = Logger::new(&format!("Embedding Job {}", job.id), logger.level.clone());
+            let task_logger = Logger::new(&format!("Embedding Job {}|{:?}", job.id, job.runtime), logger.level.clone());
             let job_clone = job.clone();
             
             let (cancel_tx, mut cancel_rx) = mpsc::channel(1);
@@ -151,7 +151,8 @@ async fn embedding_worker(
                             column: job_clone.column.clone(),
                             out_column: job_clone.out_column.clone(),
                             batch_size: job_clone.batch_size,
-                            data_path: Some(data_path),
+                            runtime: job_clone.runtime.clone(),
+                            runtime_params: job_clone.runtime_params.clone(),
                             visual: false,
                             stream: true,
                             create_column: false,
@@ -242,6 +243,7 @@ async fn job_insert_processor(
     schema: String,
     lock_table_schema: String,
     table: String,
+    data_path: &'static str,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
     // This function will have 2 running tasks
@@ -262,7 +264,7 @@ async fn job_insert_processor(
     // inserts to the table between 10 seconds all that rows will be batched.
 
     let full_table_name = Arc::new(get_full_table_name(&schema, &table));
-    let job_query_sql = Arc::new(format!("SELECT id, db_connection as db_uri, src_column as \"column\", dst_column, \"table\", \"schema\", embedding_model as model FROM {0}", &full_table_name));
+    let job_query_sql = Arc::new(format!("SELECT id, db_connection as db_uri, src_column as \"column\", dst_column, \"table\", \"schema\", embedding_model as model, runtime, runtime_params::text FROM {0}", &full_table_name));
 
     let full_table_name_r1 = full_table_name.clone();
     let job_query_sql_r1 = job_query_sql.clone();
@@ -337,7 +339,7 @@ async fn job_insert_processor(
                 .await;
 
             if let Ok(row) = job_result {
-                let mut job = EmbeddingJob::new(row);
+                let mut job = EmbeddingJob::new(row, data_path)?;
                 job.set_is_init(notification.init);
                 if let Some(filter) = notification.filter {
                     job.set_filter(&filter);
@@ -373,7 +375,7 @@ async fn job_insert_processor(
                     continue;
                 }
                 let row = job_result.unwrap();
-                let mut job = EmbeddingJob::new(row);
+                let mut job = EmbeddingJob::new(row, data_path)?;
                 // TODO take from job
                 let pk = "id";
                 job.set_is_init(false);
@@ -385,6 +387,8 @@ async fn job_insert_processor(
             // collect jobs every 10 seconds
             tokio::time::sleep(Duration::from_secs(10)).await;
         }
+        #[allow(unreachable_code)]
+        Ok::<(), anyhow::Error>(())
     });
 
     let (r1, _) = tokio::try_join!(insert_processor_task, batch_collector_task)?;
@@ -526,6 +530,7 @@ pub async fn start(args: cli::DaemonArgs, logger: Arc<Logger>) -> AnyhowVoidResu
             args.schema.clone(),
             args.internal_schema.clone(),
             table.clone(),
+            data_path,
             logger.clone(),
         )) as VoidFuture,
         Box::pin(job_update_processor(
@@ -542,7 +547,6 @@ pub async fn start(args: cli::DaemonArgs, logger: Arc<Logger>) -> AnyhowVoidResu
             main_db_client.clone(),
             args.schema.clone(),
             table.clone(),
-            data_path.to_owned(),
             logger.clone(),
         )) as VoidFuture,
         Box::pin(collect_pending_jobs(

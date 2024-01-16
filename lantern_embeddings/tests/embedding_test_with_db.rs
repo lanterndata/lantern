@@ -8,6 +8,7 @@ use std::{
 
 use lantern_embeddings;
 use lantern_embeddings::cli;
+use lantern_embeddings_core::core::Runtime;
 use postgres::{Client, NoTls};
 
 fn setup_db_tables(client: &mut Client, table_name: &str) {
@@ -62,7 +63,8 @@ fn test_embedding_generation_from_db() {
             out_table: None,
             limit: None,
             filter: None,
-            data_path: Some("/tmp/lantern-embeddings-core-test".to_owned()),
+            runtime: Runtime::Ort,
+            runtime_params: "{\"data_path\": \"/tmp/lantern-embeddings-core-test\"}".to_owned(),
             create_column: true,
             stream: false,
         },

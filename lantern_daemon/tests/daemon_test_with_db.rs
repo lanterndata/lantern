@@ -76,6 +76,8 @@ async fn setup_db_tables(client: &mut Client) {
         \"db_connection\" text NOT NULL,
         \"schema\" text NOT NULL,
         \"table\" text NOT NULL,
+        \"runtime\" text NOT NULL DEFAULT 'ort',
+        \"runtime_params\" jsonb,
         \"src_column\" text NOT NULL,
         \"dst_column\" text NOT NULL,
         \"embedding_model\" text NOT NULL,
@@ -186,11 +188,45 @@ fn start_daemon(
     return tx;
 }
 
-async fn test_embedding_generation() {
+async fn test_embedding_generation_runtime(
+    runtime: &str,
+    model: &str,
+    dimensions: usize,
+    token_env_var: &str,
+) {
+    let mut runtime_params = "{}".to_owned();
+    if runtime != "ort" {
+        let api_token = env::var(token_env_var);
+        let err_msg =
+            format!("'{token_env_var}' not provided: skipping {runtime} embedding generation test");
+
+        if api_token.is_err() {
+            println!("{}", err_msg);
+            return;
+        }
+        let token = api_token.unwrap();
+        let token = token.trim();
+
+        if token == "" {
+            println!("{}", err_msg);
+            return;
+        }
+        runtime_params = format!(r#"{{ "api_token": "{token}" }}"#);
+    }
+
     let db_uri = env::var("DB_URL").expect("`DB_URL` not specified");
     let (db_client, connection) = tokio_postgres::connect(&db_uri, NoTls).await.unwrap();
     tokio::spawn(async move { connection.await.unwrap() });
 
+    db_client
+        .batch_execute(&format!(
+            "
+            TRUNCATE TABLE {EMBEDDING_JOBS_TABLE_NAME};
+            UPDATE {CLIENT_TABLE_NAME} SET title_embedding=NULL;
+         "
+        ))
+        .await
+        .unwrap();
     let db_uri_clone = db_uri.clone();
     let stop_tx = start_daemon(
         db_uri_clone,
@@ -201,8 +237,8 @@ async fn test_embedding_generation() {
     db_client
         .execute(&format!(
             "
-       INSERT INTO {EMBEDDING_JOBS_TABLE_NAME} (database_id, db_connection, \"schema\", \"table\", \"src_column\", \"dst_column\", \"embedding_model\") 
-        VALUES ('client1', $1, 'public', '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', 'microsoft/all-MiniLM-L12-v2');
+       INSERT INTO {EMBEDDING_JOBS_TABLE_NAME} (database_id, db_connection, \"schema\", \"table\", \"src_column\", \"dst_column\", \"embedding_model\", runtime, runtime_params) 
+        VALUES ('client1', $1, 'public', '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', '{model}', '{runtime}', '{runtime_params}');
 "
         ), &[&db_uri])
         .await.unwrap();
@@ -240,7 +276,15 @@ async fn test_embedding_generation() {
         .await
         .unwrap();
     let cnt: i64 = client_data.get::<usize, i64>(0);
+    let client_data = db_client
+        .query(
+            &format!("SELECT * FROM {CLIENT_TABLE_NAME} WHERE ARRAY_LENGTH(title_embedding, 1) != {dimensions}"),
+            &[],
+        )
+        .await
+        .unwrap();
     assert_eq!(cnt, 0);
+    assert_eq!(client_data.len(), 0);
     stop_tx.send(()).unwrap();
 }
 
@@ -365,7 +409,11 @@ async fn test_cleanup() {
 #[tokio::test]
 async fn test_daemon() {
     test_setup().await;
-    test_embedding_generation().await;
+    test_embedding_generation_runtime("ort", "microsoft/all-MiniLM-L12-v2", 384, "").await;
+    test_embedding_generation_runtime("openai", "text-embedding-ada-002", 1536, "OPENAI_TOKEN")
+        .await;
+    test_embedding_generation_runtime("cohere", "embed-multilingual-v2.0", 768, "COHERE_TOKEN")
+        .await;
     test_index_creation().await;
     test_index_autotune().await;
     test_cleanup().await;

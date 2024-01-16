@@ -231,12 +231,36 @@ INSERT INTO images (url) VALUES ('https://cdn.pixabay.com/photo/2014/11/30/14/11
 lantern-cli create-embeddings  --model 'clip/ViT-B-32-visual'  --uri 'postgresql://postgres:postgres@localhost:5432/test' --table "images" --column "url" --out-column "embedding" --pk "id" --schema "public" --visual
 ```
 
-### Daemon Mode
+### OpenAI and Cohere Embeddings
 
-Lantern CLI can be used in daemon mode to continousely listen to postgres table and generate embeddings.
+Lantern CLI also supports generating OpenAI and Cohere embeddings via API. For that you should specify `--runtime` and `--runtime-params` arguments
 
 ```bash
- lantern-cli start-daemon --uri 'postgres://postgres@localhost:5432/postgres' --table lantern_jobs --schema public --log-level debug
+# OpenAI
+lantern-cli create-embeddings  --model 'text-embedding-ada-002' --uri 'postgresql://postgres:postgres@localhost:5432/test' --table "images" --column "url" --out-column "embedding" --pk "id" --schema "public" --runtime openai --runtime-params '{ "api_token": "sk-xxx-xxxx" }'
+
+# Cohere
+lantern-cli create-embeddings  --model 'text-embedding-ada-002' --uri 'postgresql://postgres:postgres@localhost:5432/test' --table "images" --column "url" --out-column "embedding" --pk "id" --schema "public" --runtime cohere --runtime-params '{ "api_token": "xxx-xxxx" }'
+```
+
+|> To get available runtimes use `bash lantern-cli show-runtimes`
+
+### Index Autotune
+
+Lantern CLI supports autotuning HNSW index parameters. To use the functionality run
+
+```bash
+lantern-cli autotune-index -u 'postgresql://postgres:postgres@localhost:5432/test' -t "sift1m" -c "v" --metric-kind l2sq --pk id --test-data-size 10000 --k 20
+```
+
+To get full list of arguments use `bash lantern-cli autotune-index -h`
+
+### Daemon Mode
+
+Lantern CLI can be used in daemon mode to continousely listen to postgres table and generate embeddings, external indexes or autotune jobs.
+
+```bash
+ lantern-cli start-daemon --uri 'postgres://postgres@localhost:5432/postgres' --embedding-table embedding_jobs --autotune-table index_autotune_jobs --autotune-results-table index_parameter_experiment_results --external-index-table external_index_jobs --schema public --log-level debug
 ```
 
 This will set up trigger on specified table (`lantern_jobs`) and when new row will be inserted it will start embedding generation based on row data.
@@ -244,18 +268,82 @@ After that the triggers will be set up in target table, so it will generate embe
 The jobs table should have the following structure
 
 ```sql
- id SERIAL PRIMARY KEY,
- db_connection TEXT,
- schema TEXT,
- "table" TEXT,
- src_column TEXT,
- dst_column TEXT,
- embedding_model TEXT,
- created_at TIMESTAMPTZ NOT NULL DEFAULT NOW (),
- updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW (),
- canceled_at TIMESTAMPTZ NOT NULL DEFAULT NOW (),
- init_started_at TIMESTAMPTZ,
- init_finished_at TIMESTAMPTZ,
- init_failed_at TIMESTAMPTZ,
- init_failure_reason TEXT
+-- Embedding Jobs Table should have the following structure:
+CREATE TABLE "public"."embedding_jobs" (
+    "id" SERIAL PRIMARY KEY,
+    "database_id" text NOT NULL,
+    "db_connection" text NOT NULL,
+    "schema" text NOT NULL,
+    "table" text NOT NULL,
+    "runtime" text NOT NULL,
+    "runtime_params" jsonb,
+    "src_column" text NOT NULL,
+    "dst_column" text NOT NULL,
+    "embedding_model" text NOT NULL,
+    "created_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "canceled_at" timestamp,
+    "init_started_at" timestamp,
+    "init_finished_at" timestamp,
+    "init_failed_at" timestamp,
+    "init_failure_reason" text,
+    "init_progress" int2 DEFAULT 0
+);
+-- External Index Jobs Table should have the following structure:
+CREATE TABLE "public"."external_index_jobs" (
+    "id" SERIAL PRIMARY KEY,
+    "database_id" text NOT NULL,
+    "db_connection" text NOT NULL,
+    "schema" text NOT NULL,
+    "table" text NOT NULL,
+    "column" text NOT NULL,
+    "index" text,
+    "operator" text NOT NULL,
+    "efc" INT NOT NULL,
+    "ef" INT NOT NULL,
+    "m" INT NOT NULL,
+    "created_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "canceled_at" timestamp,
+    "started_at" timestamp,
+    "finished_at" timestamp,
+    "failed_at" timestamp,
+    "failure_reason" text,
+    "progress" INT2 DEFAULT 0
+);
+-- Autotune Jobs Table should have the following structure:
+CREATE TABLE "public"."index_autotune_jobs" (
+    "id" SERIAL PRIMARY KEY,
+    "database_id" text NOT NULL,
+    "db_connection" text NOT NULL,
+    "schema" text NOT NULL,
+    "table" text NOT NULL,
+    "column" text NOT NULL,
+    "operator" text NOT NULL,
+    "target_recall" DOUBLE PRECISION NOT NULL,
+    "embedding_model" text NULL,
+    "k" int NOT NULL,
+    "n" int NOT NULL,
+    "create_index" bool NOT NULL,
+    "created_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "canceled_at" timestamp,
+    "started_at" timestamp,
+    "progress" INT2 DEFAULT 0,
+    "finished_at" timestamp,
+    "failed_at" timestamp,
+    "failure_reason" text
+);
+
+-- Autotune results table should have the following structure:
+CREATE TABLE "public"."index_parameter_experiment_results" (
+     id SERIAL PRIMARY KEY,
+     experiment_id INT NOT NULL, -- reference to job.id
+     ef INT NOT NULL,
+     efc INT  NOT NULL,
+     m INT  NOT NULL,
+     recall DOUBLE PRECISION NOT NULL,
+     latency DOUBLE PRECISION NOT NULL,
+     build_time DOUBLE PRECISION NULL
+);
 ```

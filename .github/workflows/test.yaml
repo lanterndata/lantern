@@ -26,4 +26,7 @@ jobs:
         env:
           PG_VERSION: ${{ matrix.postgres }}
       - name: Run tests
-        run: sudo su -c ". $HOME/.cargo/env && DB_URL='postgres://postgres@127.0.0.1:5432/postgres' cargo test --workspace --exclude lantern_extras --  --nocapture"
+        run: sudo su -c ". $HOME/.cargo/env && OPENAI_TOKEN=$OPENAI_TOKEN COHERE_TOKEN=$COHERE_TOKEN DB_URL='postgres://postgres@127.0.0.1:5432/postgres' cargo test --workspace --exclude lantern_extras --  --nocapture"
+        env:
+          OPENAI_TOKEN: ${{ secrets.OPENAI_TOKEN }}
+          COHERE_TOKEN: ${{ secrets.COHERE_TOKEN }}
