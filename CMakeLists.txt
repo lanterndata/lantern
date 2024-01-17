@@ -82,7 +82,7 @@ set(USEARCH_BUILD_TEST OFF)
 set(USEARCH_BUILD_BENCHMARK OFF)
 # add_subdirectory("./third_party/usearch/c")
 # add usearch to compilation target
-list(APPEND SOURCES "./third_party/usearch/c/lib.cpp")
+list(APPEND SOURCES "${CMAKE_SOURCE_DIR}/third_party/usearch/c/lib.cpp")
 
 string(REGEX MATCH "^PostgreSQL (\[0-9]+).*"
   PostgreSQL_VERSION_NUMBER ${PostgreSQL_VERSION_STRING})
@@ -326,6 +326,7 @@ endif()
 
 if (CLANG_FORMAT)
   set(CLANG_FORMATTABLE_FILES ${SOURCES})
+  message(WARNING "formattable ${CLANG_FORMATTABLE_FILES}")
   list(APPEND CLANG_FORMATTABLE_FILES ${HEADER_FILES})
 
   # Add format target
