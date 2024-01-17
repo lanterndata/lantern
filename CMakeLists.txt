@@ -19,9 +19,10 @@ if(POLICY CMP0077)
 endif()
 
 # OPTIONS
+option(MARCH_NATIVE "Build assuming the presence of all the features in the current CPU model" OFF)
+option(USEARCH_USE_SIMSIMD "Build usearch with SIMSIMD" ON)
+
 option(DEV "Developer mode: provide code formatting, get postgres source, etc." OFF)
-option(BUILD_WITH_USEARCH "Build with usearch as hnsw provider" ON)
-option(BUILD_LIBHNSW "Build libhnsw as hnsw provider" OFF)
 option(CODECOVERAGE "Enable code coverage for the build" OFF)
 option(BENCH "Enable benchmarking" OFF)
 option(FAILURE_POINTS "Enable failure points" ON)
@@ -79,7 +80,9 @@ set(USEARCH_DEBUG_BUILD_ASAN OFF)
 # set(USEARCH_NO_MARCH_NATIVE OFF)
 set(USEARCH_BUILD_TEST OFF)
 set(USEARCH_BUILD_BENCHMARK OFF)
-add_subdirectory("./third_party/usearch/c")
+# add_subdirectory("./third_party/usearch/c")
+# add usearch to compilation target
+list(APPEND SOURCES "./third_party/usearch/c/lib.cpp")
 
 string(REGEX MATCH "^PostgreSQL (\[0-9]+).*"
   PostgreSQL_VERSION_NUMBER ${PostgreSQL_VERSION_STRING})
@@ -120,10 +123,30 @@ target_include_directories(
   SYSTEM PRIVATE ${PostgreSQL_SERVER_INCLUDE_DIRS}
   PUBLIC ${CMAKE_SOURCE_DIR}/src
   PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
+  )
+
+# include build-generated headers
+target_include_directories(lantern PUBLIC ${CMAKE_BINARY_DIR}/include)
+
+# usearch includes
+target_include_directories(
+  lantern
   PRIVATE "./third_party/usearch/c"
   PRIVATE "./third_party/usearch/include/"
   PRIVATE "./third_party/usearch/fp16/include/"
-  )
+)
+
+if(${MARCH_NATIVE})
+  target_compile_options(lantern PRIVATE "-march=native")
+endif()
+
+if(${USEARCH_USE_SIMSIMD})
+  target_include_directories(lantern PRIVATE "./third_party/usearch/simsimd/include")
+  target_compile_definitions(lantern PRIVATE SIMSIMD_TARGET_X86_AVX512=0)
+  target_compile_definitions(lantern PRIVATE SIMSIMD_TARGET_X86_AVX2=1)
+  target_compile_definitions(lantern PRIVATE SIMSIMD_TARGET_ARM_SVE=0)
+  target_compile_definitions(lantern PRIVATE SIMSIMD_TARGET_ARM_NEON=0)
+endif()
 
 set(_link_flags "${PostgreSQL_SHARED_LINK_OPTIONS}")
 foreach(_dir ${PostgreSQL_SERVER_LIBRARY_DIRS})
@@ -133,7 +156,6 @@ endforeach()
 if(APPLE)
   set(_link_flags "${_link_flags} -bundle_loader ${PG_BINARY} -undefined dynamic_lookup")
 endif()
-
 
 set_target_properties(
   lantern
@@ -164,16 +186,23 @@ if(NOT APPLE)
   endif()
 endif()
 
+# Note: -static-libstdc++ is only meaningful for dynamic builds.
+# If we ever switch back to statically linking usearch or other third party libs,
+# we need to explicitly link against libstdc++.a
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_link_options(lantern PRIVATE -static-libstdc++)
+elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_link_options(lantern PRIVATE -static)
+endif ()
+# not sure why, but the above is not enough to force pulling cpp runtime into lantern.so
+# the following is also necessary
+target_link_libraries(lantern PRIVATE "libstdc++.a")
+
 set_target_properties(lantern PROPERTIES LINKER_LANGUAGE C)
 
-if (${BUILD_WITH_USEARCH})
-  target_link_libraries(lantern PRIVATE usearch_c)
-  target_compile_definitions(lantern PRIVATE LANTERN_USE_USEARCH)
-endif()
-if (${BUILD_WITH_LIBHNSW})
-  target_link_libraries(lantern PRIVATE hnsw)
-  target_compile_definitions(lantern PRIVATE LANTERN_USE_LIBHNSW)
-endif()
+target_compile_definitions(lantern PRIVATE LANTERN_USE_USEARCH)
+target_compile_definitions(lantern PRIVATE "USEARCH_USE_SIMSIMD=$<BOOL:${USEARCH_USE_SIMSIMD}>")
+
 if (FAILURE_POINTS)
   message(STATUS "Failure points are enabled.")
   target_compile_definitions(lantern PRIVATE LANTERN_FAILURE_POINTS_ARE_ENABLED=1)
@@ -210,9 +239,6 @@ set(VERSION_HEADER_TEMPLATE "${CMAKE_MODULE_PATH}/version.h.template")
 set(VERSION_HEADER_OUTPUT "${CMAKE_BINARY_DIR}/include/version.h")
 configure_file(${VERSION_HEADER_TEMPLATE} ${VERSION_HEADER_OUTPUT})
 
-target_include_directories(lantern PUBLIC ${CMAKE_BINARY_DIR}/include)
-
-
 # AUTO-GENERATE lantern.control file for PostgreSQL
 set(CONTROL_TEMPLATE "${CMAKE_MODULE_PATH}/lantern.control.template")
 set(CONTROL_OUTPUT "${CMAKE_BINARY_DIR}/lantern.control")
@@ -220,7 +246,6 @@ configure_file(${CONTROL_TEMPLATE} ${CONTROL_OUTPUT})
 
 
 # INSTALL
-
 install(TARGETS lantern LIBRARY DESTINATION ${PostgreSQL_PACKAGE_LIBRARY_DIR})
 install(FILES ${CONTROL_OUTPUT} ${CMAKE_BINARY_DIR}/${_script_file}
         DESTINATION ${PostgreSQL_EXTENSION_DIR})
@@ -229,9 +254,6 @@ foreach(_update_file ${_update_files})
   get_filename_component(_update_file_name ${_update_file} NAME)
   install(FILES ${_update_file} DESTINATION ${PostgreSQL_EXTENSION_DIR} RENAME "lantern--${_update_file_name}")
 endforeach()
-
-# todo:: add llvm bytecode generation for postgres optimizations (see how the
-# canonical extension building infra extension does it)
 
 # UNINSTALL
 add_custom_target(
