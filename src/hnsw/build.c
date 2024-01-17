@@ -518,7 +518,7 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, Hnsw
         // Create index file directory string: $pg_data_dir/ldb_indexes/index-$relfilenode.bin
         snprintf(
             tmp_index_file_path, tmp_index_file_char_cnt, tmp_index_file_fmt_str, DataDir, index->rd_rel->relfilenode);
-        usearch_save(buildstate->usearch_index, tmp_index_file_path, NULL, &error);
+        usearch_save(buildstate->usearch_index, tmp_index_file_path, &error);
         assert(error == NULL);
         index_file_fd = open(tmp_index_file_path, O_RDONLY);
     } else {
@@ -577,14 +577,13 @@ static void BuildEmptyIndex(Relation index, IndexInfo *indexInfo, HnswBuildState
 
     buildstate->hnsw = NULL;
 
-    char *result_buf = NULL;
-    usearch_save(buildstate->usearch_index, NULL, &result_buf, &error);
+    char *result_buf = palloc(USEARCH_EMPTY_INDEX_SIZE);
+    usearch_save_buffer(buildstate->usearch_index, result_buf, USEARCH_EMPTY_INDEX_SIZE, &error);
     assert(error == NULL && result_buf != NULL);
 
     StoreExternalEmptyIndex(index, INIT_FORKNUM, result_buf, &opts);
 
     usearch_free(buildstate->usearch_index, &error);
-    free(result_buf);
     assert(error == NULL);
     buildstate->usearch_index = NULL;
 

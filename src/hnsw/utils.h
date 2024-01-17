@@ -1,6 +1,7 @@
 #ifndef LDB_HNSW_UTILS_H
 #define LDB_HNSW_UTILS_H
 #include <access/amapi.h>
+#include <assert.h>
 #include <utils/array.h>
 
 #include "options.h"

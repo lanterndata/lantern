@@ -35,7 +35,8 @@
 // the header is updated every time this number of pages is initialized in ContinueBlockMapGroupInitialization()
 #define HNSW_BLOCKMAP_UPDATE_HEADER_EVERY 100
 
-#define USEARCH_HEADER_SIZE 80
+// usearch header size (80) + graph header size (40 + 16)
+#define USEARCH_HEADER_SIZE 136
 
 typedef struct HnswBlockMapGroupDesc
 {
@@ -59,6 +60,16 @@ typedef struct HnswIndexHeaderPage
     uint32                blockmap_groups_nr;
     HnswBlockMapGroupDesc blockmap_groups[ HNSW_MAX_BLOCKMAP_GROUPS ];
 } HnswIndexHeaderPage;
+
+// the added 40 byte graph header (currently unused)
+struct index_serialized_header_t
+{
+    uint64 size;
+    uint64 connectivity;
+    uint64 connectivity_base;
+    uint64 max_level;
+    uint64 entry_slot;
+};
 
 typedef struct HnswIndexPageSpecialBlock
 {
