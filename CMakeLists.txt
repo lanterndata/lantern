@@ -134,6 +134,7 @@ target_include_directories(
   PRIVATE "./third_party/usearch/c"
   PRIVATE "./third_party/usearch/include/"
   PRIVATE "./third_party/usearch/fp16/include/"
+  PRIVATE "./third_party/usearch/robin-map/include/"
 )
 
 if(${MARCH_NATIVE})
