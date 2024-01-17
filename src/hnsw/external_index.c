@@ -528,7 +528,7 @@ void StoreExternalIndex(Relation                index,
     header_page = GenericXLogRegisterBuffer(state, header_buf, GENERIC_XLOG_FULL_IMAGE);
     headerp = (HnswIndexHeaderPage *)PageGetContents(header_page);
 
-    uint64   progress = USEARCH_HEADER_SIZE + 56;  // usearch header size + graph header size
+    uint64   progress = USEARCH_HEADER_SIZE;
     unsigned blockmap_groupno = 0;
     uint32   group_node_first_index = 0;
     uint32   num_added_vectors_remaining = num_added_vectors;

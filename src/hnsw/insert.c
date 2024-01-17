@@ -21,13 +21,14 @@
 #include "options.h"
 #include "retriever.h"
 #include "usearch.h"
+#include "usearch_storage.hpp"
 #include "utils.h"
 #include "vector.h"
 
 /*
  * Generate a random level for a new externally stored vector
  */
-static uint32 hnsw_generate_new_level(size_t connectivity)
+static int16 hnsw_generate_new_level(size_t connectivity)
 {
     double inverse_log_connectivity = 1.0 / log((double)connectivity);
     // note: RNG is initialized (via srandom or via an updated mechanism) in postmaster.c
@@ -38,7 +39,9 @@ static uint32 hnsw_generate_new_level(size_t connectivity)
     double rand_num = (double)random() / (double)MAX_RANDOM_VALUE;
 #endif
     double level = -1 * log(rand_num) * inverse_log_connectivity;
-    return (uint32)level;
+    // todo:: clip instead
+    assert(0 <= level && level < SHRT_MAX);
+    return (int16)level;
 }
 
 /*
@@ -161,7 +164,7 @@ bool ldb_aminsert(Relation         index,
              "index size exceeded work_mem during insert, consider increasing work_mem");
 
     usearch_reserve(uidx, hdr->num_vectors + 1, &error);
-    uint32 level = hnsw_generate_new_level(meta.connectivity);
+    int16 level = hnsw_generate_new_level(meta.connectivity);
     if(error != NULL) {
         elog(ERROR, "usearch newnode error: %s", error);
     }
@@ -174,6 +177,10 @@ bool ldb_aminsert(Relation         index,
     // 4) The blockmap page for the block in which the vector was added
     // Generic XLog supports up to 4 pages in a single commit, so we are good.
     new_tuple = PrepareIndexTuple(index, state, hdr, &meta, new_tuple_id, level, insertstate);
+    int vector_size_bytes = opts.dimensions * sizeof(float);
+    // initialize node structure per usearch format
+    usearch_init_node(
+        &meta, new_tuple->node, *(unsigned long *)heap_tid, level, new_tuple_id, vector, vector_size_bytes);
 
     usearch_add_external(
         uidx, *(unsigned long *)heap_tid, vector, new_tuple->node, usearch_scalar_f32_k, level, &error);
@@ -182,6 +189,7 @@ bool ldb_aminsert(Relation         index,
     }
 
     usearch_update_header(uidx, hdr->usearch_header, &error);
+    // todo:: handle error
 
     ldb_wal_retriever_area_reset(insertstate->retriever_ctx, hdr);
 
