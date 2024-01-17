@@ -19,6 +19,7 @@ macro_rules! HTTPRuntime {
         use std::sync::Arc;
         use tokio::runtime::Runtime;
         use url::Url;
+        use crate::utils::post_with_retries;
 
         impl<'a> IHTTPRuntime for $a<'a> {
             fn get_client(&self) -> Result<HttpClient, anyhow::Error> {
@@ -48,7 +49,7 @@ macro_rules! HTTPRuntime {
                     let client = client.clone();
                     let url = url.clone();
                     let task = tokio_runtime
-                        .spawn(async move { client.post_async(url, request_body).await });
+                        .spawn(async move { post_with_retries(client, url, request_body, 3).await });
                     tasks.push(task);
                 }
 

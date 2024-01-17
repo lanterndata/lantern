@@ -23,6 +23,19 @@ impl UMetricKind {
             _ => anyhow::bail!("Invalid ops {ops}"),
         }
     }
+    pub fn to_ops(&self) -> String {
+        match self {
+            UMetricKind::L2sq => {
+                return "dist_l2sq_ops".to_owned();
+            }
+            UMetricKind::Cos => {
+                return "dist_cos_ops".to_owned();
+            }
+            UMetricKind::Hamming => {
+                return "dist_hamming_ops".to_owned();
+            }
+        }
+    }
     pub fn from(metric_kind: &str) -> Result<UMetricKind, anyhow::Error> {
         match metric_kind {
             "l2sq" => {

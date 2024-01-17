@@ -295,6 +295,7 @@ pub fn create_usearch_index(
     drop(rx_arc);
 
     if args.import {
+        let op_class = args.metric_kind.to_ops();
         if args.remote_database {
             logger.info("Copying index file into database server...");
             let mut rng = rand::thread_rng();
@@ -316,6 +317,7 @@ pub fn create_usearch_index(
                 &get_full_table_name(&args.schema, &args.table),
                 &quote_ident(&args.column),
                 args.index_name.as_deref(),
+                &op_class,
                 args.ef,
                 args.efc,
                 dimensions,
@@ -334,7 +336,7 @@ pub fn create_usearch_index(
             }
 
             transaction.execute(
-            &format!("CREATE INDEX {idx_name} ON {table_name} USING hnsw({column_name}) WITH (_experimental_index_path='{index_path}', ef={ef}, dim={dim}, m={m}, ef_construction={ef_construction});", index_path=args.out, table_name=&get_full_table_name(&args.schema, &args.table),column_name=&quote_ident(&args.column), m=args.m, ef=args.ef, ef_construction=args.efc, dim=dimensions),
+            &format!("CREATE INDEX {idx_name} ON {table_name} USING hnsw({column_name} {op_class}) WITH (_experimental_index_path='{index_path}', ef={ef}, dim={dim}, m={m}, ef_construction={ef_construction});", index_path=args.out, table_name=&get_full_table_name(&args.schema, &args.table),column_name=&quote_ident(&args.column), m=args.m, ef=args.ef, ef_construction=args.efc, dim=dimensions),
             &[],
             )?;
 
