@@ -688,7 +688,21 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
 
         assert(last_dblock != InvalidBuffer);
 
-        if(PageGetFreeSpace(page) > sizeof(HnswIndexTuple) + alloced_tuple->size
+        /**
+         * The sizeof(ItemIdData) in the if condition below is necessary to make sure there is enough
+         * space for the next line pointer in the page. We do not allocate line pointers in advance and add them
+         * as the need arrises. So, we have to always check that there is enough space.
+         * You can put the following check in the "else" branch to verify that sizeof(ItemIdData) addition
+         * actually makes a difference:
+         *
+         *   if(PageGetFreeSpace(page) > sizeof(HnswIndexTuple) + alloced_tuple->size) {
+         *       ldb_dlog(
+         *           "LANTERN: note: there is enough space for the tuple, but not enough for the"
+         *           "new ItemIdData line pointer");
+         *   }
+         *
+         **/
+        if(PageGetFreeSpace(page) > sizeof(ItemIdData) + sizeof(HnswIndexTuple) + alloced_tuple->size
            && AreEnoughBlockMapsForTupleId(hdr->blockmap_groups_nr, new_tuple_id)) {
             // there is enough space in the last page to fit the new vector
             // so we just append it to the page
