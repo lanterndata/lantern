@@ -26,10 +26,9 @@ SELECT v AS v777 FROM sift_base1k WHERE id = 777 \gset
 SET lantern.pgvector_compat=TRUE;
 EXPLAIN (COSTS FALSE) SELECT id FROM sift_base1k order by v <-> :'v777' LIMIT 10;
 
--- =========== TODO:: THIS CAUSES SERVER CRASH =============== -
--- SET lantern.pgvector_compat=FALSE;
--- EXPLAIN (COSTS FALSE) SELECT id FROM sift_base1k order by v <?> :'v777' LIMIT 10;
--- =========================================================== -
+SET lantern.pgvector_compat=FALSE;
+EXPLAIN (COSTS FALSE) SELECT id FROM sift_base1k order by v <?> :'v777' LIMIT 10;
+SET lantern.pgvector_compat=TRUE;
 DROP INDEX sift_base1k_v_idx;
 
 -- Create with params
@@ -38,10 +37,9 @@ SELECT _lantern_internal.validate_index('hnsw_cos_index', false);
 SET lantern.pgvector_compat=TRUE;
 EXPLAIN (COSTS FALSE) SELECT id FROM sift_base1k order by v <=> :'v777' LIMIT 10;
 
--- =========== TODO:: THIS CAUSES SERVER CRASH =============== -
--- SET lantern.pgvector_compat=FALSE;
--- EXPLAIN (COSTS FALSE) SELECT id FROM sift_base1k order by v <?> :'v777' LIMIT 10;
--- =========================================================== -
+SET lantern.pgvector_compat=FALSE;
+EXPLAIN (COSTS FALSE) SELECT id FROM sift_base1k order by v <?> :'v777' LIMIT 10;
+SET lantern.pgvector_compat=TRUE;
 
 -- -- Reindex external index
 SELECT lantern_reindex_external_index('hnsw_cos_index');

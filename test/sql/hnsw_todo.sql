@@ -93,3 +93,9 @@ INSERT INTO test_table VALUES (0), (1), (7);
 -- This case should be fixed
 SELECT id FROM test_table ORDER BY int_to_fixed_binary_real_array(id) <?> '{0,0,0}'::REAL[] LIMIT 2;
 
+-- =========== THIS CAUSES SERVER CRASH =============== -
+-- create extension lantern_extras;
+-- select v as v777 from sift_base1k where id = 777 \gset
+-- set lantern.pgvector_compat=false;
+-- select lantern_create_external_index('v', 'sift_base1k', 'public', 'cos', 128, 10, 10, 10, 'hnsw_cos_index');
+-- ===================================================== -
