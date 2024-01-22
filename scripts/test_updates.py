@@ -5,6 +5,8 @@ import git
 import os
 from functools import cmp_to_key
 
+# placeholder used in sql update scripts as the next release version
+LATEST="latest"
 
 INCOMPATIBLE_VERSIONS = {
     '16': ['0.0.4']
@@ -12,13 +14,25 @@ INCOMPATIBLE_VERSIONS = {
 
 class Version:
     def __init__(self, version: str):
+        self.latest = False
+        self.version = version
+        if version == LATEST:
+            self.latest = True
+            return
+
         self.version_numbers = [int(n) for n in version.split('.')]
     def __lt__(self, other):
+        if self.latest:
+            return False
+        if other.latest:
+            return True
         for i, v in enumerate(self.version_numbers):
             if v < other.version_numbers[i]:
                 return True
         return False
     def __eq__(self, other):
+        if self.latest or other.latest:
+            return self.latest == other.latest
         for i, v in enumerate(self.version_numbers):
             if v != other.version_numbers[i]:
                 return False
@@ -31,6 +45,10 @@ class Version:
         return not self == other and not self < other
     def __ge__(self, other):
         return not self < other
+    def __str__(self):
+        return self.version
+    def __repr__(self):
+        return self.version
 
 def shell(cmd, exit_on_error=True):
     res = subprocess.run(cmd, shell=True)
@@ -48,14 +66,14 @@ def shell(cmd, exit_on_error=True):
 # the function installs the DB at from_version, runs an upgrade via ALTER EXTENSION ... UPDATE
 # and runs the test suit on the resulting DB
 # Note: from_version must be a valid tag on the repo that has a corresponding release and SQL migration script
-# to_version must be the string literal "latest" or follow the requirements above
+# to_version must be the value LATEST or follow the requirements above
 def update_from_tag(from_version: str, to_version: str):
     from_tag = "v" + from_version
     repo = git.Repo(search_parent_directories=True)
     print(repo.remotes)
     to_sha = repo.head.object.hexsha
 
-    if to_version != "latest":
+    if to_version != LATEST:
         to_tag = "v" + to_version
         to_sha = to_tag
 
@@ -150,10 +168,10 @@ if __name__ == "__main__":
     repo = git.Repo(search_parent_directories=True)
     tags_actual = [tag.name for tag in repo.tags]
     tags_actual = [name[1:] if name[0] == 'v' else name for name in tags_actual]
-    tag_pairs = [(from_tag, to_tag) for from_tag, to_tag in tag_pairs if from_tag in tags_actual and (to_tag in tags_actual or to_tag == "0.0.12")]
-    from_tags = list(sorted([p[0] for p in tag_pairs], key=cmp_to_key(sort_versions)))
+    tag_pairs = [(from_tag, to_tag) for from_tag, to_tag in tag_pairs if from_tag in tags_actual and (to_tag in tags_actual or to_tag == LATEST)]
+    from_tags = list(sorted([Version(p[0]) for p in tag_pairs]))
     from_tags.reverse()
-    to_tags = list(sorted([p[1] for p in tag_pairs], key=cmp_to_key(sort_versions)))
+    to_tags = list(sorted([Version(p[1]) for p in tag_pairs]))
     
     if len(to_tags) > 0:
         latest_version = to_tags[-1]
@@ -163,7 +181,7 @@ if __name__ == "__main__":
         for from_tag in from_tags:
             if incompatible_version(pg_version, from_tag):
                 continue
-            update_from_tag(from_tag, latest_version)
+            update_from_tag(str(from_tag), str(latest_version))
 
 
 
