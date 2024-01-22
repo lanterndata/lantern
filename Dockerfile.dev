@@ -32,6 +32,9 @@ RUN rm -rf build \
     && cmake -DCMAKE_BUILD_TYPE=Debug -DBUILD_C_TESTS=ON .. \
     && make install
 
+# allow non-root users to install in the container to make it easier to run update-tests
+RUN chmod 777 /usr/local/pgsql/lib/ /usr/local/pgsql/share/extension/
+
 # Install benchmarking tools in build folder
 RUN mkdir build/lantern \
     && git clone https://github.com/lanterndata/benchmark build/benchmark \
