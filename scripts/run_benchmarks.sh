@@ -3,7 +3,7 @@ set -e
 
 # Benchmarking parameters
 BASE_PARAMS="--extension lantern --dataset openai --N 1m"
-INDEX_PARAMS="--m 12 --ef_construction 128 --ef 128 --external 1"
+INDEX_PARAMS="--m 8 --ef_construction 128 --ef 128 --external 1"
 PARAMS="$BASE_PARAMS $INDEX_PARAMS --K 10"
 
 # Settings
