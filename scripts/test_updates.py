@@ -49,13 +49,21 @@ def update_from_tag(from_version: str, to_version: str):
     repo = git.Repo(search_parent_directories=True)
     sha_before = repo.head.object.hexsha
     print(repo.remotes)
-    repo.remotes[0].fetch()
+    try:
+        repo.remotes[0].fetch()
+    except Exception as e:
+        # fetching does not work in the dev dockerfile but it does not need to,
+        # since we are testing the updates on the local repo
+        if not "error: cannot run ssh" in str(e):
+            raise Exception(f"unknown fetch error: {e}")
+
+
     repo.git.checkout(from_tag)
     sha_after = repo.head.object.hexsha
     print(f"Updating from tag {from_tag}(sha: {sha_after}) to {to_version}")
 
     # run "mkdir build && cd build && cmake .. && make -j4 && make install"
-    res = shell(f"mkdir -p {args.builddir} ; cd {args.builddir} && git submodule update --recursive && cmake .. && make -j4 && make install")
+    res = shell(f"mkdir -p {args.builddir} ; cd {args.builddir} && git submodule update --init --recursive && cmake .. && make -j4 && make install")
 
     res = shell(f"psql postgres -U {args.user} -c 'DROP DATABASE IF EXISTS {args.db};'")
     res = shell(f"psql postgres -U {args.user} -c 'CREATE DATABASE {args.db};'")
@@ -77,7 +85,7 @@ def update_from_tag(from_version: str, to_version: str):
         res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-misc FILTER=begin")
 
     repo.git.checkout(sha_before)
-    res = shell(f"cd {args.builddir} ; git submodule update --recursive && cmake .. && make -j4 && make install")
+    res = shell(f"cd {args.builddir} ; git submodule update --init --recursive && cmake .. && make -j4 && make install")
     # res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={to_version} make test")
     if Version(from_version) > Version('0.0.11'):
         res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-misc FILTER=version_mismatch")
