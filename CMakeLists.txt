@@ -80,7 +80,6 @@ set(USEARCH_DEBUG_BUILD_ASAN OFF)
 # set(USEARCH_NO_MARCH_NATIVE OFF)
 set(USEARCH_BUILD_TEST OFF)
 set(USEARCH_BUILD_BENCHMARK OFF)
-# add_subdirectory("./third_party/usearch/c")
 # add usearch to compilation target
 list(APPEND SOURCES "${CMAKE_SOURCE_DIR}/third_party/usearch/c/lib.cpp")
 
@@ -283,8 +282,6 @@ add_custom_target(
 add_custom_target(cover
     COMMAND lcov --rc lcov_branch_coverage=1 --directory . --capture --output-file coverage.info
     COMMAND lcov --rc lcov_branch_coverage=1 --remove coverage.info '/usr/*' --output-file coverage.info
-    # to exclude third_party coverage, comment out the line below
-    COMMAND lcov --rc lcov_branch_coverage=1 --remove coverage.info '*/third_party/*' --output-file coverage.info
     COMMAND lcov --rc lcov_branch_coverage=1 --list coverage.info
     COMMAND genhtml coverage.info --branch-coverage --rc genhtml_branch_coverage=1 --output-directory out
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
