@@ -12,10 +12,13 @@ make test FILTER=hnsw
 # run parallel tests
 make test-parallel
 ```
-Running `make test` will run the lantern regression tests, these run independent of one another. At the moment the tests for `make test-parallel` are under development, they can be found in `test/parallel`. The goal of the parallel tests is to generate a more realistic workload on the index to discover timing errors and other bugs dependent on more complex use, they run in the same database. 
+
+Running `make test` will run the lantern regression tests, these run independent of one another. At the moment the tests for `make test-parallel` are under development, they can be found in `test/parallel`. The goal of the parallel tests is to generate a more realistic workload on the index to discover timing errors and other bugs dependent on more complex use, they run in the same database.
 
 ## Running benchmarks
+
 This requires Python to be installed. Please check the `Dockerfile.dev` for pip requirements.
+
 ```bash
 # set up benchmarking, run benchmarks, and print results
 make benchmark
@@ -42,6 +45,21 @@ Below is a short recording demonstrating the use of `livedebug.py`:
 ## Running sanitizers
 
 To ensure that code is safe, pull requests are tested using google's [AddressSanitizer](https://github.com/google/sanitizers/wiki/AddressSanitizer). Additionally [UBSan](https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html) is run against releases. A [docker container](scripts/sanitizers/Dockerfile) is provided for testing changes locally. it can be invoked by running the script `scripts/sanitizers/run_sanitizers.sh`. **Please note that this script must be run in the root directory of the lantern repository**. By default it will build `postgres 15.4` and run tests against it instrumented only with AddressSanitizer. If you would like to run UBSan you can pass the `-u` flag. If you wish to test against a specific version you can use the `-v` flag specifying a specific version, e.g. `scripts/sanitizers/run_sanitizers.sh -u -v11.21`
+
+## Getting code coverage report locally
+
+Make sure `lcov` is installed. It is installed in our development dockerfile (Dockerfile.dev)
+
+Then, run the following (or equivalent) from the root of the repository, in order to:
+
+1. Configure a coverage build via cmake
+2. Build and install a coverage-enabled binary
+3. Run the tests (you can run other workloads here as well)
+4. Generate a coverage report
+
+```
+mkdir -p build_coverage && (cd build_coverage && cmake .. -DCODECOVERAGE=1 && sudo make install -j && make test && make cover)
+```
 
 ## Adding/modifying LanternDB's SQL interface
 
