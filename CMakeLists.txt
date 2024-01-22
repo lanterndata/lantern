@@ -219,7 +219,7 @@ set (_update_files
   sql/updates/0.0.8--0.0.9.sql
   sql/updates/0.0.9--0.0.10.sql
   sql/updates/0.0.10--0.0.11.sql
-  sql/updates/0.0.11--0.0.12.sql
+  sql/updates/0.0.11--latest.sql
 )
 
 add_custom_command(

@@ -44,11 +44,21 @@ def shell(cmd, exit_on_error=True):
             print("ERROR on command", cmd)
 
 
+# Make sure lantern can smoothly be updated from from_version to to_version
+# the function installs the DB at from_version, runs an upgrade via ALTER EXTENSION ... UPDATE
+# and runs the test suit on the resulting DB
+# Note: from_version must be a valid tag on the repo that has a corresponding release and SQL migration script
+# to_version must be the string literal "latest" or follow the requirements above
 def update_from_tag(from_version: str, to_version: str):
     from_tag = "v" + from_version
     repo = git.Repo(search_parent_directories=True)
-    sha_before = repo.head.object.hexsha
     print(repo.remotes)
+    to_sha = repo.head.object.hexsha
+
+    if to_version != "latest":
+        to_tag = "v" + to_version
+        to_sha = to_tag
+
     try:
         repo.remotes[0].fetch()
     except Exception as e:
@@ -84,7 +94,7 @@ def update_from_tag(from_version: str, to_version: str):
         # initialize misc tests to ensure that version mismatch results in an error
         res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-misc FILTER=begin")
 
-    repo.git.checkout(sha_before)
+    repo.git.checkout(to_sha)
     res = shell(f"cd {args.builddir} ; git submodule update --init --recursive && cmake .. && make -j4 && make install")
     # res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={to_version} make test")
     if Version(from_version) > Version('0.0.11'):
@@ -140,7 +150,7 @@ if __name__ == "__main__":
     repo = git.Repo(search_parent_directories=True)
     tags_actual = [tag.name for tag in repo.tags]
     tags_actual = [name[1:] if name[0] == 'v' else name for name in tags_actual]
-    tag_pairs = [(from_tag, to_tag) for from_tag, to_tag in tag_pairs if from_tag in tags_actual and to_tag in tags_actual]
+    tag_pairs = [(from_tag, to_tag) for from_tag, to_tag in tag_pairs if from_tag in tags_actual and (to_tag in tags_actual or to_tag == "0.0.12")]
     from_tags = list(sorted([p[0] for p in tag_pairs], key=cmp_to_key(sort_versions)))
     from_tags.reverse()
     to_tags = list(sorted([p[1] for p in tag_pairs], key=cmp_to_key(sort_versions)))
