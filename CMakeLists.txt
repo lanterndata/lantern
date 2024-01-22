@@ -20,7 +20,7 @@ endif()
 
 # OPTIONS
 option(MARCH_NATIVE "Build assuming the presence of all the features in the current CPU model" OFF)
-option(USEARCH_USE_SIMSIMD "Build usearch with SIMSIMD" ON)
+option(USEARCH_USE_SIMSIMD "Build usearch with SIMSIMD" OFF)
 
 option(DEV "Developer mode: provide code formatting, get postgres source, etc." OFF)
 option(CODECOVERAGE "Enable code coverage for the build" OFF)
@@ -54,6 +54,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release)
+endif()
 message(STATUS "${CMAKE_COLOR_GREEN}Build type: ${CMAKE_BUILD_TYPE}${CMAKE_COLOR_RESET}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wno-conversion -Wno-unknown-pragmas")
@@ -67,19 +70,6 @@ set(SOURCES_DIR "src")
 file(GLOB_RECURSE SOURCES "${SOURCES_DIR}/*.c" "*${SOURCES_DIR}/*.cpp")
 file(GLOB_RECURSE HEADER_FILES "${SOURCES_DIR}/*.h" "${SOURCES_DIR}/*.hpp")
 
-set(USEARCH_USE_SIMSIMD OFF)
-set(USEARCH_LOOKUP_LABEL OFF)
-# we always use a usearch index from a single thread
-set(USEARCH_CONCURRENT OFF)
-set(USEARCH_BUILD_STATIC ON)
-# do not add asan flags to usearch debug build of the library since
-# we still have not figured out how to load those into postgres
-set(USEARCH_DEBUG_BUILD_ASAN OFF)
-# the var below can be used to skip -march=native in the usearch build
-# which causes issues when built from docker on m1 macs
-# set(USEARCH_NO_MARCH_NATIVE OFF)
-set(USEARCH_BUILD_TEST OFF)
-set(USEARCH_BUILD_BENCHMARK OFF)
 # add usearch to compilation target
 list(APPEND SOURCES "${CMAKE_SOURCE_DIR}/third_party/usearch/c/lib.cpp")
 
