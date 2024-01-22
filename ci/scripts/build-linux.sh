@@ -7,7 +7,7 @@ function setup_locale_and_install_packages() {
   echo "LANG=en_US.UTF-8" > /etc/locale.conf
 
   apt update -y
-  apt install -y locales lsb-core build-essential automake cmake wget git dpkg-dev gcovr clang-format
+  apt install -y locales lsb-core build-essential automake cmake wget git dpkg-dev lcov clang-format
 
   locale-gen en_US.UTF-8
 }
