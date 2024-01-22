@@ -54,9 +54,8 @@ function run_db_tests(){
     make test-parallel && \
     make test-client && \
     run_pgvector_tests
-
     stop_current_postgres && \
-    gcovr -r $WORKDIR/src/ --object-directory $WORKDIR/build/ --xml /tmp/coverage.xml
+    make cover
   fi
 }
 
@@ -79,7 +78,7 @@ function start_pg() {
     # Set port
     echo "port = 5432" >> ${PGDATA}/postgresql.conf
     # Run postgres database
-    GCOV_PREFIX=$WORKDIR/build/CMakeFiles/lantern.dir/ GCOV_PREFIX_STRIP=5 POSTGRES_HOST_AUTH_METHOD=trust /usr/lib/postgresql/$PG_VERSION/bin/postgres 1>/tmp/pg-out.log 2>/tmp/pg-error.log &
+    POSTGRES_HOST_AUTH_METHOD=trust /usr/lib/postgresql/$PG_VERSION/bin/postgres 1>/tmp/pg-out.log 2>/tmp/pg-error.log &
   fi
 }
 # Wait for start and run tests
