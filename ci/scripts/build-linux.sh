@@ -27,7 +27,7 @@ function install_platform_specific_dependencies() {
   # Currently lantern_extras binaries are only available for Linux x86_64
   # We won't install onnxruntime as lantern_extras are used only for external index in tests
   pushd /tmp
-    LANTERN_EXTRAS_VERSION=0.0.6
+    LANTERN_EXTRAS_VERSION=$(curl -s "https://api.github.com/repos/lanterndata/lantern_extras/releases/latest" | jq ".tag_name" | sed 's/"//g')
     wget https://github.com/lanterndata/lantern_extras/releases/download/${LANTERN_EXTRAS_VERSION}/lantern-extras-${LANTERN_EXTRAS_VERSION}.tar -O lantern-extras.tar
     tar xf lantern-extras.tar
     pushd lantern-extras-${LANTERN_EXTRAS_VERSION}
