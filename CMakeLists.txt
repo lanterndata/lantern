@@ -146,6 +146,13 @@ endforeach()
 if(APPLE)
   set(_link_flags "${_link_flags} -bundle_loader ${PG_BINARY} -undefined dynamic_lookup")
 endif()
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  # suppress warnings from autovectorization failures such as:
+  #   loop not vectorized: the optimizer was unable to perform the
+  #   requested transformation; the transformation might be disabled
+  #   or specified as part of an unsupported transformation ordering [-Wpass-failed=transform-warning]
+  target_compile_options(lantern PRIVATE -Wno-pass-failed)
+endif()
 
 set_target_properties(
   lantern
