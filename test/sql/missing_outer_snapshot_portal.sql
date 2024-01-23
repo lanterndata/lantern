@@ -1,0 +1,33 @@
+-- This test is to check that Lantern properly handles missing outer snapshots or portals when it is loaded
+
+-- So far, this test checks that Lantern handles cases of initializing parallel workers properly.
+-- Specifically, we test that Lantern performs the version match check by only performing its initialization SQL queries when a proper outer snapshot or portal exists. 
+-- This is to prevent the following error: "ERROR:  cannot execute SQL without an outer snapshot or portal"
+
+-- Note: Dropping and loading the extension again is necessary to test the desired missing outer snapshot/portal behavior
+DROP EXTENSION lantern;
+CREATE EXTENSION lantern;
+
+CREATE TABLE IF NOT EXISTS ourtable (
+     id SERIAL,
+     v REAL[128]
+);
+
+\copy ourtable (v) FROM '/tmp/lantern/vector_datasets/siftsmall_base_arrays.csv' with csv;
+
+SET max_parallel_workers_per_gather TO 4;
+SET max_parallel_workers TO 8;
+
+--- Make parallel plans more favorable ---
+SET min_parallel_table_scan_size TO '8kB';
+
+SET parallel_setup_cost TO 10;
+SET parallel_tuple_cost TO 0.001;
+
+SET seq_page_cost TO 10; 
+
+-- This query should have a parallel plan
+EXPLAIN SELECT COUNT(*) FROM ourtable;
+SELECT COUNT(*) FROM ourtable;
+
+
