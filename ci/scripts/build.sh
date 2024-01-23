@@ -58,10 +58,11 @@ function build_and_install() {
   
   # Treat warnings as errors in CI/CD
   flags+=" -DCMAKE_COMPILE_WARNING_AS_ERROR=ON"
+  flags+=" -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang"
   
   if [ -n "$ENABLE_COVERAGE" ]
   then
-    flags="$flags -DCMAKE_C_COMPILER=/usr/bin/gcc -DCODECOVERAGE=ON -DBUILD_C_TESTS=ON"
+    flags="$flags -DCODECOVERAGE=ON -DBUILD_C_TESTS=ON"
   fi
 
   # Run cmake

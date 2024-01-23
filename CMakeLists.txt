@@ -224,6 +224,26 @@ if (${LANTERNDB_COPYNODES})
 endif()
 
 set(_script_file "lantern--${RELEASE_ID}.sql")
+
+# ============== Use clang compiler to emit llvm bytecode =================
+find_program(LLVM_LTO NAMES llvm-lto)
+if(
+  NOT LLVM_LTO STREQUAL "LLVM_LTO-NOTFOUND" 
+  AND PostgreSQL_WITH_LLVM 
+  AND CMAKE_C_COMPILER_ID MATCHES "Clang" 
+  AND CMAKE_CXX_COMPILER_ID MATCHES "Clang"
+)
+  target_link_options(lantern PRIVATE -flto)
+  target_compile_options(lantern PRIVATE  "-emit-llvm")
+  add_custom_target(link_llvm_objects ALL
+      DEPENDS lantern
+      COMMAND ${CMAKE_SOURCE_DIR}/scripts/link_llvm_objects.sh '$<TARGET_OBJECTS:lantern>' ${CMAKE_BINARY_DIR}
+  )
+  install(DIRECTORY ${CMAKE_BINARY_DIR}/bitcode/ DESTINATION ${PostgreSQL_PACKAGE_LIBRARY_DIR}/bitcode)
+  message(STATUS "Using clang compiler to emit llvm bytecode")
+endif()
+# =========================================================================
+
 set (_update_files
   sql/updates/0.0.5--0.0.6.sql
   sql/updates/0.0.6--0.0.7.sql
@@ -262,8 +282,6 @@ set(CONTROL_TEMPLATE "${CMAKE_MODULE_PATH}/lantern.control.template")
 set(CONTROL_OUTPUT "${CMAKE_BINARY_DIR}/lantern.control")
 configure_file(${CONTROL_TEMPLATE} ${CONTROL_OUTPUT})
 
-
-# INSTALL
 install(TARGETS lantern LIBRARY DESTINATION ${PostgreSQL_PACKAGE_LIBRARY_DIR})
 install(FILES ${CONTROL_OUTPUT} ${CMAKE_BINARY_DIR}/${_script_file}
         DESTINATION ${PostgreSQL_EXTENSION_DIR})

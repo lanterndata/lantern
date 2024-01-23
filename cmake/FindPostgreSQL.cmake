@@ -85,6 +85,7 @@ if(PostgreSQL_FOUND)
   pg_config(_pg_pkglibdir --pkglibdir)
   pg_config(_pg_libdir --libdir)
   pg_config(_pg_version --version)
+  pg_config(_pg_compileflags --configure)
 
   separate_arguments(_pg_ldflags)
   separate_arguments(_pg_ldflags_sl)
@@ -94,9 +95,19 @@ if(PostgreSQL_FOUND)
   set(_server_inc_dirs ${_pg_includedir_server} ${_pg_pkgincludedir})
   string(REPLACE ";" " " _shared_link_options
                  "${_pg_ldflags};${_pg_ldflags_sl}")
+
+
   set(_link_options ${_pg_ldflags})
   if(_pg_ldflags_ex)
     list(APPEND _link_options ${_pg_ldflags_ex})
+  endif()
+
+  string(FIND ${_pg_compileflags} "--with-llvm" _pg_with_llvm_idx)
+
+  if(${_pg_with_llvm_idx} EQUAL -1)
+	  set(_pg_with_llvm FALSE)
+  else()
+	  set(_pg_with_llvm TRUE)
   endif()
 
   set(PostgreSQL_INCLUDE_DIRS
@@ -131,6 +142,9 @@ if(PostgreSQL_FOUND)
   set(PostgreSQL_PACKAGE_LIBRARY_DIR
       "${_pg_pkglibdir}"
       CACHE STRING "PostgreSQL package library directory")
+  set(PostgreSQL_WITH_LLVM
+      "${_pg_with_llvm}"
+      CACHE BOOL "PostgreSQL -with-llvm flag.")
 
   find_program(
     PG_BINARY postgres
