@@ -114,6 +114,17 @@ float4 *ToFloat4Array(ArrayType *arr)
 // This is used to prevent interacting with the index when the two don't match
 bool VersionsMatch()
 {
+    // If a parallel worker runs as a result of query execution, executing the SQL query below will lead to the
+    // error "ERROR:  cannot execute SQL without an outer snapshot or portal." Instead of loading in a snapshot, we
+    // simply return if one doesn't exist, the idea being that in the case of a parallel worker running this
+    // function, the original worker will have already run this function (after which all the parallel workers run
+    // this function, invoked by _PG_init). We return true so that we suppress any version mismatch messages from
+    // callers of this function
+    if(!ActiveSnapshotSet()) {
+        version_checked = versions_match = false;
+        return true;
+    }
+
     if(likely(version_checked)) {
         return versions_match;
     } else {
