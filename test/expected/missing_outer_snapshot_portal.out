@@ -18,14 +18,14 @@ SET parallel_setup_cost TO 10;
 SET parallel_tuple_cost TO 0.001;
 SET seq_page_cost TO 10; 
 -- This query should have a parallel plan
-EXPLAIN SELECT COUNT(*) FROM ourtable;
-                                        QUERY PLAN                                        
-------------------------------------------------------------------------------------------
- Finalize Aggregate  (cost=7443.79..7443.80 rows=1 width=8)
-   ->  Gather  (cost=7443.76..7443.78 rows=4 width=8)
+EXPLAIN (COSTS false) SELECT COUNT(*) FROM ourtable;
+                   QUERY PLAN                    
+-------------------------------------------------
+ Finalize Aggregate
+   ->  Gather
          Workers Planned: 4
-         ->  Partial Aggregate  (cost=7433.76..7433.77 rows=1 width=8)
-               ->  Parallel Seq Scan on ourtable  (cost=0.00..7377.01 rows=22701 width=0)
+         ->  Partial Aggregate
+               ->  Parallel Seq Scan on ourtable
 (5 rows)
 
 SELECT COUNT(*) FROM ourtable;

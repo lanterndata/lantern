@@ -27,7 +27,7 @@ SET parallel_tuple_cost TO 0.001;
 SET seq_page_cost TO 10; 
 
 -- This query should have a parallel plan
-EXPLAIN SELECT COUNT(*) FROM ourtable;
+EXPLAIN (COSTS false) SELECT COUNT(*) FROM ourtable;
 SELECT COUNT(*) FROM ourtable;
 
 
