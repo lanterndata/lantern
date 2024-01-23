@@ -1,5 +1,5 @@
 ARG VERSION=15
-ARG PGVECTOR_VERSION=0.5.0
+ARG PGVECTOR_VERSION=0.5.1
 
 # If you want to build the base image for different versions
 # Refer to the base image Dockerfile here https://github.com/var77/postgres-docker-debug
@@ -17,31 +17,35 @@ WORKDIR /lantern
 
 USER root
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt update && apt install curl -y && pip install GitPython libtmux lcov libpq5 && \
-    wget -O pgvector.tar.gz https://github.com/pgvector/pgvector/archive/refs/tags/v${PGVECTOR_VERSION}.tar.gz && \
+RUN apt update && apt install -y curl lcov libpq5
+
+# allow non-root users to install in the container to make it easier to run update-tests
+RUN chmod 777 /usr/local/pgsql/lib/ /usr/local/pgsql/share/extension/ /usr/local/pgsql/include/server/
+
+USER postgres
+
+RUN pip install GitPython libtmux
+
+# Build & Install pgvector
+RUN wget -O pgvector.tar.gz https://github.com/pgvector/pgvector/archive/refs/tags/v${PGVECTOR_VERSION}.tar.gz && \
     tar xzf pgvector.tar.gz && \
     cd pgvector-${PGVECTOR_VERSION} && \
-    make && make install
+    make -j && make install
 
 COPY . .
 
-# Build lantern
-RUN rm -rf build \
+# Build & Install lantern
+RUN sudo rm -rf build \
     && mkdir build \
     && cd build \
     && cmake -DCMAKE_BUILD_TYPE=Debug -DBUILD_C_TESTS=ON .. \
-    && make install
-
-# allow non-root users to install in the container to make it easier to run update-tests
-RUN chmod 777 /usr/local/pgsql/lib/ /usr/local/pgsql/share/extension/
+    && make -j install
 
 # Install benchmarking tools in build folder
-RUN mkdir build/lantern \
-    && git clone https://github.com/lanterndata/benchmark build/benchmark \
+RUN git clone https://github.com/lanterndata/benchmark build/benchmark \
     && cd build/benchmark \
     && pip install -r core/requirements.txt \
     && pip install -r external/requirements.txt
+
 ENV DATABASE_URL=postgres://postgres@localhost:5432/postgres
 ENV LANTERN_DATABASE_URL=postgres://postgres@localhost:5432/postgres
-
-USER postgres
