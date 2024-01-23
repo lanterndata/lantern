@@ -95,7 +95,7 @@ def update_from_tag(from_version: str, to_version: str):
     print(f"Updating from tag {from_tag}(sha: {sha_after}) to {to_version}")
 
     # run "mkdir build && cd build && cmake .. && make -j4 && make install"
-    res = shell(f"mkdir -p {args.builddir} ; cd {args.builddir} && git submodule update --init --recursive && cmake -DRELEASE_ID={from_version} .. && make -j4 && make install")
+    res = shell(f"mkdir -p {args.builddir} ; cd {args.builddir} && git submodule update --init --recursive && cmake -DRELEASE_ID={from_version} .. && make -j install")
 
     res = shell(f"psql postgres -U {args.user} -c 'DROP DATABASE IF EXISTS {args.db};'")
     res = shell(f"psql postgres -U {args.user} -c 'CREATE DATABASE {args.db};'")
@@ -117,7 +117,7 @@ def update_from_tag(from_version: str, to_version: str):
         res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-misc FILTER=begin")
 
     repo.git.checkout(to_sha)
-    res = shell(f"cd {args.builddir} ; git submodule update --init --recursive && cmake -DRELEASE_ID={to_version} .. && make -j4 && make install")
+    res = shell(f"cd {args.builddir} ; git submodule update --init --recursive && cmake -DRELEASE_ID={to_version} .. && make -j install")
     # res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={to_version} make test")
     if Version(from_version) > Version('0.0.11'):
         res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-misc FILTER=version_mismatch")
@@ -133,11 +133,6 @@ def incompatible_version(pg_version, version_tag):
         return False
     return version_tag in INCOMPATIBLE_VERSIONS[pg_version]
 
-def sort_versions(v1, v2):
-    a = int(v1.replace('.', ''))
-    b = int(v2.replace('.', ''))
-
-    return a - b
 
 if __name__ == "__main__":
 
