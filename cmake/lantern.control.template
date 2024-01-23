@@ -1,4 +1,4 @@
 comment = 'Lantern: Fast vector embedding processing in Postgres'
-default_version = '@LANTERNDB_VERSION@'
+default_version = '@LANTERN_VERSION@'
 module_pathname = '$libdir/lantern'
 relocatable = false

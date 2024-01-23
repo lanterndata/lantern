@@ -1,10 +1,10 @@
 cmake_minimum_required(VERSION 3.3)
 
-set(LANTERNDB_VERSION 0.0.11)
+set(LANTERN_VERSION 0.0.11)
 
 project(
   LanternDB
-  VERSION ${LANTERNDB_VERSION}
+  VERSION ${LANTERN_VERSION}
   LANGUAGES C CXX)
 
 if (POLICY CMP0074)
@@ -18,7 +18,8 @@ if(POLICY CMP0077)
   cmake_policy(SET CMP0077 NEW)
 endif()
 
-# OPTIONS
+set(RELEASE_ID "latest" CACHE STRING "Release ID placed in the binary. Must be set externally when doing a release")
+
 option(MARCH_NATIVE "Build assuming the presence of all the features in the current CPU model" OFF)
 option(USEARCH_USE_SIMSIMD "Build usearch with SIMSIMD" OFF)
 
@@ -27,7 +28,7 @@ option(CODECOVERAGE "Enable code coverage for the build" OFF)
 option(BENCH "Enable benchmarking" OFF)
 option(FAILURE_POINTS "Enable failure points" ON)
 option(BUILD_C_TESTS "Build C client tests" OFF)
-
+message(WARNING "version ${RELEASE_ID}")
 if(CODECOVERAGE)
   message(STATUS "Code coverage is enabled.")
   # Note that --coverage is synonym for the necessary compiler and linker flags
@@ -211,7 +212,7 @@ if (${LANTERNDB_COPYNODES})
   target_compile_definitions(lantern PRIVATE LANTERNDB_COPYNODES)
 endif()
 
-set(_script_file "lantern--${LANTERNDB_VERSION}.sql")
+set(_script_file "lantern--${LANTERN_VERSION}.sql")
 set (_update_files
   sql/updates/0.0.5--0.0.6.sql
   sql/updates/0.0.6--0.0.7.sql
@@ -221,6 +222,16 @@ set (_update_files
   sql/updates/0.0.10--0.0.11.sql
   sql/updates/0.0.11--latest.sql
 )
+
+# Generate version information for the binary
+EXECUTE_PROCESS(
+    COMMAND git log -1 --format=%h
+    WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+    OUTPUT_VARIABLE GIT_HASH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+# OPTIONS
+set(BUILD_ID "latest-${GIT_HASH}")
 
 add_custom_command(
   OUTPUT ${CMAKE_BINARY_DIR}/${_script_file}
