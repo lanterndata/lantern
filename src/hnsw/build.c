@@ -599,6 +599,12 @@ IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInf
     IndexBuildResult *result;
     HnswBuildState    buildstate;
 
+    if(!VersionsMatch()) {
+        elog(ERROR,
+             "Attempting to build lantern index, but the SQL version and binary version do not match. This can cause "
+             "errors. Please run `ALTER EXTENSION lantern UPDATE and reconnect");
+    }
+
     BuildIndex(heap, index, indexInfo, &buildstate);
 
     result = (IndexBuildResult *)palloc(sizeof(IndexBuildResult));
