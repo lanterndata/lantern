@@ -177,6 +177,17 @@ bool VersionsMatch()
         version_checked = true;
 
         SPI_finish();
+
+        if(!versions_match) {
+            elog(WARNING,
+                 "LanternDB binary version (%s) does not match the version in SQL (%s). This can cause errors as the "
+                 "two "
+                 "APIs may "
+                 "differ. Please run `ALTER EXTENSION lantern UPDATE` and reconnect before attempting to work with "
+                 "indices",
+                 LDB_BINARY_VERSION,
+                 version);
+        }
         return versions_match;
     }
 }
