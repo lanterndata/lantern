@@ -75,7 +75,11 @@ def update_from_tag(from_version: str, to_version: str):
 
     if to_version != LATEST:
         to_tag = "v" + to_version
-        to_sha = to_tag
+        tag_names = [tag.name for tag in repo.tags]
+        if to_tag in tag_names:
+            to_sha = to_tag
+        else:
+            print(f"WARNING: to_version=${to_version} has not corresponding tag. assuming current HEAD corresponds to that version")
 
     try:
         repo.remotes[0].fetch()
@@ -163,22 +167,34 @@ if __name__ == "__main__":
         exit(1)
 
     # test updates from all tags
-    tag_pairs = [update_fname.split("--") for update_fname in os.listdir("sql/updates")]
-    tag_pairs = [(from_tag, to_tag.split('.sql')[0]) for from_tag, to_tag in tag_pairs]
+    version_pairs = [update_fname.split("--") for update_fname in os.listdir("sql/updates")]
+    version_pairs = [(from_version, to_version.split('.sql')[0]) for from_version, to_version in version_pairs]
     repo = git.Repo(search_parent_directories=True)
     tags_actual = [tag.name for tag in repo.tags]
     tags_actual = [name[1:] if name[0] == 'v' else name for name in tags_actual]
-    tag_pairs = [(from_tag, to_tag) for from_tag, to_tag in tag_pairs if from_tag in tags_actual and (to_tag in tags_actual or to_tag == LATEST)]
-    from_tags = list(sorted([Version(p[0]) for p in tag_pairs]))
-    from_tags.reverse()
-    to_tags = list(sorted([Version(p[1]) for p in tag_pairs]))
-    
-    if len(to_tags) > 0:
-        latest_version = to_tags[-1]
-        print("Updating from tags", from_tags, "to ", latest_version)
+
+    version_pairs = [(from_v, to_v) for from_v, to_v in version_pairs]
+    from_versions = list(sorted([Version(p[0]) for p in version_pairs]))
+    from_versions.reverse()
+    to_versions = list(sorted([Version(p[1]) for p in version_pairs]))
+    for from_v in from_versions:
+        assert(str(from_v) in tags_actual)
+
+    num_untagged = 0
+    for to_v in to_versions:
+        if num_untagged != 0:
+            print(f"${to_v}, ${tags_actual}")
+        # only the last to_v may be untagged (when the release has not happened yet)
+        assert(num_untagged == 0)
+        if str(to_v) not in tags_actual:
+            num_untagged += 1
+
+    if len(to_versions) > 0:
+        latest_version = to_versions[-1]
+        print("Updating from tags", from_versions, "to ", latest_version)
 
         pg_version = None if not 'PG_VERSION' in os.environ else os.environ['PG_VERSION']
-        for from_tag in from_tags:
+        for from_tag in from_versions:
             if incompatible_version(pg_version, from_tag):
                 continue
             update_from_tag(str(from_tag), str(latest_version))
