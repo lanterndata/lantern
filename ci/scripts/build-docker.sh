@@ -1,7 +1,7 @@
 #!/bin/bash
 
 get_cmake_flags(){
- echo "-DMARCH_NATIVE=OFF"
+ echo "-DBUILD_FOR_DISTRIBUTING=YES -DMARCH_NATIVE=OFF"
 }
 
 export DEBIAN_FRONTEND=noninteractive

@@ -54,7 +54,7 @@ function build_and_install() {
   mkdir build
   cd build
 
-  flags="-DMARCH_NATIVE=OFF"
+  flags="-DBUILD_FOR_DISTRIBUTING=YES -DMARCH_NATIVE=OFF"
   
   # Treat warnings as errors in CI/CD
   flags+=" -DCMAKE_COMPILE_WARNING_AS_ERROR=ON"

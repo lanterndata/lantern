@@ -20,6 +20,7 @@ endif()
 
 set(RELEASE_ID "latest" CACHE STRING "Release ID placed in the binary. Must be set externally when doing a release")
 
+option(BUILD_FOR_DISTRIBUTING "Build LANTERN_VERSION info into the binary" OFF)
 option(MARCH_NATIVE "Build assuming the presence of all the features in the current CPU model" OFF)
 option(USEARCH_USE_SIMSIMD "Build usearch with SIMSIMD" OFF)
 
@@ -28,7 +29,11 @@ option(CODECOVERAGE "Enable code coverage for the build" OFF)
 option(BENCH "Enable benchmarking" OFF)
 option(FAILURE_POINTS "Enable failure points" ON)
 option(BUILD_C_TESTS "Build C client tests" OFF)
-message(WARNING "version ${RELEASE_ID}")
+
+if (${BUILD_FOR_DISTRIBUTING})
+  set(RELEASE_ID ${LANTERN_VERSION})
+endif()
+
 if(CODECOVERAGE)
   message(STATUS "Code coverage is enabled.")
   # Note that --coverage is synonym for the necessary compiler and linker flags
