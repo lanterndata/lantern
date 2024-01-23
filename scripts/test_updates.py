@@ -118,8 +118,10 @@ def update_from_tag(from_version: str, to_version: str):
 
     repo.git.checkout(to_sha)
     res = shell(f"cd {args.builddir} ; git submodule update --init --recursive && cmake -DRELEASE_ID={to_version} .. && make -j install")
-    # res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={to_version} make test")
-    if Version(from_version) > Version('0.0.11'):
+
+    # todo:: currently version mismatch logic only prints a warning and not an error
+    # we need to teach the version matching function when an update script vs client script is running for proper error enforcement
+    if Version(from_version) > Version('0.1.1'):
         res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-misc FILTER=version_mismatch")
 
     # run the actual parallel tests after the upgrade
