@@ -212,7 +212,7 @@ if (${LANTERNDB_COPYNODES})
   target_compile_definitions(lantern PRIVATE LANTERNDB_COPYNODES)
 endif()
 
-set(_script_file "lantern--${LANTERN_VERSION}.sql")
+set(_script_file "lantern--${RELEASE_ID}.sql")
 set (_update_files
   sql/updates/0.0.5--0.0.6.sql
   sql/updates/0.0.6--0.0.7.sql
