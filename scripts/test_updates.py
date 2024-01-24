@@ -3,14 +3,9 @@ import subprocess
 import getpass
 import git
 import os
-from functools import cmp_to_key
 
 # placeholder used in sql update scripts as the next release version
 LATEST="latest"
-
-INCOMPATIBLE_VERSIONS = {
-    '16': ['0.0.4']
-}
 
 class Version:
     def __init__(self, version: str):
@@ -49,6 +44,10 @@ class Version:
         return self.version
     def __repr__(self):
         return self.version
+
+INCOMPATIBLE_VERSIONS = {
+    '16': [Version('0.0.4')]
+}
 
 def shell(cmd, exit_on_error=True):
     res = subprocess.run(cmd, shell=True)
