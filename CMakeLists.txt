@@ -334,7 +334,7 @@ if (CLANG_FORMAT)
   string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" CLANG_FORMAT_VERSION "${CLANG_FORMAT_VERSION}")
 
   if(CLANG_FORMAT_VERSION VERSION_LESS 13)
-    message(WARNING "clang-format version ${CLANG_FORMAT_VERSION} found, need at least 14")
+    message(WARNING "clang-format version ${CLANG_FORMAT_VERSION} found, need at least 13")
     set(CLANG_FORMAT OFF)
   endif()
 endif()
