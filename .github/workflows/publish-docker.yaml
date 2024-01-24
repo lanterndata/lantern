@@ -2,6 +2,11 @@ name: publish-docker
 on:
   workflow_dispatch:
     inputs:
+      LATEST:
+        type: boolean
+        description: "Publish as latest release"
+        required: false
+        default: false
       VERSION:
         type: string
         description: "Extension version"
@@ -47,5 +52,5 @@ jobs:
           build-args: |
             PG_VERSION=${{ matrix.postgres }}
           # the :latest tag will refer to pg15 version
-          # but we will also include :latest-pg$v tag
-          tags: ${{ (matrix.postgres == 15 && format('{0}:latest', inputs.IMAGE_NAME) || '') }},${{ inputs.IMAGE_NAME }}:latest-pg${{ matrix.postgres }},${{ inputs.IMAGE_NAME }}:${{ inputs.VERSION }}-pg${{ matrix.postgres }}
+          # but we will also include :latest-pg$v tag only if LATEST input is specified
+          tags: ${{ (matrix.postgres == 15 && inputs.LATEST && format('{0}:latest', inputs.IMAGE_NAME) || '') }},${{ (inputs.LATEST && format('{0}:latest-pg{1}', inputs.IMAGE_NAME, matrix.postgres) || '') }},${{ inputs.IMAGE_NAME }}:${{ inputs.VERSION }}-pg${{ matrix.postgres }}
