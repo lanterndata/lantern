@@ -1,10 +1,10 @@
 cmake_minimum_required(VERSION 3.3)
 
-set(LANTERNDB_VERSION 0.0.11)
+set(LANTERN_VERSION 0.0.12)
 
 project(
   LanternDB
-  VERSION ${LANTERNDB_VERSION}
+  VERSION ${LANTERN_VERSION}
   LANGUAGES C CXX)
 
 if (POLICY CMP0074)
@@ -18,7 +18,9 @@ if(POLICY CMP0077)
   cmake_policy(SET CMP0077 NEW)
 endif()
 
-# OPTIONS
+set(RELEASE_ID "latest" CACHE STRING "Release ID placed in the binary. Must be set externally when doing a release")
+
+option(BUILD_FOR_DISTRIBUTING "Build LANTERN_VERSION info into the binary" OFF)
 option(MARCH_NATIVE "Build assuming the presence of all the features in the current CPU model" OFF)
 option(USEARCH_USE_SIMSIMD "Build usearch with SIMSIMD" OFF)
 
@@ -27,6 +29,10 @@ option(CODECOVERAGE "Enable code coverage for the build" OFF)
 option(BENCH "Enable benchmarking" OFF)
 option(FAILURE_POINTS "Enable failure points" ON)
 option(BUILD_C_TESTS "Build C client tests" OFF)
+
+if (${BUILD_FOR_DISTRIBUTING})
+  set(RELEASE_ID ${LANTERN_VERSION})
+endif()
 
 if(CODECOVERAGE)
   message(STATUS "Code coverage is enabled.")
@@ -58,7 +64,7 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 message(STATUS "${CMAKE_COLOR_GREEN}Build type: ${CMAKE_BUILD_TYPE}${CMAKE_COLOR_RESET}")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wno-conversion -Wno-unknown-pragmas")
 
 find_package(PostgreSQL REQUIRED)
@@ -146,6 +152,13 @@ endforeach()
 if(APPLE)
   set(_link_flags "${_link_flags} -bundle_loader ${PG_BINARY} -undefined dynamic_lookup")
 endif()
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  # suppress warnings from autovectorization failures such as:
+  #   loop not vectorized: the optimizer was unable to perform the
+  #   requested transformation; the transformation might be disabled
+  #   or specified as part of an unsupported transformation ordering [-Wpass-failed=transform-warning]
+  target_compile_options(lantern PRIVATE -Wno-pass-failed)
+endif()
 
 set_target_properties(
   lantern
@@ -204,9 +217,8 @@ if (${LANTERNDB_COPYNODES})
   target_compile_definitions(lantern PRIVATE LANTERNDB_COPYNODES)
 endif()
 
-set(_script_file "lantern--${LANTERNDB_VERSION}.sql")
+set(_script_file "lantern--${RELEASE_ID}.sql")
 set (_update_files
-  sql/updates/0.0.4--0.0.5.sql
   sql/updates/0.0.5--0.0.6.sql
   sql/updates/0.0.6--0.0.7.sql
   sql/updates/0.0.7--0.0.8.sql
@@ -215,6 +227,16 @@ set (_update_files
   sql/updates/0.0.10--0.0.11.sql
   sql/updates/0.0.11--0.0.12.sql
 )
+
+# Generate version information for the binary
+EXECUTE_PROCESS(
+    COMMAND git log -1 --format=%h
+    WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+    OUTPUT_VARIABLE GIT_HASH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+# OPTIONS
+set(BUILD_ID "latest-${GIT_HASH}")
 
 add_custom_command(
   OUTPUT ${CMAKE_BINARY_DIR}/${_script_file}
@@ -311,8 +333,8 @@ if (CLANG_FORMAT)
 
   string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" CLANG_FORMAT_VERSION "${CLANG_FORMAT_VERSION}")
 
-  if(CLANG_FORMAT_VERSION VERSION_LESS 14)
-    message(WARNING "clang-format version ${CLANG_FORMAT_VERSION} found, need at least 14")
+  if(CLANG_FORMAT_VERSION VERSION_LESS 13)
+    message(WARNING "clang-format version ${CLANG_FORMAT_VERSION} found, need at least 13")
     set(CLANG_FORMAT OFF)
   endif()
 endif()

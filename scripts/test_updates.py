@@ -3,22 +3,31 @@ import subprocess
 import getpass
 import git
 import os
-from functools import cmp_to_key
 
-
-INCOMPATIBLE_VERSIONS = {
-    '16': ['0.0.4']
-}
+# placeholder used in sql update scripts as the next release version
+LATEST="latest"
 
 class Version:
     def __init__(self, version: str):
+        self.latest = False
+        self.version = version
+        if version == LATEST:
+            self.latest = True
+            return
+
         self.version_numbers = [int(n) for n in version.split('.')]
     def __lt__(self, other):
+        if self.latest:
+            return False
+        if other.latest:
+            return True
         for i, v in enumerate(self.version_numbers):
             if v < other.version_numbers[i]:
                 return True
         return False
     def __eq__(self, other):
+        if self.latest or other.latest:
+            return self.latest == other.latest
         for i, v in enumerate(self.version_numbers):
             if v != other.version_numbers[i]:
                 return False
@@ -31,6 +40,14 @@ class Version:
         return not self == other and not self < other
     def __ge__(self, other):
         return not self < other
+    def __str__(self):
+        return self.version
+    def __repr__(self):
+        return self.version
+
+INCOMPATIBLE_VERSIONS = {
+    '16': [Version('0.0.4')]
+}
 
 def shell(cmd, exit_on_error=True):
     res = subprocess.run(cmd, shell=True)
@@ -44,18 +61,40 @@ def shell(cmd, exit_on_error=True):
             print("ERROR on command", cmd)
 
 
+# Make sure lantern can smoothly be updated from from_version to to_version
+# the function installs the DB at from_version, runs an upgrade via ALTER EXTENSION ... UPDATE
+# and runs the test suit on the resulting DB
+# Note: from_version must be a valid tag on the repo that has a corresponding release and SQL migration script
+# to_version must be the value LATEST or follow the requirements above
 def update_from_tag(from_version: str, to_version: str):
     from_tag = "v" + from_version
     repo = git.Repo(search_parent_directories=True)
-    sha_before = repo.head.object.hexsha
     print(repo.remotes)
-    repo.remotes[0].fetch()
+    to_sha = repo.head.object.hexsha
+
+    if to_version != LATEST:
+        to_tag = "v" + to_version
+        tag_names = [tag.name for tag in repo.tags]
+        if to_tag in tag_names:
+            to_sha = to_tag
+        else:
+            print(f"WARNING: to_version=${to_version} has not corresponding tag. assuming current HEAD corresponds to that version")
+
+    try:
+        repo.remotes[0].fetch()
+    except Exception as e:
+        # fetching does not work in the dev dockerfile but it does not need to,
+        # since we are testing the updates on the local repo
+        if not "error: cannot run ssh" in str(e):
+            raise Exception(f"unknown fetch error: {e}")
+
+
     repo.git.checkout(from_tag)
     sha_after = repo.head.object.hexsha
     print(f"Updating from tag {from_tag}(sha: {sha_after}) to {to_version}")
 
     # run "mkdir build && cd build && cmake .. && make -j4 && make install"
-    res = shell(f"mkdir -p {args.builddir} ; cd {args.builddir} && git submodule update --recursive && cmake .. && make -j4 && make install")
+    res = shell(f"mkdir -p {args.builddir} ; cd {args.builddir} && git submodule update --init --recursive && cmake -DRELEASE_ID={from_version} .. && make -j install")
 
     res = shell(f"psql postgres -U {args.user} -c 'DROP DATABASE IF EXISTS {args.db};'")
     res = shell(f"psql postgres -U {args.user} -c 'CREATE DATABASE {args.db};'")
@@ -76,13 +115,17 @@ def update_from_tag(from_version: str, to_version: str):
         # initialize misc tests to ensure that version mismatch results in an error
         res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-misc FILTER=begin")
 
-    repo.git.checkout(sha_before)
-    res = shell(f"cd {args.builddir} ; git submodule update --recursive && cmake .. && make -j4 && make install")
-    # res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={to_version} make test")
-    if Version(from_version) > Version('0.0.11'):
+    repo.git.checkout(to_sha)
+    res = shell(f"cd {args.builddir} ; git submodule update --init --recursive && cmake -DRELEASE_ID={to_version} .. && make -j install")
+
+    # todo:: currently version mismatch logic only prints a warning and not an error
+    # we need to teach the version matching function when an update script vs client script is running for proper error enforcement
+    if Version(from_version) > Version('0.1.1'):
         res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-misc FILTER=version_mismatch")
 
     # run the actual parallel tests after the upgrade
+    res = shell('rm -f /tmp/ldb_update.lock')
+    res = shell('rm -f /tmp/ldb_update_finished')
     res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={to_version} make test-parallel EXCLUDE=begin")
 
     print(f"Update {from_version}->{to_version} Success!")
@@ -93,11 +136,6 @@ def incompatible_version(pg_version, version_tag):
         return False
     return version_tag in INCOMPATIBLE_VERSIONS[pg_version]
 
-def sort_versions(v1, v2):
-    a = int(v1.replace('.', ''))
-    b = int(v2.replace('.', ''))
-
-    return a - b
 
 if __name__ == "__main__":
 
@@ -127,25 +165,37 @@ if __name__ == "__main__":
         exit(1)
 
     # test updates from all tags
-    tag_pairs = [update_fname.split("--") for update_fname in os.listdir("sql/updates")]
-    tag_pairs = [(from_tag, to_tag.split('.sql')[0]) for from_tag, to_tag in tag_pairs]
+    version_pairs = [update_fname.split("--") for update_fname in os.listdir("sql/updates")]
+    version_pairs = [(from_version, to_version.split('.sql')[0]) for from_version, to_version in version_pairs]
     repo = git.Repo(search_parent_directories=True)
     tags_actual = [tag.name for tag in repo.tags]
     tags_actual = [name[1:] if name[0] == 'v' else name for name in tags_actual]
-    tag_pairs = [(from_tag, to_tag) for from_tag, to_tag in tag_pairs if from_tag in tags_actual and to_tag in tags_actual]
-    from_tags = list(sorted([p[0] for p in tag_pairs], key=cmp_to_key(sort_versions)))
-    from_tags.reverse()
-    to_tags = list(sorted([p[1] for p in tag_pairs], key=cmp_to_key(sort_versions)))
-    
-    if len(to_tags) > 0:
-        latest_version = to_tags[-1]
-        print("Updating from tags", from_tags, "to ", latest_version)
+
+    version_pairs = [(from_v, to_v) for from_v, to_v in version_pairs]
+    from_versions = list(sorted([Version(p[0]) for p in version_pairs]))
+    from_versions.reverse()
+    to_versions = list(sorted([Version(p[1]) for p in version_pairs]))
+    for from_v in from_versions:
+        assert(str(from_v) in tags_actual)
+
+    num_untagged = 0
+    for to_v in to_versions:
+        if num_untagged != 0:
+            print(f"${to_v}, ${tags_actual}")
+        # only the last to_v may be untagged (when the release has not happened yet)
+        assert(num_untagged == 0)
+        if str(to_v) not in tags_actual:
+            num_untagged += 1
+
+    if len(to_versions) > 0:
+        latest_version = to_versions[-1]
+        print("Updating from tags", from_versions, "to ", latest_version)
 
         pg_version = None if not 'PG_VERSION' in os.environ else os.environ['PG_VERSION']
-        for from_tag in from_tags:
+        for from_tag in from_versions:
             if incompatible_version(pg_version, from_tag):
                 continue
-            update_from_tag(from_tag, latest_version)
+            update_from_tag(str(from_tag), str(latest_version))
 
 
 

@@ -77,8 +77,10 @@ bool ldb_aminsert(Relation         index,
     LDB_UNUSED(indexUnchanged);
 #endif
 
+    // todo:: change the warning to error once VersionsMismatch learns how to differntiate when an update script is
+    // running - it is fine to temporarily have version mismatch when we are running an update script
     if(!VersionsMatch()) {
-        elog(ERROR,
+        elog(WARNING,
              "Attempting to insert into lantern index, but the SQL version and binary version do not match. This can "
              "cause errors. Please run `ALTER EXTENSION lantern UPDATE and reconnect");
     }

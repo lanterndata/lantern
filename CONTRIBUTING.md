@@ -79,3 +79,12 @@ git clone https://git.postgresql.org/git/postgresql.git
 # release head only
 git clone --single-branch --branch REL_15_STABLE https://git.postgresql.org/git/postgresql.git --depth=1
 ```
+
+## Preparing a release
+
+1. Update LANTERN_VERSION variable at the top of CMakeLists.txt file
+2. Prepare the SQL update script for the release
+   1. If there already is an update script for the current release with a 'latest' suffix, rename it according to the version name being released
+   2. If there is no such file, create an empty update file for the current release
+3. Build the project with `cmake -DBUILD_FOR_DISTRIBUTING=YES` that will embed cmake version number into the binary.
+   Alternatively, if you want to embed a different version name into the binary, build with -DRELEASE_ID=\[version name\] where the version name is the name of the release and the name used in update file above
