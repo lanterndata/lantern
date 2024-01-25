@@ -1,5 +1,5 @@
 #!/bin/bash
-u_flag=""
+u_flag="true"
 v_flag=""
 if [ ! -f src/hnsw.c ]; then
       echo "script must be run in lantern root directory"

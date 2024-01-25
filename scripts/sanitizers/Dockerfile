@@ -84,6 +84,8 @@ RUN wget -O pgvector.tar.gz https://github.com/pgvector/pgvector/archive/refs/ta
 
 COPY . .
 
+# lantern sources contain cpp code, so we need cpp compiler
+ENV CXX "clang++-15"
 RUN rm -rf build && \
     mkdir build && \
     cd build && \
