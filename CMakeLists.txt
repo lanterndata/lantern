@@ -149,7 +149,15 @@ set(_link_flags "${PostgreSQL_SHARED_LINK_OPTIONS}")
 if (${POSTGRES_UBSAN})
   set(_link_flags "-fsanitize=address -Wl,--as-needed -Wl,-rpath,'/usr/local/pgsql/lib',--enable-new-dtags")
   # it seems we should not pass -fsanitize=undefined to the extension we are buildning
-  message(WARNING "Preparing UBSAN in debug mode link flags: ${_link_flags}")
+  message(INFO "Preparing UBSAN in debug mode link flags: ${_link_flags}")
+  # Check if "undefined" is part of the CXXFLAGS
+  string(FIND "$ENV{CXXFLAGS}" "undefined" cxx_pos)
+  string(FIND "$ENV{CFLAGS}" "undefined" c_pos)
+  string(FIND "$ENV{LDFLAGS}" "undefined" ld_pos)
+  if(NOT (cxx_pos EQUAL -1 AND c_pos EQUAL -1 AND ld_pos EQUAL -1))
+      message(WARNING "Does the CXXFLAGS, CFLAGS or LDFLAGS environment variable contain '--fsanitize=undefined'?
+      The flag should not be included in lantern extension build and is only necessary in postgres build")
+  endif()
 endif()
 foreach(_dir ${PostgreSQL_SERVER_LIBRARY_DIRS})
   set(_link_flags "${_link_flags} -L${_dir}")
