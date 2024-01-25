@@ -23,6 +23,7 @@ set(RELEASE_ID "latest" CACHE STRING "Release ID placed in the binary. Must be s
 option(BUILD_FOR_DISTRIBUTING "Build LANTERN_VERSION info into the binary" OFF)
 option(MARCH_NATIVE "Build assuming the presence of all the features in the current CPU model" OFF)
 option(USEARCH_USE_SIMSIMD "Build usearch with SIMSIMD" OFF)
+option(POSTGRES_UBSAN "Turn this on when building with a postgres that has UBSAN turned on" OFF)
 
 option(DEV "Developer mode: provide code formatting, get postgres source, etc." OFF)
 option(CODECOVERAGE "Enable code coverage for the build" OFF)
@@ -145,6 +146,11 @@ if(${USEARCH_USE_SIMSIMD})
 endif()
 
 set(_link_flags "${PostgreSQL_SHARED_LINK_OPTIONS}")
+if (${POSTGRES_UBSAN})
+  set(_link_flags "-fsanitize=address -Wl,--as-needed -Wl,-rpath,'/usr/local/pgsql/lib',--enable-new-dtags")
+  # it seems we should not pass -fsanitize=undefined to the extension we are buildning
+  message(WARNING "Preparing UBSAN in debug mode link flags: ${_link_flags}")
+endif()
 foreach(_dir ${PostgreSQL_SERVER_LIBRARY_DIRS})
   set(_link_flags "${_link_flags} -L${_dir}")
 endforeach()
