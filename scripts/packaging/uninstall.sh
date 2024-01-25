@@ -5,7 +5,7 @@ then
   if ! command -v pg_config &> /dev/null
   then
     echo "pg_config could not be found. Please specify with PG_CONFIG env variable"
-    exit
+    exit 1
   fi
   PG_CONFIG=$(which pg_config)
 fi
@@ -17,4 +17,4 @@ rm -rf $PG_LIBRARY_DIR/lantern*.so
 rm -rf $PG_EXTENSION_DIR/lantern*.sql
 rm -rf $PG_EXTENSION_DIR/lantern*.control
 
-echo "LanternDB uninstalled successfully"
+echo "Lantern uninstalled successfully"
