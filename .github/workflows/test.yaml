@@ -45,7 +45,7 @@ jobs:
         env:
           RUN_REPLICA_TESTS: "${{ matrix.postgres == 15 && '1' || '0' }}"
           PG_VERSION: ${{ matrix.postgres }}
-        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        if: ${{ !startsWith(matrix.os, 'mac') }}
       - name: Run update tests linux
         id: update-test-linux
         run: |
@@ -57,7 +57,7 @@ jobs:
 
         env:
           PG_VERSION: ${{ matrix.postgres }}
-        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        if: ${{ !startsWith(matrix.os, 'mac') }}
       - name: Run tests mac
         id: test-mac
         run: ./ci/scripts/run-tests-mac.sh
