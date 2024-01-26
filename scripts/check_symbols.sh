@@ -8,7 +8,7 @@ THIS_DIR=$(dirname "$SCRIPT")
 # get all the symbols our shared library assumes are externally provided
 # libraries in extern_defined.sh use two @ symbols to separate symbol name from
 # version. the sed fixes the discrepancy between here and extern_defined.sh
-MAYBE_EXTERN=$(nm -D $1 | grep ' U ' | awk '{print $2}' | sed -e 's/@/@@/')
+MAYBE_EXTERN=$(nm -D $1 | grep ' U ' | awk '{print $2}' | sed -e 's/@/@@/' | sed -e '/__stack_chk_guard@@GLIBC.*/d')
 
 # get all the symbols that are externally provided
 EXTERN_PROVIDED=$($THIS_DIR/extern_defined.sh)
