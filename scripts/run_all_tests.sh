@@ -63,9 +63,11 @@ then
     pushd $TMP_ROOT/files
        # Index file to test version compatibility
        curl -sSo index-sift1k-l2-0.0.0.usearch https://storage.googleapis.com/lanterndata/lanterndb_binary_indexes/index-sift1k-l2-v2.usearch
-       # Actual index files
        curl -sSo index-sift1k-cos.usearch https://storage.googleapis.com/lanterndata/lanterndb_binary_indexes/index-sift1k-cos-v3.usearch
        curl -sSo index-sift1k-l2.usearch https://storage.googleapis.com/lanterndata/lanterndb_binary_indexes/index-sift1k-l2-v3.usearch
+       # Actual index files
+       curl -sSo index-sift1k-cos-0.0.13.usearch https://storage.googleapis.com/lanterndata/lanterndb_binary_indexes/index-sift1k-cos-0.0.13.usearch
+       curl -sSo index-sift1k-l2sq-0.0.13.usearch https://storage.googleapis.com/lanterndata/lanterndb_binary_indexes/index-sift1k-l2sq-0.0.13.usearch
        # Corrupted index file for test
        tail -c +100 index-sift1k-l2.usearch > index-sift1k-l2-corrupted.usearch
     popd
