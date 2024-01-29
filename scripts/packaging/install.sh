@@ -5,7 +5,7 @@ then
   if ! command -v pg_config &> /dev/null
   then
     echo "pg_config could not be found. Please specify with PG_CONFIG env variable"
-    exit
+    exit 1
   fi
   PG_CONFIG=$(which pg_config)
 fi
@@ -43,19 +43,19 @@ PG_VERSION=$(echo $PG_VERSION_STRING | sed -E "s#^PostgreSQL ([0-9]+).*#\1#")
 if [ ! -d src/${ARCH} ]
 then
   echo "Architecture $ARCH not supported. Try building from source"
-  exit
+  exit 1
 fi
 
 if [ ! -d src/${ARCH}/${PLATFORM} ]
 then
   echo "Platform $PLATFORM not supported. Try building from source"
-  exit
+  exit 1
 fi
 
 if [ ! -d src/${ARCH}/${PLATFORM}/${PG_VERSION} ]
 then
   echo "Postgres version $PG_VERSION not supported"
-  exit
+  exit 1
 fi
 
 cp -r src/${ARCH}/${PLATFORM}/${PG_VERSION}/*.{so,dylib} $PG_LIBRARY_DIR 2>/dev/null || true

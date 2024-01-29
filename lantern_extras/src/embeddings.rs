@@ -185,8 +185,8 @@ pub mod tests {
                 .first();
 
             let embedding = row.get_by_name::<Vec<f32>, &str>("embedding")?.unwrap();
-            let similarity = 1.0 - cosine_similarity(&embedding, HELLO_WORLD_COHERE_EMB);
-            assert!(similarity < 0.1);
+            let distance = 1.0 - cosine_similarity(&embedding, HELLO_WORLD_COHERE_EMB);
+            assert!(distance < 0.1);
 
             Ok::<(), anyhow::Error>(())
         })
@@ -230,8 +230,8 @@ pub mod tests {
                 .first();
 
             let embedding = row.get_by_name::<Vec<f32>, &str>("embedding")?.unwrap();
-            let similarity = 1.0 - cosine_similarity(&embedding, HELLO_WORLD_OPENAI_EMB);
-            assert!(similarity < 0.1);
+            let distance = 1.0 - cosine_similarity(&embedding, HELLO_WORLD_OPENAI_EMB);
+            assert!(distance < 0.1);
 
             Ok::<(), anyhow::Error>(())
         })

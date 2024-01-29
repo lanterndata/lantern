@@ -21,19 +21,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - postgres: 15
-            os: ubuntu-20.04
-          - postgres: 14
-            os: ubuntu-20.04
-          - postgres: 13
-            os: ubuntu-20.04
-          - postgres: 12
-            os: ubuntu-20.04
-          - postgres: 11
-            os: ubuntu-20.04
+        os: [ubuntu-20.04, ubicloud-standard-4-arm]
+        postgres: [11, 12, 13, 14, 15]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: "recursive"
       - name: Build
@@ -46,39 +37,34 @@ jobs:
         run: sudo su -c "PACKAGE_CLI=1 GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/build.sh"
         if: ${{ matrix.postgres == 15 }} # run only once
       - name: Upload archive package artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: lantern-extras-package
+          name: ${{ steps.build.outputs.archive_package_name }}
           path: ${{ steps.build.outputs.archive_package_path }}
-      - name: Upload cli package artifacts
-        uses: actions/upload-artifact@v3
+      - name: Upload Lantern CLI artifacts
         if: ${{ matrix.postgres == 15 }} # run only once
+        uses: actions/upload-artifact@v4
         with:
-          name: lantern-cli-package
+          name: ${{ steps.build_cli.outputs.cli_package_name }}
           path: ${{ steps.build_cli.outputs.cli_package_path }}
   ubuntu-package:
     runs-on: ubuntu-22.04
     needs: [ubuntu-build]
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/download-artifact@v3
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
-          name: lantern-extras-package
+          pattern: lantern-extras-*
+          merge-multiple: true
           path: /tmp/lantern-extras-package
-      - uses: actions/download-artifact@v3
+      - uses: geekyeggo/delete-artifact@v4
         with:
-          name: lantern-cli-package
-          path: /tmp/lantern-cli-package
+          name: lantern-extras-*
       - name: Create universal package
         id: package
         run: sudo su -c "GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/package.sh"
-      - name: Upload Lantern CLI  artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: lantern-cli-x86_64-linux
-          path: /tmp/lantern-cli-package
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.package.outputs.package_name }}
           path: ${{ steps.package.outputs.package_path }}
@@ -93,9 +79,3 @@ jobs:
             ${{ steps.package.outputs.package_path }}
             /tmp/lantern-cli-package/*
           generate_release_notes: true
-      - uses: geekyeggo/delete-artifact@v2
-        with:
-          name: lantern-extras-package
-      - uses: geekyeggo/delete-artifact@v2
-        with:
-          name: lantern-cli-package

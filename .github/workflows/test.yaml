@@ -14,11 +14,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - postgres: 15
-            os: ubuntu-20.04
+        os: [ubuntu-22.04, ubicloud-standard-2-arm]
+        postgres: [15]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: "recursive"
       - name: Setup test env

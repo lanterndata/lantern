@@ -12,6 +12,26 @@ static LOREM_BGE_SMALL_EMB: &'static [f32] = &[-0.030880496, -0.11021069, 0.3917
 #[rustfmt::skip]
 static LOREM_TEXT: &'static str = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Morbi eget nisi eget enim scelerisque bibendum. Praesent efficitur risus ut nunc placerat vehicula. Integer ut leo luctus, aliquam sem id, suscipit urna. Aenean convallis tellus at tortor efficitur pulvinar. Nunc et lobortis dolor. Sed faucibus, sapien eu commodo lobortis, enim sapien sagittis nisl, quis molestie sapien diam posuere mi. Donec lacus ex, scelerisque a bibendum at, ornare in massa. Pellentesque vel sollicitudin purus. Nunc varius erat a lacus tempus pulvinar. Sed et vulputate velit. Mauris a leo hendrerit ipsum tempus fringilla. Sed venenatis est quis dolor egestas, eu condimentum ipsum laoreet. Sed imperdiet vitae lacus sed dictum. Nunc eget neque a odio commodo fermentum at semper massa. Aenean ut sem ac felis hendrerit venenatis nec in arcu. Ut blandit quam eu turpis rutrum, vitae blandit purus luctus. Integer molestie varius neque quis bibendum. Phasellus efficitur at dolor cursus tincidunt. Cras quam sem, lobortis eu erat et, tristique accumsan orci. Ut eu ipsum quis orci rhoncus pulvinar. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia curae;";
 
+fn cosine_similarity(v1: &[f32], v2: &[f32]) -> f32 {
+    // Check if the vectors have the same length
+    assert_eq!(v1.len(), v2.len(), "Vectors must have the same length");
+
+    // Calculate the dot product of the two vectors
+    let dot_product = v1.iter().zip(v2.iter()).map(|(&x, &y)| x * y).sum::<f32>();
+
+    // Calculate the magnitudes of the vectors
+    let magnitude_v1 = f32::sqrt(v1.iter().map(|&x| x * x).sum::<f32>());
+    let magnitude_v2 = f32::sqrt(v2.iter().map(|&x| x * x).sum::<f32>());
+
+    // Calculate the cosine similarity
+    if magnitude_v1 == 0.0 || magnitude_v2 == 0.0 {
+        // Handle the case where one of the vectors has zero magnitude
+        0.0
+    } else {
+        dot_product / (magnitude_v1 * magnitude_v2)
+    }
+}
+
 macro_rules! text_embedding_test {
     ($($name:ident: $value:expr,)*) => {
     $(
@@ -27,7 +47,11 @@ macro_rules! text_embedding_test {
 
             let expected_output: Vec<Vec<f32>> =
                 itertools::repeat_n(expected, batch_size).collect();
-            assert_eq!(output, expected_output);
+
+            for i in 0..expected_output.len() {
+                let distance = 1.0 - cosine_similarity(&output[i], &expected_output[i]);
+                assert!(distance < 0.1);
+            }
         }
     )*
     }

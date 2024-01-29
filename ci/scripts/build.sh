@@ -78,8 +78,9 @@ function setup_cargo_deps() {
 }
 
 function package_cli() {
+  source "$(dirname "$0")/get_arch_and_platform.sh"
   VERSION=$(cargo metadata --format-version 1 | jq '.packages[] | select( .name == "lantern_cli") | .version' | tr -d '"')
-  PACKAGE_NAME=lantern-cli-${VERSION}-${ARCH}
+  PACKAGE_NAME=lantern-cli-${VERSION}-${PLATFORM}-${ARCH}
   SOURCE_DIR=$(pwd)
   BINARY_NAME=lantern-cli
   OUT_DIR=/tmp/${BINARY_NAME}
@@ -95,6 +96,7 @@ function package_cli() {
     tar cf ${PACKAGE_NAME}.tar $BINARY_NAME
     ## Write output so we can use this in actions and upload artifacts
     echo "cli_package_path=${OUT_DIR}/${PACKAGE_NAME}.tar" >> $GITHUB_OUTPUT
+    echo "cli_package_name=${PACKAGE_NAME}" >> $GITHUB_OUTPUT
   popd
 }
 
