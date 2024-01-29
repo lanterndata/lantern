@@ -88,7 +88,7 @@ jobs:
         libstdc++6
 
     - name: Checkout lantern
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         fetch-depth: 0
         submodules: "recursive"
@@ -111,7 +111,7 @@ jobs:
     # leading to a tainted cache
     - name: Cache PostgreSQL ${{ matrix.pg }}
       id: cache-postgresql
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/${{ env.PG_SRC_DIR }}
         key: "${{ matrix.os }}-${{ env.name }}-postgresql-${{ matrix.pg }}-${{ env.CC }}\
@@ -137,7 +137,7 @@ jobs:
         echo "exit_code=$?" >> $GITHUB_OUTPUT
 
     - name: save cache preemptively if postgres built
-      uses: actions/cache/save@v3
+      uses: actions/cache/save@v4
       if: steps.build-postgresql.outputs.exit_code == 0
       with:
         path: ~/${{ env.PG_SRC_DIR }}
@@ -146,7 +146,7 @@ jobs:
 
     - name: Upload config.log
       if: always() && steps.cache-postgresql.outputs.cache-hit != 'true'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: config.log for PostgreSQL ${{ matrix.os }} ${{ matrix.name }} ${{ matrix.pg }}
         path: ~/${{ env.PG_SRC_DIR }}/config.log
@@ -199,7 +199,7 @@ jobs:
 
     - name: Save regression diffs
       if: always() && steps.collectlogs.outputs.regression_diff == 'true'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: Regression diff ${{ matrix.os }} ${{ env.name }} ${{ matrix.pg }}
         path: |
@@ -207,7 +207,7 @@ jobs:
 
     - name: Save postgres log
       if: always() && steps.collectlogs.outputs.regression_diff == 'true'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: Postgres log ${{ matrix.os }} ${{ env.name }} ${{ matrix.pg }}
         path: |
@@ -234,14 +234,14 @@ jobs:
 
     - name: Coredumps
       if: always() && steps.collectlogs.outputs.coredumps == 'true'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: Coredumps ${{ matrix.os }} ${{ env.name }} ${{ matrix.pg }}
         path: coredumps
 
     - name: sanitizer logs
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: sanitizer logs ${{ matrix.os }} ${{ env.name }} ${{ matrix.pg }}
         path: ${{ github.workspace }}/sanitizer

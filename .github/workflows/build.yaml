@@ -24,7 +24,7 @@ jobs:
         os: [ubuntu-22.04, ubicloud-standard-2-arm, macos-13]
         postgres: [11, 12, 13, 14, 15, 16]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: "recursive"
       - name: Build
@@ -36,35 +36,39 @@ jobs:
         id: archive
         run: sudo sh -c "GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/package-archive.sh"
       - name: Upload deb package artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: ${{ steps.build.outputs.deb_package_path != '' }}
         with:
           name: ${{ steps.build.outputs.deb_package_name }}
           path: ${{ steps.build.outputs.deb_package_path }}
       - name: Upload archive package artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: ${{ steps.archive.outputs.archive_package_path != '' }}
         with:
-          name: lantern-package
+          name: ${{ steps.archive.outputs.archive_package_name }}
           path: ${{ steps.archive.outputs.archive_package_path }}
   package:
     runs-on: ubuntu-22.04
     needs: [build]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: "recursive"
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
-          name: lantern-package
+          pattern: lantern-*.tar
+          merge-multiple: true
           path: /tmp/lantern-package
+      - uses: geekyeggo/delete-artifact@v4
+        with:
+          name: lantern-*.tar
       - name: Create universal package
         id: package
         run: sudo sh -c "GITHUB_OUTPUT=$GITHUB_OUTPUT PACKAGE_EXTRAS=1 GITHUB_TOKEN=$GITHUB_TOKEN ./ci/scripts/universal-package.sh"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.package.outputs.package_name }}
           path: ${{ steps.package.outputs.package_path }}
@@ -73,9 +77,6 @@ jobs:
         run: |
           find ./ -name '.git*' -exec rm -r {} \; || true
           tar -czf /tmp/lantern-v${{ steps.package.outputs.package_version }}-source.tar.gz .
-      - uses: geekyeggo/delete-artifact@v2
-        with:
-          name: lantern-package
       - name: Create GitHub release
         uses: softprops/action-gh-release@v1
         id: create_release
