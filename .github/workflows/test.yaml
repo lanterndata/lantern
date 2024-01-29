@@ -24,7 +24,7 @@ jobs:
         os: [ubuntu-22.04, ubicloud-standard-2-arm, macos-13]
         postgres: [11, 12, 13, 14, 15, 16]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           # fetch-depth ensures all tags are present on the repo so we can run update tests successfully
           fetch-depth: 0
@@ -66,7 +66,7 @@ jobs:
         if: ${{ startsWith(matrix.os, 'mac') }}
       - name: Upload Postgres logs
         if: failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: postgres-server-${{ matrix.postgres }}-logs
           path: |
