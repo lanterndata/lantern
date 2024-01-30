@@ -2,7 +2,7 @@ use crate::helpers::check_table_exists;
 use crate::types::{AnyhowVoidResult, JobInsertNotification};
 use futures::StreamExt;
 use lantern_logger::{LogLevel, Logger};
-use lantern_utils::{append_params_to_uri, get_full_table_name};
+use lantern_utils::{append_params_to_uri, get_full_table_name, quote_ident};
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -26,6 +26,7 @@ lazy_static! {
 pub async fn toggle_client_job(
     job_id: i32,
     db_uri: String,
+    column: String,
     table: String,
     schema: String,
     log_level: LogLevel,
@@ -42,6 +43,7 @@ pub async fn toggle_client_job(
                 job_logger,
                 job_id,
                 db_uri,
+                column,
                 table,
                 schema,
                 job_insert_queue_tx,
@@ -62,8 +64,8 @@ pub async fn toggle_client_job(
     Ok(())
 }
 
-fn get_trigger_name(job_id: i32) -> String {
-    return format!("trigger_lantern_jobs_insert_{job_id}");
+fn get_trigger_name(job_id: i32, operation: &str) -> String {
+    return format!("trigger_lantern_jobs_{operation}_{job_id}");
 }
 
 fn get_function_name(job_id: i32) -> String {
@@ -77,6 +79,7 @@ fn get_notification_channel_name(job_id: i32) -> String {
 async fn setup_client_triggers(
     job_id: i32,
     client: Arc<Client>,
+    column: Arc<String>,
     table: Arc<String>,
     schema: Arc<String>,
     channel: Arc<String>,
@@ -87,8 +90,10 @@ async fn setup_client_triggers(
     let full_table_name = get_full_table_name(schema.deref(), table.deref());
     check_table_exists(client.clone(), &full_table_name).await?;
 
+    let column_name = quote_ident(&column);
     let function_name = get_function_name(job_id);
-    let trigger_name = get_trigger_name(job_id);
+    let insert_trigger_name = get_trigger_name(job_id, "insert");
+    let update_trigger_name = get_trigger_name(job_id, "update");
     let function_name = get_full_table_name(schema.deref(), &function_name);
 
     // Set up trigger on table insert
@@ -97,13 +102,22 @@ async fn setup_client_triggers(
             "
             CREATE OR REPLACE FUNCTION {function_name}() RETURNS TRIGGER AS $$
               BEGIN
-                PERFORM pg_notify('{channel}', NEW.id::TEXT || ':' || '{job_id}');
+                IF (NEW.{column_name} IS NOT NULL)
+                THEN
+                    PERFORM pg_notify('{channel}', NEW.id::TEXT || ':' || '{job_id}' || ':' || NEW.ctid::TEXT);
+                END IF;
                 RETURN NULL;
               END;
             $$ LANGUAGE plpgsql;
 
-            CREATE OR REPLACE TRIGGER {trigger_name}
+            CREATE OR REPLACE TRIGGER {insert_trigger_name}
             AFTER INSERT 
+            ON {full_table_name}
+            FOR EACH ROW
+            EXECUTE PROCEDURE {function_name}();
+
+            CREATE OR REPLACE TRIGGER {update_trigger_name}
+            AFTER UPDATE OF {column_name}
             ON {full_table_name}
             FOR EACH ROW
             EXECUTE PROCEDURE {function_name}();
@@ -133,12 +147,14 @@ async fn remove_client_triggers(
 
     let function_name = get_function_name(job_id);
     let function_name = get_full_table_name(schema, &function_name);
-    let trigger_name = get_trigger_name(job_id);
+    let insert_trigger_name = get_trigger_name(job_id, "insert");
+    let update_trigger_name = get_trigger_name(job_id, "update");
     // Set up trigger on table insert
     db_client
         .batch_execute(&format!(
             "
-            DROP TRIGGER IF EXISTS {trigger_name} ON {full_table_name};
+            DROP TRIGGER IF EXISTS {insert_trigger_name} ON {full_table_name};
+            DROP TRIGGER IF EXISTS {update_trigger_name} ON {full_table_name};
             DROP FUNCTION IF EXISTS {function_name};
         ",
         ))
@@ -181,18 +197,20 @@ async fn client_notification_listener(
             if let AsyncMessage::Notification(not) = message {
                 let parts: Vec<&str> = not.payload().split(':').collect();
 
-                if parts.len() < 2 {
+                if parts.len() < 3 {
                     logger.error(&format!("Invalid notification received {}", not.payload()));
                     continue;
                 }
                 let pk: &str = parts[0];
                 let job_id = i32::from_str_radix(parts[1], 10).unwrap();
+                let row_tid = parts[2];
                 let result = job_insert_queue_tx
                     .send(JobInsertNotification {
                         id: job_id,
                         init: false,
                         generate_missing: false,
                         row_id: Some(pk.to_owned()),
+                        lock_key: Some(row_tid.to_owned()),
                         filter: None,
                         limit: None,
                     })
@@ -227,6 +245,7 @@ async fn start_client_job(
     logger: Arc<Logger>,
     job_id: i32,
     db_uri: String,
+    column: String,
     table: String,
     schema: String,
     job_insert_queue_tx: Sender<JobInsertNotification>,
@@ -256,6 +275,7 @@ async fn start_client_job(
     let notification_channel = Arc::new(get_notification_channel_name(job_id));
     // Wrap variables into Arc to share between tasks
     let db_uri = Arc::new(db_uri);
+    let column = Arc::new(column);
     let table = Arc::new(table);
     let schema = Arc::new(schema);
 
@@ -263,6 +283,7 @@ async fn start_client_job(
     setup_client_triggers(
         job_id,
         db_client,
+        column.clone(),
         table.clone(),
         schema.clone(),
         notification_channel.clone(),

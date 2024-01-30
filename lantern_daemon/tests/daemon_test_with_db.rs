@@ -221,6 +221,7 @@ async fn test_embedding_generation_runtime(
     db_client
         .batch_execute(&format!(
             "
+            DROP SCHEMA IF EXISTS lantern_test CASCADE;
             TRUNCATE TABLE {EMBEDDING_JOBS_TABLE_NAME};
             UPDATE {CLIENT_TABLE_NAME} SET title_embedding=NULL;
          "
@@ -285,6 +286,116 @@ async fn test_embedding_generation_runtime(
         .unwrap();
     assert_eq!(cnt, 0);
     assert_eq!(client_data.len(), 0);
+    // Test embedding inserts
+    let mut check_cnt = 0;
+    db_client
+        .execute(
+            &format!("INSERT INTO {CLIENT_TABLE_NAME} (id, title) VALUES (7777, 'Test inesert')"),
+            &[],
+        )
+        .await
+        .unwrap();
+    loop {
+        let client_data = db_client
+            .query_one(
+                &format!("SELECT COUNT(*) FROM {CLIENT_TABLE_NAME} WHERE id=7777 AND title_embedding IS NULL"),
+                &[],
+            )
+            .await
+            .unwrap();
+        let cnt: i64 = client_data.get::<usize, i64>(0);
+
+        if cnt != 0 {
+            if check_cnt >= 30 {
+                eprintln!("Force exit after 30 seconds");
+                assert!(false);
+                break;
+            }
+            check_cnt += 1;
+            std::thread::sleep(Duration::from_secs(1));
+            continue;
+        }
+
+        break;
+    }
+    let old_embedding = db_client
+        .query_one(
+            &format!("SELECT title_embedding FROM {CLIENT_TABLE_NAME} WHERE id=7777"),
+            &[],
+        )
+        .await
+        .unwrap();
+    let old_embedding = old_embedding.get::<usize, Vec<f32>>(0);
+    // Test embedding updates
+    let mut check_cnt = 0;
+    db_client
+        .execute(
+            &format!("UPDATE {CLIENT_TABLE_NAME} SET title=NULL, title_embedding=NULL WHERE id in (1, 2)"),
+            &[],
+        )
+        .await
+        .unwrap();
+    let client_data = db_client
+        .query_one(
+            &format!("SELECT COUNT(*) FROM {CLIENT_TABLE_NAME} WHERE title_embedding IS NULL AND title IS NULL"),
+            &[],
+        )
+        .await
+        .unwrap();
+    let cnt: i64 = client_data.get::<usize, i64>(0);
+    assert_eq!(cnt, 2);
+    db_client
+        .execute(
+            &format!(
+                "
+                UPDATE {CLIENT_TABLE_NAME} SET title='Test' || id WHERE id in (1, 2, 7777);
+            "
+            ),
+            &[],
+        )
+        .await
+        .unwrap();
+
+    loop {
+        let client_data = db_client
+            .query_one(
+                &format!("SELECT COUNT(*) FROM {CLIENT_TABLE_NAME} WHERE title_embedding IS NULL"),
+                &[],
+            )
+            .await
+            .unwrap();
+        let cnt: i64 = client_data.get::<usize, i64>(0);
+
+        if cnt != 0 {
+            if check_cnt >= 30 {
+                eprintln!("Force exit after 30 seconds");
+                break;
+            }
+            check_cnt += 1;
+            std::thread::sleep(Duration::from_secs(1));
+            continue;
+        }
+
+        break;
+    }
+    let client_data = db_client
+        .query(
+            &format!("SELECT * FROM {CLIENT_TABLE_NAME} WHERE title_embedding IS NULL OR ARRAY_LENGTH(title_embedding, 1) != {dimensions}"),
+            &[],
+        )
+        .await
+        .unwrap();
+    assert_eq!(client_data.len(), 0);
+
+    let updated_embedding = db_client
+        .query_one(
+            &format!("SELECT title_embedding, title FROM {CLIENT_TABLE_NAME} WHERE id=7777"),
+            &[],
+        )
+        .await
+        .unwrap();
+    let updated_embedding = updated_embedding.get::<usize, Vec<f32>>(0);
+    assert_ne!(old_embedding, updated_embedding);
     stop_tx.send(()).unwrap();
 }
 

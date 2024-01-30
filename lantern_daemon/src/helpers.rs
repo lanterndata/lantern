@@ -66,6 +66,7 @@ pub async fn db_notification_listener(
                                 init: true,
                                 generate_missing: false,
                                 row_id: None,
+                                lock_key: None,
                                 filter: None,
                                 limit: None,
                             })
@@ -194,6 +195,7 @@ pub async fn collect_pending_index_jobs(
                 id: row.get::<usize, i32>(0).to_owned(),
                 init: true,
                 row_id: None,
+                lock_key: None,
                 filter: None,
                 limit: None,
                 // if we do not provide this

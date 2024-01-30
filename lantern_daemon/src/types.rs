@@ -127,6 +127,7 @@ pub struct JobInsertNotification {
     pub init: bool,
     pub generate_missing: bool,
     pub row_id: Option<String>,
+    pub lock_key: Option<String>,
     pub filter: Option<String>,
     pub limit: Option<u32>,
 }
