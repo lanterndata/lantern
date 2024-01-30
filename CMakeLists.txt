@@ -136,13 +136,11 @@ target_include_directories(
 if(${MARCH_NATIVE})
   target_compile_options(lantern PRIVATE "-march=native")
 endif()
+# uncomment to debug autovectorization with gcc
+# target_compile_options(lantern PRIVATE "-fopt-info-vec")
 
 if(${USEARCH_USE_SIMSIMD})
   target_include_directories(lantern PRIVATE "./third_party/usearch/simsimd/include")
-  target_compile_definitions(lantern PRIVATE SIMSIMD_TARGET_X86_AVX512=0)
-  target_compile_definitions(lantern PRIVATE SIMSIMD_TARGET_X86_AVX2=1)
-  target_compile_definitions(lantern PRIVATE SIMSIMD_TARGET_ARM_SVE=0)
-  target_compile_definitions(lantern PRIVATE SIMSIMD_TARGET_ARM_NEON=0)
 endif()
 
 set(_link_flags "${PostgreSQL_SHARED_LINK_OPTIONS}")
