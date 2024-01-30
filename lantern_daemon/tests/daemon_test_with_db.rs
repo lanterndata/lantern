@@ -300,6 +300,14 @@ async fn test_index_creation() {
         None,
         Some(INDEX_JOBS_TABLE_NAME.to_owned()),
     );
+    // Verify that NULL values do not crash index creation
+    db_client
+        .execute(
+            &format!("UPDATE {CLIENT_TABLE_NAME} SET title_embedding=NULL WHERE id=1;"),
+            &[],
+        )
+        .await
+        .unwrap();
     db_client
         .execute(&format!(
             "

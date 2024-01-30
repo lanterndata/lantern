@@ -1,4 +1,4 @@
-use clap::{Parser, ValueEnum};
+use clap::{ArgAction, Parser, ValueEnum};
 use usearch::ffi::*;
 
 #[derive(Debug, Clone, ValueEnum)] // ArgEnum here
@@ -142,7 +142,7 @@ pub struct CreateIndexArgs {
     pub import: bool,
 
     /// If database is not on the same server where the job is running
-    #[arg(short, long, default_value_t = true)]
+    #[arg(short, long, default_value_t = true, action = ArgAction::Set)]
     pub remote_database: bool,
 
     /// Index name to use when imporrting index to database

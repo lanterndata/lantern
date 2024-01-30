@@ -163,7 +163,13 @@ pub fn create_usearch_index(
     };
     let index = new_index(&options)?;
 
-    let rows = transaction.query(&format!("SELECT COUNT(*) FROM {full_table_name};",), &[])?;
+    let rows = transaction.query(
+        &format!(
+            "SELECT COUNT(*) FROM {full_table_name} WHERE {} IS NOT NULL;",
+            quote_ident(&args.column)
+        ),
+        &[],
+    )?;
     let count: i64 = rows[0].get(0);
     // reserve enough memory on index
     index.reserve(count as usize)?;
@@ -255,9 +261,9 @@ pub fn create_usearch_index(
     // With portal we can execute a query and poll values from it in chunks
     let portal = transaction.bind(
         &format!(
-            "SELECT ctid, {} FROM {};",
-            quote_ident(&args.column),
-            get_full_table_name(&args.schema, &args.table)
+            "SELECT ctid, {col} FROM {table} WHERE {col} IS NOT NULL;",
+            col = quote_ident(&args.column),
+            table = get_full_table_name(&args.schema, &args.table)
         ),
         &[],
     )?;

@@ -49,7 +49,7 @@ fn create_test_table(
         "
       CREATE SCHEMA IF NOT EXISTS {INTERNAL_SCHEMA_NAME};
       DROP TABLE IF EXISTS {tmp_table_name};
-      SELECT {pk} as id, {column_name} as v INTO {tmp_table_name} FROM {src_table_name} LIMIT {test_data_size};
+      SELECT {pk} as id, {column_name} as v INTO {tmp_table_name} FROM {src_table_name} WHERE {column_name} IS NOT NULL LIMIT {test_data_size};
     ",
     column_name = quote_ident(column_name),
     pk = quote_ident(pk)
