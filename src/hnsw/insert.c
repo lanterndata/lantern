@@ -39,8 +39,8 @@ static int16 hnsw_generate_new_level(size_t connectivity)
     double rand_num = (double)random() / (double)MAX_RANDOM_VALUE;
 #endif
     double level = -1 * log(rand_num) * inverse_log_connectivity;
-    // todo:: clip instead
-    assert(0 <= level && level < SHRT_MAX);
+    assert(0 <= level);
+    level = level < SHRT_MAX ? level : SHRT_MAX;
     return (int16)level;
 }
 
