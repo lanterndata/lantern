@@ -65,7 +65,7 @@ bool ldb_aminsert(Relation         index,
     Datum                  datum;
     usearch_index_t        uidx;
     usearch_error_t        error = NULL;
-    usearch_metadata_t     meta;
+    metadata_t             meta;
     BlockNumber            HEADER_BLOCK = 0;
     Buffer                 hdr_buf;
     Page                   hdr_page;
@@ -141,7 +141,7 @@ bool ldb_aminsert(Relation         index,
 
     hdr_page = NULL;
 
-    meta = usearch_metadata(uidx, &error);
+    meta = usearch_index_metadata(uidx, &error);
     assert(!error);
 
     datum = PointerGetDatum(PG_DETOAST_DATUM(values[ 0 ]));

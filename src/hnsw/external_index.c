@@ -274,7 +274,7 @@ static void ContinueBlockMapGroupInitialization(
 }
 
 void StoreExternalIndexBlockMapGroup(Relation             index,
-                                     usearch_metadata_t  *metadata,
+                                     metadata_t          *metadata,
                                      HnswIndexHeaderPage *headerp,
                                      ForkNumber           forkNum,
                                      char                *data,
@@ -474,7 +474,7 @@ void StoreExternalEmptyIndex(Relation index, ForkNumber forkNum, char *data, use
 }
 
 void StoreExternalIndex(Relation                index,
-                        usearch_metadata_t     *external_index_metadata,
+                        metadata_t             *external_index_metadata,
                         ForkNumber              forkNum,
                         char                   *data,
                         usearch_init_options_t *opts,
@@ -593,7 +593,7 @@ static OffsetNumber HnswIndexPageAddVector(Page page, HnswIndexTuple *new_vector
 HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
                                   GenericXLogState    *state,
                                   HnswIndexHeaderPage *hdr,
-                                  usearch_metadata_t  *metadata,
+                                  metadata_t          *metadata,
                                   uint32               new_tuple_id,
                                   uint32               new_tuple_level,
                                   HnswInsertState     *insertstate)

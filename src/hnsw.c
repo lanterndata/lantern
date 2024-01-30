@@ -302,7 +302,8 @@ static float4 array_dist(ArrayType *a, ArrayType *b, usearch_metric_kind_t metri
         elog(ERROR, "expected equally sized arrays but got arrays with dimensions %d and %d", a_dim, b_dim);
     }
 
-    float4 result;
+    float4          result;
+    usearch_error_t error = NULL;
 
     if(metric_kind == usearch_metric_hamming_k) {
         // when computing hamming distance, array element type must be an integer type
@@ -315,12 +316,14 @@ static float4 array_dist(ArrayType *a, ArrayType *b, usearch_metric_kind_t metri
         // calling usearch_scalar_f32_k here even though it's an integer array is fine
         // the hamming distance in usearch actually ignores the scalar type
         // and it will get casted appropriately in usearch even with this scalar type
-        result = usearch_dist(ax_int, bx_int, metric_kind, a_dim, usearch_scalar_f32_k);
+        result = usearch_distance(ax_int, bx_int, usearch_scalar_f32_k, a_dim, metric_kind, &error);
+        assert(!error);
     } else {
         float4 *ax = ToFloat4Array(a);
         float4 *bx = ToFloat4Array(b);
 
-        result = usearch_dist(ax, bx, metric_kind, a_dim, usearch_scalar_f32_k);
+        result = usearch_distance(ax, bx, usearch_scalar_f32_k, a_dim, metric_kind, &error);
+        assert(!error);
     }
 
     return result;
@@ -328,11 +331,16 @@ static float4 array_dist(ArrayType *a, ArrayType *b, usearch_metric_kind_t metri
 
 static float8 vector_dist(Vector *a, Vector *b, usearch_metric_kind_t metric_kind)
 {
+    usearch_error_t error = NULL;
     if(a->dim != b->dim) {
         elog(ERROR, "expected equally sized vectors but got vectors with dimensions %d and %d", a->dim, b->dim);
     }
 
-    return usearch_dist(a->x, b->x, metric_kind, a->dim, usearch_scalar_f32_k);
+    float8 dist = usearch_distance(a->x, b->x, usearch_scalar_f32_k, a->dim, metric_kind, &error);
+    if(error) {
+        elog(ERROR, "unexpected distance metric error: %s", error);
+    }
+    return dist;
 }
 
 PGDLLEXPORT PG_FUNCTION_INFO_V1(ldb_generic_dist);

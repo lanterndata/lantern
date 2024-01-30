@@ -67,10 +67,10 @@ void CheckMem(int limit, Relation index, usearch_index_t uidx, uint32 n_nodes, c
 {
     uint32 node_size = 0;
     if(index != NULL) {
-        usearch_error_t    error;
-        double             M = ldb_HnswGetM(index);
-        double             mL = 1 / log(M);
-        usearch_metadata_t meta = usearch_metadata(uidx, &error);
+        usearch_error_t error;
+        double          M = ldb_HnswGetM(index);
+        double          mL = 1 / log(M);
+        metadata_t      meta = usearch_index_metadata(uidx, &error);
         // todo:: update sizeof(float) to correct vector size once #19 is merged
         node_size = UsearchNodeBytes(&meta, meta.dimensions * sizeof(float), (int)round(mL + 1));
     }
