@@ -7,7 +7,7 @@
 \ir utils/sift1k_array_unlogged.sql
 
 -- Validate that creating a secondary index works
-CREATE INDEX ON sift_base1k USING hnsw (v) WITH (dim=128, M=4);
+CREATE INDEX ON sift_base1k USING hnsw (v) WITH (dim=128, M=6);
 SELECT * FROM ldb_get_indexes('sift_base1k');
 SELECT _lantern_internal.validate_index('sift_base1k_v_idx', false);
 
