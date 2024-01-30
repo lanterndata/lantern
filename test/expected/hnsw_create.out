@@ -24,14 +24,14 @@ CREATE TABLE IF NOT EXISTS sift_base1k (
 );
 COPY sift_base1k (v) FROM '/tmp/lantern/vector_datasets/sift_base1k_arrays.csv' WITH csv;
 -- Validate that creating a secondary index works
-CREATE INDEX ON sift_base1k USING hnsw (v) WITH (dim=128, M=4);
+CREATE INDEX ON sift_base1k USING hnsw (v) WITH (dim=128, M=6);
 INFO:  done init usearch index
 INFO:  inserted 1000 elements
 INFO:  done saving 1000 vectors
 SELECT * FROM ldb_get_indexes('sift_base1k');
      indexname     |  size  |                                          indexdef                                           | total_index_size 
 -------------------+--------+---------------------------------------------------------------------------------------------+------------------
- sift_base1k_v_idx | 632 kB | CREATE INDEX sift_base1k_v_idx ON public.sift_base1k USING hnsw (v) WITH (dim='128', m='4') | 632 kB
+ sift_base1k_v_idx | 632 kB | CREATE INDEX sift_base1k_v_idx ON public.sift_base1k USING hnsw (v) WITH (dim='128', m='6') | 632 kB
 (1 row)
 
 SELECT _lantern_internal.validate_index('sift_base1k_v_idx', false);
