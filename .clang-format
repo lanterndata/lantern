@@ -23,7 +23,7 @@ IndentWidth: 4
 SpaceBeforeParens: Never
 SpaceInEmptyParentheses: false
 SpacesBeforeTrailingComments: 2
-SpacesInAngles: true
+SpacesInAngles: false
 SpacesInCStyleCastParentheses: false
 SpacesInContainerLiterals: true
 SpacesInSquareBrackets: true
