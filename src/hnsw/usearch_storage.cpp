@@ -28,7 +28,7 @@ void usearch_init_node(usearch_metadata_t *meta,
                        size_t              vector_len)
 {
     using namespace unum::usearch;
-    using node_t = unum::usearch::node_at< default_key_t, default_slot_t >;
+    using node_t = unum::usearch::node_at<default_key_t, default_slot_t>;
     int node_size = UsearchNodeBytes(meta, vector_len, level);
     // todo:: why is
     std::memset(tape, 0, node_size);
@@ -47,7 +47,7 @@ char *extract_node(char               *data,
                    int                *level)
 {
     using namespace unum::usearch;
-    using node_t = unum::usearch::node_at< default_key_t, default_slot_t >;
+    using node_t = unum::usearch::node_at<default_key_t, default_slot_t>;
     char  *tape = data + progress;
     node_t node = node_t{tape};
 
