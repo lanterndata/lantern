@@ -132,10 +132,10 @@ typedef struct
     HnswColumnType  columnType;
 } HnswInsertState;
 
-uint32 UsearchNodeBytes(usearch_metadata_t *metadata, int vector_bytes, int level);
+uint32 UsearchNodeBytes(metadata_t *metadata, int vector_bytes, int level);
 void   StoreExternalEmptyIndex(Relation index, ForkNumber forkNum, char *data, usearch_init_options_t *opts);
 void   StoreExternalIndex(Relation                index,
-                          usearch_metadata_t     *external_index_metadata,
+                          metadata_t             *external_index_metadata,
                           ForkNumber              forkNum,
                           char                   *data,
                           usearch_init_options_t *opts,
@@ -146,7 +146,7 @@ void   StoreExternalIndex(Relation                index,
 HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
                                   GenericXLogState    *state,
                                   HnswIndexHeaderPage *hdr,
-                                  usearch_metadata_t  *metadata,
+                                  metadata_t          *metadata,
                                   uint32               new_tuple_id,
                                   uint32               new_tuple_level,
                                   HnswInsertState     *insertstate);

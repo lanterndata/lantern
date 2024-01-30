@@ -427,11 +427,11 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, Hnsw
     char                  *tmp_index_file_path = NULL;
     const char            *tmp_index_file_fmt_str = "%s/ldb-index-%d.bin";
     // parent_dir + max digits of uint32 (Oid) 10
-    const uint32       tmp_index_file_char_cnt = MAXPGPATH + strlen(tmp_index_file_fmt_str) + 10;
-    int                index_file_fd;
-    int                munmap_ret;
-    usearch_metadata_t metadata;
-    size_t             num_added_vectors;
+    const uint32 tmp_index_file_char_cnt = MAXPGPATH + strlen(tmp_index_file_fmt_str) + 10;
+    int          index_file_fd;
+    int          munmap_ret;
+    metadata_t   metadata;
+    size_t       num_added_vectors;
 
     MemSet(&opts, 0, sizeof(opts));
 
@@ -459,7 +459,7 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, Hnsw
         }
         elog(INFO, "done loading usearch index");
 
-        metadata = usearch_metadata(buildstate->usearch_index, &error);
+        metadata = usearch_index_metadata(buildstate->usearch_index, &error);
         assert(error == NULL);
         opts.connectivity = metadata.connectivity;
         opts.dimensions = metadata.dimensions;
@@ -507,7 +507,7 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, Hnsw
         assert(error == NULL);
     }
 
-    metadata = usearch_metadata(buildstate->usearch_index, &error);
+    metadata = usearch_index_metadata(buildstate->usearch_index, &error);
     assert(error == NULL);
 
     if(buildstate->index_file_path == NULL) {
