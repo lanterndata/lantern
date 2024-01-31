@@ -16,7 +16,7 @@ Lantern builds and uses [usearch](https://github.com/unum-cloud/usearch), a sing
 If you don’t have PostgreSQL already, use Lantern with [Docker](https://hub.docker.com/r/lanterndata/lantern) to get started quickly:
 
 ```bash
-docker run -p 5432:5432 -e "POSTGRES_USER=$USER" -e "POSTGRES_PASSWORD=postgres" lanterndata/lantern:latest-pg15
+docker run --rm -p 5432:5432 -e "POSTGRES_USER=$USER" -e "POSTGRES_PASSWORD=postgres" -v ./lantern_data:/var/lib/postgresql/data lanterndata/lantern:latest-pg15
 ```
 
 Then, you can connect to the database via `postgresql://$USER:postgres@localhost/postgres`.
@@ -47,9 +47,18 @@ Alternatively, you can use Lantern in one click using [Replit](https://replit.co
 
 Lantern retains the standard PostgreSQL interface, so it is compatible with all of your favorite tools in the PostgreSQL ecosystem.
 
-First, enable Lantern in SQL
+First, enable Lantern in SQL (e.g. via `psql` shell)
 
 ```sql
+CREATE EXTENSION lantern;
+```
+
+Note: After running the above, lantern extension is only available on the current postgres DATABASE (single postgres instance may have multiple such DATABASES).
+When connecting to a different DATABASE, make sure to run the above command for the new one as well. For example:
+
+```sql
+CREATE DATABASE newdb;
+\c newdb
 CREATE EXTENSION lantern;
 ```
 
