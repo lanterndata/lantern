@@ -133,7 +133,7 @@ static uint64 estimate_number_blocks_accessed(uint64 num_tuples_in_index, uint64
     // we switch away from blockmaps.
     const uint64 num_blockmaps_used = ceil(num_tuples_in_index / HNSW_BLOCKMAP_BLOCKS_PER_PAGE);
     const uint64 num_blockmap_allocated = pow(2, floor(log2(num_blockmaps_used)) + 1);
-    const uint64 num_datablocks = Max(num_pages - 1 - num_blockmap_allocated, 1);
+    const uint64 num_datablocks = Max((int64)num_pages - 1 - (int64)num_blockmap_allocated, 1);
 
     const uint64 num_datablocks_accessed = ((double)num_tuples_accessed / (double)num_tuples_in_index) * num_datablocks;
     const uint64 num_blockmaps_accessed
