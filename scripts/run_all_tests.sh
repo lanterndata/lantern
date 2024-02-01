@@ -46,6 +46,7 @@ then
         curl -sSo sift_base1k.csv https://storage.googleapis.com/lanterndb/sift_base1k.csv
         curl -sSo siftsmall_base.csv https://storage.googleapis.com/lanterndata/siftsmall/siftsmall_base.csv
         curl -sSo tsv_wiki_sample.csv https://storage.googleapis.com/lanterndb/tsv_wiki_sample.csv
+        curl -sSo views_vec10k.csv https://storage.googleapis.com/lanterndata/random_multicolumn/views_vec10k.csv
         # Convert vector to arrays to be used with real[] type
         cat sift_base1k.csv | sed -e 's/\[/{/g' | sed -e 's/\]/}/g' > sift_base1k_arrays.csv
         cat siftsmall_base.csv | sed -e 's/\[/{/g' | sed -e 's/\]/}/g' > siftsmall_base_arrays.csv
