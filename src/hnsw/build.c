@@ -35,6 +35,7 @@
 #include "bench.h"
 #include "external_index.h"
 #include "hnsw.h"
+#include "hnsw/retriever.h"
 #include "options.h"
 #include "utils.h"
 #include "vector.h"
@@ -438,6 +439,12 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, Hnsw
     InitBuildState(buildstate, heap, index, indexInfo);
     opts.dimensions = buildstate->dimensions;
     PopulateUsearchOpts(index, &opts);
+    // retrievers are not called from here,
+    // but we are setting them so the storage layer knows objects are managed
+    // externally and does not try to load objects from stream when we call
+    // usearch_load
+    opts.retriever = ldb_wal_index_node_retriever;
+    opts.retriever_mut = ldb_wal_index_node_retriever_mut;
 
     buildstate->usearch_index = usearch_init(&opts, &error);
     elog(INFO, "done init usearch index");
