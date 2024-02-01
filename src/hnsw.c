@@ -171,7 +171,7 @@ static void hnswcostestimate(PlannerInfo *root,
     /* ALWAYS use index when asked*/
     MemSet(&costs, 0, sizeof(costs));
 
-    double num_tuples_in_index = path->indexinfo->rel->tuples;
+    double num_tuples_in_index = path->indexinfo->tuples;
     costs.numIndexTuples = estimate_number_tuples_accessed(path->indexinfo->indexoid, num_tuples_in_index);
     uint64 num_blocks_accessed
         = estimate_number_blocks_accessed(num_tuples_in_index, path->indexinfo->pages, costs.numIndexTuples);

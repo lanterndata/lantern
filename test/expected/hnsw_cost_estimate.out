@@ -192,10 +192,10 @@ INFO:  done saving 58 vectors
 EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 100 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 4.108750
+DEBUG:  LANTERN - Total cost: 4.071250
 DEBUG:  LANTERN - Selectivity: 1.000000
 DEBUG:  LANTERN - Num pages: 1.000000
-DEBUG:  LANTERN - Num tuples: 58.000000
+DEBUG:  LANTERN - Num tuples: 19.000000
 DEBUG:  LANTERN - ---------------------
                           QUERY PLAN                           
 ---------------------------------------------------------------
