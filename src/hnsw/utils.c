@@ -191,3 +191,55 @@ bool VersionsMatch()
         return versions_match;
     }
 }
+
+uint32 EstimateRowCount(Relation heap)
+{
+    BlockNumber numBlocks = RelationGetNumberOfBlocks(heap);
+    uint32_t    estimated_row_count = 0;
+    if(numBlocks > 0) {
+        // Read the first block
+        Buffer buffer = ReadBufferExtended(heap, MAIN_FORKNUM, 0, RBM_NORMAL, NULL);
+        // Lock buffer so there won't be any new writes during this operation
+        LockBuffer(buffer, BUFFER_LOCK_SHARE);
+        // This is like converting block buffer to Page struct
+        Page page = BufferGetPage(buffer);
+        // Getting the maximum tuple index on the page
+        OffsetNumber offset = PageGetMaxOffsetNumber(page);
+
+        // Reasonably accurate first guess, assuming tuples are fixed length it will err towards over allocating.
+        // In the case of under allocation the logic in AddTupleToUsearchIndex should expand it as needed
+        estimated_row_count = offset * numBlocks;
+        // Unlock and release buffer
+        UnlockReleaseBuffer(buffer);
+    }
+    return estimated_row_count;
+}
+
+int32 GetColumnAttributeNumber(Relation rel, const char *columnName)
+{
+    TupleDesc tupleDesc = RelationGetDescr(rel);
+    int       numAttributes = tupleDesc->natts;
+
+    for(int i = 0; i < numAttributes; i++) {
+        FormData_pg_attribute *attr = TupleDescAttr(tupleDesc, i);
+
+        if(strcmp(NameStr(attr->attname), columnName) == 0) {
+            return i + 1;
+        }
+    }
+
+    return -1;
+}
+
+usearch_metric_kind_t GetMetricKindFromStr(char *metric_kind_str)
+{
+    if(strcmp(metric_kind_str, "l2sq") == 0) {
+        return usearch_metric_l2sq_k;
+    } else if(strcmp(metric_kind_str, "cos") == 0 || strcmp(metric_kind_str, "cosine") == 0) {
+        return usearch_metric_cos_k;
+    } else if(strcmp(metric_kind_str, "hamming") == 0) {
+        return usearch_metric_hamming_k;
+    }
+
+    elog(ERROR, "Unsupported metric kind: %s . Should be one of (l2sq, cos, hamming)", metric_kind_str);
+}

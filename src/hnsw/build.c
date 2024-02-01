@@ -474,24 +474,7 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, Hnsw
         opts.expansion_search = metadata.expansion_search;
         opts.metric_kind = metadata.metric_kind;
     } else {
-        BlockNumber numBlocks = RelationGetNumberOfBlocks(heap);
-        uint32_t    estimated_row_count = 0;
-        if(numBlocks > 0) {
-            // Read the first block
-            Buffer buffer = ReadBufferExtended(heap, MAIN_FORKNUM, 0, RBM_NORMAL, NULL);
-            // Lock buffer so there won't be any new writes during this operation
-            LockBuffer(buffer, BUFFER_LOCK_SHARE);
-            // This is like converting block buffer to Page struct
-            Page page = BufferGetPage(buffer);
-            // Getting the maximum tuple index on the page
-            OffsetNumber offset = PageGetMaxOffsetNumber(page);
-
-            // Reasonably accurate first guess, assuming tuples are fixed length it will err towards over allocating.
-            // In the case of under allocation the logic in AddTupleToUsearchIndex should expand it as needed
-            estimated_row_count = offset * numBlocks;
-            // Unlock and release buffer
-            UnlockReleaseBuffer(buffer);
-        }
+        uint32_t estimated_row_count = EstimateRowCount(heap);
         CheckMem(maintenance_work_mem,
                  index,
                  buildstate->usearch_index,

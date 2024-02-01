@@ -1,0 +1,247 @@
+\ir utils/sift1k_array.sql
+CREATE TABLE IF NOT EXISTS sift_base1k (
+    id SERIAL,
+    v REAL[]
+);
+COPY sift_base1k (v) FROM '/tmp/lantern/vector_datasets/sift_base1k_arrays.csv' WITH csv;
+\ir utils/sift1k_array_query.sql
+SELECT
+   b.id, 
+   ARRAY(SELECT id::text FROM sift_base1k b2 ORDER BY l2sq_dist(b.v, b2.v) LIMIT 10)::INT[] as indices
+INTO sift_truth1k
+FROM sift_base1k b
+WHERE id IN (SELECT id FROM sift_base1k ORDER BY id LIMIT 100);
+SELECT id, v INTO sift_query1k FROM sift_base1k ORDER BY id LIMIT 100;
+\ir utils/random_array.sql
+CREATE OR REPLACE FUNCTION random_int_array(dim integer, min integer, max integer) RETURNS integer[] AS $BODY$
+begin
+        return (select array_agg(round(random() * (max - min)) + min) from generate_series (0, dim - 1));
+end
+$BODY$ LANGUAGE plpgsql;
+CREATE OR REPLACE FUNCTION random_array(dim integer, min real, max real) RETURNS REAL[] AS $BODY$
+begin
+        return (select array_agg(random() * (max - min) + min) from generate_series (0, dim - 1));
+end
+$BODY$ LANGUAGE plpgsql;
+\ir utils/calculate_recall.sql
+CREATE OR REPLACE FUNCTION calculate_table_recall(tbl regclass, query_tbl regclass, truth_tbl regclass, col NAME, k INT, cnt INT)
+RETURNS FLOAT
+AS $$
+DECLARE
+stmt TEXT;
+result FLOAT;
+BEGIN
+    stmt := format('
+        SELECT ROUND(AVG(r.q_recall)::numeric, 2) FROM (WITH q AS (
+            SELECT
+                id,
+                v
+            FROM
+                %2$I
+            LIMIT
+                %6$s
+        )
+        SELECT 
+            ARRAY_LENGTH(
+            ARRAY(
+                SELECT UNNEST(array_agg(b.id))
+                INTERSECT
+                SELECT UNNEST(t.indices[1:%5$s])
+            ), 1)::FLOAT / %5$s::FLOAT as q_recall
+        FROM q
+        JOIN LATERAL (
+            SELECT
+                id
+            FROM
+                %1$I
+            ORDER BY
+                %1$I.%4$I <=> q.v
+            LIMIT
+                %5$s
+        ) b ON TRUE
+        LEFT JOIN
+            %3$I AS t
+        ON
+            t.id = q.id
+        GROUP BY
+            q.id,
+            t.indices) r;
+    ', tbl, query_tbl, truth_tbl, col, k, cnt);
+
+     EXECUTE stmt INTO result;
+     RETURN result;
+END;
+$$ LANGUAGE plpgsql;
+\set ON_ERROR_STOP off
+-- Verify wrong argument assertions
+SELECT _lantern_internal.create_pq_codebook('sift_base1k'::regclass, 'nonexistant', 10, 32, 'l2sq');
+ERROR:  Column nonexistant not found in table
+SELECT _lantern_internal.create_pq_codebook('sift_base1k'::regclass, 'v', 1001, 32, 'l2sq');
+INFO:  Table scanned. Dataset size 1000
+ERROR:  Dataset size can not be smaller than cluster count
+SELECT _lantern_internal.create_pq_codebook('sift_base1k'::regclass, 'v', 10, 33, 'l2sq');
+INFO:  Table scanned. Dataset size 1000
+ERROR:  Dataset dimensions should be divisible by subset count
+SELECT _lantern_internal.create_pq_codebook('sift_base1k'::regclass, 'v', 10, 32, 'l2sqz');
+ERROR:  Unsupported metric kind: l2sqz . Should be one of (l2sq, cos, hamming)
+\set ON_ERROR_STOP on
+-- This should create codebook[1][1][128]
+SELECT _lantern_internal.create_pq_codebook('sift_base1k'::regclass, 'v', 1, 1, 'l2sq') as codebook \gset
+INFO:  Table scanned. Dataset size 1000
+INFO:  Starting k-means over dataset with (subsets=1, clusters=1)
+INFO:  Codebooks created
+SELECT array_length(:'codebook'::REAL[][][], 1);
+ array_length 
+--------------
+            1
+(1 row)
+
+SELECT array_length(:'codebook'::REAL[][][], 2);
+ array_length 
+--------------
+            1
+(1 row)
+
+SELECT array_length(:'codebook'::REAL[][][], 3);
+ array_length 
+--------------
+          128
+(1 row)
+
+-- This should create codebook[1][10][128]
+SELECT _lantern_internal.create_pq_codebook('sift_base1k'::regclass, 'v', 10, 1, 'l2sq') as codebook \gset
+INFO:  Table scanned. Dataset size 1000
+INFO:  Starting k-means over dataset with (subsets=1, clusters=10)
+INFO:  Codebooks created
+SELECT array_length(:'codebook'::REAL[][][], 1);
+ array_length 
+--------------
+            1
+(1 row)
+
+SELECT array_length(:'codebook'::REAL[][][], 2);
+ array_length 
+--------------
+           10
+(1 row)
+
+SELECT array_length(:'codebook'::REAL[][][], 3);
+ array_length 
+--------------
+          128
+(1 row)
+
+-- This should create codebook[32][10][4]
+SELECT _lantern_internal.create_pq_codebook('sift_base1k'::regclass, 'v', 10, 32, 'l2sq') as codebook \gset
+INFO:  Table scanned. Dataset size 1000
+INFO:  Starting k-means over dataset with (subsets=32, clusters=10)
+INFO:  Codebooks created
+SELECT array_length(:'codebook'::REAL[][][], 1);
+ array_length 
+--------------
+           32
+(1 row)
+
+SELECT array_length(:'codebook'::REAL[][][], 2);
+ array_length 
+--------------
+           10
+(1 row)
+
+SELECT array_length(:'codebook'::REAL[][][], 3);
+ array_length 
+--------------
+            4
+(1 row)
+
+-- This should create codebook _lantern_codebook_sift_base1k and add v_pq column in sift_base1k table with compressed vectors
+-- The codebook will be codebook[32][50][4], so in the table there should be 32 distinct subvector ids each with 50 centroid ids
+SELECT quantize_table('sift_base1k'::regclass, 'v', 50, 32, 'l2sq');
+INFO:  Table scanned. Dataset size 1000
+INFO:  Starting k-means over dataset with (subsets=32, clusters=50)
+INFO:  Codebooks created
+NOTICE:  table "_lantern_codebook_sift_base1k" does not exist, skipping
+NOTICE:  Compressing vectors...
+ quantize_table 
+----------------
+ 
+(1 row)
+
+SELECT COUNT(DISTINCT subvector_id) FROM _lantern_codebook_sift_base1k;
+ count 
+-------
+    32
+(1 row)
+
+SELECT COUNT(DISTINCT centroid_id) FROM _lantern_codebook_sift_base1k;
+ count 
+-------
+    50
+(1 row)
+
+SELECT COUNT(*) FROM _lantern_codebook_sift_base1k;
+ count 
+-------
+  1600
+(1 row)
+
+SELECT array_length(c, 1) FROM _lantern_codebook_sift_base1k LIMIT 1;
+ array_length 
+--------------
+            4
+(1 row)
+
+-- Compression and Decompression
+-- Verify that vector was compressed correctly when generating quantized column
+SELECT v as v1 FROM sift_base1k WHERE id=1 \gset
+SELECT v_pq as v1_pq FROM sift_base1k WHERE id=1 \gset
+SELECT compress_vector(:'v1', '_lantern_codebook_sift_base1k'::regclass, 'l2sq') as compressed \gset
+SELECT decompress_vector(:'v1_pq', '_lantern_codebook_sift_base1k'::regclass) as decompressed_1 \gset
+SELECT decompress_vector(:'compressed', '_lantern_codebook_sift_base1k'::regclass) as decompressed_2 \gset
+SELECT l2sq_dist(:'decompressed_1', :'decompressed_2');
+ l2sq_dist 
+-----------
+         0
+(1 row)
+
+-- Test recall for quantized vs non quantized vectors
+ALTER TABLE sift_base1k ADD COLUMN v_pq_dec REAL[];
+UPDATE sift_base1k SET v_pq_dec=decompress_vector(v_pq, '_lantern_codebook_sift_base1k');
+-- Calculate recall over original vector
+SELECT (calculate_table_recall('sift_base1k', 'sift_query1k', 'sift_truth1k', 'v', 10, 100) -
+       calculate_table_recall('sift_base1k', 'sift_query1k', 'sift_truth1k', 'v_pq_dec', 10, 100)) as recall_diff \gset
+SELECT :'recall_diff' < 0.2 as recall_diff_meets_threshold;
+ recall_diff_meets_threshold 
+-----------------------------
+ t
+(1 row)
+
+-- Verify that column triggers for insert and update are working correctly
+INSERT INTO sift_base1k(id, v) VALUES (1001, random_array(128, 0.0, 5.0));
+SELECT id FROM sift_base1k WHERE v_pq IS NULL;
+ id 
+----
+(0 rows)
+
+SELECT v_pq::TEXT as old_pq FROM sift_base1k WHERE id=1001 \gset
+UPDATE sift_base1k SET v=(SELECT v FROM sift_base1k WHERE id=1) WHERE id=1001;
+SELECT v_pq::TEXT as new_pq FROM sift_base1k WHERE id=1001 \gset
+SELECT :'old_pq' <> :'new_pq' as is_updated;
+ is_updated 
+------------
+ t
+(1 row)
+
+SELECT :'new_pq' = (SELECT v_pq::TEXT FROM sift_base1k WHERE id=1) as is_updated;
+ is_updated 
+------------
+ t
+(1 row)
+
+-- Verify that compressed column size is smaller than regular integer
+SELECT pg_column_size(v_pq) as compressed_size, pg_column_size(v_pq::int[]) as int_size FROM sift_base1k LIMIT 1;
+ compressed_size | int_size 
+-----------------+----------
+              37 |      152
+(1 row)
+
