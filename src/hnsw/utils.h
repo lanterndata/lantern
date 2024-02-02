@@ -41,12 +41,4 @@ static inline void ldb_invariant(bool condition, const char *msg, ...)
         }                              \
     } while(0)
 
-// same as ldb_dlog above but intended for output in tests that needs to be consistent across systems and OS
-#define ldb_tlog(...)                  \
-    do {                               \
-        if(unlikely(ldb_is_test)) {    \
-            elog(DEBUG4, __VA_ARGS__); \
-        }                              \
-    } while(0)
-
 #endif  // LDB_HNSW_UTILS_H

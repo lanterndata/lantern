@@ -199,13 +199,13 @@ static void hnswcostestimate(PlannerInfo *root,
     *indexCorrelation = 0;
     *indexPages = num_blocks_accessed;
 
-    ldb_tlog("LANTERN - Query cost estimator");
-    ldb_tlog("LANTERN - ---------------------");
+    ldb_dlog("LANTERN - Query cost estimator");
+    ldb_dlog("LANTERN - ---------------------");
     ldb_dlog("LANTERN - Total cost: %lf", *indexTotalCost);
-    ldb_tlog("LANTERN - Selectivity: %lf", *indexSelectivity);
+    ldb_dlog("LANTERN - Selectivity: %lf", *indexSelectivity);
     ldb_dlog("LANTERN - Num pages: %lf", *indexPages);
-    ldb_tlog("LANTERN - Num tuples: %lf", costs.numIndexTuples);
-    ldb_tlog("LANTERN - ---------------------");
+    ldb_dlog("LANTERN - Num tuples: %lf", costs.numIndexTuples);
+    ldb_dlog("LANTERN - ---------------------");
 }
 
 /*

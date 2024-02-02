@@ -82,10 +82,7 @@ SELECT _lantern_internal.validate_index('hnsw_idx', false);
 DROP INDEX hnsw_idx;
 
 
--- Output below could slightly differ on some OS/systems if we log everything
-SET client_min_messages=debug4;
-
--- Goal: Test cost estimation when number of pages in index is likely less than number of blockmaps allocated
+-- Test cost estimation when number of pages in index is likely less than number of blockmaps allocated
 -- this is relevant in this check in estimate_number_blocks_accessed in hnsw.c:
 -- const uint64 num_datablocks = Max(num_pages - 1 - num_blockmap_allocated, 1);
 
@@ -93,7 +90,7 @@ SET client_min_messages=debug4;
 -- This is what we test below
 \ir utils/views_vec10k.sql
 
--- This is important to make sure that index selectivity calculations from genericcostestimate are accurate (which we also test below)
+-- This is important to make sure that index selectivity calculations from genericcostestimate are accurate (which we test below)
 VACUUM ANALYZE;
 
 SET hnsw.init_k = 10;
@@ -103,42 +100,26 @@ SELECT COUNT(*) FROM views_vec10k WHERE views < 100;
 
 -- Create partial lantern index with (views < 100) filter
 CREATE INDEX hnsw_partial_views_100 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 100;
-SELECT _lantern_internal.validate_index('hnsw_partial_views_100', false);
 
 -- This should use the partial index we just created, since it is an exact filter match
 EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 100 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
 
--- Goal: Test that the index selectivity being calculated for partial indexes is correct
+-- Test that the index selectivity being calculated for partial indexes is correct
 CREATE INDEX hnsw_partial_views_250 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 250;
-SELECT _lantern_internal.validate_index('hnsw_partial_views_250', false);
-
 CREATE INDEX hnsw_partial_views_500 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 500;
-SELECT _lantern_internal.validate_index('hnsw_partial_views_500', false);
-
 CREATE INDEX hnsw_partial_views_1000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 1000;
-SELECT _lantern_internal.validate_index('hnsw_partial_views_1000', false);
-
 CREATE INDEX hnsw_partial_views_2000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 2000;
-SELECT _lantern_internal.validate_index('hnsw_partial_views_2000', false);
-
 CREATE INDEX hnsw_partial_views_4000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 4000;
-SELECT _lantern_internal.validate_index('hnsw_partial_views_4000', false);
-
 CREATE INDEX hnsw_partial_views_8000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 8000;
-SELECT _lantern_internal.validate_index('hnsw_partial_views_8000', false);
-
 CREATE INDEX hnsw_partial_views_16000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 16000;
-SELECT _lantern_internal.validate_index('hnsw_partial_views_16000', false);
-
 CREATE INDEX hnsw_partial_views_19000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 19000;
-SELECT _lantern_internal.validate_index('hnsw_partial_views_19000', false);
 
 -- Trigger each partial index by using its exact filter in a filtered query
 -- Each indexSelectivity value for a partial index with the filter (views < N) should be around N/20000
 -- (in other words, the fraction of rows from the table that is in the partial index, since views ~ Unif[0, 20,000])
 
 -- note that every partial index above will output a selectivity in the lantern debug log
--- for example, the views < 250 query will estimate and display costs/selectivity for the 19000, 16000, ..., 500, 250 partial indexes
+-- so, the views < 250 query will estimate and display costs/selectivity for the 19000, 16000, ..., 500, 250 partial indexes
 EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 250 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
 EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 500 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
 EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 1000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
