@@ -38,6 +38,6 @@ pip install -r core/requirements.txt
 pip install -r external/requirements.txt
 cd ..
 
-make benchmark
+make benchmark-skip-setup
 killall postgres
 

@@ -2,9 +2,9 @@
 set -e
 
 # Benchmarking parameters
-BASE_PARAMS="--extension lantern --dataset sift --N 10k"
-INDEX_PARAMS="--m 4 --ef_construction 128 --ef 10"
-PARAMS="$BASE_PARAMS $INDEX_PARAMS --K 5"
+BASE_PARAMS="--extension lantern --dataset openai --N 1m"
+INDEX_PARAMS="--m 8 --ef_construction 128 --ef 128 --external 1"
+PARAMS="$BASE_PARAMS $INDEX_PARAMS --K 10"
 
 # Settings
 SKIP_SETUP=0
@@ -25,6 +25,8 @@ if [ "$SKIP_SETUP" -ne 1 ] && [ "$PRINT_ONLY" -ne 1 ]; then
     echo "Running data setup"
     python3 -m core.setup --datapath /tmp/benchmark_data $BASE_PARAMS
 else
+    psql $LANTERN_DATABASE_URL -c 'DROP EXTENSION IF EXISTS lantern CASCADE'
+    psql $LANTERN_DATABASE_URL -c 'CREATE EXTENSION lantern'
     echo "Skipping data setup"
 fi
 
