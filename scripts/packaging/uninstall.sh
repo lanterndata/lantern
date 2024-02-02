@@ -14,6 +14,8 @@ PG_LIBRARY_DIR=$($PG_CONFIG --pkglibdir)
 PG_EXTENSION_DIR=$($PG_CONFIG --sharedir)/extension
 
 rm -rf $PG_LIBRARY_DIR/lantern*.so
+rm -rf $PG_LIBRARY_DIR/bitcode/lantern 2> /dev/null || true
+rm -rf $PG_LIBRARY_DIR/bitcode/lantern.index.bc 2> /dev/null || true
 rm -rf $PG_EXTENSION_DIR/lantern*.sql
 rm -rf $PG_EXTENSION_DIR/lantern*.control
 

@@ -12,6 +12,7 @@ cp ${SOURCE_DIR}/scripts/packaging/* ${BUILD_DIR}/${PACKAGE_NAME}/
 # Instead of .so, so any of the files may not exist
 # So we will ignore the error from cp command
 cp ${BUILD_DIR}/*.{so,dylib} ${BUILD_DIR}/${PACKAGE_NAME}/src 2>/dev/null || true
+cp -r ${BUILD_DIR}/bitcode ${BUILD_DIR}/${PACKAGE_NAME}/src/bitcode 2>/dev/null || true
 cp ${BUILD_DIR}/*.sql ${BUILD_DIR}/${PACKAGE_NAME}/src
 
 for f in $(find "${SOURCE_DIR}/sql/updates/" -name "*.sql"); do
