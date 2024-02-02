@@ -207,6 +207,7 @@ DEBUG:  LANTERN - ---------------------
 (3 rows)
 
 -- Goal: Test that the index selectivity being calculated for partial indexes is correct
+-- note that these boundaries are selected so that mac num_pages and cost values align
 CREATE INDEX hnsw_partial_views_1000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 1000;
 INFO:  done init usearch index
 INFO:  inserted 477 elements
@@ -255,36 +256,12 @@ INFO:  validate_index() done, no issues found.
  
 (1 row)
 
-CREATE INDEX hnsw_partial_views_5000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 5000;
-INFO:  done init usearch index
-INFO:  inserted 2502 elements
-INFO:  done saving 2502 vectors
-SELECT _lantern_internal.validate_index('hnsw_partial_views_5000', false);
-INFO:  validate_index() start for hnsw_partial_views_5000
-INFO:  validate_index() done, no issues found.
- validate_index 
-----------------
- 
-(1 row)
-
 CREATE INDEX hnsw_partial_views_6000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 6000;
 INFO:  done init usearch index
 INFO:  inserted 2997 elements
 INFO:  done saving 2997 vectors
 SELECT _lantern_internal.validate_index('hnsw_partial_views_6000', false);
 INFO:  validate_index() start for hnsw_partial_views_6000
-INFO:  validate_index() done, no issues found.
- validate_index 
-----------------
- 
-(1 row)
-
-CREATE INDEX hnsw_partial_views_7000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 7000;
-INFO:  done init usearch index
-INFO:  inserted 3458 elements
-INFO:  done saving 3458 vectors
-SELECT _lantern_internal.validate_index('hnsw_partial_views_7000', false);
-INFO:  validate_index() start for hnsw_partial_views_7000
 INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
@@ -303,239 +280,12 @@ INFO:  validate_index() done, no issues found.
  
 (1 row)
 
-CREATE INDEX hnsw_partial_views_9000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 9000;
-INFO:  done init usearch index
-INFO:  inserted 4444 elements
-INFO:  done saving 4444 vectors
-SELECT _lantern_internal.validate_index('hnsw_partial_views_9000', false);
-INFO:  validate_index() start for hnsw_partial_views_9000
-INFO:  validate_index() done, no issues found.
- validate_index 
-----------------
- 
-(1 row)
-
-CREATE INDEX hnsw_partial_views_10000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 10000;
-INFO:  done init usearch index
-INFO:  inserted 4947 elements
-INFO:  done saving 4947 vectors
-SELECT _lantern_internal.validate_index('hnsw_partial_views_10000', false);
-INFO:  validate_index() start for hnsw_partial_views_10000
-INFO:  validate_index() done, no issues found.
- validate_index 
-----------------
- 
-(1 row)
-
-CREATE INDEX hnsw_partial_views_11000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 11000;
-INFO:  done init usearch index
-INFO:  inserted 5434 elements
-INFO:  done saving 5434 vectors
-SELECT _lantern_internal.validate_index('hnsw_partial_views_11000', false);
-INFO:  validate_index() start for hnsw_partial_views_11000
-INFO:  validate_index() done, no issues found.
- validate_index 
-----------------
- 
-(1 row)
-
-CREATE INDEX hnsw_partial_views_12000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 12000;
-INFO:  done init usearch index
-INFO:  inserted 5949 elements
-INFO:  done saving 5949 vectors
-SELECT _lantern_internal.validate_index('hnsw_partial_views_12000', false);
-INFO:  validate_index() start for hnsw_partial_views_12000
-INFO:  validate_index() done, no issues found.
- validate_index 
-----------------
- 
-(1 row)
-
-CREATE INDEX hnsw_partial_views_13000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 13000;
-INFO:  done init usearch index
-INFO:  inserted 6464 elements
-INFO:  done saving 6464 vectors
-SELECT _lantern_internal.validate_index('hnsw_partial_views_13000', false);
-INFO:  validate_index() start for hnsw_partial_views_13000
-INFO:  validate_index() done, no issues found.
- validate_index 
-----------------
- 
-(1 row)
-
-CREATE INDEX hnsw_partial_views_14000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 14000;
-INFO:  done init usearch index
-INFO:  inserted 6951 elements
-INFO:  done saving 6951 vectors
-SELECT _lantern_internal.validate_index('hnsw_partial_views_14000', false);
-INFO:  validate_index() start for hnsw_partial_views_14000
-INFO:  validate_index() done, no issues found.
- validate_index 
-----------------
- 
-(1 row)
-
-CREATE INDEX hnsw_partial_views_15000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 15000;
-INFO:  done init usearch index
-INFO:  inserted 7489 elements
-INFO:  done saving 7489 vectors
-SELECT _lantern_internal.validate_index('hnsw_partial_views_15000', false);
-INFO:  validate_index() start for hnsw_partial_views_15000
-INFO:  validate_index() done, no issues found.
- validate_index 
-----------------
- 
-(1 row)
-
-CREATE INDEX hnsw_partial_views_16000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 16000;
-INFO:  done init usearch index
-INFO:  inserted 8014 elements
-INFO:  done saving 8014 vectors
-SELECT _lantern_internal.validate_index('hnsw_partial_views_16000', false);
-INFO:  validate_index() start for hnsw_partial_views_16000
-INFO:  validate_index() done, no issues found.
- validate_index 
-----------------
- 
-(1 row)
-
-CREATE INDEX hnsw_partial_views_17000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 17000;
-INFO:  done init usearch index
-INFO:  inserted 8540 elements
-INFO:  done saving 8540 vectors
-SELECT _lantern_internal.validate_index('hnsw_partial_views_17000', false);
-INFO:  validate_index() start for hnsw_partial_views_17000
-INFO:  validate_index() done, no issues found.
- validate_index 
-----------------
- 
-(1 row)
-
-CREATE INDEX hnsw_partial_views_18000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 18000;
-INFO:  done init usearch index
-INFO:  inserted 9016 elements
-INFO:  done saving 9016 vectors
-SELECT _lantern_internal.validate_index('hnsw_partial_views_18000', false);
-INFO:  validate_index() start for hnsw_partial_views_18000
-INFO:  validate_index() done, no issues found.
- validate_index 
-----------------
- 
-(1 row)
-
-CREATE INDEX hnsw_partial_views_19000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 19000;
-INFO:  done init usearch index
-INFO:  inserted 9485 elements
-INFO:  done saving 9485 vectors
-SELECT _lantern_internal.validate_index('hnsw_partial_views_19000', false);
-INFO:  validate_index() start for hnsw_partial_views_19000
-INFO:  validate_index() done, no issues found.
- validate_index 
-----------------
- 
-(1 row)
-
-CREATE INDEX hnsw_partial_views_20000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 20000;
-INFO:  done init usearch index
-INFO:  inserted 10000 elements
-INFO:  done saving 10000 vectors
-SELECT _lantern_internal.validate_index('hnsw_partial_views_20000', false);
-INFO:  validate_index() start for hnsw_partial_views_20000
-INFO:  validate_index() done, no issues found.
- validate_index 
-----------------
- 
-(1 row)
-
 -- Trigger each partial index by using its exact filter in a filtered query
 -- Each indexSelectivity value for a partial index with the filter (views < N) should be around N/20000
 -- (in other words, the fraction of rows from the table that is in the partial index, since views ~ Unif[0, 20,000])
 -- note that all partial indexes whose filter is a superset of the filter in the query will output indexSelectivity to ldb_dlog below
+-- so, it suffices to call the "smallest" filter, and we will get the selectivity for all the other indices since their filters are nested subsets of each other
 EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 1000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
-DEBUG:  LANTERN - Query cost estimator
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 348.395151
-DEBUG:  LANTERN - Selectivity: 0.999903
-DEBUG:  LANTERN - Num pages: 81.000000
-DEBUG:  LANTERN - Num tuples: 3333.000000
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Query cost estimator
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 331.107310
-DEBUG:  LANTERN - Selectivity: 0.948491
-DEBUG:  LANTERN - Num pages: 77.000000
-DEBUG:  LANTERN - Num tuples: 3161.000000
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Query cost estimator
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 313.936500
-DEBUG:  LANTERN - Selectivity: 0.901402
-DEBUG:  LANTERN - Num pages: 73.000000
-DEBUG:  LANTERN - Num tuples: 3005.000000
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Query cost estimator
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 296.743732
-DEBUG:  LANTERN - Selectivity: 0.853878
-DEBUG:  LANTERN - Num pages: 69.000000
-DEBUG:  LANTERN - Num tuples: 2846.000000
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Query cost estimator
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 279.434515
-DEBUG:  LANTERN - Selectivity: 0.801667
-DEBUG:  LANTERN - Num pages: 65.000000
-DEBUG:  LANTERN - Num tuples: 2671.000000
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Query cost estimator
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 262.125714
-DEBUG:  LANTERN - Selectivity: 0.747985
-DEBUG:  LANTERN - Num pages: 61.000000
-DEBUG:  LANTERN - Num tuples: 2496.000000
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Query cost estimator
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 244.788432
-DEBUG:  LANTERN - Selectivity: 0.694747
-DEBUG:  LANTERN - Num pages: 57.000000
-DEBUG:  LANTERN - Num tuples: 2317.000000
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Query cost estimator
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 227.567545
-DEBUG:  LANTERN - Selectivity: 0.646264
-DEBUG:  LANTERN - Num pages: 53.000000
-DEBUG:  LANTERN - Num tuples: 2154.000000
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Query cost estimator
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 206.568980
-DEBUG:  LANTERN - Selectivity: 0.594753
-DEBUG:  LANTERN - Num pages: 48.000000
-DEBUG:  LANTERN - Num tuples: 1983.000000
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Query cost estimator
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 189.280667
-DEBUG:  LANTERN - Selectivity: 0.543482
-DEBUG:  LANTERN - Num pages: 44.000000
-DEBUG:  LANTERN - Num tuples: 1811.000000
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Query cost estimator
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 172.065854
-DEBUG:  LANTERN - Selectivity: 0.494979
-DEBUG:  LANTERN - Num pages: 40.000000
-DEBUG:  LANTERN - Num tuples: 1649.000000
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Query cost estimator
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 154.807297
-DEBUG:  LANTERN - Selectivity: 0.444917
-DEBUG:  LANTERN - Num pages: 36.000000
-DEBUG:  LANTERN - Num tuples: 1481.000000
-DEBUG:  LANTERN - ---------------------
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
 DEBUG:  LANTERN - Total cost: 141.637941
@@ -545,24 +295,10 @@ DEBUG:  LANTERN - Num tuples: 1324.000000
 DEBUG:  LANTERN - ---------------------
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 120.342069
-DEBUG:  LANTERN - Selectivity: 0.345671
-DEBUG:  LANTERN - Num pages: 28.000000
-DEBUG:  LANTERN - Num tuples: 1152.000000
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Query cost estimator
-DEBUG:  LANTERN - ---------------------
 DEBUG:  LANTERN - Total cost: 107.204327
 DEBUG:  LANTERN - Selectivity: 0.299812
 DEBUG:  LANTERN - Num pages: 25.000000
 DEBUG:  LANTERN - Num tuples: 999.000000
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Query cost estimator
-DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 89.970682
-DEBUG:  LANTERN - Selectivity: 0.250364
-DEBUG:  LANTERN - Num pages: 21.000000
-DEBUG:  LANTERN - Num tuples: 834.000000
 DEBUG:  LANTERN - ---------------------
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
@@ -599,24 +335,3 @@ DEBUG:  LANTERN - ---------------------
          Order By: (vec <-> '{0,1,2,3,4,5}'::real[])
 (3 rows)
 
-/*
-EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 2000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
-EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 3000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
-EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 4000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
-EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 5000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
-EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 6000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
-EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 7000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
-EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 8000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
-EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 9000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
-EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 10000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
-EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 11000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
-EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 12000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
-EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 13000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
-EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 14000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
-EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 15000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
-EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 16000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
-EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 17000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
-EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 18000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
-EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 19000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
-EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 20000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
-*/
