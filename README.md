@@ -16,7 +16,7 @@ Lantern builds and uses [usearch](https://github.com/unum-cloud/usearch), a sing
 If you don’t have PostgreSQL already, use Lantern with [Docker](https://hub.docker.com/r/lanterndata/lantern) to get started quickly:
 
 ```bash
-docker run --rm -p 5432:5432 -e "POSTGRES_USER=$USER" -e "POSTGRES_PASSWORD=postgres" -v ./lantern_data:/var/lib/postgresql/data lanterndata/lantern:latest-pg15
+docker run --pull=always --rm -p 5432:5432 -e "POSTGRES_USER=$USER" -e "POSTGRES_PASSWORD=postgres" -v ./lantern_data:/var/lib/postgresql/data lanterndata/lantern:latest-pg15
 ```
 
 Then, you can connect to the database via `postgresql://$USER:postgres@localhost/postgres`.
