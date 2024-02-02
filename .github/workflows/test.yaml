@@ -73,7 +73,7 @@ jobs:
             /tmp/pg-out.log
             /tmp/pg-error.log
       - name: Upload to codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         env:
           codecov_token: ${{ secrets.CODECOV_TOKEN }}
         if: ${{ env.codecov_token != '' && startsWith(matrix.os, 'ubuntu') && matrix.postgres == 15 }} # for now run only on once
@@ -81,6 +81,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           name: codecov-lanterndb
           fail_ci_if_error: true
-          files: /tmp/lantern/build/coverage.info
+          directory: /tmp/lantern/build/
+          file: ./coverage.info
       - name: Check clang formatting
         run: "cd /tmp/lantern/build && make format_check"
