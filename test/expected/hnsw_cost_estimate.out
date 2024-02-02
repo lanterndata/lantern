@@ -175,6 +175,8 @@ CREATE TABLE IF NOT EXISTS views_vec10k (
      vec REAL[]
 );
 \copy views_vec10k (id, views, vec) FROM '/tmp/lantern/vector_datasets/views_vec10k.csv' WITH (FORMAT CSV, HEADER);
+-- This is important to make sure that index selectivity calculations from genericcostestimate are accurate (which we test below)
+VACUUM ANALYZE;
 SET hnsw.init_k = 10;
 -- Note that the (views < 100) condition is quite rare (out of 10,000 rows)
 SELECT COUNT(*) FROM views_vec10k WHERE views < 100;
@@ -193,7 +195,7 @@ EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 100 ORDER
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
 DEBUG:  LANTERN - Total cost: 4.071250
-DEBUG:  LANTERN - Selectivity: 1.000000
+DEBUG:  LANTERN - Selectivity: 0.005326
 DEBUG:  LANTERN - Num pages: 1.000000
 DEBUG:  LANTERN - Num tuples: 19.000000
 DEBUG:  LANTERN - ---------------------
@@ -201,6 +203,358 @@ DEBUG:  LANTERN - ---------------------
 ---------------------------------------------------------------
  Limit
    ->  Index Scan using hnsw_partial_views_100 on views_vec10k
+         Order By: (vec <-> '{0,1,2,3,4,5}'::real[])
+(3 rows)
+
+-- Test that the index selectivity being calculated for partial indexes is correct
+CREATE INDEX hnsw_partial_views_250 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 250;
+INFO:  done init usearch index
+INFO:  inserted 126 elements
+INFO:  done saving 126 vectors
+CREATE INDEX hnsw_partial_views_500 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 500;
+INFO:  done init usearch index
+INFO:  inserted 239 elements
+INFO:  done saving 239 vectors
+CREATE INDEX hnsw_partial_views_1000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 1000;
+INFO:  done init usearch index
+INFO:  inserted 477 elements
+INFO:  done saving 477 vectors
+CREATE INDEX hnsw_partial_views_2000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 2000;
+INFO:  done init usearch index
+INFO:  inserted 996 elements
+INFO:  done saving 996 vectors
+CREATE INDEX hnsw_partial_views_4000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 4000;
+INFO:  done init usearch index
+INFO:  inserted 2021 elements
+INFO:  done saving 2021 vectors
+CREATE INDEX hnsw_partial_views_8000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 8000;
+INFO:  done init usearch index
+INFO:  inserted 3972 elements
+INFO:  done saving 3972 vectors
+CREATE INDEX hnsw_partial_views_16000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 16000;
+INFO:  done init usearch index
+INFO:  inserted 8014 elements
+INFO:  done saving 8014 vectors
+CREATE INDEX hnsw_partial_views_19000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 19000;
+INFO:  done init usearch index
+INFO:  inserted 9485 elements
+INFO:  done saving 9485 vectors
+-- Trigger each partial index by using its exact filter in a filtered query
+-- Each indexSelectivity value for a partial index with the filter (views < N) should be around N/20000
+-- (in other words, the fraction of rows from the table that is in the partial index, since views ~ Unif[0, 20,000])
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 250 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 331.107310
+DEBUG:  LANTERN - Selectivity: 0.948491
+DEBUG:  LANTERN - Num pages: 77.000000
+DEBUG:  LANTERN - Num tuples: 3161.000000
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 279.434515
+DEBUG:  LANTERN - Selectivity: 0.801667
+DEBUG:  LANTERN - Num pages: 65.000000
+DEBUG:  LANTERN - Num tuples: 2671.000000
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 141.637941
+DEBUG:  LANTERN - Selectivity: 0.397306
+DEBUG:  LANTERN - Num pages: 33.000000
+DEBUG:  LANTERN - Num tuples: 1324.000000
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 72.767083
+DEBUG:  LANTERN - Selectivity: 0.201732
+DEBUG:  LANTERN - Num pages: 17.000000
+DEBUG:  LANTERN - Num tuples: 673.000000
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 38.490000
+DEBUG:  LANTERN - Selectivity: 0.099913
+DEBUG:  LANTERN - Num pages: 9.000000
+DEBUG:  LANTERN - Num tuples: 332.000000
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 21.192500
+DEBUG:  LANTERN - Selectivity: 0.047342
+DEBUG:  LANTERN - Num pages: 5.000000
+DEBUG:  LANTERN - Num tuples: 159.000000
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 12.592500
+DEBUG:  LANTERN - Selectivity: 0.023941
+DEBUG:  LANTERN - Num pages: 3.000000
+DEBUG:  LANTERN - Num tuples: 79.000000
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 8.315000
+DEBUG:  LANTERN - Selectivity: 0.012738
+DEBUG:  LANTERN - Num pages: 2.000000
+DEBUG:  LANTERN - Num tuples: 42.000000
+DEBUG:  LANTERN - ---------------------
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Limit
+   ->  Index Scan using hnsw_partial_views_250 on views_vec10k
+         Order By: (vec <-> '{0,1,2,3,4,5}'::real[])
+(3 rows)
+
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 500 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 331.107310
+DEBUG:  LANTERN - Selectivity: 0.948491
+DEBUG:  LANTERN - Num pages: 77.000000
+DEBUG:  LANTERN - Num tuples: 3161.000000
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 279.434515
+DEBUG:  LANTERN - Selectivity: 0.801667
+DEBUG:  LANTERN - Num pages: 65.000000
+DEBUG:  LANTERN - Num tuples: 2671.000000
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 141.637941
+DEBUG:  LANTERN - Selectivity: 0.397306
+DEBUG:  LANTERN - Num pages: 33.000000
+DEBUG:  LANTERN - Num tuples: 1324.000000
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 72.767083
+DEBUG:  LANTERN - Selectivity: 0.201732
+DEBUG:  LANTERN - Num pages: 17.000000
+DEBUG:  LANTERN - Num tuples: 673.000000
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 38.490000
+DEBUG:  LANTERN - Selectivity: 0.099913
+DEBUG:  LANTERN - Num pages: 9.000000
+DEBUG:  LANTERN - Num tuples: 332.000000
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 21.192500
+DEBUG:  LANTERN - Selectivity: 0.047342
+DEBUG:  LANTERN - Num pages: 5.000000
+DEBUG:  LANTERN - Num tuples: 159.000000
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 12.592500
+DEBUG:  LANTERN - Selectivity: 0.023941
+DEBUG:  LANTERN - Num pages: 3.000000
+DEBUG:  LANTERN - Num tuples: 79.000000
+DEBUG:  LANTERN - ---------------------
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Limit
+   ->  Index Scan using hnsw_partial_views_500 on views_vec10k
+         Order By: (vec <-> '{0,1,2,3,4,5}'::real[])
+(3 rows)
+
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 1000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 331.107310
+DEBUG:  LANTERN - Selectivity: 0.948491
+DEBUG:  LANTERN - Num pages: 77.000000
+DEBUG:  LANTERN - Num tuples: 3161.000000
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 279.434515
+DEBUG:  LANTERN - Selectivity: 0.801667
+DEBUG:  LANTERN - Num pages: 65.000000
+DEBUG:  LANTERN - Num tuples: 2671.000000
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 141.637941
+DEBUG:  LANTERN - Selectivity: 0.397306
+DEBUG:  LANTERN - Num pages: 33.000000
+DEBUG:  LANTERN - Num tuples: 1324.000000
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 72.767083
+DEBUG:  LANTERN - Selectivity: 0.201732
+DEBUG:  LANTERN - Num pages: 17.000000
+DEBUG:  LANTERN - Num tuples: 673.000000
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 38.490000
+DEBUG:  LANTERN - Selectivity: 0.099913
+DEBUG:  LANTERN - Num pages: 9.000000
+DEBUG:  LANTERN - Num tuples: 332.000000
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 21.192500
+DEBUG:  LANTERN - Selectivity: 0.047342
+DEBUG:  LANTERN - Num pages: 5.000000
+DEBUG:  LANTERN - Num tuples: 159.000000
+DEBUG:  LANTERN - ---------------------
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Limit
+   ->  Index Scan using hnsw_partial_views_1000 on views_vec10k
+         Order By: (vec <-> '{0,1,2,3,4,5}'::real[])
+(3 rows)
+
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 2000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 331.107310
+DEBUG:  LANTERN - Selectivity: 0.948491
+DEBUG:  LANTERN - Num pages: 77.000000
+DEBUG:  LANTERN - Num tuples: 3161.000000
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 279.434515
+DEBUG:  LANTERN - Selectivity: 0.801667
+DEBUG:  LANTERN - Num pages: 65.000000
+DEBUG:  LANTERN - Num tuples: 2671.000000
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 141.637941
+DEBUG:  LANTERN - Selectivity: 0.397306
+DEBUG:  LANTERN - Num pages: 33.000000
+DEBUG:  LANTERN - Num tuples: 1324.000000
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 72.767083
+DEBUG:  LANTERN - Selectivity: 0.201732
+DEBUG:  LANTERN - Num pages: 17.000000
+DEBUG:  LANTERN - Num tuples: 673.000000
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 38.490000
+DEBUG:  LANTERN - Selectivity: 0.099913
+DEBUG:  LANTERN - Num pages: 9.000000
+DEBUG:  LANTERN - Num tuples: 332.000000
+DEBUG:  LANTERN - ---------------------
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Limit
+   ->  Index Scan using hnsw_partial_views_2000 on views_vec10k
+         Order By: (vec <-> '{0,1,2,3,4,5}'::real[])
+(3 rows)
+
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 4000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 331.107310
+DEBUG:  LANTERN - Selectivity: 0.948491
+DEBUG:  LANTERN - Num pages: 77.000000
+DEBUG:  LANTERN - Num tuples: 3161.000000
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 279.434515
+DEBUG:  LANTERN - Selectivity: 0.801667
+DEBUG:  LANTERN - Num pages: 65.000000
+DEBUG:  LANTERN - Num tuples: 2671.000000
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 141.637941
+DEBUG:  LANTERN - Selectivity: 0.397306
+DEBUG:  LANTERN - Num pages: 33.000000
+DEBUG:  LANTERN - Num tuples: 1324.000000
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 72.767083
+DEBUG:  LANTERN - Selectivity: 0.201732
+DEBUG:  LANTERN - Num pages: 17.000000
+DEBUG:  LANTERN - Num tuples: 673.000000
+DEBUG:  LANTERN - ---------------------
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Limit
+   ->  Index Scan using hnsw_partial_views_4000 on views_vec10k
+         Order By: (vec <-> '{0,1,2,3,4,5}'::real[])
+(3 rows)
+
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 8000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 331.107310
+DEBUG:  LANTERN - Selectivity: 0.948491
+DEBUG:  LANTERN - Num pages: 77.000000
+DEBUG:  LANTERN - Num tuples: 3161.000000
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 279.434515
+DEBUG:  LANTERN - Selectivity: 0.801667
+DEBUG:  LANTERN - Num pages: 65.000000
+DEBUG:  LANTERN - Num tuples: 2671.000000
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 141.637941
+DEBUG:  LANTERN - Selectivity: 0.397306
+DEBUG:  LANTERN - Num pages: 33.000000
+DEBUG:  LANTERN - Num tuples: 1324.000000
+DEBUG:  LANTERN - ---------------------
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Limit
+   ->  Index Scan using hnsw_partial_views_8000 on views_vec10k
+         Order By: (vec <-> '{0,1,2,3,4,5}'::real[])
+(3 rows)
+
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 16000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 331.107310
+DEBUG:  LANTERN - Selectivity: 0.948491
+DEBUG:  LANTERN - Num pages: 77.000000
+DEBUG:  LANTERN - Num tuples: 3161.000000
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 279.434515
+DEBUG:  LANTERN - Selectivity: 0.801667
+DEBUG:  LANTERN - Num pages: 65.000000
+DEBUG:  LANTERN - Num tuples: 2671.000000
+DEBUG:  LANTERN - ---------------------
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Limit
+   ->  Index Scan using hnsw_partial_views_16000 on views_vec10k
+         Order By: (vec <-> '{0,1,2,3,4,5}'::real[])
+(3 rows)
+
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 19000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+DEBUG:  LANTERN - Query cost estimator
+DEBUG:  LANTERN - ---------------------
+DEBUG:  LANTERN - Total cost: 331.107310
+DEBUG:  LANTERN - Selectivity: 0.948491
+DEBUG:  LANTERN - Num pages: 77.000000
+DEBUG:  LANTERN - Num tuples: 3161.000000
+DEBUG:  LANTERN - ---------------------
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Limit
+   ->  Index Scan using hnsw_partial_views_19000 on views_vec10k
          Order By: (vec <-> '{0,1,2,3,4,5}'::real[])
 (3 rows)
 

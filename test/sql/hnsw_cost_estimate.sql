@@ -90,6 +90,9 @@ DROP INDEX hnsw_idx;
 -- This is what we test below
 \ir utils/views_vec10k.sql
 
+-- This is important to make sure that index selectivity calculations from genericcostestimate are accurate (which we test below)
+VACUUM ANALYZE;
+
 SET hnsw.init_k = 10;
 
 -- Note that the (views < 100) condition is quite rare (out of 10,000 rows)
@@ -100,3 +103,30 @@ CREATE INDEX hnsw_partial_views_100 ON views_vec10k USING hnsw (vec dist_l2sq_op
 
 -- This should use the partial index we just created, since it is an exact filter match
 EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 100 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+
+-- Test that the index selectivity being calculated for partial indexes is correct
+CREATE INDEX hnsw_partial_views_250 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 250;
+CREATE INDEX hnsw_partial_views_500 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 500;
+CREATE INDEX hnsw_partial_views_1000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 1000;
+CREATE INDEX hnsw_partial_views_2000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 2000;
+CREATE INDEX hnsw_partial_views_4000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 4000;
+CREATE INDEX hnsw_partial_views_8000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 8000;
+CREATE INDEX hnsw_partial_views_16000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 16000;
+CREATE INDEX hnsw_partial_views_19000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 19000;
+
+-- Trigger each partial index by using its exact filter in a filtered query
+-- Each indexSelectivity value for a partial index with the filter (views < N) should be around N/20000
+-- (in other words, the fraction of rows from the table that is in the partial index, since views ~ Unif[0, 20,000])
+
+-- note that every partial index above will output a selectivity in the lantern debug log
+-- so, the views < 250 query will estimate and display costs/selectivity for the 19000, 16000, ..., 500, 250 partial indexes
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 250 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 500 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 1000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 2000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 4000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 8000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 16000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 19000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+
+
