@@ -80,3 +80,23 @@ CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v dist_l2sq_ops) WITH (M=20, e
 SELECT is_cost_estimate_within_error(format(:'explain_query_template', :'v4444'), 3.91);
 SELECT _lantern_internal.validate_index('hnsw_idx', false);
 DROP INDEX hnsw_idx;
+
+
+-- Test cost estimation when number of pages in index is likely less than number of blockmaps allocated
+-- this is relevant in this check in estimate_number_blocks_accessed in hnsw.c:
+-- const uint64 num_datablocks = Max(num_pages - 1 - num_blockmap_allocated, 1);
+
+-- One place where this happens is on partial indexes where the filter is rare (empirically, matching <2.5% of the entire table)
+-- This is what we test below
+\ir utils/views_vec10k.sql
+
+SET hnsw.init_k = 10;
+
+-- Note that the (views < 100) condition is quite rare (out of 10,000 rows)
+SELECT COUNT(*) FROM views_vec10k WHERE views < 100;
+
+-- Create partial lantern index with (views < 100) filter
+CREATE INDEX hnsw_partial_views_100 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 100;
+
+-- This should use the partial index we just created, since it is an exact filter match
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 100 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;

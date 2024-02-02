@@ -80,7 +80,7 @@ static char *hnswbuildphasename(int64 phasenum)
  *
  * This is O(log(N)), which is what the author claims the scaling with dateset is in 4.2.1 and 4.2.2.
  */
-static uint64 expected_numer_of_levels(double num_tuples_in_index, double mL)
+static uint64 expected_number_of_levels(double num_tuples_in_index, double mL)
 {
     return ceil(log(1.0 + num_tuples_in_index) * mL);
 }
@@ -90,6 +90,7 @@ static uint64 expected_numer_of_levels(double num_tuples_in_index, double mL)
  */
 static uint64 estimate_number_tuples_accessed(Oid index_relation, double num_tuples_in_index)
 {
+    if(num_tuples_in_index <= 0) return 0;
     int M, ef;
     {  // index_rel scope
         Relation index_rel = relation_open(index_relation, AccessShareLock);
@@ -111,10 +112,11 @@ static uint64 estimate_number_tuples_accessed(Oid index_relation, double num_tup
     const uint64 tuples_visited_for_base_level = ef * S * M * 2;
 
     // this scales logarithmically based on the number of elements in the index
-    const uint64 expected_number_of_levels = expected_numer_of_levels(num_tuples_in_index, mL);
+    const uint64 expected_num_levels = expected_number_of_levels(num_tuples_in_index, mL);
 
-    uint64 total_tuple_visits = tuples_visited_per_non_base_level * (expected_number_of_levels - 1);
-    total_tuple_visits += expected_number_of_levels > 0 ? tuples_visited_for_base_level : 0;
+    // note that since num_tuples_in_index > 0, we have expected_number_of_levels >= 1 (so we can't underflow below)
+    uint64 total_tuple_visits = tuples_visited_per_non_base_level * (expected_num_levels - 1);
+    total_tuple_visits += tuples_visited_for_base_level;
 
     // `total_tuple_visits` can be larger than the number of tuples in the index
     // if the database doesn't have a lot of tuples in it.
@@ -133,7 +135,7 @@ static uint64 estimate_number_blocks_accessed(uint64 num_tuples_in_index, uint64
     // we switch away from blockmaps.
     const uint64 num_blockmaps_used = ceil(num_tuples_in_index / HNSW_BLOCKMAP_BLOCKS_PER_PAGE);
     const uint64 num_blockmap_allocated = pow(2, floor(log2(num_blockmaps_used)) + 1);
-    const uint64 num_datablocks = Max(num_pages - 1 - num_blockmap_allocated, 1);
+    const uint64 num_datablocks = Max((int64)num_pages - 1 - (int64)num_blockmap_allocated, 1);
 
     const uint64 num_datablocks_accessed = ((double)num_tuples_accessed / (double)num_tuples_in_index) * num_datablocks;
     const uint64 num_blockmaps_accessed
@@ -171,7 +173,7 @@ static void hnswcostestimate(PlannerInfo *root,
     /* ALWAYS use index when asked*/
     MemSet(&costs, 0, sizeof(costs));
 
-    double num_tuples_in_index = path->indexinfo->rel->tuples;
+    double num_tuples_in_index = path->indexinfo->tuples;
     costs.numIndexTuples = estimate_number_tuples_accessed(path->indexinfo->indexoid, num_tuples_in_index);
     uint64 num_blocks_accessed
         = estimate_number_blocks_accessed(num_tuples_in_index, path->indexinfo->pages, costs.numIndexTuples);
