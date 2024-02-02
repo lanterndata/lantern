@@ -72,8 +72,6 @@ jobs:
           path: |
             /tmp/pg-out.log
             /tmp/pg-error.log
-      - name: Setup tmate session
-        uses: mxschmitt/action-tmate@v3
       - name: Upload to codecov
         uses: codecov/codecov-action@v4
         env:
@@ -83,6 +81,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           name: codecov-lanterndb
           fail_ci_if_error: true
-          file: /tmp/lantern/build/coverage.info
+          directory: /tmp/lantern/build/
+          file: ./coverage.info
       - name: Check clang formatting
         run: "cd /tmp/lantern/build && make format_check"
