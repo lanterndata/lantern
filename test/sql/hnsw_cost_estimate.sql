@@ -105,21 +105,93 @@ CREATE INDEX hnsw_partial_views_100 ON views_vec10k USING hnsw (vec dist_l2sq_op
 EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 100 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
 
 -- Goal: Test that the index selectivity being calculated for partial indexes is correct
-CREATE INDEX hnsw_partial_views_1500 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 1500;
-SELECT _lantern_internal.validate_index('hnsw_partial_views_1500', false);
+CREATE INDEX hnsw_partial_views_1000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 1000;
+SELECT _lantern_internal.validate_index('hnsw_partial_views_1000', false);
+
+CREATE INDEX hnsw_partial_views_2000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 2000;
+SELECT _lantern_internal.validate_index('hnsw_partial_views_2000', false);
+
+CREATE INDEX hnsw_partial_views_3000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 3000;
+SELECT _lantern_internal.validate_index('hnsw_partial_views_3000', false);
+
+CREATE INDEX hnsw_partial_views_4000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 4000;
+SELECT _lantern_internal.validate_index('hnsw_partial_views_4000', false);
+
+CREATE INDEX hnsw_partial_views_5000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 5000;
+SELECT _lantern_internal.validate_index('hnsw_partial_views_5000', false);
+
+CREATE INDEX hnsw_partial_views_6000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 6000;
+SELECT _lantern_internal.validate_index('hnsw_partial_views_6000', false);
+
+CREATE INDEX hnsw_partial_views_7000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 7000;
+SELECT _lantern_internal.validate_index('hnsw_partial_views_7000', false);
+
+CREATE INDEX hnsw_partial_views_8000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 8000;
+SELECT _lantern_internal.validate_index('hnsw_partial_views_8000', false);
+
+CREATE INDEX hnsw_partial_views_9000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 9000;
+SELECT _lantern_internal.validate_index('hnsw_partial_views_9000', false);
 
 CREATE INDEX hnsw_partial_views_10000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 10000;
 SELECT _lantern_internal.validate_index('hnsw_partial_views_10000', false);
 
+CREATE INDEX hnsw_partial_views_11000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 11000;
+SELECT _lantern_internal.validate_index('hnsw_partial_views_11000', false);
+
+CREATE INDEX hnsw_partial_views_12000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 12000;
+SELECT _lantern_internal.validate_index('hnsw_partial_views_12000', false);
+
+CREATE INDEX hnsw_partial_views_13000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 13000;
+SELECT _lantern_internal.validate_index('hnsw_partial_views_13000', false);
+
+CREATE INDEX hnsw_partial_views_14000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 14000;
+SELECT _lantern_internal.validate_index('hnsw_partial_views_14000', false);
+
+CREATE INDEX hnsw_partial_views_15000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 15000;
+SELECT _lantern_internal.validate_index('hnsw_partial_views_15000', false);
+
+CREATE INDEX hnsw_partial_views_16000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 16000;
+SELECT _lantern_internal.validate_index('hnsw_partial_views_16000', false);
+
 CREATE INDEX hnsw_partial_views_17000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 17000;
 SELECT _lantern_internal.validate_index('hnsw_partial_views_17000', false);
+
+CREATE INDEX hnsw_partial_views_18000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 18000;
+SELECT _lantern_internal.validate_index('hnsw_partial_views_18000', false);
+
+CREATE INDEX hnsw_partial_views_19000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 19000;
+SELECT _lantern_internal.validate_index('hnsw_partial_views_19000', false);
+
+CREATE INDEX hnsw_partial_views_20000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 20000;
+SELECT _lantern_internal.validate_index('hnsw_partial_views_20000', false);
 
 -- Trigger each partial index by using its exact filter in a filtered query
 -- Each indexSelectivity value for a partial index with the filter (views < N) should be around N/20000
 -- (in other words, the fraction of rows from the table that is in the partial index, since views ~ Unif[0, 20,000])
 
 -- note that all partial indexes whose filter is a superset of the filter in the query will output indexSelectivity to ldb_dlog below
-EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 1500 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 1000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+/*
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 2000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 3000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 4000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 5000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 6000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 7000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 8000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 9000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
 EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 10000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 11000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 12000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 13000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 14000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 15000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 16000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
 EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 17000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 18000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 19000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 20000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
+*/
+
+
 
