@@ -242,6 +242,8 @@ INFO:  done saving 9485 vectors
 -- Trigger each partial index by using its exact filter in a filtered query
 -- Each indexSelectivity value for a partial index with the filter (views < N) should be around N/20000
 -- (in other words, the fraction of rows from the table that is in the partial index, since views ~ Unif[0, 20,000])
+-- note that every partial index above will output a selectivity in the lantern debug log
+-- so, the views < 250 query will estimate and display costs/selectivity for the 19000, 16000, ..., 500, 250 partial indexes
 EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 250 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------

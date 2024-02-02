@@ -187,7 +187,13 @@ static void hnswcostestimate(PlannerInfo *root,
 
     *indexStartupCost = 0;
     *indexTotalCost = costs.numIndexPages ? costs.indexTotalCost * (num_blocks_accessed / costs.numIndexPages) : 0;
-    *indexSelectivity = 1.0;
+    // indexSelectivity is the fraction of all rows in the table that our index is expected to return
+    // (https://www.postgresql.org/docs/current/index-cost-estimation.html) We are an order-by only index, and so we
+    // return all of the rows in our index. So, this is just the fraction of all rows in the table that is in the index
+    // (recall that partial indexes can exclude rows from the table), and this is what genericcostestimate computes
+    // above
+    *indexSelectivity = costs.indexSelectivity;
+
     // since we try to insert index tuples at the last datablock,
     // there is no "order" at all that can be assumed.
     *indexCorrelation = 0;
