@@ -14,20 +14,18 @@ usearch_label_t GetUsearchLabel(ItemPointer itemPtr);
 float4         *ToFloat4Array(ArrayType *arr);
 bool            VersionsMatch();
 
-static inline void ldb_invariant(bool condition, const char *msg, ...)
-{
-    if(likely(condition)) {
-        return;
+// hoping to throw the error via an assertion, if those are on, before elog(ERROR)-ing as a last resort
+// We prefer Assert() because this function is used in contexts where the stack contains non-POD types
+// in which case elog-s long jumps cause undefined behaviour.
+// if assertions are off, we fall back to elog(ERROR) and hope the user restart the session
+#define ldb_invariant(condition, msg, ...)                                                   \
+    {                                                                                        \
+        if(unlikely(false == (condition))) {                                                 \
+            elog(WARNING, "LanternDB invariant violation: " msg __VA_OPT__(, ) __VA_ARGS__); \
+            assert(false);                                                                   \
+            elog(ERROR, "LanternDB invariant violation: " msg __VA_OPT__(, ) __VA_ARGS__);   \
+        }                                                                                    \
     }
-    // todo:: actually do something with the variable arguments in this case
-    elog(WARNING, "LanternDB invariant violation: %s", msg);
-    // hoping to throw the error via an assertion, if those are on, before elog(ERROR)-ing as a last resort
-    // We prefer Assert() because this function is used in contexts where the stack contains non-POD types
-    // in which case elog-s long jumps cause undefined behaviour.
-    // if assertions are off, we fall back to elog(ERROR) and hope the user restart the session
-    Assert(false);
-    elog(ERROR, "LanternDB invariant violation: %s. Please restart your DB session and report this error", msg);
-}
 
 // When calling elog(LEVEL, ...), even if the logs at LEVEL are disabled and nothing is
 // printed, it seems elog always does string interpolation and prepares the argument for printing
