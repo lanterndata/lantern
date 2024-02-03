@@ -216,6 +216,9 @@ target_link_libraries(lantern PRIVATE "libstdc++.a")
 set_target_properties(lantern PROPERTIES LINKER_LANGUAGE C)
 
 target_compile_definitions(lantern PRIVATE LANTERN_USE_USEARCH)
+# the flag instructs usearch/lib.c to builds with lantern-postgres compatible storage, which
+# assumes storage is handled inside postgres and so usearch allocates no memory for it
+target_compile_definitions(lantern PRIVATE LANTERN_INSIDE_POSTGRES)
 target_compile_definitions(lantern PRIVATE "USEARCH_USE_SIMSIMD=$<BOOL:${USEARCH_USE_SIMSIMD}>")
 
 if (FAILURE_POINTS)
