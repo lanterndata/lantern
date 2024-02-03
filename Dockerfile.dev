@@ -18,6 +18,7 @@ WORKDIR /lantern
 USER root
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt install -y curl lcov libpq5
+RUN apt update && apt install -y clang-15
 
 # allow non-root users to install in the container to make it easier to run update-tests
 RUN chmod 777 /usr/local/pgsql/lib/ /usr/local/pgsql/share/extension/ /usr/local/pgsql/include/server/
