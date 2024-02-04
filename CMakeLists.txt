@@ -182,6 +182,8 @@ target_link_options(lantern PRIVATE -static-libstdc++)
 # using C as the link language. We used to do that, but it seems there is no reason to
 # https://cmake-developers.cmake.narkive.com/JnbrDyGT/setting-linker-language-still-adds-lstdc
 set_target_properties(lantern PROPERTIES LINKER_LANGUAGE CXX)
+# todo:: why is still needed?
+target_link_libraries(lantern PRIVATE "libstdc++.a")
 
 target_compile_definitions(lantern PRIVATE LANTERN_USE_USEARCH)
 target_compile_definitions(lantern PRIVATE "USEARCH_USE_SIMSIMD=$<BOOL:${USEARCH_USE_SIMSIMD}>")
