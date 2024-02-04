@@ -80,6 +80,15 @@ git clone https://git.postgresql.org/git/postgresql.git
 git clone --single-branch --branch REL_15_STABLE https://git.postgresql.org/git/postgresql.git --depth=1
 ```
 
+## Modifying Lantern's index storage format
+
+When making changes to the storage fromat, make sure that both internal and external codepaths agree and generate the same index
+Make sure to also run `lantern_cli` tests, which tests external index creation via the cli and imports the created index into the database
+
+```bash
+make install -j && (cd ../lantern_extras/lantern_cli/ && cargo build) && LANTERN_CLI=../lantern_extras/target/debug/lantern-cli  python3 ../scripts/test_lantern_cli.py
+```
+
 ## Preparing a release
 
 1. Update LANTERN_VERSION variable at the top of CMakeLists.txt file
