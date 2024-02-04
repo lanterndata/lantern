@@ -63,6 +63,7 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     opts.metric_kind = headerp->metric_kind;
     opts.metric = NULL;
     opts.quantization = usearch_scalar_f32_k;
+    opts.num_threads = 1;
 
     scanstate = (HnswScanState *)palloc0(sizeof(HnswScanState));
     scanstate->first = true;
