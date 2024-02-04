@@ -290,7 +290,7 @@ INFO:  validate_index() done, no issues found.
 EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 1000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 141.637941
+DEBUG:  LANTERN - Total cost: 141.930000
 DEBUG:  LANTERN - Selectivity: 0.397306
 DEBUG:  LANTERN - Num pages: 33.000000
 DEBUG:  LANTERN - Num tuples: 1324.000000
