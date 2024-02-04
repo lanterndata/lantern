@@ -34,11 +34,10 @@ char* scalar_names = {
 so below the human readable string names can be printed
 */
     elog(INFO,
-         "usearch_init_options_t: metric_kind: %d, metric: %p, "
+         "usearch_init_options_t: metric_kind: %d,"
          "quantization: %d, dimensions: %ld, connectivity: %ld, "
          "expansion_add: %ld, expansion_search: %ld",
          opts->metric_kind,
-         opts->metric,
          opts->quantization,
          opts->dimensions,
          opts->connectivity,
@@ -54,6 +53,7 @@ void PopulateUsearchOpts(Relation index, usearch_init_options_t *opts)
     opts->metric_kind = ldb_HnswGetMetricKind(index);
     opts->metric = NULL;
     opts->quantization = usearch_scalar_f32_k;
+    opts->num_threads = 1;
 }
 
 usearch_label_t GetUsearchLabel(ItemPointer itemPtr)
