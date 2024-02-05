@@ -68,7 +68,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: postgres-server-${{ matrix.postgres }}-logs
+          name: postgres-server-${{ matrix.os }}-${{ matrix.postgres }}-logs
           path: |
             /tmp/pg-out.log
             /tmp/pg-error.log
