@@ -162,6 +162,8 @@ INFO:  Starting k-means over dataset with (subsets=32, clusters=50)
 INFO:  Codebooks created
 NOTICE:  table "_lantern_codebook_sift_base1k" does not exist, skipping
 NOTICE:  Compressing vectors...
+NOTICE:  trigger "_pq_trigger_in_b232d3eec9f68fb54ce8fe1bc27c313a" for relation "sift_base1k" does not exist, skipping
+NOTICE:  trigger "_pq_trigger_up_b232d3eec9f68fb54ce8fe1bc27c313a" for relation "sift_base1k" does not exist, skipping
  quantize_table 
 ----------------
  

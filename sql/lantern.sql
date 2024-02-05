@@ -377,7 +377,14 @@ BEGIN
   
   insert_trigger_name := format('_pq_trigger_in_%s', md5(tbl || col));
   update_trigger_name := format('_pq_trigger_up_%s', md5(tbl || col));
-  stmt := format('CREATE OR REPLACE TRIGGER %I BEFORE INSERT ON %I FOR EACH ROW WHEN (NEW.%I IS NOT NULL) EXECUTE FUNCTION %I()', 
+  
+  stmt := format('DROP TRIGGER IF EXISTS %I ON %I', insert_trigger_name, tbl);
+  EXECUTE stmt;
+  
+  stmt := format('DROP TRIGGER IF EXISTS %I ON %I', update_trigger_name, tbl);
+  EXECUTE stmt;
+  
+  stmt := format('CREATE TRIGGER %I BEFORE INSERT ON %I FOR EACH ROW WHEN (NEW.%I IS NOT NULL) EXECUTE FUNCTION %I()', 
     insert_trigger_name,
     tbl,
     col,
@@ -386,7 +393,7 @@ BEGIN
 
   EXECUTE stmt;
 
-  stmt := format('CREATE OR REPLACE TRIGGER %1$I BEFORE UPDATE OF %2$I ON %3$I FOR EACH ROW WHEN (NEW.%2$I IS NOT NULL) EXECUTE FUNCTION %4$I()', 
+  stmt := format('CREATE TRIGGER %1$I BEFORE UPDATE OF %2$I ON %3$I FOR EACH ROW WHEN (NEW.%2$I IS NOT NULL) EXECUTE FUNCTION %4$I()', 
     update_trigger_name,
     col,
     tbl,
