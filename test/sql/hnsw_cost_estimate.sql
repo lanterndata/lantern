@@ -91,7 +91,9 @@ DROP INDEX hnsw_idx;
 \ir utils/views_vec10k.sql
 
 -- This is important to make sure that index selectivity calculations from genericcostestimate are accurate (which we test below)
+SET client_min_messages=ERROR;
 VACUUM ANALYZE;
+SET client_min_messages=debug5;
 
 SET hnsw.init_k = 10;
 
