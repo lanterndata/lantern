@@ -176,7 +176,9 @@ CREATE TABLE IF NOT EXISTS views_vec10k (
 );
 \copy views_vec10k (id, views, vec) FROM '/tmp/lantern/vector_datasets/views_vec10k.csv' WITH (FORMAT CSV, HEADER);
 -- This is important to make sure that index selectivity calculations from genericcostestimate are accurate (which we test below)
+SET client_min_messages=ERROR;
 VACUUM ANALYZE;
+SET client_min_messages=debug5;
 SET hnsw.init_k = 10;
 -- Note that the (views < 100) condition is quite rare (out of 10,000 rows)
 SELECT COUNT(*) FROM views_vec10k WHERE views < 100;
