@@ -148,7 +148,7 @@ static void BuildCallback(
 
     // todo:: the argument values is assumed to be a real[] or vector (they have the same layout)
     // do proper type checking instead of this assumption and test int int arrays and others
-    AddTupleToUsearchIndex(tid, values, buildstate, index);
+    LanternBench("AddTupleToUsearch", AddTupleToUsearchIndex(tid, values, buildstate, index));
 
     /* Reset memory context */
     MemoryContextSwitchTo(oldCtx);

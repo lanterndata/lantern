@@ -95,6 +95,7 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     UnlockReleaseBuffer(buf);
 
     scan->opaque = scanstate;
+
     return scan;
 }
 
