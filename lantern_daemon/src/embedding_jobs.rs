@@ -33,6 +33,7 @@ use itertools::Itertools;
 use lantern_embeddings::cli::EmbeddingArgs;
 use lantern_logger::Logger;
 use lantern_utils::get_full_table_name;
+use tokio_postgres::types::ToSql;
 use std::collections::HashMap;
 use std::path::Path;
 use std::process;
@@ -88,17 +89,27 @@ async fn unlock_rows(
     job_id: i32,
     row_ids: &Vec<String>,
 ) {
-    let row_ids_str = row_ids.iter().map(|r| format!("'{r}'")).join(",");
+    let mut row_ids_query = "".to_owned();
+    let mut params: Vec<&(dyn ToSql + Sync)> = row_ids
+        .iter()
+        .enumerate()
+        .map(|(idx, id)| {
+            let comma = if idx < row_ids.len() - 1 {  "," } else { "" };
+            row_ids_query = format!("{row_ids_query}${}{comma}", idx+1);
+            id as &(dyn ToSql + Sync)
+        })
+        .collect();
+    params.push(&job_id);
     let res = client
         .execute(
-            &format!("DELETE FROM {lock_table_name} WHERE job_id=$1 AND row_id IN ($2)"),
-            &[&job_id, &row_ids_str],
+            &format!("DELETE FROM {lock_table_name} WHERE job_id=${job_id_pos} AND row_id IN ({row_ids_query})", job_id_pos=params.len()),
+            &params,
         )
         .await;
 
     if let Err(e) = res {
             logger.error(&format!(
-                "Error while unlocking rows: {row_ids_str} for job: {job_id} : {e}"
+                "Error while unlocking rows: {:?} for job: {job_id} : {e}",row_ids
             ));
     }
 }

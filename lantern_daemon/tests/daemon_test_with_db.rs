@@ -10,6 +10,7 @@ use lantern_daemon::{
 };
 use tokio_postgres::{Client, NoTls};
 
+static EMB_LOCK_TABLE_NAME: &'static str = "_lantern_emb_job_locks";
 static EMBEDDING_JOBS_TABLE_NAME: &'static str = "_lantern_daemon_embedding_jobs";
 static AUTOTUNE_JOBS_TABLE_NAME: &'static str = "_lantern_daemon_autotune_jobs";
 static INDEX_JOBS_TABLE_NAME: &'static str = "_lantern_daemon_index_jobs";
@@ -396,6 +397,16 @@ async fn test_embedding_generation_runtime(
         .unwrap();
     let updated_embedding = updated_embedding.get::<usize, Vec<f32>>(0);
     assert_ne!(old_embedding, updated_embedding);
+
+    // Check that all row locks are removed
+    let locks = db_client
+        .query(
+            &format!("SELECT * FROM lantern_test.{EMB_LOCK_TABLE_NAME}"),
+            &[],
+        )
+        .await
+        .unwrap();
+    assert_eq!(locks.len(), 0);
     stop_tx.send(()).unwrap();
 }
 
