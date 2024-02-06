@@ -72,7 +72,7 @@ BEGIN
      RETURN result;
 END;
 $$ LANGUAGE plpgsql;
-SET client_min_messages=INFO;
+SET client_min_messages=ERROR;
 \set ON_ERROR_STOP off
 -- Verify wrong argument assertions
 SELECT _lantern_internal.create_pq_codebook('sift_base1k'::regclass, 'nonexistant', 10, 32, 'l2sq');
@@ -161,7 +161,6 @@ SELECT quantize_table('sift_base1k'::regclass, 'v', 50, 32, 'l2sq');
 INFO:  Table scanned. Dataset size 1000
 INFO:  Starting k-means over dataset with (subsets=32, clusters=50)
 INFO:  Codebooks created
-NOTICE:  table "_lantern_codebook_sift_base1k" does not exist, skipping
 INFO:  Compressing vectors...
  quantize_table 
 ----------------
