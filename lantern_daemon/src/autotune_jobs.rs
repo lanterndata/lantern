@@ -132,7 +132,6 @@ async fn autotune_worker(
                 let is_canceled_clone = is_canceled.clone();
                 let task = tokio::task::spawn_blocking(move || {
                     let result = lantern_index_autotune::autotune_index(&IndexAutotuneArgs {
-                        pk: "id".to_owned(),
                         job_id: Some(job_clone.id),
                         model_name: job_clone.model_name.clone(),
                         schema: job_clone.schema.clone(),

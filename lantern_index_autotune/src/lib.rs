@@ -41,7 +41,6 @@ fn create_test_table(
     client: &mut Client,
     tmp_table_name: &str,
     src_table_name: &str,
-    pk: &str,
     column_name: &str,
     test_data_size: usize,
 ) -> Result<(usize, i32), anyhow::Error> {
@@ -49,10 +48,9 @@ fn create_test_table(
         "
       CREATE SCHEMA IF NOT EXISTS {INTERNAL_SCHEMA_NAME};
       DROP TABLE IF EXISTS {tmp_table_name};
-      SELECT {pk} as id, {column_name} as v INTO {tmp_table_name} FROM {src_table_name} WHERE {column_name} IS NOT NULL LIMIT {test_data_size};
+      SELECT ctid::TEXT as id, {column_name} as v INTO {tmp_table_name} FROM {src_table_name} WHERE {column_name} IS NOT NULL LIMIT {test_data_size};
     ",
     column_name = quote_ident(column_name),
-    pk = quote_ident(pk)
     ))?;
     let dims = client.query_one(
         &format!("SELECT ARRAY_LENGTH(v, 1) FROM {tmp_table_name} WHERE v IS NOT NULL LIMIT 1",),
@@ -310,7 +308,6 @@ pub fn autotune_index(
         &mut client,
         &tmp_table_full_name,
         &src_table_name,
-        &args.pk,
         &args.column,
         args.test_data_size,
     )?;

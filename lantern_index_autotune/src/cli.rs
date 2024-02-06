@@ -20,10 +20,6 @@ pub struct IndexAutotuneArgs {
     #[arg(short, long)]
     pub column: String,
 
-    /// Primary key name
-    #[arg(long)]
-    pub pk: String,
-
     /// Target recall
     #[arg(long, default_value_t = 99.9)]
     pub recall: f64,

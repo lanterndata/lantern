@@ -178,10 +178,10 @@ or build and use the docker image
 
 ```bash
 # Run with CPU version
-docker run -v models-volume:/models --rm --network host lanterndata/lantern-cli create-embeddings --model 'BAAI/bge-large-en' --uri 'postgresql://postgres@host.docker.internal:5432/postgres' --table "wiki" --column "content" --out-column "content_embedding" --pk "id" --batch-size 40 --data-path /models
+docker run -v models-volume:/models --rm --network host lanterndata/lantern-cli create-embeddings --model 'BAAI/bge-large-en' --uri 'postgresql://postgres@host.docker.internal:5432/postgres' --table "wiki" --column "content" --out-column "content_embedding" --batch-size 40 --data-path /models
 
 # Run with GPU verion
-nvidia-docker run -v models-volume:/models --rm --network host lanterndata/lantern-cli:gpu create-embeddings  --model 'BAAI/bge-large-en' --uri 'postgresql://postgres@host.docker.internal:5432/postgres' --table "wiki" --column "content" --out-column "content_embedding" --pk "id" --batch-size 40 --data-path /models
+nvidia-docker run -v models-volume:/models --rm --network host lanterndata/lantern-cli:gpu create-embeddings  --model 'BAAI/bge-large-en' --uri 'postgresql://postgres@host.docker.internal:5432/postgres' --table "wiki" --column "content" --out-column "content_embedding" --batch-size 40 --data-path /models
 ```
 
 > [nvidia-container-runtime](https://developer.nvidia.com/nvidia-container-runtime) is required for GPU version to work. You can check the GPU load using `nvtop` command (`apt install nvtop`)
@@ -205,7 +205,7 @@ INSERT INTO articles SELECT generate_series(0,999), 'My description column!';
 2. Run embedding generation
 
 ```bash
-lantern-cli create-embeddings  --model 'clip/ViT-B-32-textual'  --uri 'postgresql://postgres:postgres@localhost:5432/test' --table "articles" --column "description" --out-column "embedding" --pk "id" --schema "public"
+lantern-cli create-embeddings  --model 'clip/ViT-B-32-textual'  --uri 'postgresql://postgres:postgres@localhost:5432/test' --table "articles" --column "description" --out-column "embedding" --schema "public"
 ```
 
 > The output database, table and column names can be specified via `--out-table`, `--out-uri`, `--out-column` arguments. Check `help` for more info.
@@ -213,7 +213,7 @@ lantern-cli create-embeddings  --model 'clip/ViT-B-32-textual'  --uri 'postgresq
 or you can export to csv file
 
 ```bash
-lantern-cli create-embeddings  --model 'clip/ViT-B-32-textual'  --uri 'postgresql://postgres:postgres@localhost:5432/test' --table "articles" --column "description" --out-column embedding --out-csv "embeddings.csv" --pk "id" --schema "public"
+lantern-cli create-embeddings  --model 'clip/ViT-B-32-textual'  --uri 'postgresql://postgres:postgres@localhost:5432/test' --table "articles" --column "description" --out-column embedding --out-csv "embeddings.csv" --schema "public"
 ```
 
 ### Image Embedding Example
@@ -228,7 +228,7 @@ INSERT INTO images (url) VALUES ('https://cdn.pixabay.com/photo/2014/11/30/14/11
 2. Run embedding generation
 
 ```bash
-lantern-cli create-embeddings  --model 'clip/ViT-B-32-visual'  --uri 'postgresql://postgres:postgres@localhost:5432/test' --table "images" --column "url" --out-column "embedding" --pk "id" --schema "public" --visual
+lantern-cli create-embeddings  --model 'clip/ViT-B-32-visual'  --uri 'postgresql://postgres:postgres@localhost:5432/test' --table "images" --column "url" --out-column "embedding" --schema "public" --visual
 ```
 
 ### OpenAI and Cohere Embeddings
@@ -237,10 +237,10 @@ Lantern CLI also supports generating OpenAI and Cohere embeddings via API. For t
 
 ```bash
 # OpenAI
-lantern-cli create-embeddings  --model 'openai/text-embedding-ada-002' --uri 'postgresql://postgres:postgres@localhost:5432/test' --table "images" --column "url" --out-column "embedding" --pk "id" --schema "public" --runtime openai --runtime-params '{ "api_token": "sk-xxx-xxxx" }'
+lantern-cli create-embeddings  --model 'openai/text-embedding-ada-002' --uri 'postgresql://postgres:postgres@localhost:5432/test' --table "images" --column "url" --out-column "embedding" --schema "public" --runtime openai --runtime-params '{ "api_token": "sk-xxx-xxxx" }'
 
 # Cohere
-lantern-cli create-embeddings  --model 'openai/text-embedding-ada-002' --uri 'postgresql://postgres:postgres@localhost:5432/test' --table "images" --column "url" --out-column "embedding" --pk "id" --schema "public" --runtime cohere --runtime-params '{ "api_token": "xxx-xxxx" }'
+lantern-cli create-embeddings  --model 'openai/text-embedding-ada-002' --uri 'postgresql://postgres:postgres@localhost:5432/test' --table "images" --column "url" --out-column "embedding" --schema "public" --runtime cohere --runtime-params '{ "api_token": "xxx-xxxx" }'
 ```
 
 |> To get available runtimes use `bash lantern-cli show-runtimes`
@@ -250,7 +250,7 @@ lantern-cli create-embeddings  --model 'openai/text-embedding-ada-002' --uri 'po
 Lantern CLI supports autotuning HNSW index parameters. To use the functionality run
 
 ```bash
-lantern-cli autotune-index -u 'postgresql://postgres:postgres@localhost:5432/test' -t "sift1m" -c "v" --metric-kind l2sq --pk id --test-data-size 10000 --k 20
+lantern-cli autotune-index -u 'postgresql://postgres:postgres@localhost:5432/test' -t "sift1m" -c "v" --metric-kind l2sq --test-data-size 10000 --k 20
 ```
 
 To get full list of arguments use `bash lantern-cli autotune-index -h`
