@@ -3,6 +3,7 @@
 \ir utils/random_array.sql
 \ir utils/calculate_recall.sql
 
+SET client_min_messages=INFO;
 \set ON_ERROR_STOP off
 -- Verify wrong argument assertions
 SELECT _lantern_internal.create_pq_codebook('sift_base1k'::regclass, 'nonexistant', 10, 32, 'l2sq');

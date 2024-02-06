@@ -293,7 +293,7 @@ BEGIN
   
   RETURN res::pqvec;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION compress_vector(v REAL[], codebook regclass, distance_metric TEXT)
 RETURNS pqvec AS $$
@@ -342,63 +342,75 @@ DECLARE
   trigger_func_name NAME;
   insert_trigger_name NAME;
   update_trigger_name NAME;
+  pg_version INT;
+  column_exists BOOLEAN;
 BEGIN
-
+  pg_version := (SELECT setting FROM pg_settings WHERE name = 'server_version_num');
   pq_col_name := format('%I_pq', col);
   
-  stmt := format('ALTER TABLE %I ADD COLUMN %I PQVEC', tbl, pq_col_name);
-  EXECUTE stmt;
-  
+  column_exists := (SELECT true FROM pg_attribute WHERE attrelid = tbl AND attname = pq_col_name AND NOT attisdropped);
+
+  IF column_exists THEN
+    RAISE EXCEPTION 'Column % already exists in table', pq_col_name;
+  END IF;
   -- Create codebook
   codebook_table := create_codebook(tbl, col, cluster_cnt, subset_count, distance_metric);
 
   -- Compress vectors
-  RAISE NOTICE 'Compressing vectors...';
-  
-  stmt := format('UPDATE %1$I SET %2$I_pq=_lantern_internal.compress_vector(%2$I, %3$L, %4$L::regclass, %5$L)', tbl, col, subset_count, codebook_table, distance_metric);
-  EXECUTE stmt;
+  RAISE INFO 'Compressing vectors...';
 
-  -- Create trigger to update pq values based on vector value
-  trigger_func_name := format('_set_pq_col_%s', md5(tbl || col));
-  stmt := format('
-    CREATE OR REPLACE FUNCTION %I()
-      RETURNS trigger
-      LANGUAGE plpgsql AS
-    $body$
-    DECLARE
-      stmt TEXT;
-    BEGIN
-      NEW.%I := _lantern_internal.compress_vector(NEW.%I, %L, %L::regclass, %L);
-      RETURN NEW;
-    END
-    $body$;
-    ', trigger_func_name, pq_col_name, col, subset_count, codebook_table, distance_metric);
-  EXECUTE stmt;
-  
-  insert_trigger_name := format('_pq_trigger_in_%s', md5(tbl || col));
-  update_trigger_name := format('_pq_trigger_up_%s', md5(tbl || col));
-  
-  stmt := format('DROP TRIGGER IF EXISTS %I ON %I', insert_trigger_name, tbl);
-  EXECUTE stmt;
-  
-  stmt := format('DROP TRIGGER IF EXISTS %I ON %I', update_trigger_name, tbl);
-  EXECUTE stmt;
-  
-  stmt := format('CREATE TRIGGER %I BEFORE INSERT ON %I FOR EACH ROW WHEN (NEW.%I IS NOT NULL) EXECUTE FUNCTION %I()', 
-    insert_trigger_name,
-    tbl,
-    col,
-    trigger_func_name
-  );
+  IF pg_version >= 120000 THEN
+    stmt := format('ALTER TABLE %I ADD COLUMN %I PQVEC GENERATED ALWAYS AS (_lantern_internal.compress_vector(%I, %L, %L, %L)) STORED', tbl, pq_col_name, col, subset_count, codebook_table, distance_metric);
+    EXECUTE stmt;
+  ELSE
+    stmt := format('ALTER TABLE %I ADD COLUMN %I PQVEC', tbl, pq_col_name);
+    EXECUTE stmt;
 
-  EXECUTE stmt;
+    stmt := format('UPDATE %1$I SET %2$I_pq=_lantern_internal.compress_vector(%2$I, %3$L, %4$L::regclass, %5$L)', tbl, col, subset_count, codebook_table, distance_metric);
+    EXECUTE stmt;
 
-  stmt := format('CREATE TRIGGER %1$I BEFORE UPDATE OF %2$I ON %3$I FOR EACH ROW WHEN (NEW.%2$I IS NOT NULL) EXECUTE FUNCTION %4$I()', 
-    update_trigger_name,
-    col,
-    tbl,
-    trigger_func_name
-  );
-  EXECUTE stmt;
+    -- Create trigger to update pq values based on vector value
+    trigger_func_name := format('_set_pq_col_%s', md5(tbl || col));
+    stmt := format('
+      CREATE OR REPLACE FUNCTION %I()
+        RETURNS trigger
+        LANGUAGE plpgsql AS
+      $body$
+      DECLARE
+        stmt TEXT;
+      BEGIN
+        NEW.%I := _lantern_internal.compress_vector(NEW.%I, %L, %L::regclass, %L);
+        RETURN NEW;
+      END
+      $body$;
+      ', trigger_func_name, pq_col_name, col, subset_count, codebook_table, distance_metric);
+    EXECUTE stmt;
+    
+    insert_trigger_name := format('_pq_trigger_in_%s', md5(tbl || col));
+    update_trigger_name := format('_pq_trigger_up_%s', md5(tbl || col));
+    
+    stmt := format('DROP TRIGGER IF EXISTS %I ON %I', insert_trigger_name, tbl);
+    EXECUTE stmt;
+    
+    stmt := format('DROP TRIGGER IF EXISTS %I ON %I', update_trigger_name, tbl);
+    EXECUTE stmt;
+    
+    stmt := format('CREATE TRIGGER %I BEFORE INSERT ON %I FOR EACH ROW WHEN (NEW.%I IS NOT NULL) EXECUTE FUNCTION %I()', 
+      insert_trigger_name,
+      tbl,
+      col,
+      trigger_func_name
+    );
+
+    EXECUTE stmt;
+
+    stmt := format('CREATE TRIGGER %1$I BEFORE UPDATE OF %2$I ON %3$I FOR EACH ROW WHEN (NEW.%2$I IS NOT NULL) EXECUTE FUNCTION %4$I()', 
+      update_trigger_name,
+      col,
+      tbl,
+      trigger_func_name
+    );
+    EXECUTE stmt;
+  END IF;
 END;
 $$ LANGUAGE plpgsql;
