@@ -19,6 +19,7 @@ pub struct EmbeddingJob {
     pub runtime_params: String,
     pub runtime: Runtime,
     pub batch_size: Option<usize>,
+    pub row_ids: Option<Vec<String>>,
 }
 
 impl EmbeddingJob {
@@ -42,6 +43,7 @@ impl EmbeddingJob {
             runtime,
             runtime_params,
             filter: None,
+            row_ids: None,
             is_init: true,
             batch_size: None,
         })
@@ -53,6 +55,10 @@ impl EmbeddingJob {
 
     pub fn set_is_init(&mut self, is_init: bool) {
         self.is_init = is_init;
+    }
+
+    pub fn set_row_ids(&mut self, row_ids: Vec<String>) {
+        self.row_ids = Some(row_ids);
     }
 }
 
@@ -127,7 +133,6 @@ pub struct JobInsertNotification {
     pub init: bool,
     pub generate_missing: bool,
     pub row_id: Option<String>,
-    pub lock_key: Option<String>,
     pub filter: Option<String>,
     pub limit: Option<u32>,
 }

@@ -32,7 +32,7 @@ use futures::future;
 use itertools::Itertools;
 use lantern_embeddings::cli::EmbeddingArgs;
 use lantern_logger::Logger;
-use lantern_utils::{get_full_table_name, quote_ident};
+use lantern_utils::get_full_table_name;
 use std::collections::HashMap;
 use std::path::Path;
 use std::process;
@@ -81,11 +81,34 @@ async fn lock_row(
     true
 }
 
+async fn unlock_rows(
+    client: Arc<Client>,
+    lock_table_name: &str,
+    logger: Arc<Logger>,
+    job_id: i32,
+    row_ids: &Vec<String>,
+) {
+    let row_ids_str = row_ids.iter().map(|r| format!("'{r}'")).join(",");
+    let res = client
+        .execute(
+            &format!("DELETE FROM {lock_table_name} WHERE job_id=$1 AND row_id IN ($2)"),
+            &[&job_id, &row_ids_str],
+        )
+        .await;
+
+    if let Err(e) = res {
+            logger.error(&format!(
+                "Error while unlocking rows: {row_ids_str} for job: {job_id} : {e}"
+            ));
+    }
+}
+
 async fn embedding_worker(
     mut job_queue_rx: Receiver<EmbeddingJob>,
     notifications_tx: Sender<JobInsertNotification>,
     client: Arc<Client>,
     schema: String,
+    internal_schema: String,
     table: String,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
@@ -141,7 +164,6 @@ async fn embedding_worker(
                 let is_canceled_clone = is_canceled.clone();
                 let embedding_task = tokio::spawn(async move {
                     let result = lantern_embeddings::create_embeddings_from_db(EmbeddingArgs {
-                            pk: String::from("id"),
                             model: job_clone.model.clone(),
                             schema: job_clone.schema.clone(),
                             uri: job_clone.db_uri.clone(),
@@ -202,6 +224,16 @@ async fn embedding_worker(
                         client_ref.execute(&format!("UPDATE {jobs_table_name} SET init_failed_at=NOW(), updated_at=NOW(), init_failure_reason=$1 WHERE id=$2"), &[&e.to_string(), &job.id]).await?;
                     }
                 }
+            }
+
+            if let Some(row_ids) = &job.row_ids {
+                // If this is a job triggered from notification (new row inserted or row was updated)
+                // Then we need to remove the entries from lock table for this rows
+                // As we are using table ctid for lock key, after table VACUUM the ctids may repeat
+                // And if new row will be inserted with previously locked ctid
+                // it won't be taken by daemon
+               let lock_table_name = get_full_table_name(&internal_schema, EMB_LOCK_TABLE_NAME);
+               unlock_rows(client_ref, &lock_table_name, logger.clone(), job.id, row_ids).await;
             }
         }
         Ok(()) as AnyhowVoidResult
@@ -291,7 +323,7 @@ async fn job_insert_processor(
                         &lock_table_name,
                         logger_r1.clone(),
                         id,
-                        &notification.lock_key.unwrap(),
+                        &row_id,
                     )
                     .await;
 
@@ -376,11 +408,10 @@ async fn job_insert_processor(
                 }
                 let row = job_result.unwrap();
                 let mut job = EmbeddingJob::new(row, data_path)?;
-                // TODO take from job
-                let pk = "id";
                 job.set_is_init(false);
-                let row_ids_str = row_ids.iter().map(|r| format!("'{r}'")).join(",");
-                job.set_filter(&format!("{} IN ({row_ids_str})", quote_ident(pk)));
+                let row_ctids_str = row_ids.iter().map(|r| format!("'{r}'::tid")).join(",");
+                job.set_row_ids(row_ids);
+                job.set_filter(&format!("ctid IN ({row_ctids_str})"));
                 let _ = job_tx.send(job).await;
             }
 
@@ -441,7 +472,7 @@ async fn job_update_processor(
             if canceled_at.is_none() && notification.generate_missing {
                 // this will be on startup to generate embeddings for rows that might be inserted
                 // while daemon is offline
-                job_insert_queue_tx.send(JobInsertNotification { id, init: init_finished_at.is_none(), generate_missing: true, filter: Some(format!("\"{src_column}\" IS NOT NULL AND \"{out_column}\" IS NULL")), limit: None, row_id: None, lock_key: None }).await?;
+                job_insert_queue_tx.send(JobInsertNotification { id, init: init_finished_at.is_none(), generate_missing: true, filter: Some(format!("\"{src_column}\" IS NOT NULL AND \"{out_column}\" IS NULL")), limit: None, row_id: None }).await?;
             }
         }
         Ok(()) as AnyhowVoidResult
@@ -546,6 +577,7 @@ pub async fn start(args: cli::DaemonArgs, logger: Arc<Logger>) -> AnyhowVoidResu
             insert_notification_queue_tx.clone(),
             main_db_client.clone(),
             args.schema.clone(),
+            args.internal_schema.clone(),
             table.clone(),
             logger.clone(),
         )) as VoidFuture,

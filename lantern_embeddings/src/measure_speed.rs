@@ -32,7 +32,6 @@ fn measure_model_speed(
             create_column: false,
             stream: false,
             model: model_name.to_owned(),
-            pk: PK_NAME.to_owned(),
             column: COLUMN_NAME.to_owned(),
             out_column: OUT_COLUMN_NAME.to_owned(),
             schema: SCHEMA_NAME.to_owned(),

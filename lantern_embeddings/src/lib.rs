@@ -46,7 +46,6 @@ fn producer_worker(
     let item_count_r1 = item_count.clone();
 
     let handle = std::thread::spawn(move || {
-        let pk = &args.pk;
         let column = &args.column;
         let schema = &args.schema;
         let table = &args.table;
@@ -83,10 +82,7 @@ fn producer_worker(
 
         if estimate_count {
             let rows = transaction.query(
-                &format!(
-                    "SELECT COUNT({pk}) FROM {full_table_name} {filter_sql} {limit_sql};",
-                    pk = quote_ident(pk)
-                ),
+                &format!("SELECT COUNT(*) FROM {full_table_name} {filter_sql} {limit_sql};"),
                 &[],
             );
 
@@ -112,8 +108,7 @@ fn producer_worker(
         // With portal we can execute a query and poll values from it in chunks
         let portal = transaction.bind(
             &format!(
-                "SELECT {pk}::text, {column}::text FROM {full_table_name} {filter_sql} {limit_sql};",
-                pk = quote_ident(pk),
+                "SELECT ctid::text, {column}::text FROM {full_table_name} {filter_sql} {limit_sql};",
                 column = quote_ident(column),
             ),
             &[],
@@ -148,7 +143,7 @@ fn producer_worker(
 
 // Embedding worker will listen to the producer channel
 // and execute lantern_embeddings_core's corresponding function to generate embeddings
-// we will here map each vector to it's row id (pk) before sending the results over channel
+// we will here map each vector to it's row ctid before sending the results over channel
 // So we will get Vec<Row<String, String> and output Vec<(String, Vec<f32>)> the output will
 // contain generated embeddings for the text. If text will be null we will skip that row
 fn embedding_worker(
@@ -248,7 +243,6 @@ fn db_exporter_worker(
 ) -> Result<JoinHandle<AnyhowU64Result>, anyhow::Error> {
     let handle = std::thread::spawn(move || {
         let uri = args.out_uri.as_ref().unwrap_or(&args.uri);
-        let pk = &args.pk;
         let column = &args.out_column;
         let table = args.out_table.as_ref().unwrap_or(&args.table);
         let schema = &args.schema;
@@ -281,8 +275,7 @@ fn db_exporter_worker(
         transaction
             .execute(
                 &format!(
-                    "CREATE TEMPORARY TABLE {temp_table_name} AS SELECT {pk}, '{{}}'::REAL[] AS {column} FROM {full_table_name} LIMIT 0",
-                    pk=quote_ident(pk),
+                    "CREATE TEMPORARY TABLE {temp_table_name} AS SELECT ctid::TEXT as id, '{{}}'::REAL[] AS {column} FROM {full_table_name} LIMIT 0",
                     column=quote_ident(column)
                 ),
                 &[],
@@ -291,7 +284,7 @@ fn db_exporter_worker(
 
         let mut transaction = client.transaction()?;
         let mut writer = transaction.copy_in(&format!("COPY {temp_table_name} FROM stdin"))?;
-        let update_sql = &format!("UPDATE {full_table_name} dest SET {column} = src.{column} FROM {temp_table_name} src WHERE src.{pk} = dest.{pk}", column=quote_ident(column), pk=quote_ident(pk), temp_table_name=quote_ident(&temp_table_name));
+        let update_sql = &format!("UPDATE {full_table_name} dest SET {column} = src.{column} FROM {temp_table_name} src WHERE src.id::tid = dest.ctid", column=quote_ident(column), temp_table_name=quote_ident(&temp_table_name));
 
         let flush_interval = 10;
         let min_flush_rows = 50;

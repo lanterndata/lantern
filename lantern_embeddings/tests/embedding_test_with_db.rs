@@ -53,7 +53,6 @@ fn test_embedding_generation_from_db() {
             uri: db_url.clone(),
             column: "content".to_owned(),
             table: table_name.clone(),
-            pk: "id".to_owned(),
             schema: "public".to_owned(),
             out_uri: None,
             out_column: "emb".to_owned(),

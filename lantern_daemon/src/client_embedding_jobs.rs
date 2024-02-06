@@ -104,7 +104,7 @@ async fn setup_client_triggers(
               BEGIN
                 IF (NEW.{column_name} IS NOT NULL)
                 THEN
-                    PERFORM pg_notify('{channel}', NEW.id::TEXT || ':' || '{job_id}' || ':' || NEW.ctid::TEXT);
+                    PERFORM pg_notify('{channel}', NEW.ctid::TEXT || ':' || '{job_id}');
                 END IF;
                 RETURN NULL;
               END;
@@ -197,20 +197,18 @@ async fn client_notification_listener(
             if let AsyncMessage::Notification(not) = message {
                 let parts: Vec<&str> = not.payload().split(':').collect();
 
-                if parts.len() < 3 {
+                if parts.len() < 2 {
                     logger.error(&format!("Invalid notification received {}", not.payload()));
                     continue;
                 }
                 let pk: &str = parts[0];
                 let job_id = i32::from_str_radix(parts[1], 10).unwrap();
-                let row_tid = parts[2];
                 let result = job_insert_queue_tx
                     .send(JobInsertNotification {
                         id: job_id,
                         init: false,
                         generate_missing: false,
                         row_id: Some(pk.to_owned()),
-                        lock_key: Some(row_tid.to_owned()),
                         filter: None,
                         limit: None,
                     })
