@@ -180,12 +180,12 @@ if __name__ == "__main__":
 
     num_untagged = 0
     for to_v in to_versions:
-        if num_untagged != 0:
-            print(f"${to_v}, ${tags_actual}")
         # only the last to_v may be untagged (when the release has not happened yet)
-        assert(num_untagged == 0)
         if str(to_v) not in tags_actual:
+            assert(num_untagged == 0 and "ERROR: found second untagged version. At most one (the latest) untagged version expected")
             num_untagged += 1
+            if num_untagged != 0:
+                print(f"WARNING: version {to_v} not in repo tags ${tags_actual}")
 
     if len(to_versions) > 0:
         latest_version = to_versions[-1]
