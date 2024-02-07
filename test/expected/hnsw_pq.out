@@ -7,7 +7,7 @@ COPY sift_base1k (v) FROM '/tmp/lantern/vector_datasets/sift_base1k_arrays.csv' 
 \ir utils/sift1k_array_query.sql
 SELECT
    b.id, 
-   ARRAY(SELECT id::text FROM sift_base1k b2 ORDER BY l2sq_dist(b.v, b2.v) LIMIT 10)::INT[] as indices
+   ARRAY(SELECT id FROM sift_base1k b2 ORDER BY l2sq_dist(b.v, b2.v) LIMIT 10)::INT[] as indices
 INTO sift_truth1k
 FROM sift_base1k b
 WHERE id IN (SELECT id FROM sift_base1k ORDER BY id LIMIT 100);
@@ -74,6 +74,27 @@ END;
 $$ LANGUAGE plpgsql;
 SET client_min_messages=ERROR;
 \set ON_ERROR_STOP off
+-- Test PQVec type
+SELECT '{84,1,4,128,256}'::pqvec;
+ERROR:  Compressed vector element can not be bigger than 255 at character 8
+SELECT '{84,1,4,128,255}'::pqvec;
+      pqvec       
+------------------
+ {84,1,4,128,255}
+(1 row)
+
+SELECT '{84,1,4,128,255}'::pqvec::INT[];
+       int4       
+------------------
+ {84,1,4,128,255}
+(1 row)
+
+SELECT '{84,1,4,128,255}'::INT[]::pqvec;
+      pqvec       
+------------------
+ {84,1,4,128,255}
+(1 row)
+
 -- Verify wrong argument assertions
 SELECT _lantern_internal.create_pq_codebook('sift_base1k'::regclass, 'nonexistant', 10, 32, 'l2sq');
 ERROR:  Column nonexistant not found in table

@@ -29,7 +29,7 @@ static inline PQVec *NewPQVec(int dim)
 PQVec *ldb_array_to_pqvec(ArrayType *array)
 {
     int32  i;
-    int32  maxItemSize = 1 << 8;
+    int32  maxItemSize = (1 << 8) - 1;
     int32  ndims = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
     PQVec *res = NewPQVec(ndims);
     int32 *intarr = (int32 *)ARR_DATA_PTR(array);
@@ -41,7 +41,7 @@ PQVec *ldb_array_to_pqvec(ArrayType *array)
         if(intarr[ i ] < 0) {
             elog(ERROR, "Compressed vector element can not be smaller than 0");
         }
-        res->data[ i ] = (char)intarr[ i ];
+        res->data[ i ] = (uint8)intarr[ i ];
     }
 
     return res;
@@ -50,15 +50,15 @@ PQVec *ldb_array_to_pqvec(ArrayType *array)
 /*
  * Convert PQVec to INT[]
  * */
-ArrayType *ldb_pqvec_to_array(char *array_elems, int dim)
+ArrayType *ldb_pqvec_to_array(uint8 *array_elems, int dim)
 {
     ArrayType *res;
     Datum     *array_elems_datum = palloc0(sizeof(Datum) * dim);
 
     for(int i = 0; i < dim; i++) {
-        array_elems_datum[ i ] = Int32GetDatum((uint32)array_elems[ i ]);
+        array_elems_datum[ i ] = UInt32GetDatum((uint32)array_elems[ i ]);
     }
-    res = construct_array(array_elems_datum, dim, INT4OID, sizeof(int32), true, 'i');
+    res = construct_array(array_elems_datum, dim, INT4OID, sizeof(uint32), true, 'i');
 
     return res;
 }

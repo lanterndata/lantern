@@ -254,7 +254,8 @@ BEGIN
   -- Iterate over codebooks and insert into table
   FOR i IN 1..subset_count loop
   	FOR k IN 1..cluster_cnt loop
-      stmt := format('INSERT INTO %I(subvector_id, centroid_id, c) VALUES (%s, %s, ARRAY(SELECT * FROM unnest(''%s''::REAL[])))', codebook_table, i, k, codebooks[i:i][k:k]);
+  	  -- centroid_id is k-1 because k is in range[0,255] but postgres arrays start from index 1
+      stmt := format('INSERT INTO %I(subvector_id, centroid_id, c) VALUES (%s, %s, ARRAY(SELECT * FROM unnest(''%s''::REAL[])))', codebook_table, i, k - 1, codebooks[i:i][k:k]);
       EXECUTE stmt;
   	END LOOP;
   END LOOP;

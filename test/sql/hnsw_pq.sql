@@ -5,6 +5,11 @@
 
 SET client_min_messages=ERROR;
 \set ON_ERROR_STOP off
+-- Test PQVec type
+SELECT '{84,1,4,128,256}'::pqvec;
+SELECT '{84,1,4,128,255}'::pqvec;
+SELECT '{84,1,4,128,255}'::pqvec::INT[];
+SELECT '{84,1,4,128,255}'::INT[]::pqvec;
 -- Verify wrong argument assertions
 SELECT _lantern_internal.create_pq_codebook('sift_base1k'::regclass, 'nonexistant', 10, 32, 'l2sq');
 SELECT _lantern_internal.create_pq_codebook('sift_base1k'::regclass, 'v', 1001, 32, 'l2sq');
