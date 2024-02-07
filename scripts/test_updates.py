@@ -24,7 +24,10 @@ class Version:
         for i, v in enumerate(self.version_numbers):
             if v < other.version_numbers[i]:
                 return True
+            if v > other.version_numbers[i]:
+                break
         return False
+
     def __eq__(self, other):
         if self.latest or other.latest:
             return self.latest == other.latest
