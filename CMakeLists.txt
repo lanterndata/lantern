@@ -180,40 +180,16 @@ set_target_properties(
 
 # THIRD PARTY LIBRARIES
 
-# needed to make sure cmake does not add libstdc++ to the linker command when an
-# external cpp library is added more at`
+# link in c++ runtime so our extension can be binary-distributed to environments with no libstdc++
+# N.B. the flag is meaningful for clang++ and g++, but not to clang and gcc, so we need to make sure CXX is set
+# as the linker language
+target_link_options(lantern PRIVATE -static-libstdc++)
+# interesting discussion on all the hoops one has to go through to statically link stdc++ when
+# using C as the link language. We used to do that, but it seems there is no reason to
 # https://cmake-developers.cmake.narkive.com/JnbrDyGT/setting-linker-language-still-adds-lstdc
-if(NOT APPLE)
-  # clang handles static libstdc++ differently than gcc
-  if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-    find_library(STATIC_LIBSTDCPP NAMES libstdc++.a PATHS ${CMAKE_CXX_IMPLICIT_LINK_DIRECTORIES})
-
-    if(STATIC_LIBSTDCPP)
-        set(CMAKE_CXX_IMPLICIT_LINK_LIBRARIES "${CMAKE_CXX_IMPLICIT_LINK_LIBRARIES};${STATIC_LIBSTDCPP}")
-    endif()
-  else()
-    # apples does not understand -static-libstdc++ used in usearch to bundle libstdc++ with the
-    # created archive.
-    # so, on apple we dynamically link to the c++ runtime
-    # todo:: find a way to statically link the c++ runtime on mac
-    set(CMAKE_CXX_IMPLICIT_LINK_LIBRARIES "")
-    set(CMAKE_CXX_IMPLICIT_LINK_DIRECTORIES "")
-  endif()
-endif()
-
-# Note: -static-libstdc++ is only meaningful for dynamic builds.
-# If we ever switch back to statically linking usearch or other third party libs,
-# we need to explicitly link against libstdc++.a
-if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    target_link_options(lantern PRIVATE -static-libstdc++)
-elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_link_options(lantern PRIVATE -static)
-endif ()
-# not sure why, but the above is not enough to force pulling cpp runtime into lantern.so
-# the following is also necessary
+set_target_properties(lantern PROPERTIES LINKER_LANGUAGE CXX)
+# todo:: why is still needed?
 target_link_libraries(lantern PRIVATE "libstdc++.a")
-
-set_target_properties(lantern PROPERTIES LINKER_LANGUAGE C)
 
 target_compile_definitions(lantern PRIVATE LANTERN_USE_USEARCH)
 # the flag instructs usearch/lib.c to builds with lantern-postgres compatible storage, which
