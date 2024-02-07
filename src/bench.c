@@ -1,5 +1,4 @@
 #ifdef LANTERN_BENCH
-// #if 1
 #include <postgres.h>
 
 #include "bench.h"
