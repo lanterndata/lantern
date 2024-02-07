@@ -69,7 +69,7 @@ impl UMetricKind {
     pub fn value(&self) -> MetricKind {
         match self {
             UMetricKind::L2sq => {
-                return MetricKind::L2Sq;
+                return MetricKind::L2sq;
             }
             UMetricKind::Cos => {
                 return MetricKind::Cos;

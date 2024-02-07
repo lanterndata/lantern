@@ -8,14 +8,14 @@ use std::sync::mpsc::{Receiver, Sender, SyncSender};
 use std::sync::{mpsc, RwLock};
 use std::sync::{Arc, Mutex};
 use std::{fs, io};
+use usearch::ffi::{IndexOptions, ScalarKind};
+use usearch::Index;
 
-use cxx::UniquePtr;
 use lantern_logger::{LogLevel, Logger};
 use lantern_utils::{get_full_table_name, quote_ident};
 use postgres::{Client, NoTls, Row};
 use postgres_large_objects::LargeObject;
 use postgres_types::FromSql;
-use usearch::ffi::*;
 
 mod postgres_large_objects;
 pub mod utils;
@@ -63,33 +63,22 @@ impl<'a> FromSql<'a> for Tid {
     }
 }
 
-fn index_chunk(
-    rows: Vec<Row>,
-    thread_n: usize,
-    index: Arc<ThreadSafeIndex>,
-    logger: Arc<Logger>,
-) -> AnyhowVoidResult {
-    let row_count = rows.len();
-
+fn index_chunk(rows: Vec<Row>, index: Arc<ThreadSafeIndex>) -> AnyhowVoidResult {
     for row in rows {
         let ctid: Tid = row.get(0);
         let vec: Vec<f32> = row.get(1);
-        index.add_in_thread(ctid.label, &vec, thread_n)?;
+        index.add(ctid.label, &vec)?;
     }
-    logger.debug(&format!(
-        "{} items added to index from thread {}",
-        row_count, thread_n
-    ));
     Ok(())
 }
 
 struct ThreadSafeIndex {
-    inner: UniquePtr<usearch::ffi::Index>,
+    inner: Index,
 }
 
 impl ThreadSafeIndex {
-    fn add_in_thread(&self, label: u64, data: &Vec<f32>, thread: usize) -> AnyhowVoidResult {
-        self.inner.add_in_thread(label, data, thread)?;
+    fn add(&self, label: u64, data: &[f32]) -> AnyhowVoidResult {
+        self.inner.add(label, data)?;
         Ok(())
     }
     fn save(&self, path: &str) -> AnyhowVoidResult {
@@ -126,7 +115,7 @@ pub fn create_usearch_index(
 
     transaction.execute("SET lock_timeout='5s'", &[])?;
     transaction.execute(
-        &format!("LOCK TABLE ONLY {full_table_name} IN ACCESS EXCLUSIVE MODE"),
+        &format!("LOCK TABLE ONLY {full_table_name} IN SHARE MODE"),
         &[],
     )?;
 
@@ -157,11 +146,12 @@ pub fn create_usearch_index(
         dimensions,
         metric: args.metric_kind.value(),
         quantization: ScalarKind::F32,
+        multi: false,
         connectivity: args.m,
         expansion_add: args.efc,
         expansion_search: args.ef,
     };
-    let index = new_index(&options)?;
+    let index = Index::new(&options)?;
 
     let rows = transaction.query(
         &format!(
@@ -206,10 +196,9 @@ pub fn create_usearch_index(
     });
 
     let processed_cnt = Arc::new(AtomicU64::new(0));
-    for n in 0..num_cores {
+    for _ in 0..num_cores {
         // spawn thread
         let index_ref = index_arc.clone();
-        let logger_ref = logger.clone();
         let receiver = rx_arc.clone();
         let is_canceled = is_canceled.clone();
         let progress_tx = progress_tx.clone();
@@ -241,7 +230,7 @@ pub fn create_usearch_index(
 
                 let rows = rows.unwrap();
                 let rows_cnt = rows.len();
-                index_chunk(rows, n, index_ref.clone(), logger_ref.clone())?;
+                index_chunk(rows, index_ref.clone())?;
                 let all_count = processed_cnt.fetch_add(rows_cnt as u64, Ordering::SeqCst);
                 let mut progress = (all_count as f64 / count as f64 * 100.0) as u8;
                 if should_create_index {

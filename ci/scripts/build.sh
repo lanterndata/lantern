@@ -48,10 +48,10 @@ function setup_postgres() {
 }
 
 function setup_lantern() {
-   LANTERN_VERSION=0.0.11
+   LANTERN_VERSION=v0.1.0
     git clone --recursive https://github.com/lanterndata/lantern.git /tmp/lantern 
     pushd /tmp/lantern
-      git checkout v${LANTERN_VERSION} && \ 
+      git checkout ${LANTERN_VERSION} && \
       git submodule update --recursive && \
       mkdir build 
       pushd build

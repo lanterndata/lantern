@@ -607,7 +607,11 @@ impl<'a> OrtRuntime<'a> {
             let model_info = map.get(model_name);
 
             if model_info.is_none() {
-                anyhow::bail!("Model \"{}\" not found", model_name)
+                anyhow::bail!(
+                    "Model \"{}\" not found.\nAvailable models: {}",
+                    model_name,
+                    map.keys().join(", ")
+                )
             }
 
             let model_info = model_info.unwrap();
