@@ -128,6 +128,7 @@ impl ExternalIndexJob {
     }
 }
 
+#[derive(Debug)]
 pub struct JobInsertNotification {
     pub id: i32,
     pub init: bool,

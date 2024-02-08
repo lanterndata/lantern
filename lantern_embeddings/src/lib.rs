@@ -54,7 +54,7 @@ fn producer_worker(
         let filter_sql = if args.filter.is_some() {
             format!("WHERE {}", args.filter.as_ref().unwrap())
         } else {
-            "".to_owned()
+            format!("WHERE {column} IS NOT NULL", column = quote_ident(column))
         };
 
         let limit_sql = if args.limit.is_some() {
@@ -341,6 +341,19 @@ fn db_exporter_worker(
                 writer = transaction.copy_in(&format!("COPY {temp_table_name} FROM stdin"))?;
                 collected_row_cnt = 0;
                 start = Instant::now();
+            }
+        }
+
+        // There might be a case when filter is provided manually
+        // And `{column} IS NOT NULL` will be missing from the table
+        // So we will check if the column is null in rust code before generating embedding
+        // Thus the processed rows may be less than the actual estimated row count
+        // And progress will not be 100
+        if old_progress != 100 {
+            logger.debug("Progress 100%");
+            if progress_cb.is_some() {
+                let cb = progress_cb.as_ref().unwrap();
+                cb(100);
             }
         }
 

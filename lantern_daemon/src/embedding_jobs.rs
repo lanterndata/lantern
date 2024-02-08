@@ -170,6 +170,11 @@ async fn embedding_worker(
             // We will keep the cancel_tx in static hashmap, so we can cancel the job if
             // canceled_at will be changed to true
 
+            // Enable triggers for job
+            if job.is_init {
+              toggle_client_job(job.id.clone(), job.db_uri.clone(), job.column.clone(), job.table.clone(), job.schema.clone(), logger.level.clone(), Some(notifications_tx.clone()), true ).await?;
+            }
+
             let task_handle = tokio::spawn(async move {
                 let is_canceled = Arc::new(std::sync::RwLock::new(false));
                 let is_canceled_clone = is_canceled.clone();
@@ -215,7 +220,6 @@ async fn embedding_worker(
                     if job.is_init {
                         // mark success
                         client_ref.execute(&format!("UPDATE {jobs_table_name} SET init_finished_at=NOW(), updated_at=NOW() WHERE id=$1"), &[&job.id]).await?;
-                        toggle_client_job(job.id.clone(), job.db_uri.clone(), job.column.clone(), job.table.clone(), job.schema.clone(), logger.level.clone(), Some(notifications_tx.clone()), true ).await?;
                     }
 
                     if processed_cnt > 0 {
@@ -233,6 +237,7 @@ async fn embedding_worker(
                     if job.is_init {
                         // update failure reason
                         client_ref.execute(&format!("UPDATE {jobs_table_name} SET init_failed_at=NOW(), updated_at=NOW(), init_failure_reason=$1 WHERE id=$2"), &[&e.to_string(), &job.id]).await?;
+                        toggle_client_job(job.id.clone(), job.db_uri.clone(), job.column.clone(), job.table.clone(), job.schema.clone(), logger.level.clone(), Some(notifications_tx.clone()), false).await?;
                     }
                 }
             }
@@ -382,7 +387,15 @@ async fn job_insert_processor(
                 .await;
 
             if let Ok(row) = job_result {
-                let mut job = EmbeddingJob::new(row, data_path)?;
+                let  job = EmbeddingJob::new(row, data_path);
+
+                if let Err(e) = &job {
+                    logger_r1.error(&format!(
+                        "Error while creating job {id}: {e}",
+                    ));
+                    continue;
+                }
+                let mut job = job.unwrap();
                 job.set_is_init(notification.init);
                 if let Some(filter) = notification.filter {
                     job.set_filter(&filter);
@@ -418,7 +431,13 @@ async fn job_insert_processor(
                     continue;
                 }
                 let row = job_result.unwrap();
-                let mut job = EmbeddingJob::new(row, data_path)?;
+                let job = EmbeddingJob::new(row, data_path);
+
+                if let Err(e) = &job {
+                    logger.error(&format!("Error while creating job {job_id}: {e}"));
+                    continue;
+                }
+                let mut job = job.unwrap();
                 job.set_is_init(false);
                 let row_ctids_str = row_ids.iter().map(|r| format!("'{r}'::tid")).join(",");
                 job.set_row_ids(row_ids);

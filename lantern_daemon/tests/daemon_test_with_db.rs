@@ -236,6 +236,16 @@ async fn test_embedding_generation_runtime(
         None,
         None,
     );
+    // Verify that inserting job with invalid runtime does not crash process
+    db_client
+        .execute(&format!(
+            "
+       INSERT INTO {EMBEDDING_JOBS_TABLE_NAME} (database_id, db_connection, \"schema\", \"table\", \"src_column\", \"dst_column\", \"embedding_model\", runtime, runtime_params) 
+        VALUES ('client1', $1, 'public', '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', '{model}', 'test_runtime', '{runtime_params}');
+"
+        ), &[&db_uri])
+        .await.unwrap();
+
     db_client
         .execute(&format!(
             "
@@ -248,7 +258,7 @@ async fn test_embedding_generation_runtime(
     let mut check_cnt = 0;
 
     loop {
-        let job = db_client.query_one(&format!("SELECT init_progress, init_failed_at, init_failure_reason FROM {EMBEDDING_JOBS_TABLE_NAME} LIMIT 1"), &[]).await.unwrap();
+        let job = db_client.query_one(&format!("SELECT init_progress, init_failed_at, init_failure_reason FROM {EMBEDDING_JOBS_TABLE_NAME} ORDER BY id DESC LIMIT 1"), &[]).await.unwrap();
         let progress: i16 = job.get::<&str, i16>("init_progress");
         let init_failure_reason: Option<String> =
             job.get::<&str, Option<String>>("init_failure_reason");
@@ -538,22 +548,27 @@ async fn test_cleanup() {
 
 #[tokio::test]
 async fn test_daemon() {
-    test_setup().await;
-    test_embedding_generation_runtime("ort", "microsoft/all-MiniLM-L12-v2", 384, "").await;
-    test_embedding_generation_runtime(
-        "openai",
-        "openai/text-embedding-ada-002",
-        1536,
-        "OPENAI_TOKEN",
-    )
-    .await;
-    test_embedding_generation_runtime(
-        "cohere",
-        "cohere/embed-multilingual-v2.0",
-        768,
-        "COHERE_TOKEN",
-    )
-    .await;
+    let runtimes = [
+        ("ort", "microsoft/all-MiniLM-L12-v2", 384, ""),
+        (
+            "openai",
+            "openai/text-embedding-ada-002",
+            1536,
+            "OPENAI_TOKEN",
+        ),
+        (
+            "cohere",
+            "cohere/embed-multilingual-v2.0",
+            768,
+            "COHERE_TOKEN",
+        ),
+    ];
+
+    for (runtime, model, dim, params) in runtimes {
+        test_cleanup().await;
+        test_setup().await;
+        test_embedding_generation_runtime(runtime, model, dim, params).await;
+    }
     test_index_creation().await;
     test_index_autotune().await;
     test_cleanup().await;
