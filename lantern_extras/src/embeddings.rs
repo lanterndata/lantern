@@ -38,7 +38,7 @@ fn openai_embedding<'a>(model_name: &'a str, text: &'a str) -> Result<Vec<f32>, 
         error!("'lantern_extras.openai_token' is required for 'openai' runtime");
     }
     let runtime_params = serde_json::to_string(&OpenAiRuntimeParams {
-        api_token: Some(OPENAI_TOKEN.get().unwrap()),
+        api_token: Some(OPENAI_TOKEN.get().unwrap().to_str().unwrap().to_owned()),
     })?;
 
     let runtime = get_runtime(
@@ -60,7 +60,7 @@ fn cohere_embedding<'a>(
         error!("'lantern_extras.cohere_token' is required for 'cohere' runtime");
     }
     let runtime_params = serde_json::to_string(&CohereRuntimeParams {
-        api_token: Some(COHERE_TOKEN.get().unwrap()),
+        api_token: Some(COHERE_TOKEN.get().unwrap().to_str().unwrap().to_owned()),
         input_type: Some(input_type.to_owned()),
     })?;
 

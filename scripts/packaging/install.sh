@@ -40,25 +40,25 @@ PG_EXTENSION_DIR=$($PG_CONFIG --sharedir)/extension
 PG_VERSION_STRING=$($PG_CONFIG --version)
 PG_VERSION=$(echo $PG_VERSION_STRING | sed -E "s#^PostgreSQL ([0-9]+).*#\1#")
 
-if [ ! -d src/${ARCH} ]
+if [ ! -d lib/${ARCH} ]
 then
   echo "Architecture $ARCH not supported. Try building from source"
   exit 1
 fi
 
-if [ ! -d src/${ARCH}/${PLATFORM} ]
+if [ ! -d lib/${ARCH}/${PLATFORM} ]
 then
   echo "Platform $PLATFORM not supported. Try building from source"
   exit 1
 fi
 
-if [ ! -d src/${ARCH}/${PLATFORM}/${PG_VERSION} ]
+if [ ! -d lib/${ARCH}/${PLATFORM}/${PG_VERSION} ]
 then
   echo "Postgres version $PG_VERSION not supported"
   exit 1
 fi
 
-cp -r src/${ARCH}/${PLATFORM}/${PG_VERSION}/*.{so,dylib} $PG_LIBRARY_DIR 2>/dev/null || true
+cp -r lib/${ARCH}/${PLATFORM}/${PG_VERSION}/*.{so,dylib} $PG_LIBRARY_DIR 2>/dev/null || true
 cp -r shared/*.sql $PG_EXTENSION_DIR
 cp -r shared/*.control $PG_EXTENSION_DIR
 

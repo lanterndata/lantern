@@ -91,7 +91,7 @@ sudo apt install pkg-config libssl-dev zlib1g-dev libreadline-dev
 sudo apt-get install clang
 
 #install pgrx itself
-cargo install --locked cargo-pgrx --version 0.9.7
+cargo install --locked cargo-pgrx --version 0.11.3
 cargo pgrx init
 ```
 

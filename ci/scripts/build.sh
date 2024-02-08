@@ -73,7 +73,7 @@ function setup_cargo_deps() {
   	mkdir .cargo
   fi
   echo "[target.$(rustc -vV | sed -n 's|host: ||p')]" >> .cargo/config
-  cargo install cargo-pgrx --version 0.9.7
+  cargo install cargo-pgrx --version 0.11.3
   cargo pgrx init "--pg$PG_VERSION" /usr/bin/pg_config
 }
 
@@ -112,18 +112,18 @@ function package_extension() {
   SHARE_BUILD_DIR="$(pwd)/target/release/lantern_extras-pg${PG_VERSION}/usr/share/postgresql/${PG_VERSION}/extension"
   OUT_DIR=/tmp/lantern-extras
   
-  mkdir -p ${OUT_DIR}/${PACKAGE_NAME}/src
+  mkdir -p ${OUT_DIR}/${PACKAGE_NAME}/lib
 
   # For Mac OS and Postgres 16 the module will have .dylib extension
   # Instead of .so, so any of the files may not exist
   # So we will ignore the error from cp command
-  cp ${LIB_BUILD_DIR}/*.{so,dylib} ${OUT_DIR}/${PACKAGE_NAME}/src 2>/dev/null || true
+  cp ${LIB_BUILD_DIR}/*.{so,dylib} ${OUT_DIR}/${PACKAGE_NAME}/lib 2>/dev/null || true
   
   cp ${SOURCE_DIR}/README.md ${OUT_DIR}/${PACKAGE_NAME}/ 
   cp ${SOURCE_DIR}/LICENSE ${OUT_DIR}/${PACKAGE_NAME}/ 2>/dev/null || true
   cp ${SOURCE_DIR}/scripts/packaging/* ${OUT_DIR}/${PACKAGE_NAME}/
-  cp ${SHARE_BUILD_DIR}/*.sql ${OUT_DIR}/${PACKAGE_NAME}/src
-  cp ${SHARE_BUILD_DIR}/*.control ${OUT_DIR}/${PACKAGE_NAME}/src
+  cp ${SHARE_BUILD_DIR}/*.sql ${OUT_DIR}/${PACKAGE_NAME}/lib
+  cp ${SHARE_BUILD_DIR}/*.control ${OUT_DIR}/${PACKAGE_NAME}/lib
 
   pushd "$OUT_DIR"
     tar cf ${PACKAGE_NAME}.tar ${PACKAGE_NAME}

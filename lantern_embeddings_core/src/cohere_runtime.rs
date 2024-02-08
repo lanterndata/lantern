@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use std::{collections::HashMap, sync::RwLock};
 
 use crate::{core::LoggerFn, runtime::EmbeddingRuntime, HTTPRuntime};
@@ -143,7 +144,10 @@ impl<'a> CohereRuntime<'a> {
         let model_info = model_map.get(model_name);
 
         if model_info.is_none() {
-            anyhow::bail!("Unsupported model {model_name}");
+            anyhow::bail!(
+                "Unsupported model {model_name}\nAvailable models: {}",
+                model_map.keys().join(", ")
+            );
         }
         let model_info = model_info.unwrap();
         let name = &model_info.name;

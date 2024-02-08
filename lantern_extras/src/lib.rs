@@ -1,3 +1,4 @@
+use core::ffi::CStr;
 use pgrx::{prelude::*, GucContext, GucFlags, GucRegistry, GucSetting};
 
 pgrx::pg_module_magic!();
@@ -5,8 +6,10 @@ pub mod dotvecs;
 pub mod embeddings;
 pub mod external_index;
 
-pub static OPENAI_TOKEN: GucSetting<Option<&'static str>> = GucSetting::new(None);
-pub static COHERE_TOKEN: GucSetting<Option<&'static str>> = GucSetting::new(None);
+pub static OPENAI_TOKEN: GucSetting<Option<&'static CStr>> =
+    GucSetting::<Option<&'static CStr>>::new(None);
+pub static COHERE_TOKEN: GucSetting<Option<&'static CStr>> =
+    GucSetting::<Option<&'static CStr>>::new(None);
 
 #[allow(non_snake_case)]
 #[pg_guard]
