@@ -109,20 +109,12 @@ void ldb_amendscan(IndexScanDesc scan)
     // todo:: once VACUUM/DELETE are implemented, during scan we need to hold a pin
     //  on the buffer we have last returned.
     //  make sure to release that pin here
-
-#ifdef LANTERN_USE_LIBHNSW
-    if(scanstate->hnsw) hnsw_destroy(scanstate->hnsw);
-#endif
-#ifdef LANTERN_USE_USEARCH
     if(scanstate->usearch_index) {
         usearch_error_t error = NULL;
         usearch_free(scanstate->usearch_index, &error);
         ldb_wal_retriever_area_fini(scanstate->retriever_ctx);
         assert(error == NULL);
     }
-#else
-    elog(ERROR, "no index implementation specified");
-#endif
 
     if(scanstate->distances) pfree(scanstate->distances);
 
