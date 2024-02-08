@@ -212,7 +212,7 @@ async fn test_embedding_generation_runtime(
             println!("{}", err_msg);
             return;
         }
-        runtime_params = format!(r#"{{ "api_token": "{token}" }}"#);
+        runtime_params = format!(r#"{{ "api_token": "{token}", "dimensions": {dimensions} }}"#);
     }
 
     let db_uri = env::var("DB_URL").expect("`DB_URL` not specified");
@@ -554,6 +554,18 @@ async fn test_daemon() {
             "openai",
             "openai/text-embedding-ada-002",
             1536,
+            "OPENAI_TOKEN",
+        ),
+        (
+            "openai",
+            "openai/text-embedding-3-small",
+            768,
+            "OPENAI_TOKEN",
+        ),
+        (
+            "openai",
+            "openai/text-embedding-3-large",
+            3072,
             "OPENAI_TOKEN",
         ),
         (

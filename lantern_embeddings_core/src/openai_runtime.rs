@@ -14,6 +14,7 @@ struct ModelInfo {
     tokenizer: CoreBPE,
     sequence_len: usize,
     dimensions: usize,
+    var_dimension: bool,
 }
 
 #[derive(Deserialize)]
@@ -41,6 +42,21 @@ impl ModelInfo {
                 tokenizer: cl100k_base()?,
                 sequence_len: 8192,
                 dimensions: 1536,
+                var_dimension: false,
+            }),
+            "openai/text-embedding-3-small" => Ok(Self {
+                name,
+                tokenizer: cl100k_base()?,
+                sequence_len: 8191,
+                dimensions: 1536,
+                var_dimension: true,
+            }),
+            "openai/text-embedding-3-large" => Ok(Self {
+                name,
+                tokenizer: cl100k_base()?,
+                sequence_len: 8191,
+                dimensions: 3072,
+                var_dimension: true,
             }),
             _ => anyhow::bail!("Unsupported model {model_name}"),
         }
@@ -49,16 +65,27 @@ impl ModelInfo {
 
 lazy_static! {
     static ref MODEL_INFO_MAP: RwLock<HashMap<&'static str, ModelInfo>> =
-        RwLock::new(HashMap::from([(
-            "openai/text-embedding-ada-002",
-            ModelInfo::new("openai/text-embedding-ada-002").unwrap()
-        ),]));
+        RwLock::new(HashMap::from([
+            (
+                "openai/text-embedding-ada-002",
+                ModelInfo::new("openai/text-embedding-ada-002").unwrap()
+            ),
+            (
+                "openai/text-embedding-3-small",
+                ModelInfo::new("openai/text-embedding-3-small").unwrap()
+            ),
+            (
+                "openai/text-embedding-3-large",
+                ModelInfo::new("openai/text-embedding-3-large").unwrap()
+            ),
+        ]));
 }
 
 pub struct OpenAiRuntime<'a> {
     request_timeout: u64,
     base_url: String,
     headers: Vec<(String, String)>,
+    dimensions: Option<usize>,
     #[allow(dead_code)]
     logger: &'a LoggerFn,
 }
@@ -66,6 +93,7 @@ pub struct OpenAiRuntime<'a> {
 #[derive(Serialize, Deserialize)]
 pub struct OpenAiRuntimeParams {
     pub api_token: Option<String>,
+    pub dimensions: Option<usize>,
 }
 
 impl<'a> OpenAiRuntime<'a> {
@@ -87,6 +115,7 @@ impl<'a> OpenAiRuntime<'a> {
                     format!("Bearer {}", runtime_params.api_token.unwrap()),
                 ),
             ],
+            dimensions: runtime_params.dimensions,
         })
     }
 
@@ -149,6 +178,13 @@ impl<'a> OpenAiRuntime<'a> {
             })
             .collect();
 
+        // Dimensions for new openai models can be specified
+        let dimensions_input = if model_info.var_dimension && self.dimensions.is_some() {
+            format!(r#", "dimensions": {}"#, self.dimensions.as_ref().unwrap())
+        } else {
+            "".to_owned()
+        };
+
         let name = &model_info.name;
         let batch_tokens: Vec<String> = self
             .group_vectors_by_token_count(token_groups, model_info.sequence_len)
@@ -160,6 +196,7 @@ impl<'a> OpenAiRuntime<'a> {
                  {{
                    "input": {json_string},
                    "model": "{name}"
+                   {dimensions_input}
                  }}
                 "#
                 )

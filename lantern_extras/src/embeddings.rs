@@ -33,11 +33,23 @@ fn text_embedding<'a>(model_name: &'a str, text: &'a str) -> Result<Vec<f32>, an
 }
 
 #[pg_extern(immutable, parallel_safe, create_or_replace)]
-fn openai_embedding<'a>(model_name: &'a str, text: &'a str) -> Result<Vec<f32>, anyhow::Error> {
+fn openai_embedding<'a>(
+    model_name: &'a str,
+    text: &'a str,
+    dimensions: default!(i32, 0),
+) -> Result<Vec<f32>, anyhow::Error> {
     if OPENAI_TOKEN.get().is_none() {
         error!("'lantern_extras.openai_token' is required for 'openai' runtime");
     }
+
+    let dimensions = if dimensions > 0 {
+        Some(dimensions as usize)
+    } else {
+        None
+    };
+
     let runtime_params = serde_json::to_string(&OpenAiRuntimeParams {
+        dimensions,
         api_token: Some(OPENAI_TOKEN.get().unwrap().to_str().unwrap().to_owned()),
     })?;
 
@@ -232,6 +244,33 @@ pub mod tests {
             let embedding = row.get_by_name::<Vec<f32>, &str>("embedding")?.unwrap();
             let distance = 1.0 - cosine_similarity(&embedding, HELLO_WORLD_OPENAI_EMB);
             assert!(distance < 0.1);
+
+            let row = client
+                .select(
+                    &format!(
+                        "
+                         SELECT openai_embedding('openai/text-embedding-3-small','{HELLO_WORLD_TEXT}', 384) as embedding
+                     "
+                    ),
+                    None,
+                    None,
+                )?
+                .first();
+            let embedding_small = row.get_by_name::<Vec<f32>, &str>("embedding")?.unwrap();
+            assert!(embedding_small.len() == 384);
+            let row = client
+                .select(
+                    &format!(
+                        "
+                         SELECT openai_embedding('openai/text-embedding-3-large','{HELLO_WORLD_TEXT}', 768) as embedding
+                     "
+                    ),
+                    None,
+                    None,
+                )?
+                .first();
+            let embedding_large = row.get_by_name::<Vec<f32>, &str>("embedding")?.unwrap();
+            assert!(embedding_large.len() == 768);
 
             Ok::<(), anyhow::Error>(())
         })
