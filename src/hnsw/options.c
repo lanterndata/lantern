@@ -157,16 +157,6 @@ void _PG_init(void)
     // todo:: cross-check with this`
     // https://github.com/zombodb/zombodb/blob/34c732a0b143b5e424ced64c96e8c4d567a14177/src/access_method/options.rs#L895
     ldb_hnsw_index_withopts = add_reloption_kind();
-#if 0
-	add_int_reloption(ldb_hnsw_index_withopts, "element_limit",
-			  "Maximum table size (needed for hnswlib)",
-			  HNSW_DEFAULT_ELEMENT_LIMIT, 1, HNSW_MAX_ELEMENT_LIMIT
-#if PG_VERSION_NUM >= 130000
-			  ,
-			  AccessExclusiveLock
-#endif
-	);
-#endif
     add_int_reloption(ldb_hnsw_index_withopts,
                       "dim",
                       "Number of dimensions of the vector",
