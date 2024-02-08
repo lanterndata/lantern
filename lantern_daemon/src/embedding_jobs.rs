@@ -215,16 +215,17 @@ async fn embedding_worker(
             set_job_handle(&JOBS, job.id, cancel_tx).await?;
      
             match task_handle.await? {
-                Ok(processed_cnt) => {
+                Ok((processed_rows, processed_tokens)) => {
                     remove_job_handle(&JOBS, job.id).await?;
                     if job.is_init {
                         // mark success
                         client_ref.execute(&format!("UPDATE {jobs_table_name} SET init_finished_at=NOW(), updated_at=NOW() WHERE id=$1"), &[&job.id]).await?;
                     }
 
-                    if processed_cnt > 0 {
+                    logger.info(&format!("Processed Rows: {processed_rows}, processed_tokens: {processed_tokens}"));
+                    if processed_tokens > 0 {
                         let fn_name = get_full_table_name(&schema_ref, "increment_embedding_usage");
-                        let res = client_ref.execute(&format!("SELECT {fn_name}({job_id},{usage})", job_id=job.id, usage=processed_cnt), &[]).await;
+                        let res = client_ref.execute(&format!("SELECT {fn_name}({job_id},{usage},{tokens})", job_id=job.id, usage=processed_rows, tokens=processed_tokens), &[]).await;
 
                         if let Err(e) = res {
                             logger.error(&format!("Error while updating usage for {job_id}: {e}", job_id=job.id));

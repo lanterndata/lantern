@@ -1,7 +1,11 @@
 use itertools::Itertools;
 use std::{collections::HashMap, sync::RwLock};
 
-use crate::{core::LoggerFn, runtime::EmbeddingRuntime, HTTPRuntime};
+use crate::{
+    core::LoggerFn,
+    runtime::{EmbeddingResult, EmbeddingRuntime},
+    HTTPRuntime,
+};
 use serde::{Deserialize, Serialize};
 
 struct ModelInfo {
@@ -11,8 +15,19 @@ struct ModelInfo {
 }
 
 #[derive(Deserialize)]
+struct CohereMetaBilledUnits {
+    input_tokens: usize,
+}
+
+#[derive(Deserialize)]
+struct CohereMeta {
+    billed_units: CohereMetaBilledUnits,
+}
+
+#[derive(Deserialize)]
 struct CohereResponse {
     embeddings: Vec<Vec<f32>>,
+    meta: CohereMeta,
 }
 
 impl ModelInfo {
@@ -173,7 +188,7 @@ impl<'a> CohereRuntime<'a> {
         Ok(batch_tokens)
     }
 
-    pub fn get_response(&self, body: Vec<u8>) -> Result<Vec<Vec<f32>>, anyhow::Error> {
+    pub fn get_response(&self, body: Vec<u8>) -> Result<EmbeddingResult, anyhow::Error> {
         let result: Result<CohereResponse, serde_json::Error> = serde_json::from_slice(&body);
         if let Err(e) = result {
             anyhow::bail!(
@@ -184,7 +199,10 @@ impl<'a> CohereRuntime<'a> {
 
         let result = result.unwrap();
 
-        Ok(result.embeddings)
+        Ok(EmbeddingResult {
+            embeddings: result.embeddings,
+            processed_tokens: result.meta.billed_units.input_tokens,
+        })
     }
 }
 
@@ -193,7 +211,7 @@ impl<'a> EmbeddingRuntime for CohereRuntime<'a> {
         &self,
         model_name: &str,
         inputs: &Vec<&str>,
-    ) -> Result<Vec<Vec<f32>>, anyhow::Error> {
+    ) -> Result<EmbeddingResult, anyhow::Error> {
         self.post_request("/v1/embed", model_name, inputs)
     }
 

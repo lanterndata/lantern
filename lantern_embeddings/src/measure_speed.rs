@@ -4,7 +4,7 @@ use lantern_embeddings_core::core::{get_runtime, Runtime};
 use lantern_logger::{LogLevel, Logger};
 use postgres::{Client, NoTls};
 
-use crate::{cli::MeasureModelSpeedArgs, AnyhowU64Result, AnyhowVoidResult};
+use crate::{cli::MeasureModelSpeedArgs, AnyhowUsizeResult, AnyhowVoidResult};
 
 static TABLE_NAME: &'static str = "_lantern_emb_test";
 static SCHEMA_NAME: &'static str = "_lantern_test";
@@ -21,9 +21,9 @@ fn measure_model_speed(
     table_name: &str,
     initial_limit: u32,
     batch_size: Option<usize>,
-) -> AnyhowU64Result {
+) -> AnyhowUsizeResult {
     let mut limit = initial_limit;
-    let speed: u64;
+    let speed: usize;
     let mut i = 0;
     loop {
         let logger = Logger::new("Lantern Embeddings", LogLevel::Error);
@@ -47,7 +47,8 @@ fn measure_model_speed(
             filter: None,
         };
         let start = Instant::now();
-        let processed = crate::create_embeddings_from_db(args, false, None, None, Some(logger))?;
+        let (processed, _) =
+            crate::create_embeddings_from_db(args, false, None, None, Some(logger))?;
         let elapsed = start.elapsed();
 
         if i == 0 {
@@ -57,7 +58,7 @@ fn measure_model_speed(
         }
 
         if elapsed.as_millis() >= 1500 {
-            speed = processed as u64 / elapsed.as_secs() as u64;
+            speed = processed / elapsed.as_secs() as usize;
             break;
         }
 

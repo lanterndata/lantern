@@ -18,7 +18,7 @@ pub mod measure_speed;
 
 type EmbeddingRecord = (String, Vec<f32>);
 type AnyhowVoidResult = Result<(), anyhow::Error>;
-type AnyhowU64Result = Result<usize, anyhow::Error>;
+type AnyhowUsizeResult = Result<usize, anyhow::Error>;
 pub type ProgressCbFn = Box<dyn Fn(u8) + Send + Sync>;
 
 static CONNECTION_PARAMS: &'static str = "connect_timeout=10";
@@ -152,9 +152,10 @@ fn embedding_worker(
     tx: Sender<Vec<EmbeddingRecord>>,
     is_canceled: Option<Arc<RwLock<bool>>>,
     logger: Arc<Logger>,
-) -> Result<JoinHandle<AnyhowVoidResult>, anyhow::Error> {
+) -> Result<JoinHandle<AnyhowUsizeResult>, anyhow::Error> {
     let handle = std::thread::spawn(move || {
-        let mut count: u64 = 0;
+        let mut count: usize = 0;
+        let mut processed_tokens: usize = 0;
         let model = &args.model;
         let mut start = Instant::now();
         let runtime = get_runtime(&args.runtime, None, &args.runtime_params)?;
@@ -185,15 +186,18 @@ fn embedding_worker(
                 continue;
             }
 
-            let response_embeddings = runtime.process(&model, &input_vectors);
+            let embedding_response = runtime.process(&model, &input_vectors);
 
-            if let Err(e) = response_embeddings {
+            if let Err(e) = embedding_response {
                 anyhow::bail!("{}", e);
             }
 
-            let mut response_embeddings = response_embeddings.unwrap();
+            let embedding_response = embedding_response.unwrap();
 
-            count += response_embeddings.len() as u64;
+            processed_tokens += embedding_response.processed_tokens;
+            let mut embeddings = embedding_response.embeddings;
+
+            count += embeddings.len();
 
             let duration = start.elapsed().as_secs();
             // avoid division by zero error
@@ -201,13 +205,13 @@ fn embedding_worker(
             logger.debug(&format!(
                 "Generated {} embeddings - speed {} emb/s",
                 count,
-                count / duration
+                count / duration as usize
             ));
 
             let mut response_data = Vec::with_capacity(rows.len());
 
-            for _ in 0..response_embeddings.len() {
-                response_data.push((input_ids.pop().unwrap(), response_embeddings.pop().unwrap()));
+            for _ in 0..embeddings.len() {
+                response_data.push((input_ids.pop().unwrap(), embeddings.pop().unwrap()));
             }
 
             if tx.send(response_data).is_err() {
@@ -222,7 +226,7 @@ fn embedding_worker(
             logger.warn("No data to generate embeddings");
         }
         drop(tx);
-        Ok(())
+        Ok(processed_tokens)
     });
 
     return Ok(handle);
@@ -240,7 +244,7 @@ fn db_exporter_worker(
     item_count: i64,
     progress_cb: Option<ProgressCbFn>,
     logger: Arc<Logger>,
-) -> Result<JoinHandle<AnyhowU64Result>, anyhow::Error> {
+) -> Result<JoinHandle<AnyhowUsizeResult>, anyhow::Error> {
     let handle = std::thread::spawn(move || {
         let uri = args.out_uri.as_ref().unwrap_or(&args.uri);
         let column = &args.out_column;
@@ -379,7 +383,7 @@ fn csv_exporter_worker(
     args: Arc<cli::EmbeddingArgs>,
     rx: Receiver<Vec<EmbeddingRecord>>,
     logger: Arc<Logger>,
-) -> Result<JoinHandle<AnyhowU64Result>, anyhow::Error> {
+) -> Result<JoinHandle<AnyhowUsizeResult>, anyhow::Error> {
     let handle = std::thread::spawn(move || {
         let csv_path = args.out_csv.as_ref().unwrap();
         let mut wtr = Writer::from_path(&csv_path).unwrap();
@@ -442,7 +446,7 @@ pub fn create_embeddings_from_db(
     progress_cb: Option<ProgressCbFn>,
     is_canceled: Option<Arc<RwLock<bool>>>,
     logger: Option<Logger>,
-) -> AnyhowU64Result {
+) -> Result<(usize, usize), anyhow::Error> {
     let logger = Arc::new(logger.unwrap_or(Logger::new("Lantern Embeddings", LogLevel::Debug)));
     logger.info("Lantern CLI - Create Embeddings");
     let args = Arc::new(args);
@@ -484,17 +488,15 @@ pub fn create_embeddings_from_db(
         )?
     };
 
+    let embedding_handle = embedding_worker(
+        args.clone(),
+        producer_rx,
+        embedding_tx,
+        is_canceled,
+        logger.clone(),
+    )?;
     // Collect the thread handles in a vector to wait them
-    let handles = vec![
-        producer_handle,
-        embedding_worker(
-            args.clone(),
-            producer_rx,
-            embedding_tx,
-            is_canceled,
-            logger.clone(),
-        )?,
-    ];
+    let handles = vec![producer_handle];
 
     for handle in handles {
         match handle.join() {
@@ -511,16 +513,23 @@ pub fn create_embeddings_from_db(
         }
     }
 
-    // This will return the result with number of rows processed
-    match exporter_handle.join() {
+    let processed_tokens = match embedding_handle.join() {
         Err(e) => {
             logger.error(&format!("{:?}", e));
             anyhow::bail!("{:?}", e);
         }
-        Ok(res) => {
-            return res;
+        Ok(res) => res?,
+    };
+
+    let processed_rows = match exporter_handle.join() {
+        Err(e) => {
+            logger.error(&format!("{:?}", e));
+            anyhow::bail!("{:?}", e);
         }
-    }
+        Ok(res) => res?,
+    };
+
+    Ok((processed_rows, processed_tokens))
 }
 
 pub fn show_available_models(

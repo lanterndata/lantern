@@ -6,7 +6,7 @@ on:
         type: string
         description: "CLI version"
         required: true
-        default: "0.0.36"
+        default: "0.0.37"
       IMAGE_NAME:
         type: string
         description: "Container image name to tag"

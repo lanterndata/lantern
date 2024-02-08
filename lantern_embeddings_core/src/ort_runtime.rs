@@ -20,7 +20,7 @@ use tokio::{fs, runtime};
 use url::Url;
 
 use crate::core::LoggerFn;
-use crate::runtime::EmbeddingRuntime;
+use crate::runtime::{EmbeddingResult, EmbeddingRuntime};
 use crate::utils::{download_file, get_available_memory, percent_gpu_memory_used};
 
 type SessionInput<'a> = ArrayBase<CowRepr<'a, i64>, Dim<IxDynImpl>>;
@@ -310,7 +310,7 @@ impl EncoderService {
     fn process_text_bert(
         &self,
         texts: &Vec<&str>,
-    ) -> Result<Vec<Vec<f32>>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<EmbeddingResult, Box<dyn std::error::Error + Send + Sync>> {
         let session = &self.encoder;
         let text_len = texts.len();
         let preprocessed = self
@@ -320,6 +320,7 @@ impl EncoderService {
             .encode_batch(texts.clone(), true)?;
 
         let mut vecs = Vec::with_capacity(session.inputs.len());
+        let mut processed_tokens = 0;
 
         for input in &session.inputs {
             let mut val = None;
@@ -329,6 +330,7 @@ impl EncoderService {
                         .iter()
                         .map(|i| i.get_ids().iter().map(|b| *b as i64).collect())
                         .concat();
+                    processed_tokens = v.len();
                     val = Some(v);
                 }
                 "attention_mask" => {
@@ -380,13 +382,16 @@ impl EncoderService {
             })
             .collect::<Result<Vec<Vec<Vec<f32>>>, anyhow::Error>>();
 
-        Ok(embeddings.map(|vec_vec| vec_vec.into_iter().flatten().collect())?)
+        Ok(EmbeddingResult {
+            processed_tokens,
+            embeddings: embeddings.map(|vec_vec| vec_vec.into_iter().flatten().collect())?,
+        })
     }
 
     fn process_text_clip(
         &self,
         text: &Vec<&str>,
-    ) -> Result<Vec<Vec<f32>>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<EmbeddingResult, Box<dyn std::error::Error + Send + Sync>> {
         let session = &self.encoder;
         let preprocessed = self
             .tokenizer
@@ -398,6 +403,8 @@ impl EncoderService {
             .iter()
             .map(|i| i.get_ids().iter().map(|b| *b as i32).collect())
             .concat();
+
+        let processed_tokens = v1.len();
 
         let v2: Vec<i32> = preprocessed
             .iter()
@@ -426,19 +433,22 @@ impl EncoderService {
 
         let seq_len = embeddings.shape().get(1).ok_or("not")?;
 
-        Ok(embeddings
-            .iter()
-            .map(|s| *s)
-            .chunks(*seq_len)
-            .into_iter()
-            .map(|b| b.collect())
-            .collect())
+        Ok(EmbeddingResult {
+            processed_tokens,
+            embeddings: embeddings
+                .iter()
+                .map(|s| *s)
+                .chunks(*seq_len)
+                .into_iter()
+                .map(|b| b.collect())
+                .collect(),
+        })
     }
 
     fn process_text(
         &self,
         texts: &Vec<&str>,
-    ) -> Result<Vec<Vec<f32>>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<EmbeddingResult, Box<dyn std::error::Error + Send + Sync>> {
         match self.name.as_str() {
             "clip/ViT-B-32-textual" => self.process_text_clip(texts),
             _ => self.process_text_bert(texts),
@@ -448,7 +458,7 @@ impl EncoderService {
     pub fn process_image_clip(
         &self,
         images_bytes: &Vec<Vec<u8>>,
-    ) -> Result<Vec<Vec<f32>>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<EmbeddingResult, Box<dyn std::error::Error + Send + Sync>> {
         let session = &self.encoder;
         let mean = vec![0.48145466, 0.4578275, 0.40821073]; // CLIP Dataset
         let std = vec![0.26862954, 0.26130258, 0.27577711];
@@ -480,6 +490,8 @@ impl EncoderService {
             }
         }
 
+        let processed_tokens = pixels.len();
+
         let outputs = session.run(vec![Value::from_array(
             session.allocator(),
             &pixels.into_dyn(),
@@ -489,19 +501,22 @@ impl EncoderService {
 
         let seq_len = embeddings.shape().get(1).unwrap();
 
-        Ok(embeddings
-            .iter()
-            .map(|s| *s)
-            .chunks(*seq_len)
-            .into_iter()
-            .map(|b| b.collect())
-            .collect())
+        Ok(EmbeddingResult {
+            processed_tokens,
+            embeddings: embeddings
+                .iter()
+                .map(|s| *s)
+                .chunks(*seq_len)
+                .into_iter()
+                .map(|b| b.collect())
+                .collect(),
+        })
     }
 
     fn process_image(
         &self,
         images_bytes: &Vec<Vec<u8>>,
-    ) -> Result<Vec<Vec<f32>>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<EmbeddingResult, Box<dyn std::error::Error + Send + Sync>> {
         match self.name.as_str() {
             "clip/ViT-B-32-visual" => self.process_image_clip(images_bytes),
             _ => self.process_image_clip(images_bytes),
@@ -748,7 +763,7 @@ impl<'a> EmbeddingRuntime for OrtRuntime<'a> {
         &self,
         model_name: &str,
         inputs: &Vec<&str>,
-    ) -> Result<Vec<Vec<f32>>, anyhow::Error> {
+    ) -> Result<EmbeddingResult, anyhow::Error> {
         let download_result = self.check_and_download_files(model_name);
 
         if let Err(err) = download_result {

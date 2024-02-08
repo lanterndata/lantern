@@ -1,7 +1,11 @@
 use itertools::Itertools;
 use std::{collections::HashMap, sync::RwLock};
 
-use crate::{core::LoggerFn, runtime::EmbeddingRuntime, HTTPRuntime};
+use crate::{
+    core::LoggerFn,
+    runtime::{EmbeddingResult, EmbeddingRuntime},
+    HTTPRuntime,
+};
 use serde::{Deserialize, Serialize};
 use tiktoken_rs::{cl100k_base, CoreBPE};
 
@@ -18,8 +22,14 @@ struct OpenAiEmbedding {
 }
 
 #[derive(Deserialize)]
+struct OpenAiUsage {
+    total_tokens: usize,
+}
+
+#[derive(Deserialize)]
 struct OpenAiResponse {
     data: Vec<OpenAiEmbedding>,
+    usage: OpenAiUsage,
 }
 
 impl ModelInfo {
@@ -159,7 +169,7 @@ impl<'a> OpenAiRuntime<'a> {
         Ok(batch_tokens)
     }
 
-    pub fn get_response(&self, body: Vec<u8>) -> Result<Vec<Vec<f32>>, anyhow::Error> {
+    pub fn get_response(&self, body: Vec<u8>) -> Result<EmbeddingResult, anyhow::Error> {
         let result: Result<OpenAiResponse, serde_json::Error> = serde_json::from_slice(&body);
         if let Err(e) = result {
             anyhow::bail!(
@@ -170,11 +180,14 @@ impl<'a> OpenAiRuntime<'a> {
 
         let result = result.unwrap();
 
-        Ok(result
-            .data
-            .iter()
-            .map(|emb| emb.embedding.clone())
-            .collect())
+        Ok(EmbeddingResult {
+            processed_tokens: result.usage.total_tokens,
+            embeddings: result
+                .data
+                .iter()
+                .map(|emb| emb.embedding.clone())
+                .collect(),
+        })
     }
 }
 
@@ -183,7 +196,7 @@ impl<'a> EmbeddingRuntime for OpenAiRuntime<'a> {
         &self,
         model_name: &str,
         inputs: &Vec<&str>,
-    ) -> Result<Vec<Vec<f32>>, anyhow::Error> {
+    ) -> Result<EmbeddingResult, anyhow::Error> {
         self.post_request("/v1/embeddings", model_name, inputs)
     }
 

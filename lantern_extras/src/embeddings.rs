@@ -29,7 +29,7 @@ fn text_embedding<'a>(model_name: &'a str, text: &'a str) -> Result<Vec<f32>, an
         &ORT_RUNTIME_PARAMS,
     )?;
     let mut res = runtime.process(model_name, &vec![text])?;
-    Ok(res.pop().unwrap())
+    Ok(res.embeddings.pop().unwrap())
 }
 
 #[pg_extern(immutable, parallel_safe, create_or_replace)]
@@ -47,7 +47,7 @@ fn openai_embedding<'a>(model_name: &'a str, text: &'a str) -> Result<Vec<f32>, 
         &runtime_params,
     )?;
     let mut res = runtime.process(model_name, &vec![text])?;
-    Ok(res.pop().unwrap())
+    Ok(res.embeddings.pop().unwrap())
 }
 
 #[pg_extern(immutable, parallel_safe, create_or_replace)]
@@ -70,7 +70,7 @@ fn cohere_embedding<'a>(
         &runtime_params,
     )?;
     let mut res = runtime.process(model_name, &vec![text])?;
-    Ok(res.pop().unwrap())
+    Ok(res.embeddings.pop().unwrap())
 }
 
 #[pg_extern(immutable, parallel_safe)]
