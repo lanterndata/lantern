@@ -2,6 +2,7 @@
 
 #include "product_quantization.h"
 
+#include <assert.h>
 #include <float.h>
 #include <string.h>
 #include <time.h>
@@ -74,21 +75,23 @@ static void assign_to_clusters(float4              **dataset,
                                uint32                k,
                                usearch_metric_kind_t distance_metric)
 {
-    uint32   i;
-    uint32   j;
-    float4   distance;
-    float4   min_dist;
-    uint32   min_dist_cluster_idx;
-    Cluster *current_cluster;
-    float4  *current_subset;
+    uint32          i;
+    uint32          j;
+    float4          distance;
+    float4          min_dist;
+    uint32          min_dist_cluster_idx;
+    Cluster        *current_cluster;
+    float4         *current_subset;
+    usearch_error_t error = NULL;
 
     for(i = 0; i < dataset_size; i++) {
         current_subset = &dataset[ i ][ subset_start ];
         min_dist = FLT_MAX;
         for(j = 0; j < k; j++) {
             current_cluster = clusters[ j ];
-            distance = usearch_dist(
-                current_subset, current_cluster->center, distance_metric, subset_dim, usearch_scalar_f32_k);
+            distance = usearch_distance(
+                current_subset, current_cluster->center, usearch_scalar_f32_k, subset_dim, distance_metric, &error);
+            assert(!error);
             if(distance < min_dist) {
                 min_dist = distance;
                 min_dist_cluster_idx = j;
@@ -160,13 +163,15 @@ bool should_stop_iterations(float4              **old_centers,
                             uint32                subset_dim,
                             usearch_metric_kind_t distance_metric)
 {
-    uint32 i;
-    float4 threshold = 0.15f;
-    float4 distance = 0.0f;
+    usearch_error_t error = NULL;
+    uint32          i;
+    float4          threshold = 0.15f;
+    float4          distance = 0.0f;
 
     for(i = 0; i < cluster_count; i++) {
-        distance
-            += usearch_dist(old_centers[ i ], clusters[ i ]->center, distance_metric, subset_dim, usearch_scalar_f32_k);
+        distance += usearch_distance(
+            old_centers[ i ], clusters[ i ]->center, usearch_scalar_f32_k, subset_dim, distance_metric, &error);
+        assert(!error);
     }
 
     distance /= cluster_count;
