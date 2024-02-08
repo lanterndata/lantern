@@ -6,7 +6,6 @@
 #include <assert.h>
 
 #include "hnsw.h"
-#include "lib_interface.h"
 #include "retriever.h"
 #include "usearch.h"
 
@@ -25,7 +24,6 @@ typedef struct HnswScanState
     int current;
     // set when the distances and labels are populated
     int             count;
-    hnsw_t          hnsw;
     usearch_index_t usearch_index;
 
     RetrieverCtx *retriever_ctx;

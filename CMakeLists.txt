@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.3)
 
-set(LANTERN_VERSION 0.1.0)
+set(LANTERN_VERSION 0.1.1)
 
 project(
   LanternDB
@@ -214,8 +214,6 @@ endif ()
 target_link_libraries(lantern PRIVATE "libstdc++.a")
 
 set_target_properties(lantern PROPERTIES LINKER_LANGUAGE C)
-
-target_compile_definitions(lantern PRIVATE LANTERN_USE_USEARCH)
 # the flag instructs usearch/lib.c to builds with lantern-postgres compatible storage, which
 # assumes storage is handled inside postgres and so usearch allocates no memory for it
 target_compile_definitions(lantern PRIVATE LANTERN_INSIDE_POSTGRES)
@@ -262,6 +260,7 @@ set (_update_files
   sql/updates/0.0.10--0.0.11.sql
   sql/updates/0.0.11--0.0.12.sql
   sql/updates/0.0.12--0.1.0.sql
+  sql/updates/0.1.0--0.1.1.sql
 )
 
 # Generate version information for the binary

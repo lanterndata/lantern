@@ -97,10 +97,6 @@ static void AddTupleToUsearchIndex(ItemPointer tid, Datum *values, HnswBuildStat
     // casting tid structure to a number to be used as value in vector search
     // tid has info about disk location of this item and is 6 bytes long
     usearch_label_t label = GetUsearchLabel(tid);
-#ifdef LANTERN_USE_LIBHNSW
-    if(buildstate->hnsw != NULL) hnsw_add(buildstate->hnsw, vector, label);
-#endif
-#ifdef LANTERN_USE_USEARCH
     if(buildstate->usearch_index != NULL) {
         size_t capacity = usearch_capacity(buildstate->usearch_index, &error);
         if(capacity == usearch_size(buildstate->usearch_index, &error)) {
@@ -115,7 +111,6 @@ static void AddTupleToUsearchIndex(ItemPointer tid, Datum *values, HnswBuildStat
         }
         usearch_add(buildstate->usearch_index, label, vector, usearch_scalar, &error);
     }
-#endif
     assert(error == NULL);
     buildstate->tuples_indexed++;
     buildstate->reltuples++;
@@ -450,7 +445,6 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, Hnsw
     elog(INFO, "done init usearch index");
     assert(error == NULL);
 
-    buildstate->hnsw = NULL;
     if(buildstate->index_file_path) {
         if(access(buildstate->index_file_path, F_OK) != 0) {
             ereport(ERROR,
@@ -581,8 +575,6 @@ static void BuildEmptyIndex(Relation index, IndexInfo *indexInfo, HnswBuildState
 
     buildstate->usearch_index = usearch_init(&opts, &error);
     assert(error == NULL);
-
-    buildstate->hnsw = NULL;
 
     char *result_buf = palloc(USEARCH_EMPTY_INDEX_SIZE);
     usearch_save_buffer(buildstate->usearch_index, result_buf, USEARCH_EMPTY_INDEX_SIZE, &error);

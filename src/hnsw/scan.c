@@ -11,8 +11,10 @@
 #include "build.h"
 #include "external_index.h"
 #include "hnsw.h"
+#include "index_cache.h"
 #include "options.h"
 #include "retriever.h"
+#include "usearch.h"
 #include "utils.h"
 #include "vector.h"
 
@@ -55,6 +57,10 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     assert(headerp->magicNumber == LDB_WAL_MAGIC_NUMBER);
 
     // Initialize usearch index options based on params stored in our index header
+    memcpy(
+        retriever_ctx->blockmap_groups_cache, headerp->blockmap_groups, sizeof(retriever_ctx->blockmap_groups_cache));
+    retriever_ctx->header_page_under_wal = NULL;
+
     dimensions = headerp->vector_dim;
 
     opts.connectivity = headerp->m;
@@ -79,19 +85,28 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
              opts.expansion_add,
              opts.expansion_search);
 
-    scanstate->usearch_index = usearch_init(&opts, &error);
-    if(error != NULL) elog(ERROR, "error loading index: %s", error);
-    assert(error == NULL);
+    void *cached_index = ldb_index_cache_get(index->rd_node.relNode);
+    if(cached_index != NULL) {
+        elog(INFO, "Reusing connection %p", cached_index);
+        scanstate->usearch_index = cached_index;
+        usearch_set_node_retriever(scanstate->usearch_index,
+                                   retriever_ctx,
+                                   ldb_wal_index_node_retriever,
+                                   ldb_wal_index_node_retriever_mut,
+                                   &error);
+    } else {
+        scanstate->usearch_index = usearch_init(&opts, &error);
+        if(error != NULL) elog(ERROR, "error loading index: %s", error);
+        assert(error == NULL);
 
-    memcpy(
-        retriever_ctx->blockmap_groups_cache, headerp->blockmap_groups, sizeof(retriever_ctx->blockmap_groups_cache));
-    retriever_ctx->header_page_under_wal = NULL;
-
-    usearch_mem = headerp->usearch_header;
-    // this reserves memory for internal structures,
-    // including for locks according to size indicated in usearch_mem
-    usearch_view_mem_lazy(scanstate->usearch_index, usearch_mem, &error);
-    assert(error == NULL);
+        usearch_mem = headerp->usearch_header;
+        assert(error == NULL);
+        // this reserves memory for internal structures,
+        // including for locks according to size indicated in usearch_mem
+        usearch_view_mem_lazy(scanstate->usearch_index, usearch_mem, &error);
+        assert(error == NULL);
+        ldb_index_cache_add(index->rd_node.relNode, scanstate->usearch_index);
+    }
     UnlockReleaseBuffer(buf);
 
     scan->opaque = scanstate;
@@ -109,20 +124,13 @@ void ldb_amendscan(IndexScanDesc scan)
     // todo:: once VACUUM/DELETE are implemented, during scan we need to hold a pin
     //  on the buffer we have last returned.
     //  make sure to release that pin here
-
-#ifdef LANTERN_USE_LIBHNSW
-    if(scanstate->hnsw) hnsw_destroy(scanstate->hnsw);
-#endif
-#ifdef LANTERN_USE_USEARCH
-    if(scanstate->usearch_index) {
+    void *cached_index = ldb_index_cache_get(scan->indexRelation->rd_node.relNode);
+    if(cached_index == NULL && scanstate->usearch_index) {
         usearch_error_t error = NULL;
         usearch_free(scanstate->usearch_index, &error);
-        ldb_wal_retriever_area_fini(scanstate->retriever_ctx);
         assert(error == NULL);
     }
-#else
-    elog(ERROR, "no index implementation specified");
-#endif
+    ldb_wal_retriever_area_fini(scanstate->retriever_ctx);
 
     if(scanstate->distances) pfree(scanstate->distances);
 

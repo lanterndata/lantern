@@ -6,7 +6,6 @@
 #include <utils/relcache.h>
 
 #include "hnsw.h"
-#include "lib_interface.h"
 #include "usearch.h"
 
 typedef struct HnswBuildState
@@ -26,7 +25,6 @@ typedef struct HnswBuildState
     double reltuples;
 
     /* hnsw */
-    hnsw_t          hnsw;
     usearch_index_t usearch_index;
 
     /* Memory */

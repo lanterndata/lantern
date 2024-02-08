@@ -20,11 +20,9 @@
 #define HNSW_DEFAULT_EF_CONSTRUCTION 128
 #define HNSW_MAX_EF_CONSTRUCTION     400
 /* 10 in faiss*/
-#define HNSW_DEFAULT_EF               64
-#define HNSW_MAX_EF                   400
-#define HNSW_DEFAULT_PROVIDER         "usearch"
-#define HNSW_MAX_ELEMENT_LIMIT        200000000
-#define HNSWLIB_DEFAULT_ELEMENT_LIMIT 2000000
+#define HNSW_DEFAULT_EF        64
+#define HNSW_MAX_EF            400
+#define HNSW_MAX_ELEMENT_LIMIT 200000000
 
 #define LDB_HNSW_DEFAULT_K 10
 #define LDB_HNSW_MAX_K     1000
@@ -32,7 +30,6 @@
 /* HNSW index options */
 typedef struct ldb_HnswOptions
 {
-    // max elements the table will ever have. required for hnswlib
     int32 vl_len_; /* varlena header (do not touch directly!) */
     int   dim;
     int   element_limit;
