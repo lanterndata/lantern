@@ -17,6 +17,7 @@
 
 #include "../hooks/executor_start.h"
 #include "../hooks/post_parse.h"
+#include "index_cache.h"
 
 // We import this header file
 // to access the op class support function pointers
@@ -260,6 +261,9 @@ void _PG_init(void)
                              NULL,
                              NULL,
                              NULL);
+
+    // the rest of Lantern initialization goes here
+    ldb_index_cache_init();
 }
 
 // Called with extension unload.
