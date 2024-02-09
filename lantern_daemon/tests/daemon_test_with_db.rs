@@ -290,7 +290,7 @@ async fn test_embedding_generation_runtime(
     let cnt: i64 = client_data.get::<usize, i64>(0);
     let client_data = db_client
         .query(
-            &format!("SELECT * FROM {CLIENT_TABLE_NAME} WHERE ARRAY_LENGTH(title_embedding, 1) != {dimensions}"),
+            &format!("SELECT ARRAY_LENGTH(title_embedding, 1) FROM {CLIENT_TABLE_NAME} WHERE ARRAY_LENGTH(title_embedding, 1) != {dimensions}"),
             &[],
         )
         .await
@@ -549,7 +549,6 @@ async fn test_cleanup() {
 #[tokio::test]
 async fn test_daemon() {
     let runtimes = [
-        ("ort", "microsoft/all-MiniLM-L12-v2", 384, ""),
         (
             "openai",
             "openai/text-embedding-ada-002",
@@ -574,6 +573,7 @@ async fn test_daemon() {
             768,
             "COHERE_TOKEN",
         ),
+        ("ort", "microsoft/all-MiniLM-L12-v2", 384, ""),
     ];
 
     for (runtime, model, dim, params) in runtimes {

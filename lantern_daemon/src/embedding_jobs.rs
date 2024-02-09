@@ -222,7 +222,6 @@ async fn embedding_worker(
                         client_ref.execute(&format!("UPDATE {jobs_table_name} SET init_finished_at=NOW(), updated_at=NOW() WHERE id=$1"), &[&job.id]).await?;
                     }
 
-                    logger.info(&format!("Processed Rows: {processed_rows}, processed_tokens: {processed_tokens}"));
                     if processed_tokens > 0 {
                         let fn_name = get_full_table_name(&schema_ref, "increment_embedding_usage");
                         let res = client_ref.execute(&format!("SELECT {fn_name}({job_id},{usage},{tokens})", job_id=job.id, usage=processed_rows, tokens=processed_tokens), &[]).await;
