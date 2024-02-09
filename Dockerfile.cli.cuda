@@ -1,4 +1,4 @@
-FROM rust:1.72.0 as build
+FROM rust:1.74.0 as build
 # Copy the files in your machine to the Docker image
 WORKDIR /app
 COPY . .
