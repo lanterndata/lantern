@@ -3,6 +3,7 @@ use lantern_daemon::cli::DaemonArgs;
 use lantern_embeddings::cli::{EmbeddingArgs, MeasureModelSpeedArgs, ShowModelsArgs};
 use lantern_external_index::cli::CreateIndexArgs;
 use lantern_index_autotune::cli::IndexAutotuneArgs;
+use lantern_pq::cli::PQArgs;
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
@@ -18,6 +19,8 @@ pub enum Commands {
     MeasureModelSpeed(MeasureModelSpeedArgs),
     /// Autotune index
     AutotuneIndex(IndexAutotuneArgs),
+    /// Quantize table
+    PQTable(PQArgs),
     /// Start in daemon mode
     StartDaemon(DaemonArgs),
 }

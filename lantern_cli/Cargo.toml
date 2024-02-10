@@ -16,3 +16,4 @@ lantern_embeddings = { path = "../lantern_embeddings" }
 lantern_daemon = { path = "../lantern_daemon" }
 lantern_logger = { path = "../lantern_logger" }
 lantern_index_autotune = { path = "../lantern_index_autotune" }
+lantern_pq = { path = "../lantern_pq" }
