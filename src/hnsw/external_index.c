@@ -954,13 +954,6 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
                 LockBuffer(buf, BUFFER_LOCK_UNLOCK);
             }
 
-#if PG_VERSION_NUM >= 130000
-            CheckMem(work_mem,
-                     NULL,
-                     NULL,
-                     0,
-                     "pinned more tuples during node retrieval than will fit in work_mem, cosider increasing work_mem");
-#endif
             fa_cache_insert(&ctx->fa_cache, id, nodepage->node);
 
             return nodepage->node;

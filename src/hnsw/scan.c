@@ -145,6 +145,40 @@ void ldb_amendscan(IndexScanDesc scan)
  * from docs: In practice the restart feature is used when a new outer tuple is
  * selected by a nested-loop join and so a new key comparison value is needed,
  * but the scan key structure remains the same.
+ * Example query on the SIFT dataset that would trigger a rescan after openning the
+ * index once:
+            SELECT
+              forall.id,
+              nearest_per_id.near_ids,
+              nearest_per_id.embed_dists
+            FROM
+              (
+                SELECT
+                  id,
+                  embedding
+                FROM
+                  "LanternCollection"
+                LIMIT 25000
+              ) AS forall
+            JOIN LATERAL
+              (
+                SELECT
+                  ARRAY_AGG(id) AS near_ids,
+                  ARRAY_AGG(embed_dist) AS embed_dists
+                FROM
+                  (
+                    SELECT
+                      t2.id,
+                      forall.embedding <-> t2.embedding AS embed_dist
+                    FROM
+                      "LanternCollection" t2
+                    ORDER BY
+                      embed_dist
+                    LIMIT 5
+                  ) AS nearest_neighbors
+              ) nearest_per_id ON TRUE
+            ORDER BY
+              forall.id;
  */
 void ldb_amrescan(IndexScanDesc scan, ScanKey keys, int nkeys, ScanKey orderbys, int norderbys)
 {
