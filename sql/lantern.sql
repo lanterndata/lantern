@@ -255,7 +255,7 @@ BEGIN
   FOR i IN 1..subset_count loop
   	FOR k IN 1..cluster_cnt loop
   	  -- centroid_id is k-1 because k is in range[0,255] but postgres arrays start from index 1
-      stmt := format('INSERT INTO %I(subvector_id, centroid_id, c) VALUES (%s, %s, ARRAY(SELECT * FROM unnest(''%s''::REAL[])))', codebook_table, i, k - 1, codebooks[i:i][k:k]);
+      stmt := format('INSERT INTO %I(subvector_id, centroid_id, c) VALUES (%s, %s, ARRAY(SELECT * FROM unnest(''%s''::REAL[])))', codebook_table, i - 1, k - 1, codebooks[i:i][k:k]);
       EXECUTE stmt;
   	END LOOP;
   END LOOP;
@@ -279,7 +279,7 @@ BEGIN
   dim := array_length(v, 1);
   res := '{}'::INT[];
   subset_len := dim/subset_count;
-  subvector_id := 1;
+  subvector_id := 0;
 
   FOR i IN 1..dim BY subset_len LOOP
     IF i = dim THEN
@@ -319,7 +319,7 @@ DECLARE
   subvector_id INT;
 BEGIN
   res := '{}'::REAL[];
-  subvector_id := 1;
+  subvector_id := 0;
   FOREACH centroid_id in array v::INT[]
   LOOP
      EXECUTE format('SELECT c FROM %I WHERE subvector_id=%L AND centroid_id=%L', codebook, subvector_id, centroid_id) INTO subset;
