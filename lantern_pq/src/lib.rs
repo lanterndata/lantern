@@ -8,6 +8,7 @@ use rand::Rng;
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::io::Write;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
@@ -28,17 +29,12 @@ fn report_progress(progress_cb: &Option<ProgressCbFn>, logger: &Logger, progress
     }
 }
 
+#[derive(Clone, Debug)]
 struct DatasetItem {
     id: String,
     vec: Vec<f32>,
 }
 
-// DB exporter worker will create temp table with name _lantern_tmp_${rand(0,1000)}
-// Then it will create writer stream which will COPY bytes from stdin to that table
-// After that it will receiver the output embeddings mapped with row ids over the channel
-// And write them using writer instance
-// At the end we will flush the writer commit the transaction and UPDATE destination table
-// Using our TEMP table data
 fn write_compressed_rows<'a>(
     mut transaction: Transaction<'a>,
     rows: Vec<(String, Vec<u8>)>,
@@ -249,7 +245,7 @@ pub fn quantize_table(
             vec: r.get::<usize, Vec<f32>>(1),
         })
         .collect::<Vec<DatasetItem>>();
-    // 5% load, 70% codebook, 15% compression, 10% export
+    // progress indicator is: 5% load, 70% codebook, 15% compression, 10% export
     logger.info(&format!("Fetched {} items", rows.len()));
     report_progress(&progress_cb, &logger, 5);
     let vector_dim = rows[0].vec.len();
@@ -261,54 +257,56 @@ pub fn quantize_table(
         "Starting kmeans with params (clouster_count={}, subset_count={})",
         args.clusters, args.splits
     ));
-    for i in 0..args.splits {
-        let training_time_start = Instant::now();
-        let start_index = i * subvector_dim;
-        let mut end_index = start_index + subvector_dim;
+    let rows = Arc::new(rows);
+    let rows_clone = rows.clone();
+    let processed_cnt = AtomicUsize::new(0);
 
-        if end_index >= vector_dim {
-            end_index = start_index + (vector_dim - start_index);
-        }
+    let all_centroids: Vec<Vec<Vec<f32>>> = (0..args.splits)
+        .into_par_iter()
+        .map_with(rows_clone, |rows, i| {
+            let training_time_start = Instant::now();
+            let start_index = i * subvector_dim;
+            let mut end_index = start_index + subvector_dim;
 
-        let subset_dataset = rows
-            .iter()
-            .map(|r| &r.vec[start_index..end_index])
-            .collect::<Vec<&[f32]>>();
+            if end_index >= vector_dim {
+                end_index = start_index + (vector_dim - start_index);
+            }
+            let subset_dataset = rows
+                .iter()
+                .map(|r| &r.vec[start_index..end_index])
+                .collect::<Vec<&[f32]>>();
+            let centroids = create_codebook(subset_dataset, args.clusters).unwrap();
 
-        let centroids = create_codebook(subset_dataset, args.clusters)?;
+            logger.debug(&format!(
+                "Subset {i} training duration: {}s",
+                training_time_start.elapsed().as_secs()
+            ));
 
-        logger.debug(&format!(
-            "Subset {i} training duration: {}s",
-            training_time_start.elapsed().as_secs()
-        ));
+            let processed_cnt = processed_cnt.fetch_add(1, Ordering::SeqCst);
+            report_progress(
+                &progress_cb,
+                &logger,
+                5 + (70.0 * ((processed_cnt) as f32 / args.splits as f32)) as u8,
+            );
+            centroids
+        })
+        .collect();
 
-        let training_time_start = Instant::now();
+    let codebook_write_time_start = Instant::now();
+    for (subvector_id, centroids) in all_centroids.iter().enumerate() {
         for (centroid_id, centroid) in centroids.iter().enumerate() {
             transaction.execute(
-                &format!("INSERT INTO {codebook_table_name} (subvector_id, centroid_id, c) VALUES ($1, $2, $3)",codebook_table_name=quote_ident(&codebook_table_name)),
-                &[&(i as i32), &(centroid_id as i32), &centroid],
-            )?;
-        }
-
-        codebooks_hashmap.insert(i, centroids);
-        logger.debug(&format!(
-            "Subset {i} codebook export duration: {}ms",
-            training_time_start.elapsed().as_millis()
-        ));
-
-        // Max 70% progress from this task, starting from 5%
-        report_progress(
-            &progress_cb,
-            &logger,
-            5 + (70.0 * ((i + 1) as f32 / args.splits as f32)) as u8,
-        );
-
-        if *is_canceled.read().unwrap() {
-            // This variable will be changed from outside to gracefully
-            // exit job on next chunk
-            anyhow::bail!("Job canceled");
+                    &format!("INSERT INTO {codebook_table_name} (subvector_id, centroid_id, c) VALUES ($1, $2, $3)",codebook_table_name=quote_ident(&codebook_table_name)),
+                    &[&(subvector_id as i32), &(centroid_id as i32), &centroid],
+                )?;
+            codebooks_hashmap.insert(subvector_id, centroids.clone());
         }
     }
+    logger.debug(&format!(
+        "Codebook write duration: {}s",
+        codebook_write_time_start.elapsed().as_secs()
+    ));
+
     logger.debug(&format!(
         "Codebook creation duration: {}s",
         codebook_creation_start.elapsed().as_secs()
@@ -318,6 +316,10 @@ pub fn quantize_table(
 
     let now = Instant::now();
     let rows: Vec<_> = rows
+        .as_ref()
+        .iter()
+        .map(|r| r.clone())
+        .collect::<Vec<DatasetItem>>()
         .into_par_iter()
         .map_with(codebooks_hashmap, |s, x| {
             (
