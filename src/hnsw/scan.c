@@ -12,6 +12,7 @@
 #include "external_index.h"
 #include "hnsw.h"
 #include "options.h"
+#include "pqtable.h"
 #include "retriever.h"
 #include "utils.h"
 #include "vector.h"
@@ -64,12 +65,24 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     opts.metric = NULL;
     opts.quantization = usearch_scalar_f32_k;
     opts.num_threads = 1;
+    opts.pq = headerp->pq;
+    opts.num_centroids = headerp->num_centroids;
+    opts.num_subvectors = headerp->num_subvectors;
 
     scanstate = (HnswScanState *)palloc0(sizeof(HnswScanState));
     scanstate->first = true;
     scanstate->retriever_ctx = opts.retriever_ctx = retriever_ctx;
     scanstate->columnType = GetIndexColumnType(index);
     scanstate->dimensions = opts.dimensions = dimensions;
+
+    if(opts.pq) {
+        size_t tmp_num_centroids = -1;
+        size_t tmp_num_subvectors = -1;
+        scanstate->pq_codebook = load_pq_codebook(index, opts.dimensions, &tmp_num_centroids, &tmp_num_subvectors);
+        assert(tmp_num_centroids == headerp->num_centroids);
+        assert(tmp_num_subvectors == headerp->num_subvectors);
+    }
+
     opts.retriever = ldb_wal_index_node_retriever;
     opts.retriever_mut = ldb_wal_index_node_retriever_mut;
 
@@ -79,7 +92,7 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
              opts.expansion_add,
              opts.expansion_search);
 
-    scanstate->usearch_index = usearch_init(&opts, &error);
+    scanstate->usearch_index = usearch_init(&opts, scanstate->pq_codebook, &error);
     if(error != NULL) elog(ERROR, "error loading index: %s", error);
     assert(error == NULL);
 

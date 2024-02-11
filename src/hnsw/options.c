@@ -79,6 +79,13 @@ char *ldb_HnswGetIndexFilePath(Relation index)
     return (char *)opts + opts->experimantal_index_path_offset;
 }
 
+bool ldb_HnswGetPq(Relation index)
+{
+    ldb_HnswOptions *opts = (ldb_HnswOptions *)index->rd_options;
+    if(opts) return opts->pq;
+    return false;
+}
+
 usearch_metric_kind_t ldb_HnswGetMetricKind(Relation index)
 {
     struct catclist *proclist = SearchSysCacheList1(AMPROCNUM, ObjectIdGetDatum(index->rd_opfamily[ 0 ]));
@@ -109,13 +116,14 @@ usearch_metric_kind_t ldb_HnswGetMetricKind(Relation index)
  */
 bytea *ldb_amoptions(Datum reloptions, bool validate)
 {
-    static const relopt_parse_elt tab[]
-        = {{"dim", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, dim)},
-           {"element_limit", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, element_limit)},
-           {"m", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, m)},
-           {"ef_construction", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, ef_construction)},
-           {"ef", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, ef)},
-           {"_experimental_index_path", RELOPT_TYPE_STRING, offsetof(ldb_HnswOptions, experimantal_index_path_offset)}};
+    static const relopt_parse_elt tab[] = {
+        {"dim", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, dim)},
+        {"m", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, m)},
+        {"ef_construction", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, ef_construction)},
+        {"ef", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, ef)},
+        {"pq", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, pq)},
+        {"_experimental_index_path", RELOPT_TYPE_STRING, offsetof(ldb_HnswOptions, experimantal_index_path_offset)},
+    };
 
 #if PG_VERSION_NUM >= 130000
     LDB_UNUSED(validate);
@@ -212,7 +220,17 @@ void _PG_init(void)
                          AccessExclusiveLock
 #endif
     );
+    add_bool_reloption(ldb_hnsw_index_withopts,
+                       "pq",
+                       "Whether or not use to quantized table codebook for index construction. Assumes codebook is "
+                       "called [tablename]_pq_codebook",
+                       false
+#if PG_VERSION_NUM >= 130000
+                       ,
+                       AccessExclusiveLock
+#endif
 
+    );
     DefineCustomIntVariable("hnsw.init_k",
                             "Number of elements to initially retrieve from the index in a scan",
                             "Valid values are in range [1, 1000]",

@@ -19,6 +19,7 @@
 #include "hnsw.h"
 #include "options.h"
 #include "usearch.h"
+#include "usearch_storage.hpp"
 #include "version.h"
 
 bool versions_match = false;
@@ -53,6 +54,7 @@ void PopulateUsearchOpts(Relation index, usearch_init_options_t *opts)
     opts->metric_kind = ldb_HnswGetMetricKind(index);
     opts->metric = NULL;
     opts->quantization = usearch_scalar_f32_k;
+    opts->pq = ldb_HnswGetPq(index);
     opts->num_threads = 1;
 }
 
@@ -65,7 +67,12 @@ usearch_label_t GetUsearchLabel(ItemPointer itemPtr)
 
 void CheckMem(int limit, Relation index, usearch_index_t uidx, uint32 n_nodes, char *msg)
 {
-    uint32 node_size = 0;
+    uint32     node_size = 0;
+    static int printed_count = 0;
+
+    // let's make sure we do not flood the client with messages
+    if(printed_count > 10) return;
+
     if(index != NULL) {
         usearch_error_t error;
         double          M = ldb_HnswGetM(index);
@@ -85,6 +92,7 @@ void CheckMem(int limit, Relation index, usearch_index_t uidx, uint32 n_nodes, c
     // Accuracy could maybe be improved by not rounding
     // This is a guess, but it's a reasonably good one
     if(pg_mem + node_size * n_nodes > (uint32)limit * 1024UL) {
+        printed_count++;
         elog(WARNING, "%s", msg);
     }
 }

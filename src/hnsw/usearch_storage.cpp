@@ -1,4 +1,3 @@
-
 #include <usearch.h>
 #include <usearch/index.hpp>
 extern "C" {
@@ -7,15 +6,17 @@ extern "C" {
 
 #include <cassert>
 
-#include "usearch/index_dense.hpp"
-
-uint32_t UsearchNodeBytes(metadata_t *metadata, int vector_bytes, int level)
+uint32_t UsearchNodeBytes(const metadata_t *metadata, int vector_bytes, int level)
 {
     const int NODE_HEAD_BYTES = sizeof(usearch_label_t) + sizeof(unum::usearch::level_t) /*sizeof level*/;
     uint32_t  node_bytes = 0;
+
     node_bytes += NODE_HEAD_BYTES + metadata->neighbors_base_bytes;
     node_bytes += metadata->neighbors_bytes * level;
-    node_bytes += vector_bytes;
+    // assuming at most 2 ** 8 centroids (= 1 byte) per subvector
+    assert(!metadata->init_options.pq || metadata->init_options.num_subvectors <= vector_bytes / sizeof(float));
+    assert(!metadata->init_options.pq || metadata->init_options.num_subvectors > 0);
+    node_bytes += metadata->init_options.pq ? metadata->init_options.num_subvectors : vector_bytes;
     return node_bytes;
 }
 
@@ -30,13 +31,13 @@ void usearch_init_node(
     assert(level == uint16_t(level));
     node.level(level);
     node.key(key);
-    std::memcpy(tape + node_size - vector_len, vector, vector_len);
+    if(!meta->init_options.pq) std::memcpy(tape + node_size - vector_len, vector, vector_len);
 }
 
 char *extract_node(char              *data,
                    uint64_t           progress,
                    int                dim,
-                   metadata_t        *metadata,
+                   const metadata_t  *metadata,
                    /*->>output*/ int *node_size,
                    int               *level)
 {

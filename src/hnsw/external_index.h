@@ -17,7 +17,7 @@
 #include "usearch.h"
 
 #define LDB_WAL_MAGIC_NUMBER   0xa47e60db
-#define LDB_WAL_VERSION_NUMBER 0x00000001
+#define LDB_WAL_VERSION_NUMBER 0x00000002
 
 // used for code clarity when modifying WAL entries
 #define LDB_GENERIC_XLOG_DELTA_IMAGE 0
@@ -59,6 +59,9 @@ typedef struct HnswIndexHeaderPage
 
     uint32                blockmap_groups_nr;
     HnswBlockMapGroupDesc blockmap_groups[ HNSW_MAX_BLOCKMAP_GROUPS ];
+    bool                  pq;
+    size_t                num_centroids;
+    size_t                num_subvectors;
 } HnswIndexHeaderPage;
 
 // the added 40 byte graph header (currently unused)
@@ -130,16 +133,16 @@ typedef struct
     usearch_index_t uidx;
     RetrieverCtx   *retriever_ctx;
     HnswColumnType  columnType;
+    float          *pq_codebook;
 } HnswInsertState;
 
-uint32 UsearchNodeBytes(metadata_t *metadata, int vector_bytes, int level);
-void   StoreExternalEmptyIndex(Relation index, ForkNumber forkNum, char *data, usearch_init_options_t *opts);
-void   StoreExternalIndex(Relation                index,
-                          metadata_t             *external_index_metadata,
-                          ForkNumber              forkNum,
-                          char                   *data,
-                          usearch_init_options_t *opts,
-                          size_t                  num_added_vectors);
+void StoreExternalEmptyIndex(Relation index, ForkNumber forkNum, char *data, usearch_init_options_t *opts);
+void StoreExternalIndex(Relation                index,
+                        const metadata_t       *external_index_metadata,
+                        ForkNumber              forkNum,
+                        char                   *data,
+                        usearch_init_options_t *opts,
+                        size_t                  num_added_vectors);
 
 // add the fully constructed index tuple to the index via wal
 // hdr is passed in so num_vectors, first_block_no, last_block_no can be updated
