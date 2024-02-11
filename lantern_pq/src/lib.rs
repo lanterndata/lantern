@@ -244,6 +244,7 @@ fn _setup_tables<'a>(
              CREATE TABLE {codebook_table_name} (subvector_id INT, centroid_id INT, c REAL[]);
              ALTER TABLE {full_table_name} ADD COLUMN {pq_column_name} PQVEC;
              CREATE INDEX ON {codebook_table_name} USING BTREE(subvector_id, centroid_id);
+             CREATE INDEX ON {codebook_table_name} USING BTREE(centroid_id);
         ",
         codebook_table_name = quote_ident(&codebook_table_name),
         pq_column_name = quote_ident(&pq_column_name)
@@ -330,7 +331,7 @@ fn compress_and_write_vectors<'a>(
 
     let codebook_rows = transaction.query(
         &format!(
-            "SELECT subvector_id, centroid_id, c FROM {codebook_table_name};",
+            "SELECT subvector_id, centroid_id, c FROM {codebook_table_name} ORDER BY centroid_id ASC;",
             codebook_table_name = quote_ident(&codebook_table_name),
         ),
         &[],
@@ -391,6 +392,49 @@ fn compress_and_write_vectors<'a>(
     )?;
     Ok(())
 }
+
+// pub fn submit_gcp_batch_job(
+//     args: &cli::PQArgs,
+//     progress_cb: Option<ProgressCbFn>,
+//     is_canceled: Option<Arc<RwLock<bool>>>,
+//     logger: Option<Logger>,
+// ) -> AnyhowVoidResult {
+//     let logger = Arc::new(logger.unwrap_or(Logger::new("Lantern PQ", LogLevel::Debug)));
+//     logger.info("Lantern CLI - Quantize Table GCP Batch");
+//     // Setup Tables
+//     let main_progress = AtomicU8::new(0);
+//     let is_canceled = is_canceled.unwrap_or(Arc::new(RwLock::new(false)));
+//     let total_time_start = Instant::now();
+//     let column = &args.column;
+//     let schema = &args.schema;
+//     let table = &args.table;
+//     let full_table_name = get_full_table_name(schema, table);
+//     let codebook_table_name = format!("_lantern_codebook_{}", args.table);
+//     let pq_column_name = format!("{column}_pq");
+//
+//     let uri = append_params_to_uri(&args.uri, CONNECTION_PARAMS);
+//     let mut client = Client::connect(&uri, NoTls)?;
+//     let mut transaction = client.transaction()?;
+//
+//     // Create codebook table and add pqvec column to table
+//     _setup_tables(
+//         &mut transaction,
+//         &full_table_name,
+//         &codebook_table_name,
+//         &pq_column_name,
+//         &logger,
+//     )?;
+//     set_and_report_progress(&progress_cb, &logger, &main_progress, 5);
+//     // Post request to submit workflow
+//     // TODO:: estimate memory needed
+//
+//     // Poll workflow status in loop
+//     loop {
+//         break;
+//     }
+//     set_and_report_progress(&progress_cb, &logger, &main_progress, 100);
+//     Ok(())
+// }
 
 // This code can be used in 2 modes
 // The first one is to quantize the whole table for all subvectors
