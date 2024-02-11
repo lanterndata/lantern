@@ -48,6 +48,10 @@ if(CODECOVERAGE)
   add_link_options(--coverage)
 endif(CODECOVERAGE)
 
+# general flags applicible to everything
+# details: https://lwn.net/Articles/584225/
+add_compile_options("-fstack-protector-strong")
+
 if (BENCH)
   message(STATUS "Benchmarking is enabled.")
   add_compile_definitions(LANTERN_BENCH)
