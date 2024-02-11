@@ -8,6 +8,7 @@
 #include <assert.h>
 #include <common/relpath.h>
 #include <hnsw/fa_cache.h>
+#include <math.h>
 #include <miscadmin.h>       // START_CRIT_SECTION, END_CRIT_SECTION
 #include <pg_config.h>       // BLCKSZ
 #include <storage/bufmgr.h>  // Buffer
@@ -274,7 +275,7 @@ static void ContinueBlockMapGroupInitialization(
 }
 
 void StoreExternalIndexBlockMapGroup(Relation             index,
-                                     metadata_t          *metadata,
+                                     const metadata_t    *metadata,
                                      HnswIndexHeaderPage *headerp,
                                      ForkNumber           forkNum,
                                      char                *data,
@@ -439,6 +440,9 @@ void StoreExternalEmptyIndex(Relation index, ForkNumber forkNum, char *data, use
     headerp->ef_construction = opts->expansion_add;
     headerp->ef = opts->expansion_search;
     headerp->metric_kind = opts->metric_kind;
+    headerp->pq = opts->pq;
+    headerp->num_centroids = opts->num_centroids;
+    headerp->num_subvectors = opts->num_subvectors;
 
     headerp->num_vectors = 0;
     headerp->blockmap_groups_nr = 0;
@@ -474,7 +478,7 @@ void StoreExternalEmptyIndex(Relation index, ForkNumber forkNum, char *data, use
 }
 
 void StoreExternalIndex(Relation                index,
-                        metadata_t             *external_index_metadata,
+                        const metadata_t       *external_index_metadata,
                         ForkNumber              forkNum,
                         char                   *data,
                         usearch_init_options_t *opts,
@@ -503,6 +507,9 @@ void StoreExternalIndex(Relation                index,
 
     headerp->num_vectors = num_added_vectors;
     headerp->blockmap_groups_nr = 0;
+    headerp->pq = opts->pq;
+    headerp->num_centroids = opts->num_centroids;
+    headerp->num_subvectors = opts->num_subvectors;
 
     for(uint32 i = 0; i < lengthof(headerp->blockmap_groups); ++i) {
         headerp->blockmap_groups[ i ] = (HnswBlockMapGroupDesc){
@@ -527,6 +534,23 @@ void StoreExternalIndex(Relation                index,
     state = GenericXLogStart(index);
     header_page = GenericXLogRegisterBuffer(state, header_buf, GENERIC_XLOG_FULL_IMAGE);
     headerp = (HnswIndexHeaderPage *)PageGetContents(header_page);
+
+    // allocate some pages for pq codebook
+    // for now, always add this blocks to make sure all tests run with these and nothing fails
+    if(opts->pq) {
+        const int num_clusters = 256;
+        // total bytes for num_clusters clusters = num_clusters * vector_size_in_bytes
+        // total pages for codebook = bytes / page_size
+        for(int i = 0; i < ceil((float)(num_clusters)*opts->dimensions * sizeof(float) / BLCKSZ); i++) {
+            Buffer cluster_buf = ReadBufferExtended(index, forkNum, P_NEW, RBM_NORMAL, NULL);
+            LockBuffer(cluster_buf, BUFFER_LOCK_EXCLUSIVE);
+            GenericXLogState *cluster_state = GenericXLogStart(index);
+
+            Page cluster_page = GenericXLogRegisterBuffer(cluster_state, cluster_buf, GENERIC_XLOG_FULL_IMAGE);
+            GenericXLogFinish(cluster_state);
+            UnlockReleaseBuffer(cluster_buf);
+        }
+    }
 
     uint64   progress = USEARCH_HEADER_SIZE;
     unsigned blockmap_groupno = 0;

@@ -3,6 +3,8 @@
 #include "build.h"
 
 #include <access/heapam.h>
+#include <access/relscan.h>
+#include <access/sdir.h>
 #include <assert.h>
 #include <catalog/index.h>
 #include <catalog/namespace.h>
@@ -11,10 +13,13 @@
 #include <executor/executor.h>
 #include <fmgr.h>
 #include <funcapi.h>
+#include <hnsw/pq_index.h>
 #include <miscadmin.h>
 #include <nodes/execnodes.h>
 #include <stdint.h>
 #include <storage/bufmgr.h>
+#include <storage/lockdefs.h>
+#include <string.h>
 #include <sys/fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -22,6 +27,8 @@
 #include <utils/builtins.h>
 #include <utils/lsyscache.h>
 #include <utils/memutils.h>
+#include <utils/palloc.h>
+#include <utils/snapmgr.h>
 #include <utils/syscache.h>
 
 #include "usearch.h"
@@ -109,6 +116,7 @@ static void AddTupleToUsearchIndex(ItemPointer tid, Datum *values, ldb_HnswBuild
             usearch_reserve(buildstate->usearch_index, 2 * capacity, &error);
             assert(error == NULL);
         }
+
         usearch_add(buildstate->usearch_index, label, vector, usearch_scalar, &error);
     }
     assert(error == NULL);
@@ -432,8 +440,14 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
     MemSet(&opts, 0, sizeof(opts));
 
     InitBuildState(buildstate, heap, index, indexInfo);
+
     opts.dimensions = buildstate->dimensions;
+
     PopulateUsearchOpts(index, &opts);
+    if(opts.pq) {
+        buildstate->pq_codebook = pq_codebook(index, opts.dimensions, &opts.num_centroids, &opts.num_subvectors);
+        assert(0 < opts.num_centroids && opts.num_centroids <= 256);
+    }
     // retrievers are not called from here,
     // but we are setting them so the storage layer knows objects are managed
     // externally and does not try to load objects from stream when we call
@@ -441,7 +455,7 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
     opts.retriever = ldb_wal_index_node_retriever;
     opts.retriever_mut = ldb_wal_index_node_retriever_mut;
 
-    buildstate->usearch_index = usearch_init(&opts, &error);
+    buildstate->usearch_index = usearch_init(&opts, buildstate->pq_codebook, &error);
     elog(INFO, "done init usearch index");
     assert(error == NULL);
 
@@ -556,7 +570,12 @@ static void BuildEmptyIndex(Relation index, IndexInfo *indexInfo, ldb_HnswBuildS
     opts.dimensions = buildstate->dimensions;
     PopulateUsearchOpts(index, &opts);
 
-    buildstate->usearch_index = usearch_init(&opts, &error);
+    if(opts.pq) {
+        buildstate->pq_codebook = pq_codebook(index, opts.dimensions, &opts.num_centroids, &opts.num_subvectors);
+        assert(0 < opts.num_centroids && opts.num_centroids <= 256);
+    }
+
+    buildstate->usearch_index = usearch_init(&opts, buildstate->pq_codebook, &error);
     assert(error == NULL);
 
     char *result_buf = palloc(USEARCH_EMPTY_INDEX_SIZE);
@@ -579,6 +598,7 @@ IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInf
 {
     IndexBuildResult  *result;
     ldb_HnswBuildState buildstate;
+    memset(&buildstate, 0, sizeof(ldb_HnswBuildState));
 
     // todo:: change the warning to error once VersionsMismatch learns how to differntiate when an update script is
     // running - it is fine to temporarily have version mismatch when we are running an update script
@@ -603,7 +623,8 @@ IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInf
 void ldb_ambuildunlogged(Relation index)
 {
     ldb_HnswBuildState buildstate;
-    IndexInfo         *indexInfo = BuildIndexInfo(index);
+    memset(&buildstate, 0, sizeof(ldb_HnswBuildState));
+    IndexInfo *indexInfo = BuildIndexInfo(index);
     BuildEmptyIndex(index, indexInfo, &buildstate);
 }
 

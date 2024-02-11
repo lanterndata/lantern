@@ -26,6 +26,7 @@ typedef struct
 
     /* hnsw */
     usearch_index_t usearch_index;
+    float          *pq_codebook;
 
     /* Memory */
     MemoryContext tmpCtx;

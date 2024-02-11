@@ -5,6 +5,7 @@
 
 #include <assert.h>
 #include <common/relpath.h>
+#include <hnsw/options.h>
 #include <pg_config.h>  // BLCKSZ
 #include <utils/hsearch.h>
 #include <utils/relcache.h>

@@ -25,6 +25,7 @@ typedef struct HnswScanState
     // set when the distances and labels are populated
     int             count;
     usearch_index_t usearch_index;
+    float          *pq_codebook;
 
     RetrieverCtx *retriever_ctx;
 } HnswScanState;
