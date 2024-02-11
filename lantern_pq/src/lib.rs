@@ -9,7 +9,7 @@ use rayon::prelude::*;
 use std::cmp;
 use std::collections::HashMap;
 use std::io::Write;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
@@ -22,12 +22,34 @@ pub type ProgressCbFn = Box<dyn Fn(u8) + Send + Sync>;
 
 static CONNECTION_PARAMS: &'static str = "connect_timeout=10";
 
-fn report_progress(progress_cb: &Option<ProgressCbFn>, logger: &Logger, progress: u8) {
-    logger.info(&format!("Progress {progress}%"));
+fn report_progress(
+    progress_cb: &Option<ProgressCbFn>,
+    logger: &Logger,
+    old_progress: &AtomicU8,
+    progress: u8,
+) {
+    old_progress.fetch_add(progress, Ordering::SeqCst);
+    let new_progress = old_progress.load(Ordering::SeqCst);
+    logger.info(&format!("Progress {new_progress}%"));
     if progress_cb.is_some() {
         let cb = progress_cb.as_ref().unwrap();
-        cb(progress);
+        cb(new_progress);
     }
+}
+
+fn set_and_report_progress(
+    progress_cb: &Option<ProgressCbFn>,
+    logger: &Logger,
+    old_progress: &AtomicU8,
+    progress: u8,
+) {
+    let old_progress_value = old_progress.load(Ordering::SeqCst);
+    if old_progress_value >= progress {
+        return;
+    }
+
+    let diff = progress - old_progress_value;
+    report_progress(progress_cb, logger, old_progress, diff);
 }
 
 #[derive(Clone, Debug)]
@@ -45,7 +67,8 @@ fn write_compressed_rows<'a>(
     pq_column: &str,
     codebook_table_name: &str,
     distance_metric: &str,
-    progress_cb: Option<ProgressCbFn>,
+    main_progress: &AtomicU8,
+    progress_cb: &Option<ProgressCbFn>,
     logger: &Logger,
 ) -> AnyhowVoidResult {
     let mut rng = rand::thread_rng();
@@ -65,8 +88,6 @@ fn write_compressed_rows<'a>(
     let mut writer = transaction.copy_in(&format!("COPY {temp_table_name} FROM stdin"))?;
     let update_sql = &format!("UPDATE {full_table_name} dest SET {pq_column} = src.{pq_column} FROM {temp_table_name} src WHERE src.id::tid = dest.ctid", pq_column = quote_ident(pq_column), temp_table_name = quote_ident(&temp_table_name));
 
-    let mut old_progress = 0;
-
     let mut processed_row_cnt = 0;
     let total_row_cnt = rows.len();
 
@@ -82,12 +103,11 @@ fn write_compressed_rows<'a>(
         processed_row_cnt += 1;
 
         if processed_row_cnt % 1000 == 0 {
+            // Max 5% progress from this task
             let progress = (5.0 * (processed_row_cnt as f32 / total_row_cnt as f32)) as u8;
 
-            if progress > old_progress {
-                old_progress = progress;
-                // Max 95% progress from this task, starting from 90%
-                report_progress(&progress_cb, &logger, 90 + progress);
+            if progress > main_progress.load(Ordering::SeqCst) {
+                report_progress(&progress_cb, &logger, main_progress, progress);
             }
         }
     }
@@ -130,9 +150,6 @@ fn write_compressed_rows<'a>(
 
     ", pq_column=quote_ident(pq_column), column=quote_ident(column), codebook_table_name=quote_ident(codebook_table_name)))?;
 
-    if old_progress != 100 {
-        report_progress(&progress_cb, &logger, 100);
-    }
     logger.info(&format!("Vectors exported under column {pq_column}",));
     logger.debug(&format!(
         "Vector export duration: {}s",
@@ -283,7 +300,8 @@ fn compress_and_write_vectors<'a>(
     column: &str,
     pq_column_name: &str,
     splits: usize,
-    progress_cb: Option<ProgressCbFn>,
+    main_progress: &AtomicU8,
+    progress_cb: &Option<ProgressCbFn>,
     logger: &Logger,
 ) -> AnyhowVoidResult {
     let fetch_start_time = Instant::now();
@@ -308,6 +326,7 @@ fn compress_and_write_vectors<'a>(
         rows.len(),
         fetch_start_time.elapsed().as_secs()
     ));
+    set_and_report_progress(progress_cb, logger, main_progress, 5);
 
     let codebook_rows = transaction.query(
         &format!(
@@ -343,6 +362,8 @@ fn compress_and_write_vectors<'a>(
         );
     }
 
+    set_and_report_progress(progress_cb, logger, main_progress, 10);
+
     let codebooks_hashmap = Arc::new(RwLock::new(codebooks_hashmap));
     let rows = _compress_vectors(
         &rows,
@@ -353,6 +374,8 @@ fn compress_and_write_vectors<'a>(
         &logger,
     )?;
 
+    set_and_report_progress(progress_cb, logger, main_progress, 95);
+
     write_compressed_rows(
         transaction,
         rows,
@@ -362,6 +385,7 @@ fn compress_and_write_vectors<'a>(
         pq_column_name,
         &codebook_table_name,
         "l2sq", // TODO:: get from args
+        &main_progress,
         progress_cb,
         &logger,
     )?;
@@ -386,6 +410,7 @@ pub fn quantize_table(
     let logger = Arc::new(logger.unwrap_or(Logger::new("Lantern PQ", LogLevel::Debug)));
     logger.info("Lantern CLI - Quantize Table");
 
+    let main_progress = AtomicU8::new(0);
     let is_canceled = is_canceled.unwrap_or(Arc::new(RwLock::new(false)));
     let total_time_start = Instant::now();
     let column = &args.column;
@@ -419,6 +444,7 @@ pub fn quantize_table(
         // Commit and return if the task is to only set up tables
         if args.only_setup {
             transaction.commit()?;
+            set_and_report_progress(&progress_cb, &logger, &main_progress, 100);
             return Ok(());
         }
     }
@@ -433,9 +459,11 @@ pub fn quantize_table(
             column,
             &pq_column_name,
             args.splits,
-            progress_cb,
+            &main_progress,
+            &progress_cb,
             &logger,
         )?;
+        set_and_report_progress(&progress_cb, &logger, &main_progress, 100);
         transaction.commit()?;
         return Ok(());
     }
@@ -508,7 +536,7 @@ pub fn quantize_table(
         fetch_start_time.elapsed().as_secs()
     ));
     // progress indicator is: 5% load, 70% codebook, 15% compression, 10% export
-    report_progress(&progress_cb, &logger, 5);
+    report_progress(&progress_cb, &logger, &main_progress, 5);
 
     let mut codebooks_hashmap: HashMap<usize, Vec<Vec<f32>>> = HashMap::new();
     let codebook_creation_start = Instant::now();
@@ -524,6 +552,7 @@ pub fn quantize_table(
     // If this is for one subvector the range will be $subvector_id;($subvector_id+1)
     let subvector_range_start = subvector_start_idx / subvector_dim;
     let subvector_range_end = subvector_end_idx / subvector_dim;
+    let subvector_count = subvector_range_end - subvector_range_start;
 
     let all_centroids: Vec<(usize, Vec<Vec<f32>>)> = (subvector_range_start..subvector_range_end)
         .into_par_iter()
@@ -546,11 +575,13 @@ pub fn quantize_table(
                 training_time_start.elapsed().as_secs()
             ));
 
-            let processed_cnt = processed_cnt.fetch_add(1, Ordering::SeqCst);
+            processed_cnt.fetch_add(1, Ordering::SeqCst);
+            let processed_cnt = processed_cnt.load(Ordering::SeqCst);
             report_progress(
                 &progress_cb,
                 &logger,
-                5 + (70.0 * ((processed_cnt) as f32 / args.splits as f32)) as u8,
+                &main_progress,
+                (70.0 * ((processed_cnt) as f32 / subvector_count as f32)) as u8,
             );
             (subvector_id, centroids)
         })
@@ -590,7 +621,7 @@ pub fn quantize_table(
             codebooks_hashmap,
             &logger,
         )?;
-        report_progress(&progress_cb, &logger, 90);
+        set_and_report_progress(&progress_cb, &logger, &main_progress, 90);
 
         if *is_canceled.read().unwrap() {
             // This variable will be changed from outside to gracefully
@@ -607,12 +638,15 @@ pub fn quantize_table(
             &pq_column_name,
             &codebook_table_name,
             "l2sq", // TODO:: get from args
-            progress_cb,
+            &main_progress,
+            &progress_cb,
             &logger,
         )?;
     }
 
     transaction.commit()?;
+
+    set_and_report_progress(&progress_cb, &logger, &main_progress, 100);
 
     logger.debug(&format!(
         "Total duration: {}s",
