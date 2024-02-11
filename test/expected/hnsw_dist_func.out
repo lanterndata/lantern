@@ -136,6 +136,9 @@ SELECT 1 FROM small_world_ham ORDER BY v <?> '{0,1,0,1}' LIMIT 1;
 ERROR:  Expected int array with dimension 3, got 4
 SELECT l2sq_dist('{1,1}'::REAL[], '{0,1,0}'::REAL[]);
 ERROR:  expected equally sized arrays but got arrays with dimensions 2 and 3
+SELECT cos_dist('{1,1}'::real[], '{0,1,0}'::real[]);
+ERROR:  expected equally sized arrays but got arrays with dimensions 2 and 3
+-- the one below is umbiguous if pgvector's vector type is present
 SELECT cos_dist('{1,1}', '{0,1,0}');
 ERROR:  expected equally sized arrays but got arrays with dimensions 2 and 3
 SELECT hamming_dist('{1,1}', '{0,1,0}');
