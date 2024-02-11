@@ -2,13 +2,15 @@
 
 #include "hnsw/validate_index.h"
 
-#include <access/heapam.h>  /* relation_open */
-#include <catalog/index.h>  /* IndexGetRelation */
-#include <inttypes.h>       /* PRIu32 */
+#include <access/heapam.h> /* relation_open */
+#include <catalog/index.h> /* IndexGetRelation */
+#include <inttypes.h>      /* PRIu32 */
+#include <math.h>
 #include <stdint.h>         /* UINT32_MAX */
 #include <string.h>         /* bzero */
 #include <utils/memutils.h> /* AllocSetContextCreate */
 
+#include "hnsw.h"
 #include "hnsw/external_index.h" /* HnswIndexHeaderPage */
 #include "hnsw/options.h"        /* ldb_HnswGetM */
 #include "hnsw/utils.h"          /* ldb_invariant */
@@ -21,6 +23,7 @@ enum ldb_vi_block_type
     LDB_VI_BLOCK_HEADER,
     LDB_VI_BLOCK_BLOCKMAP,
     LDB_VI_BLOCK_NODES,
+    LDB_VI_BLOCK_CODEBOOK,
     LDB_VI_BLOCK_NR,
 };
 
@@ -113,6 +116,19 @@ static void ldb_vi_analyze_blockmap(HnswBlockmapPage    *blockmap,
                  node_id,
                  nodes_nr);
         }
+    }
+}
+static void ldb_vi_read_codebook(Relation             index,
+                                 HnswIndexHeaderPage *index_header,
+
+                                 struct ldb_vi_block *vi_blocks,
+                                 BlockNumber          blocks_nr)
+{
+    LDB_UNUSED(index);
+    if(blocks_nr < 1) return;
+    int num_clusters = 256;
+    for(int i = 0; i < ceil((float)(num_clusters)*index_header->vector_dim * sizeof(float) / BLCKSZ); i++) {
+        vi_blocks[ i + 1 ].vp_type = LDB_VI_BLOCK_CODEBOOK;
     }
 }
 
@@ -676,6 +692,9 @@ void ldb_validate_index(Oid indrelid, bool print_info)
         vi_nodes[ i ].vn_offset = InvalidOffsetNumber;
     }
 
+    if(index_header->pq) {
+        ldb_vi_read_codebook(index, index_header, vi_blocks, blocks_nr);
+    }
     ldb_vi_read_blockmaps(index, index_header, vi_blocks, blocks_nr, vi_nodes, nodes_nr);
     for(BlockNumber block = 0; block < blocks_nr; ++block) {
         if(vi_blocks[ block ].vp_type == LDB_VI_BLOCK_UNKNOWN) {

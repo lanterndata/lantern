@@ -18,6 +18,7 @@
 #include "build.h"
 #include "external_index.h"
 #include "hnsw.h"
+#include "hnsw/pqtable.h"
 #include "options.h"
 #include "retriever.h"
 #include "usearch.h"
@@ -116,14 +117,24 @@ bool ldb_aminsert(Relation         index,
     assert(hdr->magicNumber == LDB_WAL_MAGIC_NUMBER);
 
     opts.dimensions = hdr->vector_dim;
+    opts.pq = hdr->pq;
+    opts.num_centroids = hdr->num_centroids;
+    opts.num_subvectors = hdr->num_subvectors;
     CheckHnswIndexDimensions(index, values[ 0 ], opts.dimensions);
     PopulateUsearchOpts(index, &opts);
     opts.retriever_ctx = ldb_wal_retriever_area_init(index, hdr);
     opts.retriever = ldb_wal_index_node_retriever;
     opts.retriever_mut = ldb_wal_index_node_retriever_mut;
 
+    if(opts.pq) {
+        size_t tmp_num_centroids = -1;
+        size_t tmp_num_subvectors = -1;
+        insertstate->pq_codebook = load_pq_codebook(index, opts.dimensions, &tmp_num_centroids, &tmp_num_subvectors);
+        assert(tmp_num_centroids == hdr->num_centroids);
+        assert(tmp_num_subvectors == hdr->num_subvectors);
+    }
     // todo:: do usearch init in indexInfo->ii_AmCache
-    uidx = usearch_init(&opts, &error);
+    uidx = usearch_init(&opts, insertstate->pq_codebook, &error);
     if(uidx == NULL) {
         elog(ERROR, "unable to initialize usearch");
     }
@@ -222,6 +233,7 @@ bool ldb_aminsert(Relation         index,
     UnlockReleaseBuffer(hdr_buf);
 
     ldb_wal_retriever_area_fini(insertstate->retriever_ctx);
+    if(insertstate->pq_codebook) pfree(insertstate->pq_codebook);
     pfree(insertstate);
 
     // q:: what happens when there is an error before ths and the switch back never happens?

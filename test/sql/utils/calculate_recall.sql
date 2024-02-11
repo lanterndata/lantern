@@ -29,7 +29,7 @@ BEGIN
             FROM
                 %1$I
             ORDER BY
-                %1$I.%4$I <=> q.v
+                %1$I.%4$I <-> q.v
             LIMIT
                 %5$s
         ) b ON TRUE

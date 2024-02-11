@@ -67,7 +67,9 @@ SELECT v_pq as v1_pq FROM sift_base1k WHERE id=1 \gset
 SELECT quantize_vector(:'v1', '_lantern_internal._codebook_sift_base1k_v'::regclass, 'l2sq') as compressed \gset
 SELECT dequantize_vector(:'v1_pq', '_lantern_internal._codebook_sift_base1k_v'::regclass) as decompressed_1 \gset
 SELECT dequantize_vector(:'compressed', '_lantern_internal._codebook_sift_base1k_v'::regclass) as decompressed_2 \gset
-SELECT l2sq_dist(:'decompressed_1', :'decompressed_2');
+SELECT l2sq_dist(:'decompressed_1'::real[], :'decompressed_2'::real[]);
+-- Vector operators work as usual on decompressed vectors:
+SELECT dequantize_vector(:'v1_pq', '_lantern_internal._codebook_sift_base1k_v'::regclass) <-> dequantize_vector(:'compressed', '_lantern_internal._codebook_sift_base1k_v'::regclass);
 
 -- Test recall for quantized vs non quantized vectors
 ALTER TABLE sift_base1k ADD COLUMN v_pq_dec REAL[];

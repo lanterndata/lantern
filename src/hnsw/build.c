@@ -3,6 +3,8 @@
 #include "build.h"
 
 #include <access/heapam.h>
+#include <access/relscan.h>
+#include <access/sdir.h>
 #include <assert.h>
 #include <catalog/index.h>
 #include <catalog/namespace.h>
@@ -15,6 +17,8 @@
 #include <nodes/execnodes.h>
 #include <stdint.h>
 #include <storage/bufmgr.h>
+#include <storage/lockdefs.h>
+#include <string.h>
 #include <sys/fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -22,6 +26,8 @@
 #include <utils/builtins.h>
 #include <utils/lsyscache.h>
 #include <utils/memutils.h>
+#include <utils/palloc.h>
+#include <utils/snapmgr.h>
 #include <utils/syscache.h>
 
 #include "usearch.h"
@@ -35,6 +41,7 @@
 #include "bench.h"
 #include "external_index.h"
 #include "hnsw.h"
+#include "hnsw/pqtable.h"
 #include "hnsw/retriever.h"
 #include "options.h"
 #include "utils.h"
@@ -109,6 +116,7 @@ static void AddTupleToUsearchIndex(ItemPointer tid, Datum *values, ldb_HnswBuild
             usearch_reserve(buildstate->usearch_index, 2 * capacity, &error);
             assert(error == NULL);
         }
+
         usearch_add(buildstate->usearch_index, label, vector, usearch_scalar, &error);
     }
     assert(error == NULL);
@@ -124,6 +132,7 @@ static void AddTupleToUsearchIndex(ItemPointer tid, Datum *values, ldb_HnswBuild
 static void BuildCallback(
     Relation index, CALLBACK_ITEM_POINTER, Datum *values, bool *isnull, bool tupleIsAlive, void *state)
 {
+    Datum               detoasted_array;
     ldb_HnswBuildState *buildstate = (ldb_HnswBuildState *)state;
     MemoryContext       oldCtx;
     // we can later use this for some optimizations I think
@@ -140,6 +149,10 @@ static void BuildCallback(
 
     /* Use memory context since detoast can allocate */
     oldCtx = MemoryContextSwitchTo(buildstate->tmpCtx);
+
+    /* Detoast once for all calls */
+    detoasted_array = PointerGetDatum(PG_DETOAST_DATUM(values[ 0 ]));
+    CheckHnswIndexDimensions(index, detoasted_array, buildstate->dimensions);
 
     // todo:: the argument values is assumed to be a real[] or vector (they have the same layout)
     // do proper type checking instead of this assumption and test int int arrays and others
@@ -432,8 +445,14 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
     MemSet(&opts, 0, sizeof(opts));
 
     InitBuildState(buildstate, heap, index, indexInfo);
+
     opts.dimensions = buildstate->dimensions;
+
     PopulateUsearchOpts(index, &opts);
+    if(opts.pq) {
+        buildstate->pq_codebook = load_pq_codebook(index, opts.dimensions, &opts.num_centroids, &opts.num_subvectors);
+        assert(0 < opts.num_centroids && opts.num_centroids <= 256);
+    }
     // retrievers are not called from here,
     // but we are setting them so the storage layer knows objects are managed
     // externally and does not try to load objects from stream when we call
@@ -441,7 +460,7 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
     opts.retriever = ldb_wal_index_node_retriever;
     opts.retriever_mut = ldb_wal_index_node_retriever_mut;
 
-    buildstate->usearch_index = usearch_init(&opts, &error);
+    buildstate->usearch_index = usearch_init(&opts, buildstate->pq_codebook, &error);
     elog(INFO, "done init usearch index");
     assert(error == NULL);
 
@@ -466,7 +485,10 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
         opts.dimensions = metadata.dimensions;
         opts.expansion_add = metadata.expansion_add;
         opts.expansion_search = metadata.expansion_search;
-        opts.metric_kind = metadata.metric_kind;
+        opts.metric_kind = metadata.init_options.metric_kind;
+        opts.pq = metadata.init_options.pq;
+        opts.num_centroids = metadata.init_options.num_centroids;
+        opts.num_subvectors = metadata.init_options.num_subvectors;
     } else {
         uint32_t estimated_row_count = EstimateRowCount(heap);
         CheckMem(maintenance_work_mem,
@@ -556,7 +578,12 @@ static void BuildEmptyIndex(Relation index, IndexInfo *indexInfo, ldb_HnswBuildS
     opts.dimensions = buildstate->dimensions;
     PopulateUsearchOpts(index, &opts);
 
-    buildstate->usearch_index = usearch_init(&opts, &error);
+    if(opts.pq) {
+        buildstate->pq_codebook = load_pq_codebook(index, opts.dimensions, &opts.num_centroids, &opts.num_subvectors);
+        assert(0 < opts.num_centroids && opts.num_centroids <= 256);
+    }
+
+    buildstate->usearch_index = usearch_init(&opts, buildstate->pq_codebook, &error);
     assert(error == NULL);
 
     char *result_buf = palloc(USEARCH_EMPTY_INDEX_SIZE);
@@ -579,6 +606,7 @@ IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInf
 {
     IndexBuildResult  *result;
     ldb_HnswBuildState buildstate;
+    memset(&buildstate, 0, sizeof(ldb_HnswBuildState));
 
     // todo:: change the warning to error once VersionsMismatch learns how to differntiate when an update script is
     // running - it is fine to temporarily have version mismatch when we are running an update script
@@ -603,7 +631,8 @@ IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInf
 void ldb_ambuildunlogged(Relation index)
 {
     ldb_HnswBuildState buildstate;
-    IndexInfo         *indexInfo = BuildIndexInfo(index);
+    memset(&buildstate, 0, sizeof(ldb_HnswBuildState));
+    IndexInfo *indexInfo = BuildIndexInfo(index);
     BuildEmptyIndex(index, indexInfo, &buildstate);
 }
 
@@ -617,7 +646,7 @@ void ldb_reindex_external_index(Oid indrelid)
     Page                 page;
     Oid                  lantern_extras_namespace_oid = InvalidOid;
     Oid                  function_oid;
-    Oid                  function_argtypes_oid[ 6 ];
+    Oid                  function_argtypes_oid[ 7 ];
     oidvector           *function_argtypes;
     char                *metric_kind;
     const char          *lantern_extras_schema = "lantern_extras";
@@ -625,6 +654,7 @@ void ldb_reindex_external_index(Oid indrelid)
     uint32_t             m = 0;
     uint32_t             ef_construction = 0;
     uint32_t             ef = 0;
+    bool                 pq = false;
     char *ext_not_found_err = "Please install 'lantern_extras' extension or update it to the latest version";
 
     lantern_extras_namespace_oid = get_namespace_oid(lantern_extras_schema, true);
@@ -640,7 +670,8 @@ void ldb_reindex_external_index(Oid indrelid)
     function_argtypes_oid[ 3 ] = INT4OID;
     function_argtypes_oid[ 4 ] = INT4OID;
     function_argtypes_oid[ 5 ] = INT4OID;
-    function_argtypes = buildoidvector(function_argtypes_oid, 6);
+    function_argtypes_oid[ 6 ] = BOOLOID;
+    function_argtypes = buildoidvector(function_argtypes_oid, 7);
 
     function_oid = GetSysCacheOid(PROCNAMEARGSNSP,
 #if PG_VERSION_NUM >= 120000
@@ -683,6 +714,7 @@ void ldb_reindex_external_index(Oid indrelid)
     m = headerp->m;
     ef = headerp->ef;
     ef_construction = headerp->ef_construction;
+    pq = headerp->pq;
 
     UnlockReleaseBuffer(buf);
     relation_close(index_rel, AccessShareLock);
@@ -697,11 +729,12 @@ void ldb_reindex_external_index(Oid indrelid)
 
     assert(reindex_finfo.fn_addr != NULL);
 
-    DirectFunctionCall6(reindex_finfo.fn_addr,
+    DirectFunctionCall7(reindex_finfo.fn_addr,
                         ObjectIdGetDatum(indrelid),
                         CStringGetTextDatum(metric_kind),
                         Int32GetDatum(dim),
                         Int32GetDatum(m),
                         Int32GetDatum(ef_construction),
-                        Int32GetDatum(ef));
+                        Int32GetDatum(ef),
+                        BoolGetDatum(pq));
 }

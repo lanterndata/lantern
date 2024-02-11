@@ -6,6 +6,8 @@
 #include <fmgr.h>
 #include <utils/relcache.h>
 
+#define LANTERN_INTERNAL_SCHEMA_NAME "_lantern_internal"
+
 #if PG_VERSION_NUM < 110000
 #error "Requires PostgreSQL 11+"
 #endif
