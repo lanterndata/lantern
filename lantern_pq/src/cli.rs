@@ -63,6 +63,10 @@ pub struct PQArgs {
     /// If true we will assume that codebook already exists and only will compress table vectors
     #[arg(long, default_value_t = false)]
     pub only_compress: bool,
+
+    /// Primary key of the table, needed for compression job
+    #[arg(long, default_value = "id")]
+    pub pk: String,
 }
 
 impl PQArgs {

@@ -58,40 +58,78 @@ struct DatasetItem {
     vec: Vec<f32>,
 }
 
+fn setup_triggers<'a>(
+    transaction: &mut Transaction<'a>,
+    full_table_name: &str,
+    codebook_table_name: &str,
+    pq_column: &str,
+    column: &str,
+    distance_metric: &str,
+    splits: usize,
+) -> AnyhowVoidResult {
+    // Setup triggers for new data
+    let name_hash = md5::compute(format!("{}{}", full_table_name, pq_column));
+    let insert_trigger_name = format!("_pq_trigger_in_{:x}", name_hash);
+    let update_trigger_name = format!("_pq_trigger_up_{:x}", name_hash);
+    let trigger_fn_name = format!("_set_pq_col_{:x}", name_hash);
+
+    transaction.batch_execute(&format!("
+      DROP TRIGGER IF EXISTS {insert_trigger_name} ON {full_table_name};
+      DROP TRIGGER IF EXISTS {update_trigger_name} ON {full_table_name};
+
+      CREATE OR REPLACE FUNCTION {trigger_fn_name}()
+          RETURNS trigger
+          LANGUAGE plpgsql AS
+      $body$
+        BEGIN
+          IF NEW.{column} IS NULL THEN
+            NEW.{pq_column} := NULL;
+          ELSE
+            NEW.{pq_column} := _lantern_internal.compress_vector(NEW.{column}, {splits}, {codebook_table_name}::regclass, '{distance_metric}');
+          END IF;
+          RETURN NEW;
+        END
+      $body$;
+
+      CREATE TRIGGER {insert_trigger_name} BEFORE INSERT ON {full_table_name} FOR EACH ROW EXECUTE FUNCTION {trigger_fn_name}();
+      CREATE TRIGGER {update_trigger_name} BEFORE UPDATE OF {column} ON {full_table_name} FOR EACH ROW EXECUTE FUNCTION {trigger_fn_name}();
+
+    ", pq_column=quote_ident(pq_column), column=quote_ident(column), codebook_table_name=quote_ident(codebook_table_name)))?;
+    Ok(())
+}
 fn write_compressed_rows<'a>(
     transaction: &mut Transaction<'a>,
-    rows: Vec<(String, Vec<u8>)>,
+    rows: &Vec<(String, Vec<u8>)>,
     schema: &str,
     table: &str,
-    column: &str,
     pq_column: &str,
-    codebook_table_name: &str,
-    distance_metric: &str,
+    pk: &str,
     main_progress: &AtomicU8,
     progress_cb: &Option<ProgressCbFn>,
     logger: &Logger,
 ) -> AnyhowVoidResult {
     let mut rng = rand::thread_rng();
     let full_table_name = get_full_table_name(schema, table);
-    let temp_table_name = format!("_lantern_tmp_{}", rng.gen_range(0..1000));
+    let temp_table_name = format!("_lantern_pq_tmp_{}", rng.gen_range(0..1000000));
     let export_time_start = Instant::now();
 
     transaction
             .execute(
                 &format!(
-                    "CREATE TEMPORARY TABLE {temp_table_name} AS SELECT ctid::TEXT as id, '{{}}'::PQVEC AS {pq_column} FROM {full_table_name} LIMIT 0",
-                    pq_column = quote_ident(pq_column)
+                    "CREATE TEMPORARY TABLE {temp_table_name} AS SELECT {pk} as id, '{{}}'::PQVEC AS {pq_column} FROM {full_table_name} LIMIT 0",
+                    pq_column = quote_ident(pq_column),
+                    pk = quote_ident(pk)
                 ),
                 &[],
             )?;
 
     let mut writer = transaction.copy_in(&format!("COPY {temp_table_name} FROM stdin"))?;
-    let update_sql = &format!("UPDATE {full_table_name} dest SET {pq_column} = src.{pq_column} FROM {temp_table_name} src WHERE src.id::tid = dest.ctid", pq_column = quote_ident(pq_column), temp_table_name = quote_ident(&temp_table_name));
+    let update_sql = &format!("UPDATE {full_table_name} dest SET {pq_column} = src.{pq_column} FROM {temp_table_name} src WHERE src.id = dest.{pk}", pq_column = quote_ident(pq_column), temp_table_name = quote_ident(&temp_table_name), pk = quote_ident(pk));
 
     let mut processed_row_cnt = 0;
     let total_row_cnt = rows.len();
 
-    for row in &rows {
+    for row in rows {
         writer.write(row.0.as_bytes())?;
         writer.write("\t".as_bytes())?;
         writer.write("{".as_bytes())?;
@@ -119,36 +157,6 @@ fn write_compressed_rows<'a>(
     writer.flush()?;
     writer.finish()?;
     transaction.execute(update_sql, &[])?;
-
-    // Setup triggers for new data
-    let name_hash = md5::compute(format!("{}{}", full_table_name, pq_column));
-    let insert_trigger_name = format!("_pq_trigger_in_{:x}", name_hash);
-    let update_trigger_name = format!("_pq_trigger_up_{:x}", name_hash);
-    let trigger_fn_name = format!("_set_pq_col_{:x}", name_hash);
-    let splits = rows[0].1.len();
-
-    transaction.batch_execute(&format!("
-      DROP TRIGGER IF EXISTS {insert_trigger_name} ON {full_table_name};
-      DROP TRIGGER IF EXISTS {update_trigger_name} ON {full_table_name};
-
-      CREATE OR REPLACE FUNCTION {trigger_fn_name}()
-          RETURNS trigger
-          LANGUAGE plpgsql AS
-      $body$
-        BEGIN
-          IF NEW.{column} IS NULL THEN
-            NEW.{pq_column} := NULL;
-          ELSE
-            NEW.{pq_column} := _lantern_internal.compress_vector(NEW.{column}, {splits}, {codebook_table_name}::regclass, '{distance_metric}');
-          END IF;
-          RETURN NEW;
-        END
-      $body$;
-
-      CREATE TRIGGER {insert_trigger_name} BEFORE INSERT ON {full_table_name} FOR EACH ROW EXECUTE FUNCTION {trigger_fn_name}();
-      CREATE TRIGGER {update_trigger_name} BEFORE UPDATE OF {column} ON {full_table_name} FOR EACH ROW EXECUTE FUNCTION {trigger_fn_name}();
-
-    ", pq_column=quote_ident(pq_column), column=quote_ident(column), codebook_table_name=quote_ident(codebook_table_name)))?;
 
     logger.info(&format!("Vectors exported under column {pq_column}",));
     logger.debug(&format!(
@@ -293,42 +301,21 @@ fn _compress_vectors(
 }
 
 fn compress_and_write_vectors<'a>(
-    transaction: &mut Transaction<'a>,
+    mut client: Client,
     codebook_table_name: &str,
     full_table_name: &str,
+    db_uri: &str,
     schema: &str,
     table: &str,
     column: &str,
     pq_column_name: &str,
+    pk: &str,
     splits: usize,
     main_progress: &AtomicU8,
     progress_cb: &Option<ProgressCbFn>,
     logger: &Logger,
 ) -> AnyhowVoidResult {
-    let fetch_start_time = Instant::now();
-    let rows = transaction.query(
-        &format!(
-            "SELECT ctid::text, {column} FROM {full_table_name} WHERE {column} IS NOT NULL;",
-            column = quote_ident(column),
-        ),
-        &[],
-    )?;
-
-    let rows = rows
-        .iter()
-        .map(|r| DatasetItem {
-            id: r.get::<usize, String>(0),
-            vec: r.get::<usize, Vec<f32>>(1),
-        })
-        .collect::<Vec<DatasetItem>>();
-
-    logger.info(&format!(
-        "Fetched {} items in {}s",
-        rows.len(),
-        fetch_start_time.elapsed().as_secs()
-    ));
-    set_and_report_progress(progress_cb, logger, main_progress, 5);
-
+    let mut transaction = client.transaction()?;
     let codebook_rows = transaction.query(
         &format!(
             "SELECT subvector_id, centroid_id, c FROM {codebook_table_name} ORDER BY centroid_id ASC;",
@@ -342,9 +329,8 @@ fn compress_and_write_vectors<'a>(
     }
 
     let mut codebooks_hashmap: HashMap<usize, Vec<Vec<f32>>> = HashMap::new();
-    let cluster_count = rows.len() / splits;
+    let cluster_count = codebook_rows.len() / splits;
 
-    let vector_dim = rows[0].vec.len();
     let subvector_dim = codebook_rows[0].get::<usize, Vec<f32>>(2).len();
     for row in codebook_rows {
         let subvector_id = row.get::<usize, i32>(0) as usize;
@@ -366,30 +352,88 @@ fn compress_and_write_vectors<'a>(
     set_and_report_progress(progress_cb, logger, main_progress, 10);
 
     let codebooks_hashmap = Arc::new(RwLock::new(codebooks_hashmap));
-    let rows = _compress_vectors(
-        &rows,
-        vector_dim,
-        subvector_dim,
-        splits,
-        codebooks_hashmap,
-        &logger,
-    )?;
 
-    set_and_report_progress(progress_cb, logger, main_progress, 95);
-
-    write_compressed_rows(
-        transaction,
-        rows,
-        schema,
-        table,
-        column,
-        pq_column_name,
-        &codebook_table_name,
-        "l2sq", // TODO:: get from args
-        &main_progress,
-        progress_cb,
-        &logger,
+    let row_count = transaction.query_one(
+        &format!(
+            "SELECT COUNT({pk}) FROM {full_table_name}",
+            pk = quote_ident(pk)
+        ),
+        &[],
     )?;
+    let row_count = row_count.try_get::<usize, i64>(0)? as usize;
+    let num_cores: usize = std::thread::available_parallelism().unwrap().into();
+    let chunk_count = row_count / num_cores;
+
+    let results = (0..num_cores)
+        .into_par_iter()
+        .map_with(codebooks_hashmap, |map, i| {
+            let mut client = Client::connect(&db_uri, NoTls)?;
+            let mut transaction = client.transaction()?;
+            let range_start = i * chunk_count;
+            let range_end = if i == num_cores - 1 { row_count + 1 } else { range_start + chunk_count + 1 };
+
+            let fetch_start_time = Instant::now();
+            let rows = transaction.query(
+                &format!(
+            "SELECT id::text, {column} FROM {full_table_name} WHERE id > {range_start} AND id < {range_end} ORDER BY id;",
+            column = quote_ident(column),
+              ),
+                &[],
+            )?;
+                logger.info(&format!(
+                    "Fetched {} items in {}s",
+                    rows.len(),
+                    fetch_start_time.elapsed().as_secs()
+                ));
+            
+            let rows = rows
+                .iter()
+                .filter_map(|r| {
+                    let vec = r.get::<usize, Option<Vec<f32>>>(1);
+
+                    if let Some(v) = vec {
+
+                    Some(DatasetItem {
+                    id: r.get::<usize, String>(0),
+                    vec: v
+                    
+                })
+                    } else {
+                        None
+                    }
+
+                })
+                .collect::<Vec<DatasetItem>>();
+            let vector_dim = rows[0].vec.len();
+            let rows = _compress_vectors(
+                &rows,
+                vector_dim,
+                subvector_dim,
+                splits,
+                map.clone(),
+                &logger,
+            )?;
+            
+            write_compressed_rows(
+                &mut transaction,
+                &rows,
+                schema,
+                table,pq_column_name,
+                pk,
+                &main_progress,
+                progress_cb,
+                &logger,
+            )?;
+            transaction.commit()?;
+            Ok::<(), anyhow::Error>(())
+        }).collect::<Vec<Result<(), anyhow::Error>>>();
+
+    for result in results {
+       result?;
+    }
+
+    setup_triggers(&mut transaction, full_table_name, codebook_table_name, pq_column_name, column, "l2sq", splits)?;
+    transaction.commit()?;
     Ok(())
 }
 
@@ -494,21 +538,23 @@ pub fn quantize_table(
     }
 
     if args.only_compress {
+        drop(transaction);
         compress_and_write_vectors(
-            &mut transaction,
+            client,
             &codebook_table_name,
             &full_table_name,
+            &uri,
             schema,
             table,
             column,
             &pq_column_name,
+            &args.pk,
             args.splits,
             &main_progress,
             &progress_cb,
             &logger,
         )?;
         set_and_report_progress(&progress_cb, &logger, &main_progress, 100);
-        transaction.commit()?;
         return Ok(());
     }
 
@@ -615,7 +661,7 @@ pub fn quantize_table(
                 create_codebook(subset_dataset, args.clusters, subvector_id, &logger).unwrap();
 
             logger.debug(&format!(
-                "Subset {i} training duration: {}s",
+                "Subset {subvector_id} training duration: {}s",
                 training_time_start.elapsed().as_secs()
             ));
 
@@ -675,17 +721,16 @@ pub fn quantize_table(
 
         write_compressed_rows(
             &mut transaction,
-            rows,
+            &rows,
             &args.schema,
             &args.table,
-            &column,
             &pq_column_name,
-            &codebook_table_name,
-            "l2sq", // TODO:: get from args
+            &args.pk,
             &main_progress,
             &progress_cb,
             &logger,
         )?;
+         setup_triggers(&mut transaction, &full_table_name, &codebook_table_name, &pq_column_name, column, "l2sq", args.splits)?;
     }
 
     transaction.commit()?;
