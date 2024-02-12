@@ -11,7 +11,7 @@ void                  CheckMem(int limit, Relation index, usearch_index_t uidx, 
 void                  LogUsearchOptions(usearch_init_options_t *opts);
 void                  PopulateUsearchOpts(Relation index, usearch_init_options_t *opts);
 usearch_label_t       GetUsearchLabel(ItemPointer itemPtr);
-float4               *ToFloat4Array(ArrayType *arr);
+float4               *ToFloat4Array(ArrayType *arr, int *dim_out);
 bool                  VersionsMatch();
 uint32                EstimateRowCount(Relation heap);
 int32                 GetColumnAttributeNumber(Relation rel, const char *columnName);
