@@ -323,10 +323,12 @@ static float4 array_dist(ArrayType *a, ArrayType *b, usearch_metric_kind_t metri
         result = usearch_distance(ax_int, bx_int, usearch_scalar_f32_k, a_dim, metric_kind, &error);
         assert(!error);
     } else {
-        float4 *ax = ToFloat4Array(a);
-        float4 *bx = ToFloat4Array(b);
+        int     dim;
+        float4 *ax = ToFloat4Array(a, &dim);
+        float4 *bx = ToFloat4Array(b, &dim);
+        assert(dim == a_dim && dim == b_dim);
 
-        result = usearch_distance(ax, bx, usearch_scalar_f32_k, a_dim, metric_kind, &error);
+        result = usearch_distance(ax, bx, usearch_scalar_f32_k, dim, metric_kind, &error);
         assert(!error);
     }
 
