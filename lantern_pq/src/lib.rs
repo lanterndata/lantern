@@ -9,7 +9,7 @@ use rayon::prelude::*;
 use std::cmp;
 use std::collections::HashMap;
 use std::io::Write;
-use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
@@ -97,6 +97,11 @@ fn setup_triggers<'a>(
     ", pq_column=quote_ident(pq_column), column=quote_ident(column), codebook_table_name=quote_ident(codebook_table_name)))?;
     Ok(())
 }
+
+// This function will write compressed vector into temporary table
+// Using COPY protocol and then update the original table via pk mapping
+// So we will use only one UPDATE query to write compressed vectors
+// This function can be run in parallel
 fn write_compressed_rows<'a>(
     transaction: &mut Transaction<'a>,
     rows: &Vec<(String, Vec<u8>)>,
@@ -104,13 +109,14 @@ fn write_compressed_rows<'a>(
     table: &str,
     pq_column: &str,
     pk: &str,
+    tmp_table_suffix: &str,
     main_progress: &AtomicU8,
     progress_cb: &Option<ProgressCbFn>,
     logger: &Logger,
 ) -> AnyhowVoidResult {
     let mut rng = rand::thread_rng();
     let full_table_name = get_full_table_name(schema, table);
-    let temp_table_name = format!("_lantern_pq_tmp_{}", rng.gen_range(0..1000000));
+    let temp_table_name = format!("_lantern_pq_tmp_{tmp_table_suffix}_{}", rng.gen_range(0..1000000));
     let export_time_start = Instant::now();
 
     transaction
@@ -167,6 +173,7 @@ fn write_compressed_rows<'a>(
     Ok(())
 }
 
+// Will run kmeans over dataset and return centroids
 fn create_codebook(
     dataset: Vec<&[f32]>,
     cluster_count: usize,
@@ -225,6 +232,7 @@ fn l2sq_dist(a: &[f32], b: &[f32]) -> f32 {
         .fold(0.0 as f32, ::std::ops::Add::add)
 }
 
+// Will iterate over all clusters and search the closes centroid to provided vector
 fn get_closest_centroid(centroids: &Vec<Vec<f32>>, subvector: &[f32]) -> u8 {
     let mut closest_distance = f32::MAX;
     let mut closest_index = 0;
@@ -240,6 +248,7 @@ fn get_closest_centroid(centroids: &Vec<Vec<f32>>, subvector: &[f32]) -> u8 {
     closest_index
 }
 
+// Will create a codebook table add neccessary indexes and add PQVEC column into target table
 fn _setup_tables<'a>(
     transaction: &mut Transaction<'a>,
     full_table_name: &str,
@@ -263,6 +272,10 @@ fn _setup_tables<'a>(
     Ok(())
 }
 
+// Will parallel iterate over the dataset
+// Then iterate over each subvector of the vector and return
+// closest centroid id for that subvector
+// Result will be vector with row id and compressed vector 
 fn _compress_vectors(
     dataset: &Vec<DatasetItem>,
     vector_dim: usize,
@@ -300,6 +313,11 @@ fn _compress_vectors(
     Ok(rows)
 }
 
+// This function is intended to be run on batch job
+// It is optimized for parallel runs
+// The data read/write will be done in parallel using rayon
+// It can operate over range of data from the whole table, 
+// so it can be split over multiple vm instances to speed up compression times
 fn compress_and_write_vectors<'a>(
     mut client: Client,
     codebook_table_name: &str,
@@ -311,11 +329,15 @@ fn compress_and_write_vectors<'a>(
     pq_column_name: &str,
     pk: &str,
     splits: usize,
+    limit_start: usize,
+    limit_end: usize,
     main_progress: &AtomicU8,
     progress_cb: &Option<ProgressCbFn>,
     logger: &Logger,
 ) -> AnyhowVoidResult {
     let mut transaction = client.transaction()?;
+
+    let codebook_read_start = Instant::now();
     let codebook_rows = transaction.query(
         &format!(
             "SELECT subvector_id, centroid_id, c FROM {codebook_table_name} ORDER BY centroid_id ASC;",
@@ -328,9 +350,12 @@ fn compress_and_write_vectors<'a>(
         anyhow::bail!("Codebook does not contain any entries");
     }
 
+    logger.debug(&format!("Coedbook fetched in {}s", codebook_read_start.elapsed().as_secs()));
+
     let mut codebooks_hashmap: HashMap<usize, Vec<Vec<f32>>> = HashMap::new();
     let cluster_count = codebook_rows.len() / splits;
 
+    let codebook_hashmap_creation_start = Instant::now();
     let subvector_dim = codebook_rows[0].get::<usize, Vec<f32>>(2).len();
     for row in codebook_rows {
         let subvector_id = row.get::<usize, i32>(0) as usize;
@@ -349,28 +374,23 @@ fn compress_and_write_vectors<'a>(
         );
     }
 
+    logger.debug(&format!("Coedbook hashmap created in {}s", codebook_hashmap_creation_start.elapsed().as_secs()));
     set_and_report_progress(progress_cb, logger, main_progress, 10);
 
     let codebooks_hashmap = Arc::new(RwLock::new(codebooks_hashmap));
-
-    let row_count = transaction.query_one(
-        &format!(
-            "SELECT COUNT({pk}) FROM {full_table_name}",
-            pk = quote_ident(pk)
-        ),
-        &[],
-    )?;
-    let row_count = row_count.try_get::<usize, i64>(0)? as usize;
+ 
+    let row_count = limit_end - limit_start;
     let num_cores: usize = std::thread::available_parallelism().unwrap().into();
     let chunk_count = row_count / num_cores;
 
+    let compression_and_write_start_time = Instant::now();
     let results = (0..num_cores)
         .into_par_iter()
         .map_with(codebooks_hashmap, |map, i| {
             let mut client = Client::connect(&db_uri, NoTls)?;
             let mut transaction = client.transaction()?;
-            let range_start = i * chunk_count;
-            let range_end = if i == num_cores - 1 { row_count + 1 } else { range_start + chunk_count + 1 };
+            let range_start = limit_start + (i * chunk_count);
+            let range_end = if i == num_cores - 1 { limit_end + 1 } else { range_start + chunk_count + 1 };
 
             let fetch_start_time = Instant::now();
             let rows = transaction.query(
@@ -420,6 +440,7 @@ fn compress_and_write_vectors<'a>(
                 schema,
                 table,pq_column_name,
                 pk,
+                &range_start.to_string(),
                 &main_progress,
                 progress_cb,
                 &logger,
@@ -432,53 +453,10 @@ fn compress_and_write_vectors<'a>(
        result?;
     }
 
-    setup_triggers(&mut transaction, full_table_name, codebook_table_name, pq_column_name, column, "l2sq", splits)?;
+    logger.debug(&format!("Vectors compressed and exported in {}s", compression_and_write_start_time.elapsed().as_secs()));
     transaction.commit()?;
     Ok(())
 }
-
-// pub fn submit_gcp_batch_job(
-//     args: &cli::PQArgs,
-//     progress_cb: Option<ProgressCbFn>,
-//     is_canceled: Option<Arc<RwLock<bool>>>,
-//     logger: Option<Logger>,
-// ) -> AnyhowVoidResult {
-//     let logger = Arc::new(logger.unwrap_or(Logger::new("Lantern PQ", LogLevel::Debug)));
-//     logger.info("Lantern CLI - Quantize Table GCP Batch");
-//     // Setup Tables
-//     let main_progress = AtomicU8::new(0);
-//     let is_canceled = is_canceled.unwrap_or(Arc::new(RwLock::new(false)));
-//     let total_time_start = Instant::now();
-//     let column = &args.column;
-//     let schema = &args.schema;
-//     let table = &args.table;
-//     let full_table_name = get_full_table_name(schema, table);
-//     let codebook_table_name = format!("_lantern_codebook_{}", args.table);
-//     let pq_column_name = format!("{column}_pq");
-//
-//     let uri = append_params_to_uri(&args.uri, CONNECTION_PARAMS);
-//     let mut client = Client::connect(&uri, NoTls)?;
-//     let mut transaction = client.transaction()?;
-//
-//     // Create codebook table and add pqvec column to table
-//     _setup_tables(
-//         &mut transaction,
-//         &full_table_name,
-//         &codebook_table_name,
-//         &pq_column_name,
-//         &logger,
-//     )?;
-//     set_and_report_progress(&progress_cb, &logger, &main_progress, 5);
-//     // Post request to submit workflow
-//     // TODO:: estimate memory needed
-//
-//     // Poll workflow status in loop
-//     loop {
-//         break;
-//     }
-//     set_and_report_progress(&progress_cb, &logger, &main_progress, 100);
-//     Ok(())
-// }
 
 // This code can be used in 2 modes
 // The first one is to quantize the whole table for all subvectors
@@ -512,12 +490,6 @@ pub fn quantize_table(
     let mut client = Client::connect(&uri, NoTls)?;
     let mut transaction = client.transaction()?;
 
-    // Lock table, so there won't be any new writes while job is being executed
-    transaction.execute("SET lock_timeout='5s'", &[])?;
-    transaction.execute(
-        &format!("LOCK TABLE ONLY {full_table_name} IN SHARE MODE"),
-        &[],
-    )?;
 
     // Create codebook table and add pqvec column to table
     if !args.skip_table_setup {
@@ -528,6 +500,7 @@ pub fn quantize_table(
             &pq_column_name,
             &logger,
         )?;
+        setup_triggers(&mut transaction, &full_table_name, &codebook_table_name, &pq_column_name, column, "l2sq", args.splits)?;
 
         // Commit and return if the task is to only set up tables
         if args.only_setup {
@@ -537,7 +510,35 @@ pub fn quantize_table(
         }
     }
 
+    let row_cnt = transaction.query_one(
+        &format!(
+            "SELECT COUNT({pk}) FROM {full_table_name};",
+            pk = quote_ident(&args.pk)
+        ),
+        &[],
+    )?;
+
+    let row_cnt = row_cnt.try_get::<usize, i64>(0)? as usize;
+
+    // Only compress will be passed if task is run from Batch job
+    // As there will be three phases 
+    // 1. table setup, 2. codebook craetion 3. table compression 4. trigger setup
+    // 2 and 3 phases will be run in parallel
     if args.only_compress {
+        let mut limit_start = 0;
+        let mut limit_end = row_cnt ;
+
+        if let Some(compression_task_id) = args.compression_task_id {
+        if args.compression_task_count.is_none() {
+            anyhow::bail!("Please provide --compression-task-count when providing --compression-task-id");
+        }
+        let compression_task_count = args.compression_task_count.unwrap();
+        
+        let chunk_per_task = limit_end / compression_task_count;
+        limit_start = chunk_per_task * compression_task_id;
+        limit_end = if compression_task_id == compression_task_count - 1 { limit_end } else { limit_start + chunk_per_task };
+        }
+
         drop(transaction);
         compress_and_write_vectors(
             client,
@@ -550,6 +551,8 @@ pub fn quantize_table(
             &pq_column_name,
             &args.pk,
             args.splits,
+            limit_start,
+            limit_end,
             &main_progress,
             &progress_cb,
             &logger,
@@ -597,34 +600,92 @@ pub fn quantize_table(
     }
 
     logger.debug(&format!("Splits: {}, Subvector ID: {:?} Vector dim: {vector_dim}, Subvector dim: {subvector_dim}, Subvector: vector[{subvector_start_idx}:{subvector_end_idx}]", args.splits, args.subvector_id));
-    let fetch_start_time = Instant::now();
+    let max_connections = transaction.query_one("SELECT setting::int FROM pg_settings WHERE name = 'max_connections'", &[])?;
+    let max_connections = max_connections.get::<usize, i32>(0) as usize;
+
+    let num_cores: usize = std::thread::available_parallelism().unwrap().into();
+    let  num_connections: usize = if args.subvector_id.is_some() {
+        // If there's subvector id we expect this to be batch job
+        // So each task will get max_connections / split connection pool
+        // Be it won't be higher than cpu count
+        cmp::min(num_cores, (max_connections - 2) / args.splits)
+    } else {
+        // In this case as this will be only task running we can use whole connection pool
+        let active_connections = transaction.query_one("SELECT COUNT(DISTINCT pid) FROM pg_stat_activity", &[])?;
+        let active_connections = active_connections.get::<usize, i64>(0) as usize;
+        cmp::min(num_cores, max_connections - active_connections)
+    };
+
+    let chunk_count = row_cnt / num_connections;
+    logger.debug(&format!("max_connections: {max_connections}, num_cores: {num_cores}, num_connections: {num_connections}"));
+
+    let total_fetch_start_time = Instant::now();
     // Select all data from database
     // If this is for one subvector, only that portion will be selected from original vectors
     // But if no subvector_id is provided whole vector will be selected
     // (the indices will be 0;vector_dim)
-    let rows = transaction.query(
-        &format!(
-            "SELECT ctid::text, {column}[{start_idx}:{end_idx}] FROM {full_table_name} WHERE {column} IS NOT NULL;",
-            column = quote_ident(column),
-            start_idx = subvector_start_idx + 1,
-            end_idx = subvector_end_idx + 1,
-        ),
-        &[],
-    )?;
+    // Data will be fetched in parallel and then merged to speed up the fetch time
+    let rows = (0..num_connections)
+        .into_par_iter()
+        .map(|i| {
+            let mut client = Client::connect(&uri, NoTls)?;
+            let mut transaction = client.transaction()?;
+            let range_start = i * chunk_count;
+            let range_end = if i == num_cores - 1 { row_cnt + 1 } else { range_start + chunk_count + 1 };
 
-    let rows = rows
-        .iter()
-        .map(|r| DatasetItem {
-            id: r.get::<usize, String>(0),
-            vec: r.get::<usize, Vec<f32>>(1),
-        })
-        .collect::<Vec<DatasetItem>>();
+            let fetch_start_time = Instant::now();
+            let rows = transaction.query(
+                &format!(
+                    "SELECT {pk}::text, {column}[{start_idx}:{end_idx}] FROM {full_table_name} WHERE {pk} > {range_start} AND {pk} < {range_end} ORDER BY id;",
+                    pk = quote_ident(&args.pk),
+                    column = quote_ident(column),
+                    start_idx = subvector_start_idx + 1,
+                    end_idx = subvector_end_idx + 1,
+                ),
+                &[],
+            )?;
+                logger.info(&format!(
+                    "Fetched {} items in {}s",
+                    rows.len(),
+                    fetch_start_time.elapsed().as_secs()
+                ));
+            
+            let rows = rows
+                .iter()
+                .filter_map(|r| {
+                    let vec = r.get::<usize, Option<Vec<f32>>>(1);
 
-    logger.info(&format!(
-        "Fetched {} items in {}s",
-        rows.len(),
-        fetch_start_time.elapsed().as_secs()
-    ));
+                    if let Some(v) = vec {
+
+                    Some(DatasetItem {
+                    id: r.get::<usize, String>(0),
+                    vec: v
+                    
+                })
+                    } else {
+                        None
+                    }
+
+                })
+                .collect::<Vec<DatasetItem>>();
+            
+            Ok::<Vec<DatasetItem>, anyhow::Error>(rows)
+        }).collect::<Vec<Result<Vec<DatasetItem>, anyhow::Error>>>();
+
+        let mut dataset: Vec<DatasetItem> = Vec::with_capacity(row_cnt);
+
+        for row in rows {
+            for item in row? {
+                dataset.push(item);
+            }
+        }
+        
+        logger.info(&format!(
+            "Fetched {} items in {}s",
+            dataset.len(),
+            total_fetch_start_time.elapsed().as_secs()
+        ));
+
     // progress indicator is: 5% load, 70% codebook, 15% compression, 10% export
     report_progress(&progress_cb, &logger, &main_progress, 5);
 
@@ -634,9 +695,9 @@ pub fn quantize_table(
         "Starting kmeans with params (clouster_count={}, subset_count={})",
         args.clusters, args.splits
     ));
-    let rows = Arc::new(rows);
-    let rows_clone = rows.clone();
-    let processed_cnt = AtomicUsize::new(0);
+ 
+    let dataset = Arc::new(dataset);
+    let dataset_clone = dataset.clone();
 
     // If this is for all subvectors the range will be 0;$args.splits
     // If this is for one subvector the range will be $subvector_id;($subvector_id+1)
@@ -644,15 +705,16 @@ pub fn quantize_table(
     let subvector_range_end = subvector_end_idx / subvector_dim;
     let subvector_count = subvector_range_end - subvector_range_start;
 
+    let progress_per_chunk = 70.0 / (subvector_count) as f32;
     let all_centroids: Vec<(usize, Vec<Vec<f32>>)> = (subvector_range_start..subvector_range_end)
         .into_par_iter()
         .enumerate()
-        .map_with(rows_clone, |rows, (i, subvector_id)| {
+        .map_with(dataset_clone, |dataset, (i, subvector_id)| {
             let training_time_start = Instant::now();
             let start_index = i * subvector_dim;
             let end_index = start_index + subvector_dim;
 
-            let subset_dataset = rows
+            let subset_dataset = dataset
                 .iter()
                 .map(|r| &r.vec[start_index..end_index])
                 .collect::<Vec<&[f32]>>();
@@ -665,29 +727,44 @@ pub fn quantize_table(
                 training_time_start.elapsed().as_secs()
             ));
 
-            processed_cnt.fetch_add(1, Ordering::SeqCst);
-            let processed_cnt = processed_cnt.load(Ordering::SeqCst);
             report_progress(
                 &progress_cb,
                 &logger,
                 &main_progress,
-                (70.0 * ((processed_cnt) as f32 / subvector_count as f32)) as u8,
+                progress_per_chunk as u8,
             );
             (subvector_id, centroids)
         })
         .collect();
 
+    set_and_report_progress(
+        &progress_cb,
+        &logger,
+        &main_progress,
+        75 as u8,
+    );
     let codebook_write_time_start = Instant::now();
+ 
     // Write the generated centroids in codebook table
+    let mut writer = transaction.copy_in(&format!("COPY {codebook_table_name} FROM stdin"))?;
     for (subvector_id, centroids) in all_centroids {
         for (centroid_id, centroid) in centroids.iter().enumerate() {
-            transaction.execute(
-                    &format!("INSERT INTO {codebook_table_name} (subvector_id, centroid_id, c) VALUES ($1, $2, $3)",codebook_table_name=quote_ident(&codebook_table_name)),
-                    &[&(subvector_id as i32), &(centroid_id as i32), &centroid],
-                )?;
+            writer.write(subvector_id.to_string().as_bytes())?;
+            writer.write("\t".as_bytes())?;
+            writer.write(centroid_id.to_string().as_bytes())?;
+            writer.write("\t".as_bytes())?;
+            writer.write("{".as_bytes())?;
+            let row_str: String = centroid.iter().map(|&x| x.to_string() + ",").collect();
+            writer.write(row_str[0..row_str.len() - 1].as_bytes())?;
+            writer.write("}".as_bytes())?;
+            writer.write("\n".as_bytes())?;
             codebooks_hashmap.insert(subvector_id, centroids.clone());
         }
     }
+    
+    writer.flush()?;
+    writer.finish()?;
+ 
     logger.debug(&format!(
         "Codebook write duration: {}s",
         codebook_write_time_start.elapsed().as_secs()
@@ -703,8 +780,8 @@ pub fn quantize_table(
     if !args.skip_vector_compression {
         let codebooks_hashmap = Arc::new(RwLock::new(codebooks_hashmap));
 
-        let rows = _compress_vectors(
-            &rows,
+        let dataset = _compress_vectors(
+            &dataset,
             vector_dim,
             subvector_dim,
             args.splits,
@@ -721,16 +798,16 @@ pub fn quantize_table(
 
         write_compressed_rows(
             &mut transaction,
-            &rows,
+            &dataset,
             &args.schema,
             &args.table,
             &pq_column_name,
             &args.pk,
+            "compress",
             &main_progress,
             &progress_cb,
             &logger,
         )?;
-         setup_triggers(&mut transaction, &full_table_name, &codebook_table_name, &pq_column_name, column, "l2sq", args.splits)?;
     }
 
     transaction.commit()?;

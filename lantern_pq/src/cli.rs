@@ -67,6 +67,14 @@ pub struct PQArgs {
     /// Primary key of the table, needed for compression job
     #[arg(long, default_value = "id")]
     pub pk: String,
+
+    /// Number of tasks, run for compression vectors (used in gcp batch jobs)
+    #[arg(long)]
+    pub compression_task_count: Option<usize>,
+
+    /// Task id of currently running compression job
+    #[arg(long)]
+    pub compression_task_id: Option<usize>,
 }
 
 impl PQArgs {
