@@ -68,9 +68,9 @@ pub struct PQArgs {
     #[arg(long, default_value = "id")]
     pub pk: String,
 
-    /// Number of tasks, run for compression vectors (used in gcp batch jobs)
+    /// Number of tasks running in parallel (used in gcp batch jobs)
     #[arg(long)]
-    pub compression_task_count: Option<usize>,
+    pub task_count: Option<usize>,
 
     /// Task id of currently running compression job
     #[arg(long)]
