@@ -1,3 +1,5 @@
+use codebook::CreateCodebookArgs;
+use compression::CompressAndWriteVectorArgs;
 use lantern_logger::{LogLevel, Logger};
 use lantern_utils::{append_params_to_uri, get_full_table_name, quote_ident};
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -9,6 +11,7 @@ use postgres::{Client, NoTls};
 pub mod cli;
 mod codebook;
 mod compression;
+mod gcp_batch;
 mod setup;
 
 type AnyhowVoidResult = Result<(), anyhow::Error>;
@@ -142,23 +145,25 @@ pub fn quantize_table(
     if args.only_compress {
         drop(transaction);
         compression::compress_and_write_vectors(
+            CompressAndWriteVectorArgs {
+                codebook_table_name: &codebook_table_name,
+                full_table_name: &full_table_name,
+                db_uri: &uri,
+                schema,
+                table,
+                column,
+                pq_column_name: &pq_column_name,
+                pk: &args.pk,
+                splits: args.splits,
+                total_row_count,
+                task_count: &args.task_count,
+                compression_task_id: &args.compression_task_id,
+                max_connections,
+                main_progress: &main_progress,
+                progress_cb: &progress_cb,
+                logger: &logger,
+            },
             client,
-            &codebook_table_name,
-            &full_table_name,
-            &uri,
-            schema,
-            table,
-            column,
-            &pq_column_name,
-            &args.pk,
-            args.splits,
-            total_row_count,
-            &args.task_count,
-            &args.compression_task_id,
-            max_connections,
-            &main_progress,
-            &progress_cb,
-            &logger,
         )?;
         set_and_report_progress(&progress_cb, &logger, &main_progress, 100);
         return Ok(());
@@ -181,23 +186,25 @@ pub fn quantize_table(
 
     // Create codebook
     let (codebooks_hashmap, dataset) = codebook::create_codebook(
-        &logger,
+        CreateCodebookArgs {
+            logger: &logger,
+            main_progress: &main_progress,
+            progress_cb: &progress_cb,
+            db_uri: &uri,
+            pk: &args.pk,
+            column,
+            full_table_name: &full_table_name,
+            codebook_table_name: &codebook_table_name,
+            total_row_count,
+            max_connections,
+            splits: args.splits,
+            vector_dim,
+            subvector_dim,
+            cluster_count: args.clusters,
+            subvector_id: &args.subvector_id,
+            task_count: &args.task_count,
+        },
         &mut transaction,
-        &main_progress,
-        &progress_cb,
-        &uri,
-        &args.pk,
-        column,
-        &full_table_name,
-        &codebook_table_name,
-        total_row_count,
-        max_connections,
-        args.splits,
-        vector_dim,
-        subvector_dim,
-        args.clusters,
-        &args.subvector_id,
-        &args.task_count,
     )?;
 
     // Compress vectors using codebook

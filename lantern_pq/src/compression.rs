@@ -156,37 +156,49 @@ pub fn write_compressed_rows<'a>(
 // The data read/write will be done in parallel using rayon
 // It can operate over range of data from the whole table, 
 // so it can be split over multiple vm instances to speed up compression times
-pub fn compress_and_write_vectors<'a>(
-    mut client: Client,
-    codebook_table_name: &str,
-    full_table_name: &str,
-    db_uri: &str,
-    schema: &str,
-    table: &str,
-    column: &str,
-    pq_column_name: &str,
-    pk: &str,
-    splits: usize,
-    total_row_cnt: usize,
-    task_count: &Option<usize>,
-    compression_task_id: &Option<usize>,
-    max_connections: usize,
-    main_progress: &AtomicU8,
-    progress_cb: &Option<crate::ProgressCbFn>,
-    logger: &Logger,
-) -> crate::AnyhowVoidResult {
+pub struct CompressAndWriteVectorArgs<'a> {
+   pub codebook_table_name: &'a str,
+   pub full_table_name: &'a str,
+   pub db_uri: &'a str,
+   pub schema: &'a str,
+   pub table: &'a str,
+   pub column: &'a str,
+   pub pq_column_name: &'a str,
+   pub pk: &'a str,
+   pub splits: usize,
+   pub total_row_count: usize,
+   pub task_count: &'a Option<usize>,
+   pub compression_task_id: &'a Option<usize>,
+   pub max_connections: usize,
+   pub main_progress: &'a AtomicU8,
+   pub progress_cb: &'a Option<crate::ProgressCbFn>,
+   pub logger: &'a Logger,
+}
+
+pub fn compress_and_write_vectors(args: CompressAndWriteVectorArgs, mut client: Client) -> crate::AnyhowVoidResult {
     let mut transaction = client.transaction()?;
+    let logger = args.logger;
+    let db_uri = args.db_uri;
+    let full_table_name = args.full_table_name;
+    let column = args.column;
+    let splits = args.splits;
+    let schema =  args.schema;
+    let table =  args.table;
+    let pq_column_name = args.pq_column_name;
+    let pk = args.pk;
+    let main_progress = args.main_progress;
+    let progress_cb =  args.progress_cb;
     
     let mut limit_start = 0;
-    let mut limit_end = total_row_cnt ;
+    let mut limit_end = args.total_row_count ;
 
     // In batch mode each task will operate on a range of vectors from dataset
     // Here we will determine the range from the task id
-    if let Some(compression_task_id) = compression_task_id {
-        if task_count.is_none() {
+    if let Some(compression_task_id) = args.compression_task_id {
+        if args.task_count.is_none() {
             anyhow::bail!("Please provide --task-count when providing --compression-task-id");
         }
-        let compression_task_count = task_count.as_ref().unwrap();
+        let compression_task_count = args.task_count.as_ref().unwrap();
         
         let chunk_per_task = limit_end / compression_task_count;
         limit_start = chunk_per_task * compression_task_id;
@@ -198,7 +210,7 @@ pub fn compress_and_write_vectors<'a>(
     let codebook_rows = transaction.query(
         &format!(
             "SELECT subvector_id, centroid_id, c FROM {codebook_table_name} ORDER BY centroid_id ASC;",
-            codebook_table_name = quote_ident(&codebook_table_name),
+            codebook_table_name = quote_ident(&args.codebook_table_name),
         ),
         &[],
     )?;
@@ -228,7 +240,8 @@ pub fn compress_and_write_vectors<'a>(
 
     if codebooks_hashmap.len() != splits {
         anyhow::bail!(
-            "Incomplete codebook: expected size equal to {splits}, got: {}",
+            "Incomplete codebook: expected size equal to {}, got: {}",
+            splits,
             codebooks_hashmap.len()
         );
     }
@@ -243,27 +256,28 @@ pub fn compress_and_write_vectors<'a>(
     // Then we will compress the range chunk and write to database
     let range_row_count = limit_end - limit_start;
     let num_cores: usize = std::thread::available_parallelism().unwrap().into();
-    let  num_connections: usize = if compression_task_id.is_some() {
+    let  num_connections: usize = if args.compression_task_id.is_some() {
         // This will never fail as it is checked on start to be specified if task id is present
-        let parallel_task_count = task_count.as_ref().unwrap();
+        let parallel_task_count = args.task_count.as_ref().unwrap();
         // If there's compression task id we expect this to be batch job
         // So each task will get (max_connections / parallel task count) connection pool
         // But it won't be higher than cpu count
-        cmp::min(num_cores, (max_connections - 2) / parallel_task_count)
+        cmp::min(num_cores, (args.max_connections - 2) / parallel_task_count)
     } else {
         // In this case as this will be only task running we can use whole connection pool
         let active_connections = transaction.query_one("SELECT COUNT(DISTINCT pid) FROM pg_stat_activity", &[])?;
         let active_connections = active_connections.get::<usize, i64>(0) as usize;
-        cmp::min(num_cores, max_connections - active_connections)
+        cmp::min(num_cores, args.max_connections - active_connections)
     };
 
     // Avoid division by zero error
     let num_connections = cmp::max(num_connections, 1);
     let chunk_count = range_row_count / num_connections;
  
-    logger.debug(&format!("max_connections: {max_connections}, num_cores: {num_cores}, num_connections: {num_connections}, chunk_count: {chunk_count}"));
+    logger.debug(&format!("max_connections: {}, num_cores: {num_cores}, num_connections: {num_connections}, chunk_count: {chunk_count}", args.max_connections));
 
     let compression_and_write_start_time = Instant::now();
+    
     let results = (0..num_connections)
         .into_par_iter()
         .map_with(codebooks_hashmap, |map, i| {
@@ -276,6 +290,7 @@ pub fn compress_and_write_vectors<'a>(
             let rows = transaction.query(
                 &format!(
             "SELECT id::text, {column} FROM {full_table_name} WHERE id >= {range_start} AND id < {range_end} ORDER BY id;",
+            full_table_name = full_table_name,
             column = quote_ident(column),
               ),
                 &[],
@@ -318,7 +333,8 @@ pub fn compress_and_write_vectors<'a>(
                 &mut transaction,
                 &rows,
                 schema,
-                table,pq_column_name,
+                table,
+                pq_column_name,
                 pk,
                 &range_start.to_string(),
                 &main_progress,
