@@ -1,3 +1,5 @@
+use std::process;
+
 use clap::Parser;
 use lantern_daemon;
 use lantern_embeddings;
@@ -50,7 +52,7 @@ fn main() {
         cli::Commands::PQTable(args) => {
             let logger = Logger::new("Lantern PQ", LogLevel::Debug);
             _main_logger = Some(logger.clone());
-            lantern_pq::quantize_table(&args, None, None, Some(logger))
+            lantern_pq::quantize_table(args, None, None, Some(logger))
         }
         cli::Commands::StartDaemon(args) => {
             let logger = Logger::new("Lantern Daemon", args.log_level.value());
@@ -62,5 +64,6 @@ fn main() {
     let logger = _main_logger.unwrap();
     if let Err(e) = res {
         logger.error(&e.to_string());
+        process::exit(1);
     }
 }

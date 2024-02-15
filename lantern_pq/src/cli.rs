@@ -56,6 +56,10 @@ pub struct PQArgs {
     #[arg(long, default_value_t = false)]
     pub skip_vector_compression: bool,
 
+    /// If true codebook will not be created
+    #[arg(long, default_value_t = false)]
+    pub skip_codebook_creation: bool,
+
     /// If true only codebook table and pq column will be created
     #[arg(long, default_value_t = false)]
     pub only_setup: bool,
@@ -75,6 +79,46 @@ pub struct PQArgs {
     /// Task id of currently running compression job
     #[arg(long)]
     pub compression_task_id: Option<usize>,
+
+    // GCP ARGS
+    #[arg(long, default_value_t = false)]
+    pub run_on_gcp: bool,
+
+    #[arg(long)]
+    pub gcp_cli_image_tag: Option<String>,
+
+    #[arg(long)]
+    pub gcp_project: Option<String>,
+
+    #[arg(long)]
+    pub gcp_region: Option<String>,
+
+    #[arg(long)]
+    pub gcp_image: Option<String>,
+
+    #[arg(long)]
+    pub gcp_compression_task_count: Option<usize>,
+
+    #[arg(long)]
+    pub gcp_compression_task_parallelism: Option<usize>,
+
+    #[arg(long)]
+    pub gcp_clustering_task_parallelism: Option<usize>,
+
+    #[arg(long, default_value_t = true)]
+    pub gcp_enable_image_streaming: bool,
+
+    #[arg(long)]
+    pub gcp_clustering_cpu: Option<usize>,
+
+    #[arg(long)]
+    pub gcp_clustering_memory_gb: Option<usize>,
+
+    #[arg(long)]
+    pub gcp_compression_cpu: Option<usize>,
+
+    #[arg(long)]
+    pub gcp_compression_memory_gb: Option<usize>,
 }
 
 impl PQArgs {

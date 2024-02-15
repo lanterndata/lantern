@@ -67,27 +67,23 @@ struct DatasetItem {
 // for the job and codebook will be created for that subvector
 // Then separate job will be run to compress vectors and write to table
 
-pub fn quantize_table(
-    args: &cli::PQArgs,
+fn quantize_table_local(
+    args: cli::PQArgs,
+    main_progress: AtomicU8,
+    db_uri: &str,
+    full_table_name: &str,
+    codebook_table_name: &str,
+    pq_column_name: &str,
     progress_cb: Option<ProgressCbFn>,
     is_canceled: Option<Arc<RwLock<bool>>>,
-    logger: Option<Logger>,
+    logger: &Logger,
 ) -> AnyhowVoidResult {
-    let logger = Arc::new(logger.unwrap_or(Logger::new("Lantern PQ", LogLevel::Debug)));
-    logger.info("Lantern CLI - Quantize Table");
-
-    let main_progress = AtomicU8::new(0);
     let is_canceled = is_canceled.unwrap_or(Arc::new(RwLock::new(false)));
-    let total_time_start = Instant::now();
     let column = &args.column;
     let schema = &args.schema;
     let table = &args.table;
-    let full_table_name = get_full_table_name(schema, table);
-    let codebook_table_name = format!("_lantern_codebook_{}", args.table);
-    let pq_column_name = format!("{column}_pq");
 
-    let uri = append_params_to_uri(&args.uri, CONNECTION_PARAMS);
-    let mut client = Client::connect(&uri, NoTls)?;
+    let mut client = Client::connect(db_uri, NoTls)?;
     let mut transaction = client.transaction()?;
 
     // Create codebook table and add pqvec column to table
@@ -148,7 +144,7 @@ pub fn quantize_table(
             CompressAndWriteVectorArgs {
                 codebook_table_name: &codebook_table_name,
                 full_table_name: &full_table_name,
-                db_uri: &uri,
+                db_uri,
                 schema,
                 table,
                 column,
@@ -190,7 +186,7 @@ pub fn quantize_table(
             logger: &logger,
             main_progress: &main_progress,
             progress_cb: &progress_cb,
-            db_uri: &uri,
+            db_uri,
             pk: &args.pk,
             column,
             full_table_name: &full_table_name,
@@ -246,10 +242,53 @@ pub fn quantize_table(
 
     set_and_report_progress(&progress_cb, &logger, &main_progress, 100);
 
+    Ok(())
+}
+
+pub fn quantize_table(
+    args: cli::PQArgs,
+    progress_cb: Option<ProgressCbFn>,
+    is_canceled: Option<Arc<RwLock<bool>>>,
+    logger: Option<Logger>,
+) -> AnyhowVoidResult {
+    let logger = Arc::new(logger.unwrap_or(Logger::new("Lantern PQ", LogLevel::Debug)));
+    logger.info("Lantern CLI - Quantize Table");
+
+    let main_progress = AtomicU8::new(0);
+    let total_time_start = Instant::now();
+    let full_table_name = get_full_table_name(&args.schema, &args.table);
+    let codebook_table_name = format!("_lantern_codebook_{}", args.table);
+    let pq_column_name = format!("{}_pq", args.column);
+    let db_uri = append_params_to_uri(&args.uri, CONNECTION_PARAMS);
+
+    if args.run_on_gcp {
+        gcp_batch::quantize_table_on_gcp(
+            args,
+            main_progress,
+            &db_uri,
+            &full_table_name,
+            &codebook_table_name,
+            &pq_column_name,
+            progress_cb,
+            &logger,
+        )?;
+    } else {
+        quantize_table_local(
+            args,
+            main_progress,
+            &db_uri,
+            &full_table_name,
+            &codebook_table_name,
+            &pq_column_name,
+            progress_cb,
+            is_canceled,
+            &logger,
+        )?;
+    }
+
     logger.debug(&format!(
         "Total duration: {}s",
         total_time_start.elapsed().as_secs()
     ));
-
     Ok(())
 }
