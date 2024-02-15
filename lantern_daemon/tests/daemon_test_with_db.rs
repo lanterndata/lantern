@@ -16,6 +16,7 @@ static AUTOTUNE_JOBS_TABLE_NAME: &'static str = "_lantern_daemon_autotune_jobs";
 static INDEX_JOBS_TABLE_NAME: &'static str = "_lantern_daemon_index_jobs";
 static CLIENT_TABLE_NAME: &'static str = "_lantern_cloud_client1";
 static AUTOTUNE_RESULTS_TABLE_NAME: &'static str = "_lantern_daemon_autotune_results";
+static EMBEDDING_USAGE_TABLE_NAME: &'static str = "_lantern_daemon_embedding_usage";
 
 async fn setup_db_tables(client: &mut Client) {
     client
@@ -107,6 +108,28 @@ async fn setup_db_tables(client: &mut Client) {
         latency DOUBLE PRECISION NOT NULL,
         build_time DOUBLE PRECISION NULL
    );
+            
+    CREATE TABLE {EMBEDDING_USAGE_TABLE_NAME} (
+        id SERIAL PRIMARY KEY,
+        job_id INT NOT NULL UNIQUE,
+        usage INT NOT NULL DEFAULT 0,
+        tokens INT  NOT NULL DEFAULT 0
+   );
+
+
+    CREATE OR REPLACE FUNCTION public.increment_embedding_usage_and_tokens(v_job_id integer, v_usage integer, v_tokens integer DEFAULT 0)
+     RETURNS VOID
+     LANGUAGE plpgsql
+    AS $function$
+    BEGIN
+    INSERT INTO {EMBEDDING_USAGE_TABLE_NAME} (job_id, usage, tokens)
+      VALUES (v_job_id, v_usage, v_tokens)
+      ON CONFLICT (job_id)
+      DO UPDATE SET
+        usage = {EMBEDDING_USAGE_TABLE_NAME}.usage + v_usage,
+        tokens = {EMBEDDING_USAGE_TABLE_NAME}.tokens + v_tokens;
+    END;
+    $function$
 "
         ))
         .await
@@ -122,6 +145,7 @@ async fn drop_db_tables(client: &mut Client) {
         DROP TABLE IF EXISTS {AUTOTUNE_JOBS_TABLE_NAME};
         DROP TABLE IF EXISTS {CLIENT_TABLE_NAME};
         DROP TABLE IF EXISTS {AUTOTUNE_RESULTS_TABLE_NAME};
+        DROP TABLE IF EXISTS {EMBEDDING_USAGE_TABLE_NAME};
     "
         ))
         .await
@@ -236,6 +260,7 @@ async fn test_embedding_generation_runtime(
         None,
         None,
     );
+
     // Verify that inserting job with invalid runtime does not crash process
     db_client
         .execute(&format!(
@@ -297,6 +322,18 @@ async fn test_embedding_generation_runtime(
         .unwrap();
     assert_eq!(cnt, 0);
     assert_eq!(client_data.len(), 0);
+    // Check usage
+    let client_data = db_client
+        .query_one(
+            &format!("SELECT usage FROM {EMBEDDING_USAGE_TABLE_NAME} e WHERE e.job_id=2"),
+            &[],
+        )
+        .await
+        .unwrap();
+    let usage = client_data.get::<usize, i32>(0);
+
+    assert_eq!(usage, 5);
+
     // Test embedding inserts
     let mut check_cnt = 0;
     db_client
@@ -337,6 +374,17 @@ async fn test_embedding_generation_runtime(
         .await
         .unwrap();
     let old_embedding = old_embedding.get::<usize, Vec<f32>>(0);
+    // Check usage
+    let client_data = db_client
+        .query_one(
+            &format!("SELECT usage FROM {EMBEDDING_USAGE_TABLE_NAME} e WHERE e.job_id=2"),
+            &[],
+        )
+        .await
+        .unwrap();
+    let usage = client_data.get::<usize, i32>(0);
+
+    assert_eq!(usage, 6);
     // Test embedding updates
     let mut check_cnt = 0;
     db_client
@@ -408,6 +456,17 @@ async fn test_embedding_generation_runtime(
     let updated_embedding = updated_embedding.get::<usize, Vec<f32>>(0);
     assert_ne!(old_embedding, updated_embedding);
 
+    // Check usage
+    let client_data = db_client
+        .query_one(
+            &format!("SELECT usage FROM {EMBEDDING_USAGE_TABLE_NAME} e WHERE e.job_id=2"),
+            &[],
+        )
+        .await
+        .unwrap();
+    let usage = client_data.get::<usize, i32>(0);
+
+    assert_eq!(usage, 9);
     // Check that all row locks are removed
     let locks = db_client
         .query(
