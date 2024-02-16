@@ -112,7 +112,7 @@ fn quantize_table_local(
         transaction = client.transaction()?;
 
         // Commit and return if the task is to only set up tables
-        if args.only_setup {
+        if args.skip_codebook_creation && args.skip_vector_compression {
             set_and_report_progress(&progress_cb, &logger, &main_progress, 100);
             return Ok(());
         }
@@ -138,7 +138,7 @@ fn quantize_table_local(
     // As there will be three phases
     // 1. table setup, 2. codebook craetion 3. table compression 4. trigger setup
     // 2 and 3 phases will be run in parallel
-    if args.only_compress {
+    if args.skip_codebook_creation {
         drop(transaction);
         compression::compress_and_write_vectors(
             CompressAndWriteVectorArgs {

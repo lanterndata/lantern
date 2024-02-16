@@ -22,7 +22,7 @@ static CLUSTERING_TASK_TEMPLATE: &'static str = r#"{
            "entrypoint": "/bin/sh",
            "commands": [
              "-c",
-             "/lantern-cli pq-table --uri ${DB_URI} --table ${TABLE} --column ${COLUMN} --clusters ${CLUSTERS} --splits ${SPLITS} --subvector-id ${BATCH_TASK_INDEX} --skip-table-setup --skip-vector-compression; exit $?"
+             "/lantern-cli pq-table --uri ${DB_URI} --table ${TABLE} --column ${COLUMN} --clusters ${CLUSTERS} --splits ${SPLITS} --parallel-task-count ${PARALLEL_TASK_COUNT} --subvector-id ${BATCH_TASK_INDEX} --skip-table-setup --skip-vector-compression; exit $?"
            ]
          },
          "environment": {
@@ -318,6 +318,8 @@ pub fn quantize_table_on_gcp(
             ["CLUSTERS"] = json!(args.clusters.to_string());
         body_json["taskGroups"][0]["taskSpec"]["runnables"][0]["environment"]["variables"]
             ["SPLITS"] = json!(args.splits.to_string());
+        body_json["taskGroups"][0]["taskSpec"]["runnables"][0]["environment"]["variables"]
+            ["PARALLEL_TASK_COUNT"] = json!(gcp_clustering_task_parallelism.to_string());
         body_json["taskGroups"][0]["taskSpec"]["computeResource"]["cpuMilli"] =
             json!(gcp_clustering_cpu_count * 1000);
         body_json["taskGroups"][0]["taskSpec"]["computeResource"]["memoryMib"] =
@@ -356,6 +358,8 @@ pub fn quantize_table_on_gcp(
             ["SPLITS"] = json!(args.splits.to_string());
         body_json["taskGroups"][0]["taskSpec"]["runnables"][0]["environment"]["variables"]
             ["COMPRESSION_TASK_COUNT"] = json!(gcp_compression_task_count.to_string());
+        body_json["taskGroups"][0]["taskSpec"]["runnables"][0]["environment"]["variables"]
+            ["PARALLEL_TASK_COUNT"] = json!(gcp_compression_task_parallelism.to_string());
         body_json["taskGroups"][0]["taskSpec"]["computeResource"]["cpuMilli"] =
             json!(gcp_compression_cpu_count * 1000);
         body_json["taskGroups"][0]["taskSpec"]["computeResource"]["memoryMib"] =

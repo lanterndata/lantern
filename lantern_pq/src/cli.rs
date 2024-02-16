@@ -48,14 +48,6 @@ pub struct PQArgs {
     #[arg(long, default_value_t = false)]
     pub skip_codebook_creation: bool,
 
-    /// If true only codebook table and pq column will be created
-    #[arg(long, default_value_t = false)]
-    pub only_setup: bool,
-
-    /// If true we will assume that codebook already exists and only will compress table vectors
-    #[arg(long, default_value_t = false)]
-    pub only_compress: bool,
-
     /// Primary key of the table, needed for compression job
     #[arg(long, default_value = "id")]
     pub pk: String,
