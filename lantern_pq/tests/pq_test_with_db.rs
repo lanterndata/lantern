@@ -1,0 +1,324 @@
+use std::{
+    env,
+    sync::{
+        atomic::{AtomicU8, Ordering},
+        Arc,
+    },
+};
+
+use lantern_pq::cli;
+use postgres::{Client, NoTls};
+
+fn setup_db_tables(client: &mut Client, table_name: &str) {
+    client
+        .batch_execute(&format!(
+            "
+    DROP TABLE IF EXISTS {table_name};
+    CREATE TABLE {table_name} (id SERIAL PRIMARY KEY, v REAL[]);
+    INSERT INTO {table_name} SELECT generate_series(0, 999), (select array_agg(random() * 1.0) from generate_series (0, 128 - 1));
+"
+        ))
+        .expect("Could not create necessarry tables");
+}
+
+fn drop_db_tables(client: &mut Client, table_name: &str, codebook_table_name: &str) {
+    client
+        .batch_execute(&format!(
+            "
+        DROP TABLE IF EXISTS {table_name};
+        DROP TABLE IF EXISTS {codebook_table_name};
+    "
+        ))
+        .expect("Could not drop tables");
+}
+
+#[test]
+fn test_full_pq() {
+    let db_url = env::var("DB_URL").expect("`DB_URL` not specified");
+    let table_name = String::from("_lantern_pq_test");
+    let codebook_table_name = String::from("_lantern_codebook_lantern_pq_test");
+    let mut db_client = Client::connect(&db_url, NoTls).expect("Database connection failed");
+    drop_db_tables(&mut db_client, &table_name, &codebook_table_name);
+    setup_db_tables(&mut db_client, &table_name);
+
+    let final_progress = Arc::new(AtomicU8::new(0));
+    let final_progress_r1 = final_progress.clone();
+
+    let callback = move |progress: u8| {
+        final_progress_r1.store(progress, Ordering::SeqCst);
+    };
+
+    lantern_pq::quantize_table(
+        cli::PQArgs {
+            uri: db_url.clone(),
+            column: "v".to_owned(),
+            table: table_name.clone(),
+            schema: "public".to_owned(),
+            codebook_table_name: Some(codebook_table_name.clone()),
+            clusters: 10,
+            splits: 32,
+            subvector_id: None,
+            skip_table_setup: false,
+            skip_vector_compression: false,
+            skip_codebook_creation: false,
+            only_setup: false,
+            only_compress: false,
+            pk: "id".to_owned(),
+            total_task_count: None,
+            parallel_task_count: None,
+            compression_task_id: None,
+            run_on_gcp: false,
+            gcp_cli_image_tag: None,
+            gcp_project: None,
+            gcp_region: None,
+            gcp_image: None,
+            gcp_compression_task_count: None,
+            gcp_compression_task_parallelism: None,
+            gcp_clustering_task_parallelism: None,
+            gcp_enable_image_streaming: false,
+            gcp_clustering_cpu: None,
+            gcp_clustering_memory_gb: None,
+            gcp_compression_cpu: None,
+            gcp_compression_memory_gb: None,
+        },
+        Some(Box::new(callback)),
+        None,
+        None,
+    )
+    .unwrap();
+
+    let centroid_dim = 128 / 32;
+    let cnt = db_client
+        .query_one(
+            &format!("SELECT COUNT(*) FROM {codebook_table_name} WHERE ARRAY_LENGTH(c, 1)={centroid_dim}"),
+            &[],
+        )
+        .unwrap();
+
+    let cnt = cnt.get::<usize, i64>(0);
+
+    assert_eq!(cnt, 10 * 32);
+    assert_eq!(final_progress.load(Ordering::SeqCst), 100);
+
+    let cnt = db_client
+        .query_one(
+            &format!("SELECT COUNT(*) FROM {table_name} WHERE ARRAY_LENGTH(v_pq::INT[], 1) != 32"),
+            &[],
+        )
+        .unwrap();
+
+    let cnt = cnt.get::<usize, i64>(0);
+
+    assert_eq!(cnt, 0);
+
+    drop_db_tables(&mut db_client, &table_name, &codebook_table_name);
+}
+
+#[test]
+fn test_chunked_pq() {
+    let db_url = env::var("DB_URL").expect("`DB_URL` not specified");
+    let table_name = String::from("_lantern_pq_test_2");
+    let codebook_table_name = String::from("_lantern_codebook_lantern_pq_test_2");
+    let mut db_client = Client::connect(&db_url, NoTls).expect("Database connection failed");
+    drop_db_tables(&mut db_client, &table_name, &codebook_table_name);
+    setup_db_tables(&mut db_client, &table_name);
+
+    // ================= Run setup job ================
+    lantern_pq::quantize_table(
+        cli::PQArgs {
+            uri: db_url.clone(),
+            column: "v".to_owned(),
+            table: table_name.clone(),
+            schema: "public".to_owned(),
+            codebook_table_name: Some(codebook_table_name.clone()),
+            clusters: 10,
+            splits: 32,
+            subvector_id: None,
+            skip_table_setup: false,
+            skip_vector_compression: true,
+            skip_codebook_creation: true,
+            only_setup: true,
+            only_compress: false,
+            pk: "id".to_owned(),
+            total_task_count: None,
+            parallel_task_count: None,
+            compression_task_id: None,
+            run_on_gcp: false,
+            gcp_cli_image_tag: None,
+            gcp_project: None,
+            gcp_region: None,
+            gcp_image: None,
+            gcp_compression_task_count: None,
+            gcp_compression_task_parallelism: None,
+            gcp_clustering_task_parallelism: None,
+            gcp_enable_image_streaming: false,
+            gcp_clustering_cpu: None,
+            gcp_clustering_memory_gb: None,
+            gcp_compression_cpu: None,
+            gcp_compression_memory_gb: None,
+        },
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+
+    let centroid_dim = 128 / 32;
+    let cnt = db_client
+        .query_one(
+            &format!("SELECT COUNT(*) FROM {codebook_table_name} WHERE ARRAY_LENGTH(c, 1)={centroid_dim}"),
+            &[],
+        )
+        .unwrap();
+
+    let cnt = cnt.get::<usize, i64>(0);
+
+    assert_eq!(cnt, 0);
+
+    let cnt = db_client
+        .query_one(
+            &format!("SELECT COUNT(*) FROM {table_name} WHERE v_pq IS NULL"),
+            &[],
+        )
+        .unwrap();
+
+    let cnt = cnt.get::<usize, i64>(0);
+
+    assert_eq!(cnt, 1000);
+    // ==================================================================================
+
+    // ================= Run clustering job ================
+    for i in 0..32 {
+        lantern_pq::quantize_table(
+            cli::PQArgs {
+                uri: db_url.clone(),
+                column: "v".to_owned(),
+                table: table_name.clone(),
+                schema: "public".to_owned(),
+                codebook_table_name: Some(codebook_table_name.clone()),
+                clusters: 10,
+                splits: 32,
+                subvector_id: Some(i),
+                skip_table_setup: true,
+                skip_vector_compression: true,
+                skip_codebook_creation: false,
+                only_setup: false,
+                only_compress: false,
+                pk: "id".to_owned(),
+                total_task_count: None,
+                parallel_task_count: Some(1),
+                compression_task_id: None,
+                run_on_gcp: false,
+                gcp_cli_image_tag: None,
+                gcp_project: None,
+                gcp_region: None,
+                gcp_image: None,
+                gcp_compression_task_count: None,
+                gcp_compression_task_parallelism: None,
+                gcp_clustering_task_parallelism: None,
+                gcp_enable_image_streaming: false,
+                gcp_clustering_cpu: None,
+                gcp_clustering_memory_gb: None,
+                gcp_compression_cpu: None,
+                gcp_compression_memory_gb: None,
+            },
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+    }
+
+    let centroid_dim = 128 / 32;
+    let cnt = db_client
+        .query_one(
+            &format!("SELECT COUNT(*) FROM {codebook_table_name} WHERE ARRAY_LENGTH(c, 1)={centroid_dim}"),
+            &[],
+        )
+        .unwrap();
+
+    let cnt = cnt.get::<usize, i64>(0);
+
+    assert_eq!(cnt, 10 * 32);
+
+    let cnt = db_client
+        .query_one(
+            &format!(
+                "SELECT COUNT(*) FROM {table_name} WHERE ARRAY_LENGTH(v_pq::INT[], 1) IS NULL"
+            ),
+            &[],
+        )
+        .unwrap();
+
+    let cnt = cnt.get::<usize, i64>(0);
+
+    assert_eq!(cnt, 1000);
+    // ==================================================================================
+
+    // ================= Run compression job ================
+    for i in 0..3 {
+        lantern_pq::quantize_table(
+            cli::PQArgs {
+                uri: db_url.clone(),
+                column: "v".to_owned(),
+                table: table_name.clone(),
+                schema: "public".to_owned(),
+                codebook_table_name: Some(codebook_table_name.clone()),
+                clusters: 10,
+                splits: 32,
+                subvector_id: None,
+                skip_table_setup: true,
+                skip_vector_compression: false,
+                skip_codebook_creation: true,
+                only_setup: false,
+                only_compress: true,
+                pk: "id".to_owned(),
+                total_task_count: Some(3),
+                parallel_task_count: Some(1),
+                compression_task_id: Some(i),
+                run_on_gcp: false,
+                gcp_cli_image_tag: None,
+                gcp_project: None,
+                gcp_region: None,
+                gcp_image: None,
+                gcp_compression_task_count: None,
+                gcp_compression_task_parallelism: None,
+                gcp_clustering_task_parallelism: None,
+                gcp_enable_image_streaming: false,
+                gcp_clustering_cpu: None,
+                gcp_clustering_memory_gb: None,
+                gcp_compression_cpu: None,
+                gcp_compression_memory_gb: None,
+            },
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+    }
+
+    let centroid_dim = 128 / 32;
+    let cnt = db_client
+        .query_one(
+            &format!("SELECT COUNT(*) FROM {codebook_table_name} WHERE ARRAY_LENGTH(c, 1)={centroid_dim}"),
+            &[],
+        )
+        .unwrap();
+
+    let cnt = cnt.get::<usize, i64>(0);
+
+    assert_eq!(cnt, 10 * 32);
+
+    let cnt = db_client
+        .query_one(
+            &format!("SELECT COUNT(*) FROM {table_name} WHERE ARRAY_LENGTH(v_pq::INT[], 1) != 32"),
+            &[],
+        )
+        .unwrap();
+
+    let cnt = cnt.get::<usize, i64>(0);
+
+    assert_eq!(cnt, 0);
+    // ==================================================================================
+    drop_db_tables(&mut db_client, &table_name, &codebook_table_name);
+}

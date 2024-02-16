@@ -167,7 +167,8 @@ pub struct CompressAndWriteVectorArgs<'a> {
    pub pk: &'a str,
    pub splits: usize,
    pub total_row_count: usize,
-   pub task_count: &'a Option<usize>,
+   pub total_task_count: &'a Option<usize>,
+   pub parallel_task_count: &'a Option<usize>,
    pub compression_task_id: &'a Option<usize>,
    pub max_connections: usize,
    pub main_progress: &'a AtomicU8,
@@ -195,10 +196,10 @@ pub fn compress_and_write_vectors(args: CompressAndWriteVectorArgs, mut client: 
     // In batch mode each task will operate on a range of vectors from dataset
     // Here we will determine the range from the task id
     if let Some(compression_task_id) = args.compression_task_id {
-        if args.task_count.is_none() {
-            anyhow::bail!("Please provide --task-count when providing --compression-task-id");
+        if args.total_task_count.is_none() {
+            anyhow::bail!("Please provide --total-task-count when providing --compression-task-id");
         }
-        let compression_task_count = args.task_count.as_ref().unwrap();
+        let compression_task_count = args.total_task_count.as_ref().unwrap();
         
         let chunk_per_task = limit_end / compression_task_count;
         limit_start = chunk_per_task * compression_task_id;
@@ -258,7 +259,7 @@ pub fn compress_and_write_vectors(args: CompressAndWriteVectorArgs, mut client: 
     let num_cores: usize = std::thread::available_parallelism().unwrap().into();
     let  num_connections: usize = if args.compression_task_id.is_some() {
         // This will never fail as it is checked on start to be specified if task id is present
-        let parallel_task_count = args.task_count.as_ref().unwrap();
+        let parallel_task_count = args.parallel_task_count.as_ref().unwrap_or(args.total_task_count.as_ref().unwrap());
         // If there's compression task id we expect this to be batch job
         // So each task will get (max_connections / parallel task count) connection pool
         // But it won't be higher than cpu count

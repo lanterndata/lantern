@@ -152,7 +152,8 @@ fn quantize_table_local(
                 pk: &args.pk,
                 splits: args.splits,
                 total_row_count,
-                task_count: &args.task_count,
+                total_task_count: &args.total_task_count,
+                parallel_task_count: &args.parallel_task_count,
                 compression_task_id: &args.compression_task_id,
                 max_connections,
                 main_progress: &main_progress,
@@ -198,7 +199,7 @@ fn quantize_table_local(
             subvector_dim,
             cluster_count: args.clusters,
             subvector_id: &args.subvector_id,
-            task_count: &args.task_count,
+            parallel_task_count: &args.parallel_task_count,
         },
         &mut transaction,
     )?;
@@ -257,7 +258,10 @@ pub fn quantize_table(
     let main_progress = AtomicU8::new(0);
     let total_time_start = Instant::now();
     let full_table_name = get_full_table_name(&args.schema, &args.table);
-    let codebook_table_name = format!("_lantern_codebook_{}", args.table);
+    let codebook_table_name = args
+        .codebook_table_name
+        .clone()
+        .unwrap_or(format!("_lantern_codebook_{}", args.table));
     let pq_column_name = format!("{}_pq", args.column);
     let db_uri = append_params_to_uri(&args.uri, CONNECTION_PARAMS);
 

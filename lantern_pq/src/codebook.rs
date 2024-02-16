@@ -83,7 +83,7 @@ pub struct CreateCodebookArgs<'a> {
    pub subvector_dim: usize,
    pub cluster_count: usize,
    pub subvector_id: &'a Option<usize>,
-   pub task_count: &'a Option<usize>,
+   pub parallel_task_count: &'a Option<usize>,
 }
 
 pub fn create_codebook<'a> (
@@ -103,7 +103,7 @@ pub fn create_codebook<'a> (
     let splits = args.splits;
     let subvector_id = args.subvector_id;
     let subvector_dim = args.subvector_dim;
-    let task_count = args.task_count;
+    let parallel_task_count = args.parallel_task_count.unwrap_or(splits);
     let max_connections = args.max_connections;
     let vector_dim = args.vector_dim;
     
@@ -134,7 +134,6 @@ pub fn create_codebook<'a> (
 
     let num_cores: usize = std::thread::available_parallelism().unwrap().into();
     let  num_connections: usize = if subvector_id.is_some() {
-        let parallel_task_count = task_count.unwrap_or(splits);
         // If there's subvector id we expect this to be batch job
         // So each task will get max_connections / split connection pool
         // Be it won't be higher than cpu count

@@ -19,18 +19,6 @@ pub struct PQArgs {
     #[arg(short, long)]
     pub column: String,
 
-    /// Output db uri, fully associated database connection string including db name. Defaults to
-    #[arg(long)]
-    pub out_uri: Option<String>,
-
-    /// Output table name. Defaults to table
-    #[arg(long)]
-    pub out_table: Option<String>,
-
-    /// Output column name
-    #[arg(long)]
-    pub out_column: Option<String>,
-
     /// Name for codebook table
     #[arg(long)]
     pub codebook_table_name: Option<String>,
@@ -72,65 +60,70 @@ pub struct PQArgs {
     #[arg(long, default_value = "id")]
     pub pk: String,
 
+    /// Number of total tasks running (used in gcp batch jobs)
+    #[arg(long)]
+    pub total_task_count: Option<usize>,
+
     /// Number of tasks running in parallel (used in gcp batch jobs)
     #[arg(long)]
-    pub task_count: Option<usize>,
+    pub parallel_task_count: Option<usize>,
 
-    /// Task id of currently running compression job
+    /// Task id of currently running compression job (used in gcp batch jobs)
     #[arg(long)]
     pub compression_task_id: Option<usize>,
 
     // GCP ARGS
+    /// If true job will be submitted to gcp
     #[arg(long, default_value_t = false)]
     pub run_on_gcp: bool,
 
+    /// Image tag to use for GCR. example: 0.0.38-cpu
     #[arg(long)]
     pub gcp_cli_image_tag: Option<String>,
 
+    /// GCP project ID
     #[arg(long)]
     pub gcp_project: Option<String>,
 
+    /// GCP region. Default: us-central1
     #[arg(long)]
     pub gcp_region: Option<String>,
 
+    /// Full GCR image name. default: {gcp_region}-docker.pkg.dev/{gcp_project_id}/lanterndata/lantern-cli:{gcp_cli_image_tag}
     #[arg(long)]
     pub gcp_image: Option<String>,
 
+    /// Task count for compression. default: calculated automatically based on dataset size
     #[arg(long)]
     pub gcp_compression_task_count: Option<usize>,
 
+    /// Parallel tasks for compression. default: calculated automatically based on
+    /// max connections
     #[arg(long)]
     pub gcp_compression_task_parallelism: Option<usize>,
 
+    /// Parallel tasks for compression. default: calculated automatically based on
+    /// max connections and dataset size
     #[arg(long)]
     pub gcp_clustering_task_parallelism: Option<usize>,
 
+    /// If image is hosted on GCR this will speed up the VM startup time
     #[arg(long, default_value_t = true)]
     pub gcp_enable_image_streaming: bool,
 
+    /// CPU count for one VM in clustering task. default: calculated based on dataset size
     #[arg(long)]
     pub gcp_clustering_cpu: Option<usize>,
 
+    /// Memory GB for one VM in clustering task. default: calculated based on CPU count
     #[arg(long)]
     pub gcp_clustering_memory_gb: Option<usize>,
 
+    /// CPU count for one VM in compression task. default: calculated based on dataset size
     #[arg(long)]
     pub gcp_compression_cpu: Option<usize>,
 
+    /// Memory GB for one VM in compression task. default: calculated based on CPU count
     #[arg(long)]
     pub gcp_compression_memory_gb: Option<usize>,
-}
-
-impl PQArgs {
-    pub fn with_defaults(self) -> Self {
-        PQArgs {
-            out_uri: self.out_uri.or(Some(self.uri.clone())),
-            out_table: self.out_table.or(Some(self.table.clone())),
-            out_column: self.out_column.or(Some(format!("{}_pq", self.column))),
-            codebook_table_name: self
-                .codebook_table_name
-                .or(Some(format!("_lantern_codebook_{}", self.table))),
-            ..self
-        }
-    }
 }
