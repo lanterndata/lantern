@@ -6,7 +6,7 @@ on:
         type: string
         description: "CLI version"
         required: true
-        default: "0.0.38"
+        default: "0.0.39"
       IMAGE_NAME:
         type: string
         description: "Container image name to tag"
@@ -34,12 +34,25 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Login to GCR Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.GCP_REGION }}-docker.pkg.dev
+          username: _json_key_base64
+          password: ${{ secrets.GCP_CREDENTIALS_JSON_B64 }}
       - name: Build and push
         uses: docker/build-push-action@v5
+        id: build_image
         with:
           context: .
           platforms: linux/amd64
           file: Dockerfile.cli${{ (matrix.device == 'gpu' && '.cuda' || '') }}
           push: true
           # the :latest tag will refer to cpu version
-          tags: ${{ (matrix.device == 'cpu' && format('{0}:latest', inputs.IMAGE_NAME) || format('{0}:gpu', inputs.IMAGE_NAME)) }},${{ inputs.IMAGE_NAME }}:latest-${{ matrix.device }},${{ inputs.IMAGE_NAME }}:${{ inputs.VERSION }}-${{ matrix.device }}
+          tags: |
+            ${{ (matrix.device == 'cpu' && format('{0}:latest', inputs.IMAGE_NAME) || format('{0}:gpu', inputs.IMAGE_NAME)) }}
+            ${{ inputs.IMAGE_NAME }}:latest-${{ matrix.device }}
+            ${{ inputs.IMAGE_NAME }}:${{ inputs.VERSION }}-${{ matrix.device }}
+            ${{ (matrix.device == 'cpu' && format('{0}-docker.pkg.dev/{1}/{2}:latest', secrets.GCP_REGION, secrets.GCP_PROJECT_ID, inputs.IMAGE_NAME) || format('{0}-docker.pkg.dev/{1}/{2}:gpu', secrets.GCP_REGION, secrets.GCP_PROJECT_ID, inputs.IMAGE_NAME)) }}
+            ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ inputs.IMAGE_NAME }}:latest-${{ matrix.device }}
+            ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ inputs.IMAGE_NAME }}:${{ inputs.VERSION }}-${{ matrix.device }}
