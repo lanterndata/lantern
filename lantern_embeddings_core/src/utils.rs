@@ -1,11 +1,16 @@
+use anyhow::anyhow;
 use isahc::config::RedirectPolicy;
-use isahc::{prelude::*, AsyncBody, HttpClient, Response};
+use isahc::{prelude::*, HttpClient};
 use nvml_wrapper::Nvml;
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fs::create_dir_all, time::Duration};
 use sysinfo::{System, SystemExt};
+
+use crate::runtime::EmbeddingResult;
+
+type GetResponseFn = Box<dyn Fn(Vec<u8>) -> Result<EmbeddingResult, anyhow::Error> + Send + Sync>;
 
 pub fn download_file(url: &str, path: &PathBuf) -> Result<(), anyhow::Error> {
     let client = HttpClient::builder()
@@ -79,21 +84,46 @@ pub async fn post_with_retries(
     client: Arc<HttpClient>,
     url: String,
     body: String,
+    get_response_fn: GetResponseFn,
     max_retries: usize,
-) -> Result<Response<AsyncBody>, isahc::Error> {
-    let starting_interval = 500; // ms
-    for i in 0..max_retries - 1 {
-        let result = client.post_async(&url, body.deref()).await;
+) -> Result<EmbeddingResult, anyhow::Error> {
+    let starting_interval = 4000; // ms
+    let mut last_error = "".to_string();
 
-        if let Err(e) = &result {
-            // TODO:: use logger
-            eprintln!("Request error: url: {url}, error: {e}, retry: {i}");
+    for i in 0..max_retries {
+        match client.post_async(&url, body.deref()).await {
+            Err(e) => {
+                // TODO:: use logger
+                eprintln!("Request error: url: {url}, error: {e}, retry: {i}");
+                // Wait for the next backoff interval before retrying
+                last_error = e.to_string();
+                tokio::time::sleep(Duration::from_millis((starting_interval * (i + 1)) as u64))
+                    .await;
+            }
+            Ok(mut response) => {
+                let mut body: Vec<u8> = Vec::with_capacity(body.capacity());
+                response.copy_to(&mut body).await?;
+                let embedding_response = get_response_fn(body);
 
-            // Wait for the next backoff interval before retrying
-            tokio::time::sleep(Duration::from_millis((starting_interval * (i + 1)) as u64)).await;
-        } else {
-            return result;
+                match embedding_response {
+                    Err(e) => {
+                        eprintln!("Error parsing request body: url: {url}, error: {e}, retry: {i}");
+                        // Wait for the next backoff interval before retrying
+                        last_error = e.to_string();
+                        tokio::time::sleep(Duration::from_millis(
+                            (starting_interval * (i + 1)) as u64,
+                        ))
+                        .await;
+                    }
+                    Ok(result) => {
+                        return Ok(result);
+                    }
+                }
+            }
         }
     }
-    client.post_async(url, body).await
+
+    Err(anyhow!(
+        "All {max_retries} requests failed. Last error was: {last_error}"
+    ))
 }

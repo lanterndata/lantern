@@ -51,7 +51,15 @@ macro_rules! HTTPRuntime {
                     let client = client.clone();
                     let url = url.clone();
                     let task = tokio_runtime.spawn(async move {
-                        post_with_retries(client, url, request_body, 3).await
+                        let embedding_response = post_with_retries(
+                            client,
+                            url,
+                            request_body,
+                            Box::new($a::get_response),
+                            5,
+                        )
+                        .await?;
+                        Ok::<EmbeddingResult, anyhow::Error>(embedding_response)
                     });
                     tasks.push(task);
                 }
@@ -61,10 +69,7 @@ macro_rules! HTTPRuntime {
                 let responses = tokio_runtime.block_on(async move {
                     let mut responses = Vec::with_capacity(inputs.len());
                     for task in tasks {
-                        let mut response = task.await??;
-                        let mut body: Vec<u8> = vec![];
-                        response.copy_to(&mut body).await?;
-                        let embedding_response = self.get_response(body)?;
+                        let embedding_response = task.await??;
                         processed_tokens_clone
                             .fetch_add(embedding_response.processed_tokens, Ordering::SeqCst);
                         responses.extend(embedding_response.embeddings);

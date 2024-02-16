@@ -188,11 +188,12 @@ impl<'a> CohereRuntime<'a> {
         Ok(batch_tokens)
     }
 
-    pub fn get_response(&self, body: Vec<u8>) -> Result<EmbeddingResult, anyhow::Error> {
+    // Static functions
+    pub fn get_response(body: Vec<u8>) -> Result<EmbeddingResult, anyhow::Error> {
         let result: Result<CohereResponse, serde_json::Error> = serde_json::from_slice(&body);
         if let Err(e) = result {
             anyhow::bail!(
-                "Error: {e}. Cohere response : {:?}",
+                "Error: {e}. Cohere response: {:?}",
                 serde_json::from_slice::<serde_json::Value>(&body)?
             );
         }
