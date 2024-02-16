@@ -27,3 +27,4 @@ serde = { version = "1.0", features = ["derive"] }
 strum = { version = "0.25", features = ["derive"] }
 serde_json = "1.0.111"
 tiktoken-rs = "0.5.8"
+regex = "1.10.3"

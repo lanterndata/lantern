@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use regex::Regex;
 use std::{collections::HashMap, sync::RwLock};
 
 use crate::{
@@ -32,6 +33,8 @@ struct OpenAiResponse {
     data: Vec<OpenAiEmbedding>,
     usage: OpenAiUsage,
 }
+
+static AZURE_OPENAI_REGEX: &'static str = r"^https:\/\/[a-zA-Z0-9_\-]+\.openai\.azure\.com\/openai\/deployments\/[a-zA-Z0-9_\-]+\/embeddings\?api-version=2023-05-15$";
 
 impl ModelInfo {
     pub fn new(model_name: &str) -> Result<Self, anyhow::Error> {
@@ -92,6 +95,7 @@ pub struct OpenAiRuntime<'a> {
 
 #[derive(Serialize, Deserialize)]
 pub struct OpenAiRuntimeParams {
+    pub base_url: Option<String>,
     pub api_token: Option<String>,
     pub dimensions: Option<usize>,
 }
@@ -104,8 +108,10 @@ impl<'a> OpenAiRuntime<'a> {
             anyhow::bail!("'api_token' is required for OpenAi runtime");
         }
 
+        let base_url = Self::get_base_url(&runtime_params.base_url)?;
+
         Ok(Self {
-            base_url: "https://api.openai.com".to_owned(),
+            base_url,
             logger,
             request_timeout: 120,
             headers: vec![
@@ -117,6 +123,21 @@ impl<'a> OpenAiRuntime<'a> {
             ],
             dimensions: runtime_params.dimensions,
         })
+    }
+
+    fn get_base_url(base_url: &Option<String>) -> Result<String, anyhow::Error> {
+        if base_url.is_none() {
+            return Ok("https://api.openai.com/v1/embeddings".to_owned());
+        }
+
+        let base_url = base_url.as_ref().unwrap();
+        let azure_openai_re = Regex::new(AZURE_OPENAI_REGEX).unwrap();
+
+        if azure_openai_re.is_match(base_url) {
+            return Ok(base_url.clone());
+        }
+
+        anyhow::bail!("Invalid base url for OpenAi Runtime: {base_url}");
     }
 
     fn group_vectors_by_token_count(
@@ -235,7 +256,7 @@ impl<'a> EmbeddingRuntime for OpenAiRuntime<'a> {
         model_name: &str,
         inputs: &Vec<&str>,
     ) -> Result<EmbeddingResult, anyhow::Error> {
-        self.post_request("/v1/embeddings", model_name, inputs)
+        self.post_request("", model_name, inputs)
     }
 
     fn get_available_models(&self) -> (String, Vec<(String, bool)>) {
