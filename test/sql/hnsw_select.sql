@@ -4,16 +4,16 @@
 SET client_min_messages=debug5;
 
 \ir utils/small_world_array.sql
-CREATE INDEX ON small_world USING hnsw (v) WITH (dim=3, M=5, ef=20, ef_construction=20);
+CREATE INDEX ON small_world USING lantern_hnsw (v) WITH (dim=3, M=5, ef=20, ef_construction=20);
 
 \ir utils/sift1k_array.sql
-CREATE INDEX ON sift_base1k USING hnsw (v) WITH (dim=128, M=5, ef=20, ef_construction=20);
+CREATE INDEX ON sift_base1k USING lantern_hnsw (v) WITH (dim=128, M=5, ef=20, ef_construction=20);
 
 CREATE TABLE test1 (id SERIAL, v REAL[]);
 CREATE TABLE test2 (id SERIAL, v REAL[]);
 INSERT INTO test1 (v) VALUES ('{5,3}');
 INSERT INTO test2 (v) VALUES ('{5,4}');
-CREATE INDEX ON test1 USING hnsw (v);
+CREATE INDEX ON test1 USING lantern_hnsw (v);
 
 SET enable_seqscan=FALSE;
 SET lantern.pgvector_compat=FALSE;
@@ -80,7 +80,7 @@ SELECT * from small_world ORDER BY v <?> '{1,1,1}';
 begin;
 INSERT INTO test2 (v) VALUES ('{1,4}');
 INSERT INTO test2 (v) VALUES ('{2,4}');
-CREATE INDEX test2_cos ON test2 USING hnsw(v dist_cos_ops);
+CREATE INDEX test2_cos ON test2 USING lantern_hnsw(v dist_cos_ops);
 EXPLAIN (COSTS false) SELECT * from test2 ORDER BY v <?> '{1,4}';
 -- Some additional cases that trigger operator rewriting
 -- SampleScan

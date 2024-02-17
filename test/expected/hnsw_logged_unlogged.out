@@ -17,7 +17,7 @@ INSERT INTO small_world (id, vector) VALUES
 ('110', '{1,2,1,1}'),
 ('111', '{2,2,2,0}');
 -- Create an index
-CREATE INDEX small_world_idx ON small_world USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
+CREATE INDEX small_world_idx ON small_world USING lantern_hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
 INFO:  done init usearch index
 INFO:  inserted 8 elements
 INFO:  done saving 8 vectors
@@ -51,7 +51,7 @@ INFO:  done init usearch index
 INFO:  inserted 8 elements
 INFO:  done saving 8 vectors
 -- Create a new index
-CREATE INDEX small_world_idx2 ON small_world USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
+CREATE INDEX small_world_idx2 ON small_world USING lantern_hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
 INFO:  done init usearch index
 INFO:  inserted 8 elements
 INFO:  done saving 8 vectors
@@ -98,7 +98,7 @@ INFO:  done init usearch index
 INFO:  inserted 9 elements
 INFO:  done saving 9 vectors
 -- Create a new index
-CREATE INDEX small_world_idx3 ON small_world USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
+CREATE INDEX small_world_idx3 ON small_world USING lantern_hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
 INFO:  done init usearch index
 INFO:  inserted 9 elements
 INFO:  done saving 9 vectors
@@ -164,7 +164,7 @@ INSERT INTO small_world (id, vector) VALUES
 ('110', '{1,2,1,1}'),
 ('111', '{2,2,2,0}');
 -- Create an index
-CREATE INDEX small_world_idx ON small_world USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
+CREATE INDEX small_world_idx ON small_world USING lantern_hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
 INFO:  done init usearch index
 INFO:  inserted 8 elements
 INFO:  done saving 8 vectors
@@ -198,7 +198,7 @@ INFO:  done init usearch index
 INFO:  inserted 8 elements
 INFO:  done saving 8 vectors
 -- Create a new index
-CREATE INDEX small_world_idx2 ON small_world USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
+CREATE INDEX small_world_idx2 ON small_world USING lantern_hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
 INFO:  done init usearch index
 INFO:  inserted 8 elements
 INFO:  done saving 8 vectors
@@ -245,7 +245,7 @@ INFO:  done init usearch index
 INFO:  inserted 9 elements
 INFO:  done saving 9 vectors
 -- Create a new index
-CREATE INDEX small_world_idx3 ON small_world USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
+CREATE INDEX small_world_idx3 ON small_world USING lantern_hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
 INFO:  done init usearch index
 INFO:  inserted 9 elements
 INFO:  done saving 9 vectors

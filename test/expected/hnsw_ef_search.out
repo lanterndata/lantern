@@ -7,14 +7,14 @@ CREATE TABLE IF NOT EXISTS sift_base1k (
     v REAL[]
 );
 COPY sift_base1k (v) FROM '/tmp/lantern/vector_datasets/sift_base1k_arrays.csv' WITH csv;
-CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2.usearch');
+CREATE INDEX hnsw_l2_index ON sift_base1k USING lantern_hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2.usearch');
 INFO:  done init usearch index
 INFO:  done loading usearch index
 INFO:  done saving 1000 vectors
 SELECT * FROM ldb_get_indexes('sift_base1k');
    indexname   |  size  |                                                                   indexdef                                                                   | total_index_size 
 ---------------+--------+----------------------------------------------------------------------------------------------------------------------------------------------+------------------
- hnsw_l2_index | 720 kB | CREATE INDEX hnsw_l2_index ON public.sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2.usearch') | 720 kB
+ hnsw_l2_index | 720 kB | CREATE INDEX hnsw_l2_index ON public.sift_base1k USING lantern_hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2.usearch') | 720 kB
 (1 row)
 
 INSERT INTO sift_base1k (id, v) VALUES 

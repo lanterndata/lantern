@@ -21,7 +21,7 @@ INSERT INTO small_world (id, vector) VALUES
 
 
 -- Create an index
-CREATE INDEX small_world_idx ON small_world USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
+CREATE INDEX small_world_idx ON small_world USING lantern_hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
 
 -- Validate index
 SELECT _lantern_internal.validate_index('small_world_idx', false);
@@ -35,7 +35,7 @@ SELECT id, l2sq_dist(vector, '{0, 0, 0, 0}'), vector  FROM small_world ORDER BY 
 ALTER TABLE small_world SET UNLOGGED;
 
 -- Create a new index
-CREATE INDEX small_world_idx2 ON small_world USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
+CREATE INDEX small_world_idx2 ON small_world USING lantern_hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
 
 -- Validate indexes
 SELECT _lantern_internal.validate_index('small_world_idx', false);
@@ -52,7 +52,7 @@ SELECT id, l2sq_dist(vector, '{0, 0, 0, 0}'), vector  FROM small_world ORDER BY 
 ALTER TABLE small_world SET LOGGED;
 
 -- Create a new index
-CREATE INDEX small_world_idx3 ON small_world USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
+CREATE INDEX small_world_idx3 ON small_world USING lantern_hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
 
 -- Validate indexes
 SELECT _lantern_internal.validate_index('small_world_idx', false);
@@ -89,7 +89,7 @@ INSERT INTO small_world (id, vector) VALUES
 
 
 -- Create an index
-CREATE INDEX small_world_idx ON small_world USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
+CREATE INDEX small_world_idx ON small_world USING lantern_hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
 
 -- Validate index
 SELECT _lantern_internal.validate_index('small_world_idx', false);
@@ -103,7 +103,7 @@ SELECT id, l2sq_dist(vector, '{0, 0, 0, 0}'), vector FROM small_world ORDER BY v
 ALTER TABLE small_world SET LOGGED;
 
 -- Create a new index
-CREATE INDEX small_world_idx2 ON small_world USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
+CREATE INDEX small_world_idx2 ON small_world USING lantern_hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
 
 -- Validate indexes
 SELECT _lantern_internal.validate_index('small_world_idx', false);
@@ -121,7 +121,7 @@ SELECT id, l2sq_dist(vector, '{0, 0, 0, 0}'), vector FROM small_world ORDER BY v
 ALTER TABLE small_world SET UNLOGGED;
 
 -- Create a new index
-CREATE INDEX small_world_idx3 ON small_world USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
+CREATE INDEX small_world_idx3 ON small_world USING lantern_hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
 
 -- Validate indexes
 SELECT _lantern_internal.validate_index('small_world_idx', false);

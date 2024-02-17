@@ -108,12 +108,12 @@ SELECT * from morph_world2;
 
 
 -- Create indexes
-CREATE INDEX unlogged_world1_hnsw_idx ON unlogged_world1 USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2, dim=4);
---CREATE INDEX unlogged_world2_hnsw_idx ON unlogged_world2 USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
-CREATE INDEX unlogged_world3_hnsw_idx ON unlogged_world3 USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2, dim=4);
-CREATE INDEX unlogged_world4_hnsw_idx ON unlogged_world4 USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
-CREATE INDEX morph_world_hnsw_idx ON morph_world USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
-CREATE INDEX morph_world2_hnsw_idx ON morph_world2 USING hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
+CREATE INDEX unlogged_world1_hnsw_idx ON unlogged_world1 USING lantern_hnsw (vector) WITH (M=14, ef=22, ef_construction=2, dim=4);
+--CREATE INDEX unlogged_world2_hnsw_idx ON unlogged_world2 USING lantern_hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
+CREATE INDEX unlogged_world3_hnsw_idx ON unlogged_world3 USING lantern_hnsw (vector) WITH (M=14, ef=22, ef_construction=2, dim=4);
+CREATE INDEX unlogged_world4_hnsw_idx ON unlogged_world4 USING lantern_hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
+CREATE INDEX morph_world_hnsw_idx ON morph_world USING lantern_hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
+CREATE INDEX morph_world2_hnsw_idx ON morph_world2 USING lantern_hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
 
 
 
