@@ -8,7 +8,7 @@
 #include "hnsw.h"
 #include "usearch.h"
 
-typedef struct HnswBuildState
+typedef struct
 {
     /* Info */
     Relation   heap;
@@ -29,7 +29,7 @@ typedef struct HnswBuildState
 
     /* Memory */
     MemoryContext tmpCtx;
-} HnswBuildState;
+} ldb_HnswBuildState;
 
 IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInfo);
 void              ldb_ambuildunlogged(Relation index);

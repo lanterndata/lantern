@@ -54,9 +54,9 @@
 #include <access/tableam.h>
 #include <commands/progress.h>
 #else
-#define PROGRESS_CREATEIDX_SUBPHASE     0
-#define PROGRESS_CREATEIDX_TUPLES_TOTAL 0
-#define PROGRESS_CREATEIDX_TUPLES_DONE  0
+#define LDB_PROGRESS_CREATEIDX_SUBPHASE     0
+#define LDB_PROGRESS_CREATEIDX_TUPLES_TOTAL 0
+#define LDB_PROGRESS_CREATEIDX_TUPLES_DONE  0
 #endif
 
 #if PG_VERSION_NUM >= 130000
@@ -71,7 +71,7 @@
 #define UpdateProgress(index, val) ((void)val)
 #endif
 
-static void AddTupleToUsearchIndex(ItemPointer tid, Datum *values, HnswBuildState *buildstate, Relation index)
+static void AddTupleToUsearchIndex(ItemPointer tid, Datum *values, ldb_HnswBuildState *buildstate, Relation index)
 {
     /* Detoast once for all calls */
     usearch_error_t       error = NULL;
@@ -124,8 +124,8 @@ static void AddTupleToUsearchIndex(ItemPointer tid, Datum *values, HnswBuildStat
 static void BuildCallback(
     Relation index, CALLBACK_ITEM_POINTER, Datum *values, bool *isnull, bool tupleIsAlive, void *state)
 {
-    HnswBuildState *buildstate = (HnswBuildState *)state;
-    MemoryContext   oldCtx;
+    ldb_HnswBuildState *buildstate = (ldb_HnswBuildState *)state;
+    MemoryContext       oldCtx;
     // we can later use this for some optimizations I think
     LDB_UNUSED(tupleIsAlive);
 
@@ -344,7 +344,7 @@ static int InferDimension(Relation heap, IndexInfo *indexInfo)
 /*
  * Initialize the build state
  */
-static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation index, IndexInfo *indexInfo)
+static void InitBuildState(ldb_HnswBuildState *buildstate, Relation heap, Relation index, IndexInfo *indexInfo)
 {
     buildstate->heap = heap;
     buildstate->index = index;
@@ -385,7 +385,7 @@ static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation i
 /*
  * Free resources
  */
-static void FreeBuildState(HnswBuildState *buildstate)
+static void FreeBuildState(ldb_HnswBuildState *buildstate)
 {
     // todo:: in debug/or stats mode collect stats from the tmpCtx before deleting it
     MemoryContextDelete(buildstate->tmpCtx);
@@ -394,7 +394,7 @@ static void FreeBuildState(HnswBuildState *buildstate)
 /*
  * Scan table for tuples to index
  */
-static void ScanTable(HnswBuildState *buildstate)
+static void ScanTable(ldb_HnswBuildState *buildstate)
 {
 #if PG_VERSION_NUM >= 120000
     buildstate->reltuples = table_index_build_scan(buildstate->heap,
@@ -414,7 +414,7 @@ static void ScanTable(HnswBuildState *buildstate)
 /*
  * Build the index, writing to the main fork
  */
-static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, HnswBuildState *buildstate)
+static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_HnswBuildState *buildstate)
 {
     usearch_error_t        error = NULL;
     usearch_init_options_t opts;
@@ -484,7 +484,7 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, Hnsw
             elog(ERROR, "Error reserving space for index: %s", error);
         }
 
-        UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_IN_MEMORY_INSERT);
+        UpdateProgress(PROGRESS_CREATEIDX_PHASE, LDB_PROGRESS_HNSW_PHASE_IN_MEMORY_INSERT);
         LanternBench("build hnsw index", ScanTable(buildstate));
 
         elog(INFO, "inserted %ld elements", usearch_size(buildstate->usearch_index, &error));
@@ -525,7 +525,7 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, Hnsw
     //****************************** mmap index to memory END ******************************//
 
     //****************************** saving to WAL BEGIN ******************************//
-    UpdateProgress(PROGRESS_CREATEIDX_PHASE, PROGRESS_HNSW_PHASE_LOAD);
+    UpdateProgress(PROGRESS_CREATEIDX_PHASE, LDB_PROGRESS_HNSW_PHASE_LOAD);
     StoreExternalIndex(index, &metadata, MAIN_FORKNUM, result_buf, &opts, num_added_vectors);
     //****************************** saving to WAL END ******************************//
 
@@ -546,7 +546,7 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, Hnsw
 /*
  * Build an empty index, writing to the init fork
  */
-static void BuildEmptyIndex(Relation index, IndexInfo *indexInfo, HnswBuildState *buildstate)
+static void BuildEmptyIndex(Relation index, IndexInfo *indexInfo, ldb_HnswBuildState *buildstate)
 {
     usearch_error_t        error = NULL;
     usearch_init_options_t opts;
@@ -577,8 +577,8 @@ static void BuildEmptyIndex(Relation index, IndexInfo *indexInfo, HnswBuildState
  */
 IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInfo)
 {
-    IndexBuildResult *result;
-    HnswBuildState    buildstate;
+    IndexBuildResult  *result;
+    ldb_HnswBuildState buildstate;
 
     // todo:: change the warning to error once VersionsMismatch learns how to differntiate when an update script is
     // running - it is fine to temporarily have version mismatch when we are running an update script
@@ -602,8 +602,8 @@ IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInf
  */
 void ldb_ambuildunlogged(Relation index)
 {
-    HnswBuildState buildstate;
-    IndexInfo     *indexInfo = BuildIndexInfo(index);
+    ldb_HnswBuildState buildstate;
+    IndexInfo         *indexInfo = BuildIndexInfo(index);
     BuildEmptyIndex(index, indexInfo, &buildstate);
 }
 
