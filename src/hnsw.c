@@ -44,9 +44,9 @@ static char *hnswbuildphasename(int64 phasenum)
     switch(phasenum) {
         case PROGRESS_CREATEIDX_SUBPHASE_INITIALIZE:
             return "initializing";
-        case PROGRESS_HNSW_PHASE_IN_MEMORY_INSERT:
+        case LDB_PROGRESS_HNSW_PHASE_IN_MEMORY_INSERT:
             return "performing hnsw in-memory insertions";
-        case PROGRESS_HNSW_PHASE_LOAD:
+        case LDB_PROGRESS_HNSW_PHASE_LOAD:
             return "loading tuples into postgres index";
         default:
             return NULL;
