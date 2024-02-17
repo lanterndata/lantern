@@ -6,7 +6,7 @@ CREATE TABLE small_world (
     b BOOLEAN,
     v REAL[3]
 );
-CREATE INDEX ON small_world USING hnsw (v) WITH (dim=3, M=5, ef=20, ef_construction=20);
+CREATE INDEX ON small_world USING lantern_hnsw (v) WITH (dim=3, M=5, ef=20, ef_construction=20);
 INFO:  done init usearch index
 INFO:  build hnsw index - using inserts: 0.028 ms
 INFO:  inserted 0 elements

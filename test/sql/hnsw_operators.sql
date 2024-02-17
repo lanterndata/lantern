@@ -1,7 +1,7 @@
 -- Validate that lantern.pgvector_compat disables the operator rewriting hooks
 CREATE TABLE op_test (v REAL[]);
 INSERT INTO op_test (v) VALUES (ARRAY[0,0,0]), (ARRAY[1,1,1]);
-CREATE INDEX cos_idx ON op_test USING hnsw(v dist_cos_ops);
+CREATE INDEX cos_idx ON op_test USING lantern_hnsw(v dist_cos_ops);
 -- should rewrite operator
 SET lantern.pgvector_compat=FALSE;
 SELECT * FROM op_test ORDER BY v <?> ARRAY[1,1,1];
@@ -67,7 +67,7 @@ SELECT * FROM op_test ORDER BY v <?> ARRAY[1,1,1];
 
 SET enable_seqscan=OFF;
 
-CREATE INDEX hamming_idx ON op_test USING hnsw(cast(v as INTEGER[]) dist_hamming_ops);
+CREATE INDEX hamming_idx ON op_test USING lantern_hnsw(cast(v as INTEGER[]) dist_hamming_ops);
 
 -- should sort with cos_idx index
 EXPLAIN (COSTS FALSE) SELECT * FROM op_test ORDER BY v <=> ARRAY[1,1,1];

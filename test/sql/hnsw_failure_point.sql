@@ -6,7 +6,7 @@ CREATE TABLE small_world (
     id SERIAL PRIMARY KEY,
     v REAL[2]
 );
-CREATE INDEX ON small_world USING hnsw (v) WITH (dim=3);
+CREATE INDEX ON small_world USING lantern_hnsw (v) WITH (dim=3);
 
 -- let's insert HNSW_BLOCKMAP_BLOCKS_PER_PAGE (2000) record to fill the first blockmap page
 

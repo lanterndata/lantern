@@ -13,24 +13,24 @@ CREATE TABLE IF NOT EXISTS sift_base1k (
 COPY sift_base1k (v) FROM '/tmp/lantern/vector_datasets/sift_base1k_arrays.csv' WITH csv;
 \set ON_ERROR_STOP off
 -- Validate error on invalid path
-CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/invalid-path');
+CREATE INDEX hnsw_l2_index ON sift_base1k USING lantern_hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/invalid-path');
 INFO:  done init usearch index
 ERROR:  Invalid index file path. If this is REINDEX operation call `SELECT lantern_reindex_external_index('hnsw_l2_index')` to recreate index
 -- Validate error on incompatible version
-CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2-0.0.0.usearch');
+CREATE INDEX hnsw_l2_index ON sift_base1k USING lantern_hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2-0.0.0.usearch');
 INFO:  done init usearch index
 ERROR:  File format may be different, please rebuild
 -- Validate error on more recent imcompatible version
-CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2.usearch');
+CREATE INDEX hnsw_l2_index ON sift_base1k USING lantern_hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2.usearch');
 INFO:  done init usearch index
 ERROR:  File format may be different, please rebuild
 -- Validate error on invalid file
-CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2-corrupted.usearch');
+CREATE INDEX hnsw_l2_index ON sift_base1k USING lantern_hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2-corrupted.usearch');
 INFO:  done init usearch index
 ERROR:  Magic header mismatch - the file isn't an index
 \set ON_ERROR_STOP on
 -- Validate that creating an index from file works
-CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2sq-0.0.13.usearch');
+CREATE INDEX hnsw_l2_index ON sift_base1k USING lantern_hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2sq-0.0.13.usearch');
 INFO:  done init usearch index
 INFO:  done loading usearch index
 INFO:  done saving 1000 vectors
@@ -43,9 +43,9 @@ INFO:  validate_index() done, no issues found.
 (1 row)
 
 SELECT * FROM ldb_get_indexes('sift_base1k');
-   indexname   |  size  |                                                                       indexdef                                                                        | total_index_size 
----------------+--------+-------------------------------------------------------------------------------------------------------------------------------------------------------+------------------
- hnsw_l2_index | 720 kB | CREATE INDEX hnsw_l2_index ON public.sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2sq-0.0.13.usearch') | 720 kB
+   indexname   |  size  |                                                                           indexdef                                                                            | total_index_size 
+---------------+--------+---------------------------------------------------------------------------------------------------------------------------------------------------------------+------------------
+ hnsw_l2_index | 720 kB | CREATE INDEX hnsw_l2_index ON public.sift_base1k USING lantern_hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2sq-0.0.13.usearch') | 720 kB
 (1 row)
 
 SET enable_seqscan=FALSE;
@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS sift_base1k (
 );
 COPY sift_base1k (v) FROM '/tmp/lantern/vector_datasets/sift_base1k_arrays.csv' WITH csv;
 -- Validate that creating an index from file works with cosine distance function
-CREATE INDEX hnsw_cos_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-cos-0.0.13.usearch');
+CREATE INDEX hnsw_cos_index ON sift_base1k USING lantern_hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-cos-0.0.13.usearch');
 INFO:  done init usearch index
 INFO:  done loading usearch index
 INFO:  done saving 1000 vectors
@@ -116,9 +116,9 @@ INFO:  validate_index() done, no issues found.
 (1 row)
 
 SELECT * FROM ldb_get_indexes('sift_base1k');
-   indexname    |  size  |                                                                       indexdef                                                                        | total_index_size 
-----------------+--------+-------------------------------------------------------------------------------------------------------------------------------------------------------+------------------
- hnsw_cos_index | 720 kB | CREATE INDEX hnsw_cos_index ON public.sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-cos-0.0.13.usearch') | 720 kB
+   indexname    |  size  |                                                                           indexdef                                                                            | total_index_size 
+----------------+--------+---------------------------------------------------------------------------------------------------------------------------------------------------------------+------------------
+ hnsw_cos_index | 720 kB | CREATE INDEX hnsw_cos_index ON public.sift_base1k USING lantern_hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-cos-0.0.13.usearch') | 720 kB
 (1 row)
 
 SELECT v AS v777 FROM sift_base1k WHERE id = 777 \gset
@@ -159,7 +159,7 @@ CREATE TABLE IF NOT EXISTS sift_base1k (
 );
 COPY sift_base1k (v) FROM '/tmp/lantern/vector_datasets/sift_base1k_arrays.csv' WITH csv;
 DELETE FROM sift_base1k WHERE id=777;
-CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2sq-0.0.13.usearch');
+CREATE INDEX hnsw_l2_index ON sift_base1k USING lantern_hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2sq-0.0.13.usearch');
 INFO:  done init usearch index
 INFO:  done loading usearch index
 INFO:  done saving 1000 vectors

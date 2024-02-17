@@ -6,7 +6,7 @@ SHOW hnsw.init_k;
 \set ON_ERROR_STOP on
 
 -- Create an index and verify that it was created
-CREATE INDEX ON small_world USING hnsw (v) WITH (dim=3);
+CREATE INDEX ON small_world USING lantern_hnsw (v) WITH (dim=3);
 SELECT * FROM ldb_get_indexes('small_world');
 
 -- Verify that hnsw.init_k exists after index creation

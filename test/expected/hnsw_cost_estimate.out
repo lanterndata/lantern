@@ -52,7 +52,7 @@ SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
 \set enable_seqscan = off;
 -- Case 0, sanity check. No data.
 CREATE TABLE empty_table(id SERIAL PRIMARY KEY, v REAL[2]);
-CREATE INDEX empty_idx ON empty_table USING hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=2, dim=2);
+CREATE INDEX empty_idx ON empty_table USING lantern_hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=2, dim=2);
 INFO:  done init usearch index
 INFO:  inserted 0 elements
 INFO:  done saving 0 vectors
@@ -81,7 +81,7 @@ INFO:  validate_index() done, no issues found.
 DROP INDEX empty_idx;
 -- Case 1, more data in index.
 -- Should see higher cost than Case 0.
-CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=4, dim=128);
+CREATE INDEX hnsw_idx ON sift_base10k USING lantern_hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=4, dim=128);
 INFO:  done init usearch index
 INFO:  inserted 10000 elements
 INFO:  done saving 10000 vectors
@@ -109,7 +109,7 @@ INFO:  validate_index() done, no issues found.
 DROP INDEX hnsw_idx;
 -- Case 2, higher M.
 -- Should see higher cost than Case 1.
-CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v dist_l2sq_ops) WITH (M=20, ef_construction=10, ef=4, dim=128);
+CREATE INDEX hnsw_idx ON sift_base10k USING lantern_hnsw (v dist_l2sq_ops) WITH (M=20, ef_construction=10, ef=4, dim=128);
 INFO:  done init usearch index
 INFO:  inserted 10000 elements
 INFO:  done saving 10000 vectors
@@ -137,7 +137,7 @@ INFO:  validate_index() done, no issues found.
 DROP INDEX hnsw_idx;
 -- Case 3, higher ef.
 -- Should see higher cost than Case 2.
-CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v dist_l2sq_ops) WITH (M=20, ef_construction=10, ef=16, dim=128);
+CREATE INDEX hnsw_idx ON sift_base10k USING lantern_hnsw (v dist_l2sq_ops) WITH (M=20, ef_construction=10, ef=16, dim=128);
 INFO:  done init usearch index
 INFO:  inserted 10000 elements
 INFO:  done saving 10000 vectors
@@ -188,7 +188,7 @@ SELECT COUNT(*) FROM views_vec10k WHERE views < 100;
 (1 row)
 
 -- Create partial lantern index with (views < 100) filter
-CREATE INDEX hnsw_partial_views_100 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 100;
+CREATE INDEX hnsw_partial_views_100 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 100;
 INFO:  done init usearch index
 INFO:  inserted 58 elements
 INFO:  done saving 58 vectors
@@ -210,7 +210,7 @@ DEBUG:  LANTERN - ---------------------
 
 -- Goal: Test that the index selectivity being calculated for partial indexes is correct
 -- note that these boundaries are selected so that mac num_pages and cost values align
-CREATE INDEX hnsw_partial_views_1000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 1000;
+CREATE INDEX hnsw_partial_views_1000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 1000;
 INFO:  done init usearch index
 INFO:  inserted 477 elements
 INFO:  done saving 477 vectors
@@ -222,7 +222,7 @@ INFO:  validate_index() done, no issues found.
  
 (1 row)
 
-CREATE INDEX hnsw_partial_views_2000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 2000;
+CREATE INDEX hnsw_partial_views_2000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 2000;
 INFO:  done init usearch index
 INFO:  inserted 996 elements
 INFO:  done saving 996 vectors
@@ -234,7 +234,7 @@ INFO:  validate_index() done, no issues found.
  
 (1 row)
 
-CREATE INDEX hnsw_partial_views_3000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 3000;
+CREATE INDEX hnsw_partial_views_3000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 3000;
 INFO:  done init usearch index
 INFO:  inserted 1490 elements
 INFO:  done saving 1490 vectors
@@ -246,7 +246,7 @@ INFO:  validate_index() done, no issues found.
  
 (1 row)
 
-CREATE INDEX hnsw_partial_views_4000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 4000;
+CREATE INDEX hnsw_partial_views_4000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 4000;
 INFO:  done init usearch index
 INFO:  inserted 2021 elements
 INFO:  done saving 2021 vectors
@@ -258,7 +258,7 @@ INFO:  validate_index() done, no issues found.
  
 (1 row)
 
-CREATE INDEX hnsw_partial_views_6000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 6000;
+CREATE INDEX hnsw_partial_views_6000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 6000;
 INFO:  done init usearch index
 INFO:  inserted 2997 elements
 INFO:  done saving 2997 vectors
@@ -270,7 +270,7 @@ INFO:  validate_index() done, no issues found.
  
 (1 row)
 
-CREATE INDEX hnsw_partial_views_8000 ON views_vec10k USING hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 8000;
+CREATE INDEX hnsw_partial_views_8000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 8000;
 INFO:  done init usearch index
 INFO:  inserted 3972 elements
 INFO:  done saving 3972 vectors

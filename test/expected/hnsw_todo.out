@@ -17,7 +17,7 @@ INSERT INTO small_world_l2 (id, vector) VALUES
 SET enable_seqscan=FALSE;
 SET lantern.pgvector_compat=FALSE;
 \set ON_ERROR_STOP off
-CREATE INDEX ON small_world_l2 USING hnsw (vector dist_l2sq_ops);
+CREATE INDEX ON small_world_l2 USING lantern_hnsw (vector dist_l2sq_ops);
 INFO:  done init usearch index
 INFO:  inserted 8 elements
 INFO:  done saving 8 vectors
@@ -30,8 +30,8 @@ INFO:  validate_index() done, no issues found.
 (1 row)
 
 -- this should be supported
-CREATE INDEX ON small_world_l2 USING hnsw (vector_int dist_l2sq_int_ops);
-ERROR:  operator class "dist_l2sq_int_ops" does not exist for access method "hnsw"
+CREATE INDEX ON small_world_l2 USING lantern_hnsw (vector_int dist_l2sq_int_ops);
+ERROR:  operator class "dist_l2sq_int_ops" does not exist for access method "lantern_hnsw"
 SELECT _lantern_internal.validate_index('small_world_l2_vector_int_idx', false);
 ERROR:  relation "small_world_l2_vector_int_idx" does not exist at character 41
 -- this should use index
@@ -67,7 +67,7 @@ INSERT INTO sift_base1k (id, v) VALUES
 (1001, array_fill(1, ARRAY[128])),
 (1102, array_fill(2, ARRAY[128]));
 SELECT v AS v1001 FROM sift_base1k WHERE id = 1001 \gset
-CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2sq-0.0.13.usearch');
+CREATE INDEX hnsw_l2_index ON sift_base1k USING lantern_hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2sq-0.0.13.usearch');
 INFO:  done init usearch index
 INFO:  done loading usearch index
 INFO:  done saving 1000 vectors
@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS sift_base1k (
 );
 COPY sift_base1k (v) FROM '/tmp/lantern/vector_datasets/sift_base1k_arrays.csv' WITH csv;
 UPDATE sift_base1k SET v=:'v1001' WHERE id=777;
-CREATE INDEX hnsw_l2_index ON sift_base1k USING hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2sq-0.0.13.usearch');
+CREATE INDEX hnsw_l2_index ON sift_base1k USING lantern_hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2sq-0.0.13.usearch');
 INFO:  done init usearch index
 INFO:  done loading usearch index
 INFO:  done saving 1000 vectors

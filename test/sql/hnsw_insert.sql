@@ -18,7 +18,7 @@ CREATE TABLE small_world_int (
     v INTEGER[]
 );
 
-CREATE INDEX ON small_world USING hnsw (v) WITH (dim=3);
+CREATE INDEX ON small_world USING lantern_hnsw (v) WITH (dim=3);
 SELECT _lantern_internal.validate_index('small_world_v_idx', false);
 
 -- Insert rows with valid vector data
@@ -28,7 +28,7 @@ INSERT INTO small_world (v) VALUES (NULL);
 -- Attempt to insert a row with an incorrect vector length
 \set ON_ERROR_STOP off
 -- Cannot create an hnsw index with implicit typecasts (trying to cast integer[] to real[], in this case)
-CREATE INDEX ON small_world_int USING hnsw (v dist_l2sq_ops) WITH (dim=3);
+CREATE INDEX ON small_world_int USING lantern_hnsw (v dist_l2sq_ops) WITH (dim=3);
 INSERT INTO small_world (v) VALUES ('{1,1,1,1}');
 \set ON_ERROR_STOP on
 
@@ -44,7 +44,7 @@ set work_mem = '10MB';
 
 \ir utils/small_world_array.sql
 
-CREATE INDEX ON small_world USING hnsw (v) WITH (dim=3);
+CREATE INDEX ON small_world USING lantern_hnsw (v) WITH (dim=3);
 
 SET enable_seqscan = false;
 SET lantern.pgvector_compat = false;
@@ -86,7 +86,7 @@ CREATE TABLE sift_base10k (
     id SERIAL PRIMARY KEY,
     v REAL[128]
 );
-CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=4, dim=128);
+CREATE INDEX hnsw_idx ON sift_base10k USING lantern_hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=4, dim=128);
 \COPY sift_base10k (v) FROM '/tmp/lantern/vector_datasets/siftsmall_base_arrays.csv' WITH CSV;
 SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
 EXPLAIN (COSTS FALSE) SELECT * FROM sift_base10k order by v <?> :'v4444';

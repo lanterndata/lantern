@@ -15,7 +15,7 @@ CREATE TABLE small_world_int (
     id SERIAL PRIMARY KEY,
     v INTEGER[]
 );
-CREATE INDEX ON small_world USING hnsw (v) WITH (dim=3);
+CREATE INDEX ON small_world USING lantern_hnsw (v) WITH (dim=3);
 INFO:  done init usearch index
 INFO:  inserted 0 elements
 INFO:  done saving 0 vectors
@@ -33,7 +33,7 @@ INSERT INTO small_world (v) VALUES (NULL);
 -- Attempt to insert a row with an incorrect vector length
 \set ON_ERROR_STOP off
 -- Cannot create an hnsw index with implicit typecasts (trying to cast integer[] to real[], in this case)
-CREATE INDEX ON small_world_int USING hnsw (v dist_l2sq_ops) WITH (dim=3);
+CREATE INDEX ON small_world_int USING lantern_hnsw (v dist_l2sq_ops) WITH (dim=3);
 ERROR:  operator class "dist_l2sq_ops" does not accept data type integer[]
 INSERT INTO small_world (v) VALUES ('{1,1,1,1}');
 ERROR:  Wrong number of dimensions: 4 instead of 3 expected
@@ -60,7 +60,7 @@ INSERT INTO small_world (id, b, v) VALUES
     ('101', FALSE, '{1,0,1}'),
     ('110', FALSE, '{1,1,0}'),
     ('111', TRUE,  '{1,1,1}');
-CREATE INDEX ON small_world USING hnsw (v) WITH (dim=3);
+CREATE INDEX ON small_world USING lantern_hnsw (v) WITH (dim=3);
 INFO:  done init usearch index
 INFO:  inserted 8 elements
 INFO:  done saving 8 vectors
@@ -96,9 +96,9 @@ ORDER BY
 
 -- Ensure the index size remains consistent after inserts
 SELECT * from ldb_get_indexes('small_world');
-     indexname     | size  |                                      indexdef                                      | total_index_size 
--------------------+-------+------------------------------------------------------------------------------------+------------------
- small_world_v_idx | 24 kB | CREATE INDEX small_world_v_idx ON public.small_world USING hnsw (v) WITH (dim='3') | 24 kB
+     indexname     | size  |                                          indexdef                                          | total_index_size 
+-------------------+-------+--------------------------------------------------------------------------------------------+------------------
+ small_world_v_idx | 24 kB | CREATE INDEX small_world_v_idx ON public.small_world USING lantern_hnsw (v) WITH (dim='3') | 24 kB
 (1 row)
 
 -- Ensure the query plan remains consistent after inserts
@@ -130,7 +130,7 @@ CREATE TABLE sift_base10k (
     id SERIAL PRIMARY KEY,
     v REAL[128]
 );
-CREATE INDEX hnsw_idx ON sift_base10k USING hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=4, dim=128);
+CREATE INDEX hnsw_idx ON sift_base10k USING lantern_hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=4, dim=128);
 INFO:  done init usearch index
 INFO:  inserted 0 elements
 INFO:  done saving 0 vectors
