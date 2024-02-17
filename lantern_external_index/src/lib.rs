@@ -331,7 +331,7 @@ pub fn create_usearch_index(
             }
 
             transaction.execute(
-            &format!("CREATE INDEX {idx_name} ON {table_name} USING hnsw({column_name} {op_class}) WITH (_experimental_index_path='{index_path}', ef={ef}, dim={dim}, m={m}, ef_construction={ef_construction});", index_path=args.out, table_name=&get_full_table_name(&args.schema, &args.table),column_name=&quote_ident(&args.column), m=args.m, ef=args.ef, ef_construction=args.efc, dim=dimensions),
+            &format!("CREATE INDEX {idx_name} ON {table_name} USING lantern_hnsw({column_name} {op_class}) WITH (_experimental_index_path='{index_path}', ef={ef}, dim={dim}, m={m}, ef_construction={ef_construction});", index_path=args.out, table_name=&get_full_table_name(&args.schema, &args.table),column_name=&quote_ident(&args.column), m=args.m, ef=args.ef, ef_construction=args.efc, dim=dimensions),
             &[],
             )?;
 

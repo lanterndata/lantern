@@ -57,7 +57,7 @@ impl<'a> LargeObject<'a> {
         }
 
         transaction.execute(
-            &format!("CREATE INDEX {idx_name} ON {table_name} USING hnsw({column_name} {op_class}) WITH (_experimental_index_path='{index_path}', ef={ef}, dim={dim}, m={m}, ef_construction={ef_construction});", index_path=self.index_path),
+            &format!("CREATE INDEX {idx_name} ON {table_name} USING lantern_hnsw({column_name} {op_class}) WITH (_experimental_index_path='{index_path}', ef={ef}, dim={dim}, m={m}, ef_construction={ef_construction});", index_path=self.index_path),
             &[],
         )?;
 
