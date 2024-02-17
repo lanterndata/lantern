@@ -112,13 +112,6 @@ DECLARE
 	hnsw_am_exists boolean;
 	pgvector_exists boolean;
 BEGIN
-	-- Check if another extension already created an access method named 'hnsw'
-	SELECT EXISTS (
-		SELECT 1
-		FROM pg_am
-		WHERE amname = 'hnsw'
-	) INTO hnsw_am_exists;
-
 	-- Check if the vector type from pgvector exists
 	SELECT EXISTS (
 		SELECT 1
@@ -126,11 +119,10 @@ BEGIN
 		WHERE typname = 'vector'
 	) INTO pgvector_exists;
 
-	IF pgvector_exists OR hnsw_am_exists THEN
-		-- RAISE NOTICE 'hnsw access method already exists. Creating lantern_hnsw access method';
-		CREATE ACCESS METHOD lantern_hnsw TYPE INDEX HANDLER hnsw_handler;
-		COMMENT ON ACCESS METHOD lantern_hnsw IS 'LanternDB access method for vector embeddings, based on the hnsw algorithm';
-	END IF;
+	-- create access method
+	CREATE ACCESS METHOD lantern_hnsw TYPE INDEX HANDLER hnsw_handler;
+	COMMENT ON ACCESS METHOD lantern_hnsw IS 'Hardware-accelerated Lantern access method for vector embeddings, based on the hnsw algorithm, with various compression techniques';
+	PERFORM _lantern_internal._create_ldb_operator_classes('lantern_hnsw');
 
 	IF pgvector_exists THEN
 		-- taken from pgvector so our index can work with pgvector types
@@ -165,16 +157,6 @@ BEGIN
 			
 	END IF;
 
-
-	IF hnsw_am_exists THEN
-		PERFORM _lantern_internal._create_ldb_operator_classes('lantern_hnsw');
-		RAISE WARNING 'Access method(index type) "hnsw" already exists. Creating lantern_hnsw access method';
-	ELSE
-		-- create access method
-		CREATE ACCESS METHOD hnsw TYPE INDEX HANDLER hnsw_handler;
-		COMMENT ON ACCESS METHOD hnsw IS 'LanternDB access method for vector embeddings, based on the hnsw algorithm';
-		PERFORM _lantern_internal._create_ldb_operator_classes('hnsw');
-	END IF;
 END;
 $BODY$
 LANGUAGE plpgsql;
@@ -188,7 +170,7 @@ DECLARE
     r RECORD;
 BEGIN
     FOR r IN SELECT indexname, indexdef FROM pg_indexes
-            WHERE indexdef ILIKE '%USING hnsw%' OR indexdef ILIKE '%USING lantern_hnsw%'
+            WHERE indexdef ILIKE '%USING lantern_hnsw%'
     LOOP
         RAISE NOTICE 'Reindexing index: %', r.indexname;
         IF POSITION('_experimental_index_path' in r.indexdef) > 0 THEN

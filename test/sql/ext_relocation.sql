@@ -3,7 +3,7 @@
 DROP EXTENSION lantern;
 \set ON_ERROR_STOP off
 -- make sure the extension was dropped.
-CREATE INDEX ON small_world USING hnsw (v) WITH (dim=3);
+CREATE INDEX ON small_world USING lantern_hnsw (v) WITH (dim=3);
 \set ON_ERROR_STOP on
 
 -- test creating lantern on different schemas
@@ -36,7 +36,7 @@ SET search_path TO public, schema1;
 -- extension function is accessible
 SELECT l2sq_dist(ARRAY[1.0, 2.0, 3.0], ARRAY[4.0, 5.0, 6.0]);
 
-CREATE INDEX hnsw_index ON small_world USING hnsw(v) WITH (dim=3);
+CREATE INDEX hnsw_index ON small_world USING lantern_hnsw(v) WITH (dim=3);
 SELECT _lantern_internal.validate_index('hnsw_index', false);
 
 \set ON_ERROR_STOP off
@@ -58,7 +58,7 @@ ORDER BY 1, 3;
 
 SET search_path TO public, schema2;
 --extension access method is still accessible since access methods are not schema-qualified
-CREATE INDEX hnsw_index2 ON small_world USING hnsw(v) WITH (dim=3);
+CREATE INDEX hnsw_index2 ON small_world USING lantern_hnsw(v) WITH (dim=3);
 SELECT _lantern_internal.validate_index('hnsw_index2', false);
 
 \set ON_ERROR_STOP off

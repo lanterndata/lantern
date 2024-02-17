@@ -17,7 +17,7 @@ INSERT INTO small_world (id, b, v) VALUES
     ('101', FALSE, '{1,0,1}'),
     ('110', FALSE, '{1,1,0}'),
     ('111', TRUE,  '{1,1,1}');
-CREATE INDEX ON small_world USING hnsw (v) WITH (dim=3, M=5, ef=20, ef_construction=20);
+CREATE INDEX ON small_world USING lantern_hnsw (v) WITH (dim=3, M=5, ef=20, ef_construction=20);
 INFO:  done init usearch index
 INFO:  inserted 8 elements
 INFO:  done saving 8 vectors
@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS sift_base1k (
     v REAL[]
 );
 COPY sift_base1k (v) FROM '/tmp/lantern/vector_datasets/sift_base1k_arrays.csv' WITH csv;
-CREATE INDEX ON sift_base1k USING hnsw (v) WITH (dim=128, M=5, ef=20, ef_construction=20);
+CREATE INDEX ON sift_base1k USING lantern_hnsw (v) WITH (dim=128, M=5, ef=20, ef_construction=20);
 INFO:  done init usearch index
 INFO:  inserted 1000 elements
 INFO:  done saving 1000 vectors
@@ -35,7 +35,7 @@ CREATE TABLE test1 (id SERIAL, v REAL[]);
 CREATE TABLE test2 (id SERIAL, v REAL[]);
 INSERT INTO test1 (v) VALUES ('{5,3}');
 INSERT INTO test2 (v) VALUES ('{5,4}');
-CREATE INDEX ON test1 USING hnsw (v);
+CREATE INDEX ON test1 USING lantern_hnsw (v);
 INFO:  done init usearch index
 INFO:  inserted 1 elements
 INFO:  done saving 1 vectors
@@ -232,7 +232,7 @@ SELECT * from small_world ORDER BY v <?> '{1,1,1}';
 begin;
 INSERT INTO test2 (v) VALUES ('{1,4}');
 INSERT INTO test2 (v) VALUES ('{2,4}');
-CREATE INDEX test2_cos ON test2 USING hnsw(v dist_cos_ops);
+CREATE INDEX test2_cos ON test2 USING lantern_hnsw(v dist_cos_ops);
 INFO:  done init usearch index
 INFO:  inserted 3 elements
 INFO:  done saving 3 vectors

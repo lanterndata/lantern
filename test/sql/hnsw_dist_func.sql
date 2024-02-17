@@ -8,9 +8,9 @@ CREATE TABLE small_world_l2 (id VARCHAR(3), v REAL[]);
 CREATE TABLE small_world_cos (id VARCHAR(3), v REAL[]);
 CREATE TABLE small_world_ham (id VARCHAR(3), v INTEGER[]);
 
-CREATE INDEX ON small_world_l2 USING hnsw (v dist_l2sq_ops) WITH (dim=3);
-CREATE INDEX ON small_world_cos USING hnsw (v dist_cos_ops) WITH (dim=3);
-CREATE INDEX ON small_world_ham USING hnsw (v dist_hamming_ops) WITH (dim=3);
+CREATE INDEX ON small_world_l2 USING lantern_hnsw (v dist_l2sq_ops) WITH (dim=3);
+CREATE INDEX ON small_world_cos USING lantern_hnsw (v dist_cos_ops) WITH (dim=3);
+CREATE INDEX ON small_world_ham USING lantern_hnsw (v dist_hamming_ops) WITH (dim=3);
 
 INSERT INTO small_world_l2 SELECT id, v FROM small_world;
 INSERT INTO small_world_cos SELECT id, v FROM small_world;
@@ -159,7 +159,7 @@ CREATE TABLE extra_small_world_ham (
     v INT[2]
 );
 INSERT INTO extra_small_world_ham (v) VALUES ('{0,0}'), ('{1,1}'), ('{2,2}'), ('{3,3}');
-CREATE INDEX ON extra_small_world_ham USING hnsw (v dist_hamming_ops) WITH (dim=2);
+CREATE INDEX ON extra_small_world_ham USING lantern_hnsw (v dist_hamming_ops) WITH (dim=2);
 SELECT ROUND(hamming_dist(v, '{0,0}')::numeric, 2) FROM extra_small_world_ham ORDER BY v <?> '{0,0}';
 
 SELECT _lantern_internal.validate_index('small_world_l2_v_idx', false);

@@ -139,7 +139,7 @@ Node *plan_tree_mutator(Plan *plan, void *context)
 // destructure the tuple int a From_(table_name) with GETSTRUCT to pull individual rows out
 static Oid get_func_id_from_index(Relation index)
 {
-    Oid hnswamoid = get_index_am_oid("hnsw", false);
+    Oid hnswamoid = get_index_am_oid("lantern_hnsw", false);
     if(index->rd_rel->relam != hnswamoid) return InvalidOid;
 
     // indclass is inaccessible on the form data

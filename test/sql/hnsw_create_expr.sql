@@ -73,17 +73,17 @@ SET lantern.pgvector_compat=FALSE;
 
 
 -- This should success
-CREATE INDEX ON test_table USING hnsw (int_to_fixed_binary_real_array(id)) WITH (M=2);
+CREATE INDEX ON test_table USING lantern_hnsw (int_to_fixed_binary_real_array(id)) WITH (M=2);
 SELECT _lantern_internal.validate_index('test_table_int_to_fixed_binary_real_array_idx', false);
 
 \set ON_ERROR_STOP off
 -- This should result in an error that dimensions does not match
-CREATE INDEX ON test_table USING hnsw (int_to_dynamic_binary_real_array(id)) WITH (M=2);
+CREATE INDEX ON test_table USING lantern_hnsw (int_to_dynamic_binary_real_array(id)) WITH (M=2);
 
 -- This should result in an error that data type text has no default operator class
-CREATE INDEX ON test_table USING hnsw (int_to_string(id)) WITH (M=2);
+CREATE INDEX ON test_table USING lantern_hnsw (int_to_string(id)) WITH (M=2);
 
 -- This should result in error about multicolumn expressions support
-CREATE INDEX ON test_table USING hnsw (int_to_fixed_binary_real_array(id), int_to_dynamic_binary_real_array(id)) WITH (M=2);
+CREATE INDEX ON test_table USING lantern_hnsw (int_to_fixed_binary_real_array(id), int_to_dynamic_binary_real_array(id)) WITH (M=2);
 
 SELECT id FROM test_table ORDER BY int_to_fixed_binary_real_array(id) <?> '{0,0,0}'::REAL[] LIMIT 2;
