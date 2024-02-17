@@ -49,8 +49,8 @@ def livedebug():
     s: libtmux.Server = libtmux.Server()
 
     default_session: libtmux.session.Session = s.sessions.filter(session_name=get_tmux_session_name()).get()
-    python_pane = default_session.attached_pane
-    new_pane = python_pane.split_window(False, True, ".", 50)
+    python_pane = default_session.active_pane
+    new_pane = python_pane.split_window(attach=False, vertical=True, start_directory=".", percent=50)
 
     if args.resetdb:
         res = subprocess.run(f"psql postgres -U {args.user} -c 'DROP DATABASE IF EXISTS {args.db};'", shell=True)
