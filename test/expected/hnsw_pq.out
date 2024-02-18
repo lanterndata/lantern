@@ -72,7 +72,7 @@ BEGIN
      RETURN result;
 END;
 $$ LANGUAGE plpgsql;
-SET client_min_messages=NOTICE;
+SET client_min_messages=ERROR;
 SELECT '{84,1,4,128,255}'::pqvec;
       pqvec       
 ------------------
@@ -184,7 +184,6 @@ SELECT quantize_table('sift_base1k'::regclass, 'v', 50, 32, 'l2sq');
 INFO:  Table scanned. Dataset size 1000
 INFO:  Starting k-means over dataset with (subvectors=32, clusters=50)
 INFO:  Codebooks created
-NOTICE:  table "_codebook_sift_base1k_v" does not exist, skipping
 INFO:  Compressing vectors...
  quantize_table 
 ----------------
@@ -288,7 +287,6 @@ SELECT quantize_table('sift_base1k'::regclass, 'v_pq_dec', 10, 32, 'l2sq');
 INFO:  Table scanned. Dataset size 1000
 INFO:  Starting k-means over dataset with (subvectors=32, clusters=10)
 INFO:  Codebooks created
-NOTICE:  table "_codebook_sift_base1k_v_pq_dec" does not exist, skipping
 INFO:  Compressing vectors...
  quantize_table 
 ----------------

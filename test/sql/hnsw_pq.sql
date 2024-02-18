@@ -3,7 +3,7 @@
 \ir utils/random_array.sql
 \ir utils/calculate_recall.sql
 
-SET client_min_messages=NOTICE;
+SET client_min_messages=ERROR;
 
 SELECT '{84,1,4,128,255}'::pqvec;
 SELECT '{84,1,4,128,255}'::pqvec::INT[];

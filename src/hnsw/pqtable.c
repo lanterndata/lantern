@@ -5,10 +5,9 @@
 #include <miscadmin.h>
 #include <storage/bufmgr.h>
 
-#include "hnsw.h"
-
 #if PG_VERSION_NUM <= 120000
 #include <access/htup_details.h>
+#include <utils/rel.h>
 #endif
 
 #include "hnsw/product_quantization.h"
