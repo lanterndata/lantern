@@ -1,6 +1,6 @@
 #include <postgres.h>
 
-#include "pq_vec.h"
+#include "pqvec.h"
 
 #include <assert.h>
 #include <catalog/pg_type.h>
@@ -8,6 +8,10 @@
 #include <lib/stringinfo.h>
 #include <libpq/pqformat.h>
 #include <utils/guc.h>
+
+#if PG_VERSION_NUM < 130000
+#define TYPALIGN_INT 'i'
+#endif
 
 static inline PQVec *NewPQVec(int dim)
 {
@@ -58,7 +62,7 @@ ArrayType *ldb_pqvec_to_array(uint8 *array_elems, int dim)
     for(int i = 0; i < dim; i++) {
         array_elems_datum[ i ] = UInt32GetDatum((uint32)array_elems[ i ]);
     }
-    res = construct_array(array_elems_datum, dim, INT4OID, sizeof(uint32), true, 'i');
+    res = construct_array(array_elems_datum, dim, INT4OID, sizeof(uint32), true, TYPALIGN_INT);
 
     return res;
 }
@@ -96,6 +100,10 @@ Datum       ldb_pqvec_in(FunctionCallInfo fcinfo)
     PQVec     *res;
 
     array = (ArrayType *)DatumGetPointer(OidInputFunctionCall(oid, str, typioparam, typmod));
+
+    if(ARR_NDIM(array) == 0) {
+        elog(ERROR, "pqvector can not be empty");
+    }
 
     if(typmod != -1 && ARR_NDIM(array) != typmod) {
         elog(ERROR, "array type expected %d dimensions but provided array has %d dimensions", typmod, ARR_NDIM(array));
@@ -137,7 +145,6 @@ Datum       ldb_pqvec_recv(PG_FUNCTION_ARGS)
     StringInfo buf = (StringInfo)PG_GETARG_POINTER(0);
     PQVec     *result;
     uint16     dim;
-    elog(ERROR, "vec recv called");
 
     dim = pq_getmsgint(buf, sizeof(uint16));
 

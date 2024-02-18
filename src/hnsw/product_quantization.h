@@ -6,13 +6,13 @@
 
 #include "usearch.h"
 
-typedef struct Codebook
+typedef struct
 {
     uint8    id;
     uint32   dim;
     float4 **centroids;
 
-} Codebook;
+} PQCodebook;
 
 typedef struct
 {
@@ -21,11 +21,11 @@ typedef struct
     uint32   point_cnt;
 } Cluster;
 
-Codebook **product_quantization(uint32                cluster_count,
-                                uint32                subset_count,
-                                float4              **dataset,
-                                uint32                dataset_size,
-                                uint32                dim,
-                                usearch_metric_kind_t distance_metric,
-                                uint32                iter);
+PQCodebook **product_quantization(uint32                cluster_count,
+                                  uint32                subvector_count,
+                                  float4              **dataset,
+                                  uint32                dataset_size,
+                                  uint32                dim,
+                                  usearch_metric_kind_t distance_metric,
+                                  uint32                iter);
 #endif  // LDB_HNSW_PRODUCT_QUANTIZATION_H

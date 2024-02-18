@@ -1,5 +1,5 @@
-#ifndef PQ_VECTOR_H
-#define PQ_VECTOR_H
+#ifndef PQVEC_H
+#define PQVEC_H
 
 #include <postgres.h>
 
@@ -27,4 +27,4 @@ PGDLLEXPORT Datum ldb_pqvec_recv(PG_FUNCTION_ARGS);
 PGDLLEXPORT Datum ldb_cast_pqvec_array(PG_FUNCTION_ARGS);
 PGDLLEXPORT Datum ldb_cast_array_pqvec(PG_FUNCTION_ARGS);
 
-#endif  // PQ_VECTOR_H
+#endif  // PQVEC_H

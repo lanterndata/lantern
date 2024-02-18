@@ -4,9 +4,13 @@
 
 #include <assert.h>
 #include <float.h>
+#include <miscadmin.h>
 #include <string.h>
 #include <time.h>
 #include <utils/builtins.h>
+#if PG_VERSION_NUM >= 150000
+#include <common/pg_prng.h>
+#endif
 
 #include "usearch.h"
 
@@ -15,17 +19,22 @@
  * This will be used to pick random centroids from the dataset
  * When initializing clusters
  * */
-static int get_available_index(int max_idx, int *used_indexes, int *used_indexes_size)
+static int get_random_tid(const int max_tid, const int *used_tids, const int used_tids_size)
 {
     int  idx;
     int  i;
     bool used = false;
     while(true) {
-        idx = rand() % (max_idx + 1);
+#if PG_VERSION_NUM >= 150000
+        uint32 rand_num = pg_prng_uint32(&pg_global_prng_state);
+#else
+        uint32 rand_num = (uint32)random();
+#endif
+        idx = rand_num % (max_tid + 1);
         used = false;
 
-        for(i = 0; i < *used_indexes_size; i++) {
-            if(used_indexes[ i ] == idx) {
+        for(i = 0; i < used_tids_size; i++) {
+            if(used_tids[ i ] == idx) {
                 used = true;
                 break;
             }
@@ -33,26 +42,26 @@ static int get_available_index(int max_idx, int *used_indexes, int *used_indexes
 
         if(!used) break;
     }
-    used_indexes[ *used_indexes_size ] = idx;
-    *used_indexes_size += 1;
     return idx;
 }
 
 /*
  * Initialize k clusters by chosing random points from the dataset
  */
-static Cluster **initialize_clusters(uint32 k, float4 **dataset, uint32 dataset_size, uint32 subset_start)
+static Cluster **initialize_clusters(uint32 k, float4 **dataset, uint32 dataset_size, uint32 subvector_start)
 {
     uint32    i;
-    Cluster **clusters = palloc(sizeof(Cluster) * k);
-    int      *used_indexes = palloc(sizeof(int) * k);
-    int       used_indexes_size = 0;
+    Cluster **clusters = palloc(sizeof(Cluster *) * k);
+    int      *used_tids = palloc(sizeof(int) * k);
+    int       used_tids_size = 0;
     Cluster  *current_cluster = NULL;
 
     for(i = 0; i < k; i++) {
-        int idx = get_available_index(dataset_size - 1, used_indexes, &used_indexes_size);
+        int idx = get_random_tid(dataset_size - 1, (const int *)used_tids, used_tids_size);
+        used_tids[ used_tids_size ] = idx;
+        used_tids_size += 1;
         current_cluster = palloc(sizeof(Cluster));
-        current_cluster->center = &dataset[ idx ][ subset_start ];
+        current_cluster->center = &dataset[ idx ][ subvector_start ];
         current_cluster->point_cnt = 0;
         clusters[ i ] = current_cluster;
     }
@@ -63,14 +72,15 @@ static Cluster **initialize_clusters(uint32 k, float4 **dataset, uint32 dataset_
 /*
  * Iterate over whole dataset and assign points to their nearest centroids (clusters)
  * The points will be stored in an array to be used later when updating the center point
- * subset_start will be helpful in case when the subset count is more than 1.
- * So if we have dataset with 12 dimensional vectors and we want to split them into 3 subsets
- * On first subset iteration subset_start will be 0 and subset_dim 4, then subset_start: 4, subset_dim: 4 and so on
+ * subvector_start will be helpful in case when the subvector count is more than 1.
+ * So if we have dataset with 12 dimensional vectors and we want to split them into 3 subvectors
+ * On first subvector iteration subvector_start will be 0 and subvector_dim 4, then subvector_start: 4, subvector_dim: 4
+ * and so on
  * */
 static void assign_to_clusters(float4              **dataset,
                                uint32                dataset_size,
-                               uint32                subset_start,
-                               uint32                subset_dim,
+                               uint32                subvector_start,
+                               uint32                subvector_dim,
                                Cluster             **clusters,
                                uint32                k,
                                usearch_metric_kind_t distance_metric)
@@ -79,18 +89,22 @@ static void assign_to_clusters(float4              **dataset,
     uint32          j;
     float4          distance;
     float4          min_dist;
-    uint32          min_dist_cluster_idx;
+    uint32          min_dist_cluster_idx = 0;
     Cluster        *current_cluster;
-    float4         *current_subset;
+    float4         *current_subvector;
     usearch_error_t error = NULL;
 
     for(i = 0; i < dataset_size; i++) {
-        current_subset = &dataset[ i ][ subset_start ];
+        current_subvector = &dataset[ i ][ subvector_start ];
         min_dist = FLT_MAX;
         for(j = 0; j < k; j++) {
             current_cluster = clusters[ j ];
-            distance = usearch_distance(
-                current_subset, current_cluster->center, usearch_scalar_f32_k, subset_dim, distance_metric, &error);
+            distance = usearch_distance(current_subvector,
+                                        current_cluster->center,
+                                        usearch_scalar_f32_k,
+                                        subvector_dim,
+                                        distance_metric,
+                                        &error);
             assert(!error);
             if(distance < min_dist) {
                 min_dist = distance;
@@ -104,7 +118,7 @@ static void assign_to_clusters(float4              **dataset,
             // It won't consume much memory
             current_cluster->points = palloc(sizeof(size_t) * dataset_size);
         }
-        current_cluster->points[ current_cluster->point_cnt ] = current_subset;
+        current_cluster->points[ current_cluster->point_cnt ] = current_subvector;
         current_cluster->point_cnt += 1;
     }
 }
@@ -112,20 +126,19 @@ static void assign_to_clusters(float4              **dataset,
 /*
  * Calculate mean value of given 2d array
  * */
-static float4 *calculate_mean(float4 **points, uint32 point_cnt, uint32 subset_dim)
+static float4 *calculate_mean(float4 **points, uint32 point_cnt, uint32 subvector_dim)
 {
-    float4 *mean = palloc0(sizeof(float4) * subset_dim);
+    float4 *mean = palloc0(sizeof(float4) * subvector_dim);
     uint32  i;  // rows
     uint32  j;  // cols
 
     for(i = 0; i < point_cnt; i++) {
-        for(j = 0; j < subset_dim; j++) {
-            if(!mean[ j ]) mean[ j ] = 0;
+        for(j = 0; j < subvector_dim; j++) {
             mean[ j ] += points[ i ][ j ];
         }
     }
 
-    for(i = 0; i < subset_dim; i++) {
+    for(i = 0; i < subvector_dim; i++) {
         mean[ i ] = mean[ i ] / point_cnt;
     }
 
@@ -136,7 +149,7 @@ static float4 *calculate_mean(float4 **points, uint32 point_cnt, uint32 subset_d
  * Update cluster centers with the mean values of assigned points
  * And remove points from cluster
  * */
-static void update_centers(Cluster **clusters, uint32 k, uint32 subset_dim)
+static void update_centers(Cluster **clusters, uint32 k, uint32 subvector_dim)
 {
     uint32   i;
     Cluster *current_cluster;
@@ -145,7 +158,7 @@ static void update_centers(Cluster **clusters, uint32 k, uint32 subset_dim)
         current_cluster = clusters[ i ];
         if(!current_cluster->point_cnt) continue;
 
-        current_cluster->center = calculate_mean(current_cluster->points, current_cluster->point_cnt, subset_dim);
+        current_cluster->center = calculate_mean(current_cluster->points, current_cluster->point_cnt, subvector_dim);
 
         current_cluster->points = NULL;
         current_cluster->point_cnt = 0;
@@ -160,7 +173,7 @@ static void update_centers(Cluster **clusters, uint32 k, uint32 subset_dim)
 bool should_stop_iterations(float4              **old_centers,
                             Cluster             **clusters,
                             uint32                cluster_count,
-                            uint32                subset_dim,
+                            uint32                subvector_dim,
                             usearch_metric_kind_t distance_metric)
 {
     usearch_error_t error = NULL;
@@ -170,7 +183,7 @@ bool should_stop_iterations(float4              **old_centers,
 
     for(i = 0; i < cluster_count; i++) {
         distance += usearch_distance(
-            old_centers[ i ], clusters[ i ]->center, usearch_scalar_f32_k, subset_dim, distance_metric, &error);
+            old_centers[ i ], clusters[ i ]->center, usearch_scalar_f32_k, subvector_dim, distance_metric, &error);
         assert(!error);
     }
 
@@ -180,40 +193,42 @@ bool should_stop_iterations(float4              **old_centers,
 }
 
 /*
- * Run k-means clustering over the dataset in a subset of vectors
+ * Run k-means clustering over the dataset in a subvector of vectors
  * args:
  *   k - cluster count
  *   dataset - 2d array of float numbers
  *   dataset_size - length of dataset (axis 0)
- *   subset_start - index from which the subset will be taken (in case if subset count is 1 this will be 0)
- *   subset_dim - length of the slice to take from dataset vectors starting from subset_start index
- *   iter - number of iterations to run the algorithm
- * returns:
- *   2D array of floats. [ [f32] x k ] each sub array will be a centroid point
+ *   subvector_start - index from which the subvector will be taken (in case if subvector count is 1 or this is the
+ *                     first subvector this will be 0)
+ *   subvector_dim - length of the slice to take from dataset vectors starting from subvector_start index
+ *   iter - number of iterations to run the algorithm returns: 2D array of floats. [ [f32] x k ]
+ *          each sub array will be a centroid point
  */
 float4 **k_means(uint32                k,
                  float4              **dataset,
                  uint32                dataset_size,
-                 uint32                subset_start,
-                 uint32                subset_dim,
+                 uint32                subvector_start,
+                 uint32                subvector_dim,
                  usearch_metric_kind_t distance_metric,
                  uint32                iter)
 {
     uint32    i, j;
     float4  **centroids = palloc(sizeof(size_t) * k);
-    Cluster **clusters = initialize_clusters(k, dataset, dataset_size, subset_start);
+    Cluster **clusters = initialize_clusters(k, dataset, dataset_size, subvector_start);
     float4  **old_centers = palloc(sizeof(size_t) * k);
 
     for(i = 0; i < iter; i++) {
-        assign_to_clusters(dataset, dataset_size, subset_start, subset_dim, clusters, k, distance_metric);
+        assign_to_clusters(dataset, dataset_size, subvector_start, subvector_dim, clusters, k, distance_metric);
 
         // Keep old centers to check wether we should stop iterations
         for(j = 0; j < k; j++) {
             old_centers[ j ] = clusters[ j ]->center;
         }
-        update_centers(clusters, k, subset_dim);
+        update_centers(clusters, k, subvector_dim);
+        // Check for CTRL-C interrupts
+        CHECK_FOR_INTERRUPTS();
 
-        if(should_stop_iterations(old_centers, clusters, k, subset_dim, distance_metric)) {
+        if(should_stop_iterations(old_centers, clusters, k, subvector_dim, distance_metric)) {
             break;
         }
     }
@@ -225,49 +240,52 @@ float4 **k_means(uint32                k,
 }
 
 /*
- * Run k_means over each subset of dataset vectors
+ * Run k_means over each subvector of dataset vectors
  * args:
- *   cluster_count - number of clusters to initialize for each subset. Then each subset will have centroids equal to
- *   subset_count - how many parts split the vectors of dataset. Each subset will be trained separately and
- *   dataset - 2D array of f32 values
+ *   cluster_count - number of clusters to initialize for each subvector.
+ *   subvector_count - how many parts split the vectors of dataset.
+ *                     Each subvector will be trained separately and have it's own centroids
+ *   dataset - 2D array of f32 values where each row is a vector that we are PQ-quantizing
  *   dataset_size - length of dataset (axis 0)
  *   dim - dimension of the vectors in dataset
  *   distance_metric - distance metric to use when training dataset. One of (l2sq, cos, hamming)
  *   iter - iterations to run the k-means
- * have it's own centroids This function will return codebook for each subset of the vector Each Codebook will have - {
- * id, centroids: [ [f32 x subset_dim] x k ], dim: subset_dim }
+ *
+ *  This function will return codebook for each subvector of the vector
+ *  Each PQCodebook will have
+ * - { id, centroids: [ [f32 x subvector_dim] x k ], dim: subvector_dim }
  */
-Codebook **product_quantization(uint32                cluster_count,
-                                uint32                subset_count,
-                                float4              **dataset,
-                                uint32                dataset_size,
-                                uint32                dim,
-                                usearch_metric_kind_t distance_metric,
-                                uint32                iter)
+PQCodebook **product_quantization(uint32                cluster_count,
+                                  uint32                subvector_count,
+                                  float4              **dataset,
+                                  uint32                dataset_size,
+                                  uint32                dim,
+                                  usearch_metric_kind_t distance_metric,
+                                  uint32                iter)
 {
-    uint32     i;
-    uint32     subset_start;
-    uint32     subset_dim;
-    float4   **subset_centroids;
-    Codebook  *current_codebook;
-    Codebook **codebooks = palloc(sizeof(Codebook) * subset_count);
+    uint32       i;
+    uint32       subvector_start;
+    uint32       subvector_dim;
+    float4     **subvector_centroids;
+    PQCodebook  *current_codebook;
+    PQCodebook **codebooks = palloc(sizeof(PQCodebook *) * subvector_count);
 
-    subset_dim = dim / subset_count;
-    for(i = 0; i < subset_count; i++) {
-        subset_start = i * subset_dim;
-        if(i == subset_count - 1 && dim % subset_count != 0) {
-            // If the vector is not divisible to subset_count
-            // Dimensions of the last subset will be the remaining length of the vector
-            subset_dim = dim - subset_start;
+    subvector_dim = dim / subvector_count;
+    for(i = 0; i < subvector_count; i++) {
+        subvector_start = i * subvector_dim;
+        if(i == subvector_count - 1 && dim % subvector_count != 0) {
+            // If the vector is not divisible to subvector_count
+            // Dimensions of the last subvector will be the remaining length of the vector
+            subvector_dim = dim - subvector_start;
         }
 
-        subset_centroids
-            = k_means(cluster_count, dataset, dataset_size, subset_start, subset_dim, distance_metric, iter);
+        subvector_centroids
+            = k_means(cluster_count, dataset, dataset_size, subvector_start, subvector_dim, distance_metric, iter);
 
-        current_codebook = palloc(sizeof(Codebook));
+        current_codebook = palloc(sizeof(PQCodebook));
         current_codebook->id = i;
-        current_codebook->centroids = subset_centroids;
-        current_codebook->dim = subset_dim;
+        current_codebook->centroids = subvector_centroids;
+        current_codebook->dim = subvector_dim;
         codebooks[ i ] = current_codebook;
     }
 

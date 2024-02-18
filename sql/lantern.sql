@@ -221,14 +221,23 @@ CREATE CAST (integer[] AS pqvec)
 CREATE CAST (pqvec AS integer[])
 	WITH FUNCTION ldb_cast_pqvec_array(pqvec, integer, boolean) AS ASSIGNMENT;
 	
-CREATE OR REPLACE FUNCTION create_codebook(tbl REGCLASS, col NAME, cluster_cnt INT, subset_count INT, distance_metric TEXT)
+CREATE FUNCTION _lantern_internal.forbid_table_change()
+  RETURNS TRIGGER
+AS
+$$
+BEGIN
+  RAISE EXCEPTION 'Cannot modify readonly table.';
+END;
+$$
+LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION create_pq_codebook(tbl REGCLASS, col NAME, cluster_cnt INT, subvector_count INT, distance_metric TEXT)
 RETURNS NAME AS $$
 DECLARE
   stmt TEXT;
   res REAL[];
   codebooks REAL[][][];
   i INT;
-  subset_len INT;
   end_idx INT;
   codebook_table NAME;
   dim INT;
@@ -238,57 +247,68 @@ BEGIN
   EXECUTE stmt INTO dim;
 
 	-- Get codebooks
-	codebooks := _lantern_internal.create_pq_codebook(tbl, col, cluster_cnt, subset_count, distance_metric);
+	codebooks := _lantern_internal.create_pq_codebook(tbl, col, cluster_cnt, subvector_count, distance_metric);
 
 	-- Create codebook table
-  codebook_table := format('_lantern_codebook_%s', tbl);
+  codebook_table := format('_lantern_internal."_codebook_%s_%s"', tbl, col);
   stmt := format('DROP TABLE IF EXISTS %s CASCADE', codebook_table);
   EXECUTE stmt;
   
-  stmt:= format('CREATE TABLE %s(subvector_id INT, centroid_id INT, c REAL[]);', codebook_table);
+  stmt:= format('CREATE UNLOGGED TABLE %s(subvector_id INT, centroid_id INT, c REAL[]);', codebook_table);
   EXECUTE stmt;
   
   stmt:= format('CREATE INDEX ON %s USING BTREE(subvector_id, centroid_id);', codebook_table);
   EXECUTE stmt;
   
   -- Iterate over codebooks and insert into table
-  FOR i IN 1..subset_count loop
+  FOR i IN 1..subvector_count loop
   	FOR k IN 1..cluster_cnt loop
   	  -- centroid_id is k-1 because k is in range[0,255] but postgres arrays start from index 1
-      stmt := format('INSERT INTO %I(subvector_id, centroid_id, c) VALUES (%s, %s, ARRAY(SELECT * FROM unnest(''%s''::REAL[])))', codebook_table, i - 1, k - 1, codebooks[i:i][k:k]);
+      stmt := format('INSERT INTO %s(subvector_id, centroid_id, c) VALUES (%s, %s, ARRAY(SELECT * FROM unnest(''%s''::REAL[])))', codebook_table, i - 1, k - 1, codebooks[i:i][k:k]);
       EXECUTE stmt;
   	END LOOP;
   END LOOP;
+
+  -- Make table logged and readonly
+  stmt := format('ALTER TABLE %s SET LOGGED', codebook_table);
+  EXECUTE stmt;
+
+  stmt := format('CREATE TRIGGER readonly_guard BEFORE INSERT OR UPDATE OR DELETE ON %s EXECUTE PROCEDURE _lantern_internal.forbid_table_change()', codebook_table);
+  EXECUTE stmt;
 
   return codebook_table;
 END;
 $$ LANGUAGE plpgsql;
 
 -- Compress vector using codebook
-CREATE OR REPLACE FUNCTION _lantern_internal.compress_vector(v REAL[], subset_count INTEGER, codebook regclass, distance_metric TEXT)
+CREATE OR REPLACE FUNCTION _lantern_internal.quantize_vector(v REAL[], subvector_count INTEGER, codebook regclass, distance_metric TEXT)
 RETURNS pqvec AS $$
 DECLARE
-  subset_center INT;
+  subvector_center INT;
   start_idx INT;
   end_idx INT;
   dim INT;
-  subset_len INT;
+  subvector_len INT;
   res INT[];
   subvector_id INT;
 BEGIN
   dim := array_length(v, 1);
   res := '{}'::INT[];
-  subset_len := dim/subset_count;
+  subvector_len := dim/subvector_count;
   subvector_id := 0;
 
-  FOR i IN 1..dim BY subset_len LOOP
+  IF v IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  FOR i IN 1..dim BY subvector_len LOOP
     IF i = dim THEN
       end_idx := dim;
     ELSE
-      end_idx := i + subset_len - 1;
+      end_idx := i + subvector_len - 1;
     END IF;
-    EXECUTE format('SELECT centroid_id FROM %I WHERE subvector_id=%s ORDER BY %s_dist(c, %L) LIMIT 1', codebook, subvector_id, distance_metric, v[i:end_idx]) INTO subset_center;
-    res := array_append(res, subset_center);
+    EXECUTE format('SELECT centroid_id FROM %s WHERE subvector_id=%s ORDER BY %s_dist(c, %L) LIMIT 1', codebook, subvector_id, distance_metric, v[i:end_idx]) INTO subvector_center;
+    res := array_append(res, subvector_center);
     subvector_id := subvector_id + 1;
   END LOOP;
   
@@ -296,16 +316,21 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION compress_vector(v REAL[], codebook regclass, distance_metric TEXT)
+CREATE OR REPLACE FUNCTION quantize_vector(v REAL[], codebook regclass, distance_metric TEXT)
 RETURNS pqvec AS $$
 DECLARE
-  subset_count INT;
+  subvector_count INT;
   stmt TEXT;
 BEGIN
 
-  stmt := format('SELECT COUNT(centroid_id) FROM %I WHERE centroid_id=1', codebook);
-  EXECUTE stmt INTO subset_count;
-  RETURN _lantern_internal.compress_vector(v, subset_count, codebook, distance_metric);
+  stmt := format('SELECT COUNT(centroid_id) FROM %s WHERE centroid_id=0', codebook);
+  EXECUTE stmt INTO subvector_count;
+
+  IF subvector_count = 0 THEN
+    RAISE EXCEPTION 'Empty codebook';
+  END IF;
+
+  RETURN _lantern_internal.quantize_vector(v, subvector_count, codebook, distance_metric);
 END;
 $$ LANGUAGE plpgsql;
 
@@ -314,16 +339,26 @@ CREATE OR REPLACE FUNCTION decompress_vector(v pqvec, codebook regclass)
 RETURNS REAL[] AS $$
 DECLARE
   res REAL[];
-  subset REAL[];
+  subvector REAL[];
   centroid_id INT;
   subvector_id INT;
+  subvector_count INT;
+  v_len INT;
 BEGIN
+  -- Validate arguments
+  EXECUTE format('SELECT COUNT(DISTINCT subvector_id) FROM %s', codebook) INTO subvector_count;
+  v_len := array_length(v::INT[], 1);
+
+  IF subvector_count != v_len THEN
+    RAISE EXCEPTION 'Codebook has % subvectors, but vector is quantized in % subvectors', subvector_count, v_len;
+  END IF;
+  
   res := '{}'::REAL[];
   subvector_id := 0;
   FOREACH centroid_id in array v::INT[]
   LOOP
-     EXECUTE format('SELECT c FROM %I WHERE subvector_id=%L AND centroid_id=%L', codebook, subvector_id, centroid_id) INTO subset;
-     res := res || subset;
+     EXECUTE format('SELECT c FROM %s WHERE subvector_id=%L AND centroid_id=%L', codebook, subvector_id, centroid_id) INTO subvector;
+     res := res || subvector;
      subvector_id := subvector_id + 1;
   END LOOP;
 
@@ -332,10 +367,10 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Quantize table
-CREATE OR REPLACE FUNCTION quantize_table(tbl regclass, col NAME, cluster_cnt INT,subset_count INT, distance_metric TEXT)
+CREATE OR REPLACE FUNCTION quantize_table(tbl regclass, col NAME, cluster_cnt INT,subvector_count INT, distance_metric TEXT)
 RETURNS VOID AS $$
 DECLARE
-  subset REAL[];
+  subvector REAL[];
   id INT;
   stmt TEXT;
   pq_col_name NAME;
@@ -355,19 +390,19 @@ BEGIN
     RAISE EXCEPTION 'Column % already exists in table', pq_col_name;
   END IF;
   -- Create codebook
-  codebook_table := create_codebook(tbl, col, cluster_cnt, subset_count, distance_metric);
+  codebook_table := create_pq_codebook(tbl, col, cluster_cnt, subvector_count, distance_metric);
 
   -- Compress vectors
   RAISE INFO 'Compressing vectors...';
 
   IF pg_version >= 120000 THEN
-    stmt := format('ALTER TABLE %I ADD COLUMN %I PQVEC GENERATED ALWAYS AS (_lantern_internal.compress_vector(%I, %L, %L, %L)) STORED', tbl, pq_col_name, col, subset_count, codebook_table, distance_metric);
+    stmt := format('ALTER TABLE %I ADD COLUMN %I PQVEC GENERATED ALWAYS AS (_lantern_internal.quantize_vector(%I, %L, %L, %L)) STORED', tbl, pq_col_name, col, subvector_count, codebook_table, distance_metric);
     EXECUTE stmt;
   ELSE
     stmt := format('ALTER TABLE %I ADD COLUMN %I PQVEC', tbl, pq_col_name);
     EXECUTE stmt;
 
-    stmt := format('UPDATE %1$I SET %2$I_pq=_lantern_internal.compress_vector(%2$I, %3$L, %4$L::regclass, %5$L)', tbl, col, subset_count, codebook_table, distance_metric);
+    stmt := format('UPDATE %1$I SET %2$I_pq=_lantern_internal.quantize_vector(%2$I, %3$L, %4$L::regclass, %5$L)', tbl, col, subvector_count, codebook_table, distance_metric);
     EXECUTE stmt;
 
     -- Create trigger to update pq values based on vector value
@@ -380,11 +415,11 @@ BEGIN
       DECLARE
         stmt TEXT;
       BEGIN
-        NEW.%I := _lantern_internal.compress_vector(NEW.%I, %L, %L::regclass, %L);
+        NEW.%I := _lantern_internal.quantize_vector(NEW.%I, %L, %L::regclass, %L);
         RETURN NEW;
       END
       $body$;
-      ', trigger_func_name, pq_col_name, col, subset_count, codebook_table, distance_metric);
+      ', trigger_func_name, pq_col_name, col, subvector_count, codebook_table, distance_metric);
     EXECUTE stmt;
     
     insert_trigger_name := format('_pq_trigger_in_%s', md5(tbl || col));
