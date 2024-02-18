@@ -14,6 +14,10 @@
 #include <utils/selfuncs.h>
 #include <utils/spccache.h>
 
+#if PG_VERSION_NUM <= 120000
+#include <access/htup_details.h>
+#endif
+
 #include "hnsw/build.h"
 #include "hnsw/delete.h"
 #include "hnsw/failure_point.h"

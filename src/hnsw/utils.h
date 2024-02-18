@@ -7,12 +7,15 @@
 #include "options.h"
 #include "usearch.h"
 
-void            CheckMem(int limit, Relation index, usearch_index_t uidx, uint32 n_nodes, char *msg);
-void            LogUsearchOptions(usearch_init_options_t *opts);
-void            PopulateUsearchOpts(Relation index, usearch_init_options_t *opts);
-usearch_label_t GetUsearchLabel(ItemPointer itemPtr);
-float4         *ToFloat4Array(ArrayType *arr);
-bool            VersionsMatch();
+void                  CheckMem(int limit, Relation index, usearch_index_t uidx, uint32 n_nodes, char *msg);
+void                  LogUsearchOptions(usearch_init_options_t *opts);
+void                  PopulateUsearchOpts(Relation index, usearch_init_options_t *opts);
+usearch_label_t       GetUsearchLabel(ItemPointer itemPtr);
+float4               *ToFloat4Array(ArrayType *arr);
+bool                  VersionsMatch();
+uint32                EstimateRowCount(Relation heap);
+int32                 GetColumnAttributeNumber(Relation rel, const char *columnName);
+usearch_metric_kind_t GetMetricKindFromStr(char *metric_kind_str);
 
 // hoping to throw the error via an assertion, if those are on, before elog(ERROR)-ing as a last resort
 // We prefer Assert() because this function is used in contexts where the stack contains non-POD types
