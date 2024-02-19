@@ -76,8 +76,8 @@ float *pq_codebook(Relation index, size_t vector_dimensions, size_t *out_num_cen
     char         *relname = get_rel_name(index->rd_index->indrelid);
     int16         attrNum = index->rd_index->indkey.values[ 0 ];
     // take attrNum of parent table, and lookup its name on the table being indexed
-    char  *colname = get_attname(index->rd_index->indrelid, attrNum, true);
-    size_t formatted_pq_len;
+    char *colname = get_attname(index->rd_index->indrelid, attrNum, true);
+    int   formatted_pq_len;
 
     if(relname == NULL) {
         elog(ERROR, "index relation not found");

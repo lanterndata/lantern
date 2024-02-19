@@ -546,7 +546,8 @@ void StoreExternalIndex(Relation                index,
             LockBuffer(cluster_buf, BUFFER_LOCK_EXCLUSIVE);
             GenericXLogState *cluster_state = GenericXLogStart(index);
 
-            Page cluster_page = GenericXLogRegisterBuffer(cluster_state, cluster_buf, GENERIC_XLOG_FULL_IMAGE);
+            GenericXLogRegisterBuffer(cluster_state, cluster_buf, GENERIC_XLOG_FULL_IMAGE);
+            // todo:: actually, write the codebook here
             GenericXLogFinish(cluster_state);
             UnlockReleaseBuffer(cluster_buf);
         }
