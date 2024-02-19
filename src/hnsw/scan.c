@@ -199,7 +199,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         Assert(!VARATT_IS_COMPRESSED(DatumGetPointer(value)));
         Assert(!VARATT_IS_EXTENDED(DatumGetPointer(value)));
 
-        vec = DatumGetSizedArray(value, scanstate->columnType, scanstate->dimensions);
+        vec = DatumGetSizedArray(value, scanstate->columnType, scanstate->dimensions, false);
 
         if(scanstate->distances == NULL) {
             scanstate->distances = palloc(k * sizeof(float));
@@ -248,7 +248,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
 
         value = scan->orderByData->sk_argument;
 
-        vec = DatumGetSizedArray(value, scanstate->columnType, scanstate->dimensions);
+        vec = DatumGetSizedArray(value, scanstate->columnType, scanstate->dimensions, false);
 
         /* double k and reallocate arrays to account for increased size */
         scanstate->distances = repalloc(scanstate->distances, k * sizeof(float));

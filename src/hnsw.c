@@ -480,7 +480,7 @@ HnswColumnType GetIndexColumnType(Relation index)
 /*
  * Given vector data and vector type, read it as either a float4 or int32 array and return as void*
  */
-void *DatumGetSizedArray(Datum datum, HnswColumnType type, int dimensions)
+void *DatumGetSizedArray(Datum datum, HnswColumnType type, int dimensions, bool copy)
 {
     if(type == VECTOR) {
         Vector *vector = DatumGetVector(datum);
@@ -489,14 +489,14 @@ void *DatumGetSizedArray(Datum datum, HnswColumnType type, int dimensions)
         }
         return (void *)vector->x;
     } else if(type == REAL_ARRAY) {
-        ArrayType *array = DatumGetArrayTypePCopy(datum);
+        ArrayType *array = copy ? DatumGetArrayTypePCopy(datum) : DatumGetArrayTypeP(datum);
         int        array_dim = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
         if(array_dim != dimensions) {
             elog(ERROR, "Expected real array with dimension %d, got %d", dimensions, array_dim);
         }
         return (void *)((float4 *)ARR_DATA_PTR(array));
     } else if(type == INT_ARRAY) {
-        ArrayType *array = DatumGetArrayTypePCopy(datum);
+        ArrayType *array = copy ? DatumGetArrayTypePCopy(datum) : DatumGetArrayTypeP(datum);
         int        array_dim = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
         if(array_dim != dimensions) {
             elog(ERROR, "Expected int array with dimension %d, got %d", dimensions, array_dim);
