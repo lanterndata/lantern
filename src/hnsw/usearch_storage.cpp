@@ -31,7 +31,6 @@ void usearch_init_node(
     assert(level == uint16_t(level));
     node.level(level);
     node.key(key);
-    if(!meta->init_options.pq) std::memcpy(tape + node_size - vector_len, vector, vector_len);
 }
 
 char *extract_node(char              *data,
