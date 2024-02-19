@@ -242,7 +242,7 @@ SELECT l2sq_dist(:'decompressed_1'::real[], :'decompressed_2'::real[]);
 (1 row)
 
 -- Vector operators work as usual on decompressed vectors:
-SELECT decompress_vector(:'v1_pq', '_lantern_codebook_sift_base1k'::regclass) <-> decompress_vector(:'compressed', '_lantern_codebook_sift_base1k'::regclass);
+SELECT decompress_vector(:'v1_pq', '_lantern_internal._codebook_sift_base1k_v'::regclass) <-> decompress_vector(:'compressed', '_lantern_internal._codebook_sift_base1k_v'::regclass);
  ?column? 
 ----------
         0

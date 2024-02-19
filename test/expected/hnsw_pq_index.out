@@ -94,37 +94,37 @@ INSERT INTO small_world_pq (id,v) VALUES
 (9, ARRAY[0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9]);
 SELECT quantize_table('small_world_pq', 'v', 10, 4, 'l2sq');
 INFO:  Table scanned. Dataset size 10
-INFO:  Starting k-means over dataset with (subsets=4, clusters=10)
+INFO:  Starting k-means over dataset with (subvectors=4, clusters=10)
 INFO:  Codebooks created
-NOTICE:  table "_lantern_codebook_small_world_pq" does not exist, skipping
+NOTICE:  table "_codebook_small_world_pq_v" does not exist, skipping
 INFO:  Compressing vectors...
  quantize_table 
 ----------------
  
 (1 row)
 
-SELECT COUNT(DISTINCT subvector_id) FROM _lantern_codebook_small_world_pq;
+SELECT COUNT(DISTINCT subvector_id) FROM _lantern_internal._codebook_small_world_pq_v;
  count 
 -------
      4
 (1 row)
 
-SELECT COUNT(DISTINCT centroid_id) FROM _lantern_codebook_small_world_pq;
+SELECT COUNT(DISTINCT centroid_id) FROM _lantern_internal._codebook_small_world_pq_v;
  count 
 -------
     10
 (1 row)
 
 \d small_world_pq
-                                                                       Table "public.small_world_pq"
- Column |  Type   | Collation | Nullable |                                                             Default                                                              
---------+---------+-----------+----------+----------------------------------------------------------------------------------------------------------------------------------
+                                                                             Table "public.small_world_pq"
+ Column |  Type   | Collation | Nullable |                                                                   Default                                                                    
+--------+---------+-----------+----------+----------------------------------------------------------------------------------------------------------------------------------------------
  id     | integer |           | not null | nextval('small_world_pq_id_seq'::regclass)
  v      | real[]  |           |          | 
- v_pq   | pqvec   |           |          | generated always as (_lantern_internal.compress_vector(v, 4, '_lantern_codebook_small_world_pq'::regclass, 'l2sq'::text)) stored
+ v_pq   | pqvec   |           |          | generated always as (_lantern_internal.quantize_vector(v, 4, '_lantern_internal._codebook_small_world_pq_v'::regclass, 'l2sq'::text)) stored
 
 ALTER TABLE small_world_pq ADD COLUMN v_pq_dec REAL[];
-UPDATE small_world_pq SET v_pq_dec=decompress_vector(v_pq, '_lantern_codebook_small_world_pq');
+UPDATE small_world_pq SET v_pq_dec=decompress_vector(v_pq, '_lantern_internal._codebook_small_world_pq_v');
 SET enable_seqscan=OFF;
 SELECT v as v4 FROM small_world_pq WHERE id = 4 \gset
 -- index without pq
@@ -174,13 +174,13 @@ SELECT id FROM small_world_pq ORDER BY v <-> :'v4' LIMIT 1;
 
 ALTER TABLE small_world_pq DROP COLUMN v_pq;
 ALTER TABLE small_world_pq DROP COLUMN v_pq_dec;
-DROP TABLE _lantern_codebook_small_world_pq;
+DROP TABLE _lantern_internal._codebook_small_world_pq_v;
 DROP INDEX hnsw_pq_l2_index;
 SELECT quantize_table('small_world_pq', 'v', 4, 8, 'l2sq');
 INFO:  Table scanned. Dataset size 10
-INFO:  Starting k-means over dataset with (subsets=8, clusters=4)
+INFO:  Starting k-means over dataset with (subvectors=8, clusters=4)
 INFO:  Codebooks created
-NOTICE:  table "_lantern_codebook_small_world_pq" does not exist, skipping
+NOTICE:  table "_codebook_small_world_pq_v" does not exist, skipping
 INFO:  Compressing vectors...
  quantize_table 
 ----------------
@@ -188,7 +188,7 @@ INFO:  Compressing vectors...
 (1 row)
 
 ALTER TABLE small_world_pq ADD COLUMN v_pq_dec REAL[]; --  GENERATED ALWAYS AS (decompress_vector("v_pq", '_lantern_codebook_small_world_pq')) STORED; -- << cannot do because genrated columns cannot refer to other generated columns
-UPDATE small_world_pq SET v_pq_dec=decompress_vector(v_pq, '_lantern_codebook_small_world_pq');
+UPDATE small_world_pq SET v_pq_dec=decompress_vector(v_pq, '_lantern_internal._codebook_small_world_pq_v');
 CREATE INDEX hnsw_pq_l2_index ON small_world_pq USING lantern_hnsw(v) WITH (pq=True);
 INFO:  done init usearch index
 INFO:  inserted 10 elements
@@ -218,14 +218,14 @@ SELECT id FROM small_world_pq ORDER BY v <-> :'v4' LIMIT 2;
 
 ALTER TABLE small_world_pq DROP COLUMN v_pq;
 ALTER TABLE small_world_pq DROP COLUMN v_pq_dec;
-DROP TABLE _lantern_codebook_small_world_pq;
+DROP TABLE _lantern_internal._codebook_small_world_pq_v;
 DROP INDEX hnsw_pq_l2_index;
 ALTER TABLE small_world_pq SET UNLOGGED;
 SELECT quantize_table('small_world_pq', 'v', 7, 2, 'l2sq');
 INFO:  Table scanned. Dataset size 11
-INFO:  Starting k-means over dataset with (subsets=2, clusters=7)
+INFO:  Starting k-means over dataset with (subvectors=2, clusters=7)
 INFO:  Codebooks created
-NOTICE:  table "_lantern_codebook_small_world_pq" does not exist, skipping
+NOTICE:  table "_codebook_small_world_pq_v" does not exist, skipping
 INFO:  Compressing vectors...
  quantize_table 
 ----------------
@@ -233,7 +233,7 @@ INFO:  Compressing vectors...
 (1 row)
 
 ALTER TABLE small_world_pq ADD COLUMN v_pq_dec REAL[];
-UPDATE small_world_pq SET v_pq_dec=decompress_vector(v_pq, '_lantern_codebook_small_world_pq');
+UPDATE small_world_pq SET v_pq_dec=decompress_vector(v_pq, '_lantern_internal._codebook_small_world_pq_v');
 CREATE INDEX hnsw_pq_l2_index ON small_world_pq USING lantern_hnsw(v) WITH (pq=True);
 INFO:  done init usearch index
 INFO:  inserted 11 elements
@@ -259,9 +259,9 @@ SELECT id FROM small_world_pq ORDER BY v <-> :'v4' LIMIT 3;
 -- Larger indexes
 SELECT quantize_table('sift_base1k'::regclass, 'v', 200, 32, 'l2sq');
 INFO:  Table scanned. Dataset size 1000
-INFO:  Starting k-means over dataset with (subsets=32, clusters=200)
+INFO:  Starting k-means over dataset with (subvectors=32, clusters=200)
 INFO:  Codebooks created
-NOTICE:  table "_lantern_codebook_sift_base1k" does not exist, skipping
+NOTICE:  table "_codebook_sift_base1k_v" does not exist, skipping
 INFO:  Compressing vectors...
  quantize_table 
 ----------------
@@ -278,8 +278,8 @@ DECLARE
    v_pq pqvec;
 BEGIN
   -- cannot use the generated column as it has not been created at this point
-  v_pq = compress_vector(NEW.v, '_lantern_codebook_sift_base1k', 'l2sq');
-  NEW.v_pq_dec :=  decompress_vector(v_pq, '_lantern_codebook_sift_base1k');
+  v_pq = quantize_vector(NEW.v, '_lantern_internal._codebook_sift_base1k_v', 'l2sq');
+  NEW.v_pq_dec :=  decompress_vector(v_pq, '_lantern_internal._codebook_sift_base1k_v');
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -287,7 +287,7 @@ CREATE TRIGGER v_pq_dec_insert_update
 BEFORE INSERT OR UPDATE ON sift_base1k
 FOR EACH ROW
 EXECUTE FUNCTION v_pq_dec_update_trigger();
-UPDATE sift_base1k SET v_pq_dec=decompress_vector(v_pq, '_lantern_codebook_sift_base1k');
+UPDATE sift_base1k SET v_pq_dec=decompress_vector(v_pq, '_lantern_internal._codebook_sift_base1k_v');
 CREATE INDEX sift_base1k_pq_index ON sift_base1k USING lantern_hnsw(v) WITH (pq=True);
 INFO:  done init usearch index
 INFO:  inserted 1000 elements
@@ -315,8 +315,8 @@ SELECT SUM(id1002::int) = 1 as contains_id_1002 FROM (SELECT id = 1002 as id1002
 SELECT id FROM sift_base1k ORDER BY v <-> :'v2' LIMIT 2;
   id  
 ------
- 1001
     2
+ 1001
 (2 rows)
 
 -- since codebook are generated each time and are non deterministic, we cannot print them in regression tests.
