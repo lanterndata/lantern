@@ -16,6 +16,7 @@
 #include "utils.h"
 
 #define COOKBOOK_RELATION_FMT "_codebook_%s_%s"
+
 float *pq_codebook(Relation index, size_t vector_dimensions, size_t *out_num_centroids, size_t *out_num_subvectors)
 {
     /*
@@ -58,8 +59,8 @@ float *pq_codebook(Relation index, size_t vector_dimensions, size_t *out_num_cen
      *            +---------------------------------------------------------------+
      *            | Vector N (Centroid ID: N)                                     |
      *            | +--------------+--------------+             +--------------+ |
-     *            | | Subvector N.1| Subvector N.2|  ...        |Subvector N.M | |    pq_codebook[opts.dimenstions *
-     * sizeof(float) *(N-1)] | +--------------+--------------+             +--------------+ |
+     *            | | Subvector N.1| Subvector N.2|  ...        |Subvector N.M | |
+     *            | +--------------+--------------+             +--------------+ |
      *            +---------------------------------------------------------------+
      *
      *          Each "Vector" represents the concatenation of all M subvectors
