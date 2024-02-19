@@ -216,7 +216,7 @@ pub fn create_codebook<'a> (
             total_fetch_start_time.elapsed().as_secs()
         ));
 
-    // progress indicator is: 5% load, 70% codebook, 15% compression, 10% export
+    // progress indicator is: 5% load, 70% codebook, 15% quantization, 10% export
     report_progress(&progress_cb, &logger, &args.main_progress, 5);
 
     let mut codebooks_hashmap: HashMap<usize, Vec<Vec<f32>>> = HashMap::new();

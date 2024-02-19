@@ -39,8 +39,8 @@ fn get_closest_centroid(centroids: &Vec<Vec<f32>>, subvector: &[f32]) -> u8 {
 // Will parallel iterate over the dataset
 // Then iterate over each subvector of the vector and return
 // closest centroid id for that subvector
-// Result will be vector with row id and compressed vector 
-pub fn compress_vectors(
+// Result will be vector with row id and quantized vector 
+pub fn quantize_vectors(
     dataset: &Vec<DatasetItem>,
     vector_dim: usize,
     subvector_dim: usize,
@@ -48,7 +48,7 @@ pub fn compress_vectors(
     codebooks_hashmap: Arc<RwLock<HashMap<usize, Vec<Vec<f32>>>>>,
     logger: &Logger,
 ) -> Result<Vec<(String, Vec<u8>)>, anyhow::Error> {
-    let compression_start = Instant::now();
+    let quantization_start = Instant::now();
     let rows: Vec<_> = dataset
         .iter()
         .map(|r| r.clone())
@@ -71,17 +71,17 @@ pub fn compress_vectors(
         .collect();
 
     logger.debug(&format!(
-        "Vector compression duration: {}s",
-        compression_start.elapsed().as_secs()
+        "Vector quantization duration: {}s",
+        quantization_start.elapsed().as_secs()
     ));
     Ok(rows)
 }
 
-// This function will write compressed vector into temporary table
+// This function will write quantized vector into temporary table
 // Using COPY protocol and then update the original table via pk mapping
-// So we will use only one UPDATE query to write compressed vectors
+// So we will use only one UPDATE query to write quantized vectors
 // This function can be run in parallel
-pub fn write_compressed_rows<'a>(
+pub fn write_quantized_rows<'a>(
     transaction: &mut Transaction<'a>,
     rows: &Vec<(String, Vec<u8>)>,
     schema: &str,
@@ -101,7 +101,7 @@ pub fn write_compressed_rows<'a>(
     transaction
             .execute(
                 &format!(
-                    "CREATE TEMPORARY TABLE {temp_table_name} AS SELECT {pk} as id, '{{}}'::PQVEC AS {pq_column} FROM {full_table_name} LIMIT 0",
+                    "CREATE TEMPORARY TABLE {temp_table_name} AS SELECT {pk} as id, '{{1}}'::PQVEC AS {pq_column} FROM {full_table_name} LIMIT 0",
                     pq_column = quote_ident(pq_column),
                     pk = quote_ident(pk)
                 ),
@@ -155,8 +155,8 @@ pub fn write_compressed_rows<'a>(
 // It is optimized for parallel runs
 // The data read/write will be done in parallel using rayon
 // It can operate over range of data from the whole table, 
-// so it can be split over multiple vm instances to speed up compression times
-pub struct CompressAndWriteVectorArgs<'a> {
+// so it can be split over multiple vm instances to speed up quantization times
+pub struct QuantizeAndWriteVectorArgs<'a> {
    pub codebook_table_name: &'a str,
    pub full_table_name: &'a str,
    pub db_uri: &'a str,
@@ -169,18 +169,19 @@ pub struct CompressAndWriteVectorArgs<'a> {
    pub total_row_count: usize,
    pub total_task_count: &'a Option<usize>,
    pub parallel_task_count: &'a Option<usize>,
-   pub compression_task_id: &'a Option<usize>,
+   pub quantization_task_id: &'a Option<usize>,
    pub max_connections: usize,
    pub main_progress: &'a AtomicU8,
    pub progress_cb: &'a Option<crate::ProgressCbFn>,
    pub logger: &'a Logger,
 }
 
-pub fn compress_and_write_vectors(args: CompressAndWriteVectorArgs, mut client: Client) -> crate::AnyhowVoidResult {
+pub fn quantize_and_write_vectors(args: QuantizeAndWriteVectorArgs, mut client: Client) -> crate::AnyhowVoidResult {
     let mut transaction = client.transaction()?;
     let logger = args.logger;
     let db_uri = args.db_uri;
     let full_table_name = args.full_table_name;
+    let full_codebook_table_name = args.codebook_table_name;
     let column = args.column;
     let splits = args.splits;
     let schema =  args.schema;
@@ -195,23 +196,22 @@ pub fn compress_and_write_vectors(args: CompressAndWriteVectorArgs, mut client: 
 
     // In batch mode each task will operate on a range of vectors from dataset
     // Here we will determine the range from the task id
-    if let Some(compression_task_id) = args.compression_task_id {
+    if let Some(quantization_task_id) = args.quantization_task_id {
         if args.total_task_count.is_none() {
-            anyhow::bail!("Please provide --total-task-count when providing --compression-task-id");
+            anyhow::bail!("Please provide --total-task-count when providing --quantization-task-id");
         }
-        let compression_task_count = args.total_task_count.as_ref().unwrap();
+        let quantization_task_count = args.total_task_count.as_ref().unwrap();
         
-        let chunk_per_task = limit_end / compression_task_count;
-        limit_start = chunk_per_task * compression_task_id;
-        limit_end = if *compression_task_id == compression_task_count - 1 { limit_end } else { limit_start + chunk_per_task };
+        let chunk_per_task = limit_end / quantization_task_count;
+        limit_start = chunk_per_task * quantization_task_id;
+        limit_end = if *quantization_task_id == quantization_task_count - 1 { limit_end } else { limit_start + chunk_per_task };
     }
 
     // Read all codebook and create a hashmap from it
     let codebook_read_start = Instant::now();
     let codebook_rows = transaction.query(
         &format!(
-            "SELECT subvector_id, centroid_id, c FROM {codebook_table_name} ORDER BY centroid_id ASC;",
-            codebook_table_name = quote_ident(&args.codebook_table_name),
+            "SELECT subvector_id, centroid_id, c FROM {full_codebook_table_name} ORDER BY centroid_id ASC;"
         ),
         &[],
     )?;
@@ -254,13 +254,13 @@ pub fn compress_and_write_vectors(args: CompressAndWriteVectorArgs, mut client: 
  
     // Here we will read the range of data for this chunk in parallel
     // Based on total task count and machine CPU count
-    // Then we will compress the range chunk and write to database
+    // Then we will quantize the range chunk and write to database
     let range_row_count = limit_end - limit_start;
     let num_cores: usize = std::thread::available_parallelism().unwrap().into();
-    let  num_connections: usize = if args.compression_task_id.is_some() {
+    let  num_connections: usize = if args.quantization_task_id.is_some() {
         // This will never fail as it is checked on start to be specified if task id is present
         let parallel_task_count = args.parallel_task_count.as_ref().unwrap_or(args.total_task_count.as_ref().unwrap());
-        // If there's compression task id we expect this to be batch job
+        // If there's quantization task id we expect this to be batch job
         // So each task will get (max_connections / parallel task count) connection pool
         // But it won't be higher than cpu count
         cmp::min(num_cores, (args.max_connections - 2) / parallel_task_count)
@@ -277,7 +277,7 @@ pub fn compress_and_write_vectors(args: CompressAndWriteVectorArgs, mut client: 
  
     logger.debug(&format!("max_connections: {}, num_cores: {num_cores}, num_connections: {num_connections}, chunk_count: {chunk_count}", args.max_connections));
 
-    let compression_and_write_start_time = Instant::now();
+    let quantization_and_write_start_time = Instant::now();
     
     let results = (0..num_connections)
         .into_par_iter()
@@ -321,7 +321,7 @@ pub fn compress_and_write_vectors(args: CompressAndWriteVectorArgs, mut client: 
                 })
                 .collect::<Vec<DatasetItem>>();
             let vector_dim = rows[0].vec.len();
-            let rows = compress_vectors(
+            let rows = quantize_vectors(
                 &rows,
                 vector_dim,
                 subvector_dim,
@@ -330,7 +330,7 @@ pub fn compress_and_write_vectors(args: CompressAndWriteVectorArgs, mut client: 
                 &logger,
             )?;
             
-            write_compressed_rows(
+            write_quantized_rows(
                 &mut transaction,
                 &rows,
                 schema,
@@ -350,7 +350,7 @@ pub fn compress_and_write_vectors(args: CompressAndWriteVectorArgs, mut client: 
        result?;
     }
 
-    logger.debug(&format!("Vectors compressed and exported in {}s", compression_and_write_start_time.elapsed().as_secs()));
+    logger.debug(&format!("Vectors quantized and exported in {}s", quantization_and_write_start_time.elapsed().as_secs()));
     transaction.commit()?;
     Ok(())
 }

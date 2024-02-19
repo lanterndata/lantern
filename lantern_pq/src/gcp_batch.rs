@@ -22,7 +22,7 @@ static CLUSTERING_TASK_TEMPLATE: &'static str = r#"{
            "entrypoint": "/bin/sh",
            "commands": [
              "-c",
-             "/lantern-cli pq-table --uri ${DB_URI} --table ${TABLE} --column ${COLUMN} --clusters ${CLUSTERS} --splits ${SPLITS} --parallel-task-count ${PARALLEL_TASK_COUNT} --subvector-id ${BATCH_TASK_INDEX} --skip-table-setup --skip-vector-compression; exit $?"
+             "/lantern-cli pq-table --uri ${DB_URI} --table ${TABLE} --column ${COLUMN} --clusters ${CLUSTERS} --splits ${SPLITS} --parallel-task-count ${PARALLEL_TASK_COUNT} --subvector-id ${BATCH_TASK_INDEX} --skip-table-setup --skip-vector-quantization; exit $?"
            ]
          },
          "environment": {
@@ -32,7 +32,7 @@ static CLUSTERING_TASK_TEMPLATE: &'static str = r#"{
              "COLUMN": "{column}",
              "CLUSTERS": "{cluster_count}",
              "SPLITS": "{splits}",
-             "PARALLEL_TASK_COUNT": "{gcp_compression_task_parallelism}"
+             "PARALLEL_TASK_COUNT": "{gcp_quantization_task_parallelism}"
            }
          }
        }
@@ -53,7 +53,7 @@ static CLUSTERING_TASK_TEMPLATE: &'static str = r#"{
    }
 }"#;
 
-static COMPRESSION_TASK_TEMPLATE: &'static str = r#"{
+static QUANTIZATION_TASK_TEMPLATE: &'static str = r#"{
    "taskGroups": [{
      "taskSpec": {
       "runnables": [
@@ -64,7 +64,7 @@ static COMPRESSION_TASK_TEMPLATE: &'static str = r#"{
            "entrypoint": "/bin/sh",
            "commands": [
              "-c",
-             "/lantern-cli pq-table --uri ${DB_URI} --table ${TABLE} --column ${COLUMN} --clusters ${CLUSTERS} --splits ${SPLITS} --skip-table-setup --skip-codebook-creation --total-task-count ${COMPRESSION_TASK_COUNT} --parallel-task-count ${PARALLEL_TASK_COUNT} --compression-task-id ${BATCH_TASK_INDEX}; exit $?"
+             "/lantern-cli pq-table --uri ${DB_URI} --table ${TABLE} --column ${COLUMN} --clusters ${CLUSTERS} --splits ${SPLITS} --skip-table-setup --skip-codebook-creation --total-task-count ${QUANTIZATION_TASK_COUNT} --parallel-task-count ${PARALLEL_TASK_COUNT} --quantization-task-id ${BATCH_TASK_INDEX}; exit $?"
            ]
          },
          "environment": {
@@ -74,8 +74,8 @@ static COMPRESSION_TASK_TEMPLATE: &'static str = r#"{
              "COLUMN": "{column}",
              "CLUSTERS": "{cluster_count}",
              "SPLITS": "{splits}",
-             "COMPRESSION_TASK_COUNT": "{gcp_compression_task_count}",
-             "PARALLEL_TASK_COUNT": "{gcp_compression_task_parallelism}"
+             "QUANTIZATION_TASK_COUNT": "{gcp_quantization_task_count}",
+             "PARALLEL_TASK_COUNT": "{gcp_quantization_task_parallelism}"
            }
          }
        }
@@ -87,9 +87,9 @@ static COMPRESSION_TASK_TEMPLATE: &'static str = r#"{
       "maxRetryCount": 1,
       "maxRunDuration": "2000s"
      },
-     "taskCount": "{gcp_compression_task_count}",
+     "taskCount": "{gcp_quantization_task_count}",
      "taskCountPerNode": 1,
-     "parallelism": "{gcp_compression_task_parallelism}"
+     "parallelism": "{gcp_quantization_task_parallelism}"
    }],
    "logsPolicy": {
      "destination": "CLOUD_LOGGING"
@@ -191,7 +191,7 @@ pub fn quantize_table_on_gcp(
     main_progress: AtomicU8,
     db_uri: &str,
     full_table_name: &str,
-    codebook_table_name: &str,
+    full_codebook_table_name: &str,
     pq_column_name: &str,
     progress_cb: Option<ProgressCbFn>,
     logger: &Logger,
@@ -229,12 +229,12 @@ pub fn quantize_table_on_gcp(
 
     let total_row_count = total_row_count.try_get::<usize, i64>(0)? as usize;
 
-    let gcp_compression_cpu_count = args.gcp_compression_cpu.unwrap_or(4);
-    let gcp_compression_memory_gb = args
-        .gcp_compression_memory_gb
-        .unwrap_or((gcp_compression_cpu_count as f64 * 3.75) as usize);
+    let gcp_quantization_cpu_count = args.gcp_quantization_cpu.unwrap_or(4);
+    let gcp_quantization_memory_gb = args
+        .gcp_quantization_memory_gb
+        .unwrap_or((gcp_quantization_cpu_count as f64 * 3.75) as usize);
 
-    let gcp_clustering_cpu_count = args.gcp_compression_cpu.unwrap_or_else(|| {
+    let gcp_clustering_cpu_count = args.gcp_quantization_cpu.unwrap_or_else(|| {
         if total_row_count < 100_000 {
             8
         } else if total_row_count < 1_000_000 {
@@ -254,20 +254,24 @@ pub fn quantize_table_on_gcp(
         .unwrap_or((gcp_clustering_cpu_count as f64 * 3.75) as usize);
 
     // Let each vm process max 50k rows
-    let gcp_compression_task_count = args
-        .gcp_compression_task_count
+    let gcp_quantization_task_count = args
+        .gcp_quantization_task_count
         .unwrap_or(cmp::max(total_row_count / 50000, 1));
 
     // Limit parallel task count to not exceed max connection limit
-    let gcp_compression_task_parallelism = args
-        .gcp_compression_task_parallelism
-        .unwrap_or(cmp::max(1, max_connections / gcp_compression_task_count));
+    let gcp_quantization_task_parallelism = args
+        .gcp_quantization_task_parallelism
+        .unwrap_or(cmp::max(1, max_connections / gcp_quantization_task_count));
 
-    let gcp_compression_task_parallelism =
-        cmp::min(gcp_compression_task_parallelism, gcp_compression_task_count);
+    let gcp_quantization_task_parallelism = cmp::min(
+        gcp_quantization_task_parallelism,
+        gcp_quantization_task_count,
+    );
 
-    let gcp_compression_task_parallelism =
-        cmp::min(gcp_compression_task_parallelism, gcp_compression_task_count);
+    let gcp_quantization_task_parallelism = cmp::min(
+        gcp_quantization_task_parallelism,
+        gcp_quantization_task_count,
+    );
 
     // Limit parallel task count to not exceed max connection limit
     let gcp_clustering_task_parallelism = args.gcp_clustering_task_parallelism.unwrap_or(cmp::min(
@@ -280,7 +284,7 @@ pub fn quantize_table_on_gcp(
         crate::setup::setup_tables(
             &mut transaction,
             &full_table_name,
-            &codebook_table_name,
+            &full_codebook_table_name,
             &pq_column_name,
             &logger,
         )?;
@@ -288,7 +292,7 @@ pub fn quantize_table_on_gcp(
         crate::setup::setup_triggers(
             &mut transaction,
             &full_table_name,
-            &codebook_table_name,
+            &full_codebook_table_name,
             &pq_column_name,
             &args.column,
             "l2sq",
@@ -298,6 +302,7 @@ pub fn quantize_table_on_gcp(
         // Creating new transaction, because  current transaction will lock table reads
         // and block the process
         transaction.commit()?;
+        transaction = db_client.transaction()?;
         set_and_report_progress(&progress_cb, &logger, &main_progress, 5);
     }
 
@@ -336,12 +341,16 @@ pub fn quantize_table_on_gcp(
             "Clustering duration: {}s",
             task_start.elapsed().as_secs()
         ));
+        crate::setup::make_codebook_logged_and_readonly(
+            &mut transaction,
+            &full_codebook_table_name,
+        )?;
         set_and_report_progress(&progress_cb, &logger, &main_progress, 90);
     }
 
-    if !args.skip_vector_compression {
+    if !args.skip_vector_quantization {
         let task_start = Instant::now();
-        let mut body_json: Value = serde_json::from_str(COMPRESSION_TASK_TEMPLATE)?;
+        let mut body_json: Value = serde_json::from_str(QUANTIZATION_TASK_TEMPLATE)?;
         body_json["taskGroups"][0]["taskSpec"]["runnables"][0]["container"]["imageUri"] =
             json!(gcp_image);
         body_json["taskGroups"][0]["taskSpec"]["runnables"][0]["container"]
@@ -357,15 +366,15 @@ pub fn quantize_table_on_gcp(
         body_json["taskGroups"][0]["taskSpec"]["runnables"][0]["environment"]["variables"]
             ["SPLITS"] = json!(args.splits.to_string());
         body_json["taskGroups"][0]["taskSpec"]["runnables"][0]["environment"]["variables"]
-            ["COMPRESSION_TASK_COUNT"] = json!(gcp_compression_task_count.to_string());
+            ["QUANTIZATION_TASK_COUNT"] = json!(gcp_quantization_task_count.to_string());
         body_json["taskGroups"][0]["taskSpec"]["runnables"][0]["environment"]["variables"]
-            ["PARALLEL_TASK_COUNT"] = json!(gcp_compression_task_parallelism.to_string());
+            ["PARALLEL_TASK_COUNT"] = json!(gcp_quantization_task_parallelism.to_string());
         body_json["taskGroups"][0]["taskSpec"]["computeResource"]["cpuMilli"] =
-            json!(gcp_compression_cpu_count * 1000);
+            json!(gcp_quantization_cpu_count * 1000);
         body_json["taskGroups"][0]["taskSpec"]["computeResource"]["memoryMib"] =
-            json!(gcp_compression_memory_gb * 1000);
-        body_json["taskGroups"][0]["taskCount"] = json!(gcp_compression_task_count);
-        body_json["taskGroups"][0]["parallelism"] = json!(gcp_compression_task_parallelism);
+            json!(gcp_quantization_memory_gb * 1000);
+        body_json["taskGroups"][0]["taskCount"] = json!(gcp_quantization_task_count);
+        body_json["taskGroups"][0]["parallelism"] = json!(gcp_quantization_task_parallelism);
 
         run_batch_job(
             &logger,
@@ -373,11 +382,10 @@ pub fn quantize_table_on_gcp(
             &format!("projects/{gcp_project_id}/locations/{gcp_region}"),
         )?;
         logger.debug(&format!(
-            "Compression duration: {}s",
+            "quantization duration: {}s",
             task_start.elapsed().as_secs()
         ));
     }
-
     set_and_report_progress(&progress_cb, &logger, &main_progress, 100);
     Ok(())
 }

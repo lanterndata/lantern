@@ -40,15 +40,15 @@ pub struct PQArgs {
     #[arg(long, default_value_t = false)]
     pub skip_table_setup: bool,
 
-    /// If true vectors will not be compressed and exported to the table
+    /// If true vectors will not be quantized and exported to the table
     #[arg(long, default_value_t = false)]
-    pub skip_vector_compression: bool,
+    pub skip_vector_quantization: bool,
 
     /// If true codebook will not be created
     #[arg(long, default_value_t = false)]
     pub skip_codebook_creation: bool,
 
-    /// Primary key of the table, needed for compression job
+    /// Primary key of the table, needed for quantization job
     #[arg(long, default_value = "id")]
     pub pk: String,
 
@@ -60,9 +60,9 @@ pub struct PQArgs {
     #[arg(long)]
     pub parallel_task_count: Option<usize>,
 
-    /// Task id of currently running compression job (used in gcp batch jobs)
+    /// Task id of currently running quantization job (used in gcp batch jobs)
     #[arg(long)]
-    pub compression_task_id: Option<usize>,
+    pub quantization_task_id: Option<usize>,
 
     // GCP ARGS
     /// If true job will be submitted to gcp
@@ -85,16 +85,16 @@ pub struct PQArgs {
     #[arg(long)]
     pub gcp_image: Option<String>,
 
-    /// Task count for compression. default: calculated automatically based on dataset size
+    /// Task count for quantization. default: calculated automatically based on dataset size
     #[arg(long)]
-    pub gcp_compression_task_count: Option<usize>,
+    pub gcp_quantization_task_count: Option<usize>,
 
-    /// Parallel tasks for compression. default: calculated automatically based on
+    /// Parallel tasks for quantization. default: calculated automatically based on
     /// max connections
     #[arg(long)]
-    pub gcp_compression_task_parallelism: Option<usize>,
+    pub gcp_quantization_task_parallelism: Option<usize>,
 
-    /// Parallel tasks for compression. default: calculated automatically based on
+    /// Parallel tasks for quantization. default: calculated automatically based on
     /// max connections and dataset size
     #[arg(long)]
     pub gcp_clustering_task_parallelism: Option<usize>,
@@ -111,11 +111,11 @@ pub struct PQArgs {
     #[arg(long)]
     pub gcp_clustering_memory_gb: Option<usize>,
 
-    /// CPU count for one VM in compression task. default: calculated based on dataset size
+    /// CPU count for one VM in quantization task. default: calculated based on dataset size
     #[arg(long)]
-    pub gcp_compression_cpu: Option<usize>,
+    pub gcp_quantization_cpu: Option<usize>,
 
-    /// Memory GB for one VM in compression task. default: calculated based on CPU count
+    /// Memory GB for one VM in quantization task. default: calculated based on CPU count
     #[arg(long)]
-    pub gcp_compression_memory_gb: Option<usize>,
+    pub gcp_quantization_memory_gb: Option<usize>,
 }

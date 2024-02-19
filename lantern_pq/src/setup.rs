@@ -8,22 +8,21 @@ use crate::AnyhowVoidResult;
 pub fn setup_tables<'a>(
     transaction: &mut Transaction<'a>,
     full_table_name: &str,
-    codebook_table_name: &str,
+    full_codebook_table_name: &str,
     pq_column_name: &str,
     logger: &Logger,
 ) -> AnyhowVoidResult {
     transaction.batch_execute(&format!(
         "
-             CREATE TABLE {codebook_table_name} (subvector_id INT, centroid_id INT, c REAL[]);
+             CREATE UNLOGGED TABLE {full_codebook_table_name} (subvector_id INT, centroid_id INT, c REAL[]);
              ALTER TABLE {full_table_name} ADD COLUMN {pq_column_name} PQVEC;
-             CREATE INDEX ON {codebook_table_name} USING BTREE(subvector_id, centroid_id);
-             CREATE INDEX ON {codebook_table_name} USING BTREE(centroid_id);
+             CREATE INDEX ON {full_codebook_table_name} USING BTREE(subvector_id, centroid_id);
+             CREATE INDEX ON {full_codebook_table_name} USING BTREE(centroid_id);
         ",
-        codebook_table_name = quote_ident(&codebook_table_name),
         pq_column_name = quote_ident(&pq_column_name)
     ))?;
     logger.info(&format!(
-        "{codebook_table_name} table and {pq_column_name} column created successfully"
+        "{full_codebook_table_name} table and {pq_column_name} column created successfully"
     ));
     Ok(())
 }
@@ -32,7 +31,7 @@ pub fn setup_tables<'a>(
 pub fn setup_triggers<'a>(
     transaction: &mut Transaction<'a>,
     full_table_name: &str,
-    codebook_table_name: &str,
+    full_codebook_table_name: &str,
     pq_column: &str,
     column: &str,
     distance_metric: &str,
@@ -56,7 +55,7 @@ pub fn setup_triggers<'a>(
           IF NEW.{column} IS NULL THEN
             NEW.{pq_column} := NULL;
           ELSE
-            NEW.{pq_column} := _lantern_internal.compress_vector(NEW.{column}, {splits}, {codebook_table_name}::regclass, '{distance_metric}');
+            NEW.{pq_column} := _lantern_internal.quantize_vector(NEW.{column}, {splits}, '{full_codebook_table_name}'::regclass, '{distance_metric}');
           END IF;
           RETURN NEW;
         END
@@ -64,7 +63,17 @@ pub fn setup_triggers<'a>(
 
       CREATE TRIGGER {insert_trigger_name} BEFORE INSERT ON {full_table_name} FOR EACH ROW EXECUTE FUNCTION {trigger_fn_name}();
       CREATE TRIGGER {update_trigger_name} BEFORE UPDATE OF {column} ON {full_table_name} FOR EACH ROW EXECUTE FUNCTION {trigger_fn_name}();
+    ", pq_column=quote_ident(pq_column), column=quote_ident(column) ))?;
+    Ok(())
+}
 
-    ", pq_column=quote_ident(pq_column), column=quote_ident(column), codebook_table_name=quote_ident(codebook_table_name)))?;
+pub fn make_codebook_logged_and_readonly<'a>(
+    transaction: &mut Transaction<'a>,
+    full_codebook_table_name: &str,
+) -> AnyhowVoidResult {
+    transaction.batch_execute(&format!("
+    ALTER TABLE {full_codebook_table_name} SET LOGGED;
+    CREATE TRIGGER readonly_guard BEFORE INSERT OR UPDATE OR DELETE ON {full_codebook_table_name} EXECUTE PROCEDURE _lantern_internal.forbid_table_change();
+    "))?;
     Ok(())
 }

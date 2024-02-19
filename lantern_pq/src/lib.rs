@@ -1,7 +1,7 @@
 use codebook::CreateCodebookArgs;
-use compression::CompressAndWriteVectorArgs;
 use lantern_logger::{LogLevel, Logger};
 use lantern_utils::{append_params_to_uri, get_full_table_name, quote_ident};
+use quantization::QuantizeAndWriteVectorArgs;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
@@ -10,8 +10,8 @@ use postgres::{Client, NoTls};
 
 pub mod cli;
 mod codebook;
-mod compression;
 mod gcp_batch;
+mod quantization;
 mod setup;
 
 type AnyhowVoidResult = Result<(), anyhow::Error>;
@@ -61,18 +61,18 @@ struct DatasetItem {
 // This code can be used in 2 modes
 // The first one is to quantize the whole table for all subvectors
 // In this mode whole vectors will be fetched from the table and kmeans will be run for all
-// subvectors then codebook will be created, vectors will be compressed and written to table
+// subvectors then codebook will be created, vectors will be quantized and written to table
 //
 // The second mode is meant to horizontally scale this job, so only one subvector will be fetched
 // for the job and codebook will be created for that subvector
-// Then separate job will be run to compress vectors and write to table
+// Then separate job will be run to quantize vectors and write to table
 
 fn quantize_table_local(
     args: cli::PQArgs,
     main_progress: AtomicU8,
     db_uri: &str,
     full_table_name: &str,
-    codebook_table_name: &str,
+    full_codebook_table_name: &str,
     pq_column_name: &str,
     progress_cb: Option<ProgressCbFn>,
     is_canceled: Option<Arc<RwLock<bool>>>,
@@ -91,7 +91,7 @@ fn quantize_table_local(
         setup::setup_tables(
             &mut transaction,
             &full_table_name,
-            &codebook_table_name,
+            &full_codebook_table_name,
             &pq_column_name,
             &logger,
         )?;
@@ -99,7 +99,7 @@ fn quantize_table_local(
         setup::setup_triggers(
             &mut transaction,
             &full_table_name,
-            &codebook_table_name,
+            &full_codebook_table_name,
             &pq_column_name,
             column,
             "l2sq",
@@ -112,7 +112,7 @@ fn quantize_table_local(
         transaction = client.transaction()?;
 
         // Commit and return if the task is to only set up tables
-        if args.skip_codebook_creation && args.skip_vector_compression {
+        if args.skip_codebook_creation && args.skip_vector_quantization {
             set_and_report_progress(&progress_cb, &logger, &main_progress, 100);
             return Ok(());
         }
@@ -134,15 +134,15 @@ fn quantize_table_local(
     )?;
     let max_connections = max_connections.get::<usize, i32>(0) as usize;
 
-    // Only compress will be passed if task is run from Batch job
+    // If --skip-codebook-creation is passed that means we only need to quantize and write vectors
     // As there will be three phases
-    // 1. table setup, 2. codebook craetion 3. table compression 4. trigger setup
+    // 1. table setup, 2. codebook craetion 3. table quantization 4. trigger setup
     // 2 and 3 phases will be run in parallel
-    if args.skip_codebook_creation {
+    if args.skip_codebook_creation && !args.skip_vector_quantization {
         drop(transaction);
-        compression::compress_and_write_vectors(
-            CompressAndWriteVectorArgs {
-                codebook_table_name: &codebook_table_name,
+        quantization::quantize_and_write_vectors(
+            QuantizeAndWriteVectorArgs {
+                codebook_table_name: &full_codebook_table_name,
                 full_table_name: &full_table_name,
                 db_uri,
                 schema,
@@ -154,7 +154,7 @@ fn quantize_table_local(
                 total_row_count,
                 total_task_count: &args.total_task_count,
                 parallel_task_count: &args.parallel_task_count,
-                compression_task_id: &args.compression_task_id,
+                quantization_task_id: &args.quantization_task_id,
                 max_connections,
                 main_progress: &main_progress,
                 progress_cb: &progress_cb,
@@ -191,7 +191,7 @@ fn quantize_table_local(
             pk: &args.pk,
             column,
             full_table_name: &full_table_name,
-            codebook_table_name: &codebook_table_name,
+            codebook_table_name: &full_codebook_table_name,
             total_row_count,
             max_connections,
             splits: args.splits,
@@ -204,12 +204,20 @@ fn quantize_table_local(
         &mut transaction,
     )?;
 
-    // Compress vectors using codebook
+    if args.subvector_id.is_none() {
+        // We will only run this if clustering is run for whole dataset
+        // As we can not know if this is the last task or not
+        // So it is the responsibility of workflow orchestrator
+        // To make the codebook table logged and readonly
+        setup::make_codebook_logged_and_readonly(&mut transaction, &full_codebook_table_name)?;
+    }
+
+    // quantize vectors using codebook
     // And write results to target table
-    if !args.skip_vector_compression {
+    if !args.skip_vector_quantization {
         let codebooks_hashmap = Arc::new(RwLock::new(codebooks_hashmap));
 
-        let dataset = compression::compress_vectors(
+        let dataset = quantization::quantize_vectors(
             &dataset,
             vector_dim,
             subvector_dim,
@@ -225,14 +233,14 @@ fn quantize_table_local(
             anyhow::bail!("Job canceled");
         }
 
-        compression::write_compressed_rows(
+        quantization::write_quantized_rows(
             &mut transaction,
             &dataset,
             &args.schema,
             &args.table,
             &pq_column_name,
             &args.pk,
-            "compress",
+            "quantize",
             &main_progress,
             &progress_cb,
             &logger,
@@ -261,7 +269,8 @@ pub fn quantize_table(
     let codebook_table_name = args
         .codebook_table_name
         .clone()
-        .unwrap_or(format!("_lantern_codebook_{}", args.table));
+        .unwrap_or(format!("_codebook_{}_{}", args.table, args.column));
+    let full_codebook_table_name = get_full_table_name("_lantern_internal", &codebook_table_name);
     let pq_column_name = format!("{}_pq", args.column);
     let db_uri = append_params_to_uri(&args.uri, CONNECTION_PARAMS);
 
@@ -271,7 +280,7 @@ pub fn quantize_table(
             main_progress,
             &db_uri,
             &full_table_name,
-            &codebook_table_name,
+            &full_codebook_table_name,
             &pq_column_name,
             progress_cb,
             &logger,
@@ -282,7 +291,7 @@ pub fn quantize_table(
             main_progress,
             &db_uri,
             &full_table_name,
-            &codebook_table_name,
+            &full_codebook_table_name,
             &pq_column_name,
             progress_cb,
             is_canceled,
