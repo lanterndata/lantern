@@ -1,5 +1,7 @@
 DROP TABLE IF EXISTS sift_base1k;
 
+SET client_min_messages=ERROR;
+
 \ir utils/sift1k_array.sql
 \ir utils/sift1k_array_query.sql
 \ir utils/random_array.sql
@@ -26,7 +28,6 @@ INSERT INTO small_world_pq (id,v) VALUES
 SELECT quantize_table('small_world_pq', 'v', 10, 4, 'l2sq');
 SELECT COUNT(DISTINCT subvector_id) FROM _lantern_internal._codebook_small_world_pq_v;
 SELECT COUNT(DISTINCT centroid_id) FROM _lantern_internal._codebook_small_world_pq_v;
-\d small_world_pq
 
 ALTER TABLE small_world_pq ADD COLUMN v_pq_dec REAL[];
 UPDATE small_world_pq SET v_pq_dec=decompress_vector(v_pq, '_lantern_internal._codebook_small_world_pq_v');

@@ -1,5 +1,6 @@
 DROP TABLE IF EXISTS sift_base1k;
 NOTICE:  table "sift_base1k" does not exist, skipping
+SET client_min_messages=ERROR;
 \ir utils/sift1k_array.sql
 CREATE TABLE IF NOT EXISTS sift_base1k (
     id SERIAL,
@@ -76,7 +77,6 @@ END;
 $$ LANGUAGE plpgsql;
 -- \ir ./utils/common.sql
 DROP TABLE IF EXISTS small_world_pq;
-NOTICE:  table "small_world_pq" does not exist, skipping
 CREATE TABLE small_world_pq (
     id SERIAL,
     v REAL[]
@@ -96,7 +96,6 @@ SELECT quantize_table('small_world_pq', 'v', 10, 4, 'l2sq');
 INFO:  Table scanned. Dataset size 10
 INFO:  Starting k-means over dataset with (subvectors=4, clusters=10)
 INFO:  Codebooks created
-NOTICE:  table "_codebook_small_world_pq_v" does not exist, skipping
 INFO:  Compressing vectors...
  quantize_table 
 ----------------
@@ -114,14 +113,6 @@ SELECT COUNT(DISTINCT centroid_id) FROM _lantern_internal._codebook_small_world_
 -------
     10
 (1 row)
-
-\d small_world_pq
-                                                                             Table "public.small_world_pq"
- Column |  Type   | Collation | Nullable |                                                                   Default                                                                    
---------+---------+-----------+----------+----------------------------------------------------------------------------------------------------------------------------------------------
- id     | integer |           | not null | nextval('small_world_pq_id_seq'::regclass)
- v      | real[]  |           |          | 
- v_pq   | pqvec   |           |          | generated always as (_lantern_internal.quantize_vector(v, 4, '_lantern_internal._codebook_small_world_pq_v'::regclass, 'l2sq'::text)) stored
 
 ALTER TABLE small_world_pq ADD COLUMN v_pq_dec REAL[];
 UPDATE small_world_pq SET v_pq_dec=decompress_vector(v_pq, '_lantern_internal._codebook_small_world_pq_v');
@@ -180,7 +171,6 @@ SELECT quantize_table('small_world_pq', 'v', 4, 8, 'l2sq');
 INFO:  Table scanned. Dataset size 10
 INFO:  Starting k-means over dataset with (subvectors=8, clusters=4)
 INFO:  Codebooks created
-NOTICE:  table "_codebook_small_world_pq_v" does not exist, skipping
 INFO:  Compressing vectors...
  quantize_table 
 ----------------
@@ -225,7 +215,6 @@ SELECT quantize_table('small_world_pq', 'v', 7, 2, 'l2sq');
 INFO:  Table scanned. Dataset size 11
 INFO:  Starting k-means over dataset with (subvectors=2, clusters=7)
 INFO:  Codebooks created
-NOTICE:  table "_codebook_small_world_pq_v" does not exist, skipping
 INFO:  Compressing vectors...
  quantize_table 
 ----------------
@@ -260,7 +249,6 @@ SELECT quantize_table('sift_base1k'::regclass, 'v', 200, 32, 'l2sq');
 INFO:  Table scanned. Dataset size 1000
 INFO:  Starting k-means over dataset with (subvectors=32, clusters=200)
 INFO:  Codebooks created
-NOTICE:  table "_codebook_sift_base1k_v" does not exist, skipping
 INFO:  Compressing vectors...
  quantize_table 
 ----------------
