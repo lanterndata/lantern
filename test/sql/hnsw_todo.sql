@@ -99,3 +99,44 @@ SELECT id FROM test_table ORDER BY int_to_fixed_binary_real_array(id) <?> '{0,0,
 -- set lantern.pgvector_compat=false;
 -- select lantern_create_external_index('v', 'sift_base1k', 'public', 'cos', 128, 10, 10, 10, 'hnsw_cos_index');
 -- ===================================================== -
+
+-- since usearch does not natively support pagination, we double number of elements we ask from it when more is needed
+-- this generally works but may cause issues if the index has many duplicates or just vectors close together, since the following
+-- search runs may have slightly different order, resulting in some duplicate results and some missing results
+-- the issue goes away if init_k variable is set up according to number of results necessary
+
+DROP TABLE IF EXISTS small_world_repeat;
+CREATE TABLE small_world_repeat (
+    id SERIAL,
+    v REAL[]
+);
+
+INSERT INTO small_world_repeat (id,v) VALUES
+(0, ARRAY[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]),
+(1, ARRAY[0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1]),
+(2, ARRAY[0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2]),
+(3, ARRAY[0.3,0.3,0.3,0.3,0.3,0.3,0.3,0.3,0.3,0.3,0.3,0.3,0.3,0.3,0.3,0.3]),
+(4, ARRAY[0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4]),
+(5, ARRAY[0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5]),
+(6, ARRAY[0.6,0.6,0.6,0.6,0.6,0.6,0.6,0.6,0.6,0.6,0.6,0.6,0.6,0.6,0.6,0.6]),
+(7, ARRAY[0.7,0.7,0.7,0.7,0.7,0.7,0.7,0.7,0.7,0.7,0.7,0.7,0.7,0.7,0.7,0.7]),
+(8, ARRAY[0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8]),
+(9, ARRAY[0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9]);
+
+CREATE OR REPLACE FUNCTION fill_same() RETURNS VOID AS $$
+BEGIN
+FOR i in 1..1000 LOOP
+  INSERT INTO small_world_repeat (id,v) VALUES (1000 + i, ARRAY[0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4]);
+END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+SELECT fill_same();
+
+CREATE INDEX hnsw_l2_index_repeat ON small_world_repeat USING lantern_hnsw(v);
+set hnsw.init_k=1;
+-- the query searches for the nearest 600 vectors closest to the duplicated constant vector above. It then aggregates all results in the outer query by number of times each id appears
+-- if pagination worked correctly, we would expect all ids to appear at most once, but as you can see many of them appear 2 or 3 times below
+explain select id, ARRAY_AGG(dist) as dists, count(id) as cnt from (select id, (v <-> ARRAY[0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4]) as dist FROM small_world_repeat order by dist LIMIT 200) b group by id order by cnt DESC, dists, id limit 10;
+        select id, ARRAY_AGG(dist) as dists, count(id) as cnt from (select id, (v <-> ARRAY[0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4]) as dist FROM small_world_repeat order by dist LIMIT 200) b group by id order by cnt DESC, dists, id limit 10;
+set hnsw.init_k=200;
+        select id, ARRAY_AGG(dist) as dists, count(id) as cnt from (select id, (v <-> ARRAY[0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4]) as dist FROM small_world_repeat order by dist LIMIT 200) b group by id order by cnt DESC, dists, id limit 10;
