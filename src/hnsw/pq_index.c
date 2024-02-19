@@ -4,7 +4,6 @@
 
 #include <access/heapam.h>
 #include <access/relscan.h>
-#include <access/table.h>
 #include <assert.h>
 #include <catalog/namespace.h>
 #include <hnsw.h>
