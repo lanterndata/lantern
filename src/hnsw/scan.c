@@ -12,7 +12,7 @@
 #include "external_index.h"
 #include "hnsw.h"
 #include "options.h"
-#include "pq_index.h"
+#include "pqtable.h"
 #include "retriever.h"
 #include "utils.h"
 #include "vector.h"

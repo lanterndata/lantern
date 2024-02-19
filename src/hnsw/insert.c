@@ -4,7 +4,6 @@
 
 #include <access/generic_xlog.h>
 #include <assert.h>
-#include <hnsw/pq_index.h>
 #if PG_VERSION_NUM >= 150000
 #include <common/pg_prng.h>
 #endif
@@ -19,6 +18,7 @@
 #include "build.h"
 #include "external_index.h"
 #include "hnsw.h"
+#include "hnsw/pqtable.h"
 #include "options.h"
 #include "retriever.h"
 #include "usearch.h"

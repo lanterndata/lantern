@@ -13,7 +13,6 @@
 #include <executor/executor.h>
 #include <fmgr.h>
 #include <funcapi.h>
-#include <hnsw/pq_index.h>
 #include <miscadmin.h>
 #include <nodes/execnodes.h>
 #include <stdint.h>
@@ -42,6 +41,7 @@
 #include "bench.h"
 #include "external_index.h"
 #include "hnsw.h"
+#include "hnsw/pqtable.h"
 #include "hnsw/retriever.h"
 #include "options.h"
 #include "utils.h"
