@@ -6,6 +6,8 @@
 #include <access/relscan.h>
 #include <access/table.h>
 #include <assert.h>
+#include <catalog/namespace.h>
+#include <hnsw.h>
 #include <utils/lsyscache.h>
 #include <utils/rel.h>
 #include <utils/relcache.h>
@@ -13,6 +15,7 @@
 
 #include "utils.h"
 
+#define COOKBOOK_RELATION_FMT "_codebook_%s_%s"
 float *pq_codebook(Relation index, size_t vector_dimensions, size_t *out_num_centroids, size_t *out_num_subvectors)
 {
     /*
@@ -64,23 +67,36 @@ float *pq_codebook(Relation index, size_t vector_dimensions, size_t *out_num_cen
      * */
     float *codebook = (float4 *)palloc0(vector_dimensions * sizeof(float4) * 256);
 
-    const int MAX_PQ_RELNAME_SIZE = 400;
-#define COOKBOOK_RELATION_FMT "_lantern_codebook_%s"
-    char   pq_relname[ MAX_PQ_RELNAME_SIZE ];
-    char  *relname = get_rel_name(index->rd_index->indrelid);
-    size_t formatted_pq_len = snprintf(pq_relname, MAX_PQ_RELNAME_SIZE, COOKBOOK_RELATION_FMT, relname);
+    const int     MAX_PQ_RELNAME_SIZE = 400;
+    Relation      pq_rel;
+    TableScanDesc pq_scan;
+    HeapTuple     pq_tuple;
+    char          pq_relname[ MAX_PQ_RELNAME_SIZE ];
+    char         *relname = get_rel_name(index->rd_index->indrelid);
+    int16         attrNum = index->rd_index->indkey.values[ 0 ];
+    // take attrNum of parent table, and lookup its name on the table being indexed
+    char  *colname = get_attname(index->rd_index->indrelid, attrNum, true);
+    size_t formatted_pq_len;
+
+    if(relname == NULL) {
+        elog(ERROR, "index relation not found");
+    }
+
+    if(colname == NULL) {
+        elog(ERROR, "vector column not found");
+    }
+
+    formatted_pq_len = snprintf(pq_relname, MAX_PQ_RELNAME_SIZE, COOKBOOK_RELATION_FMT, relname, colname);
+
     if(formatted_pq_len >= MAX_PQ_RELNAME_SIZE) {
         // todo:: test this
         elog(ERROR, "formatted codebook table name is too long");
     }
     // assuming the index and the cookbook have the same namespace
-    Oid pq_oid = get_relname_relid(pq_relname, RelationGetNamespace(index));
+    Oid pq_oid = get_relname_relid(pq_relname, LookupNamespaceNoError(LANTERN_INTERNAL_SCHEMA_NAME));
     if(pq_oid == InvalidOid) {
         elog(ERROR, "PQ-codebook for relation \"%s\" not found", relname);
     }
-    Relation      pq_rel;
-    TableScanDesc pq_scan;
-    HeapTuple     pq_tuple;
 
 #if PG_VERSION_NUM < 120000
     pq_rel = heap_open(pq_oid, AccessShareLock);
@@ -117,16 +133,6 @@ float *pq_codebook(Relation index, size_t vector_dimensions, size_t *out_num_cen
         subvector = ToFloat4Array(v, &subvector_dim);
         num_centroids++;
 
-        // elog(INFO,
-        //      "N%d: reading subvector_id: %d centroid_id: %d, subvector dim: %d 3: [%.2f, %.2f, ...]",
-        //      i++,
-        //      subvector_id,
-        //      centroid_id,
-        //      subvector_dim,
-        //      subvector[ 0 ],
-        //      subvector[ 1 ]);
-
-        // todo:: use a data structure here
         memcpy(codebook + centroid_id * vector_dimensions + subvector_id * subvector_dim,
                subvector,
                subvector_dim * sizeof(float4));
@@ -143,13 +149,5 @@ float *pq_codebook(Relation index, size_t vector_dimensions, size_t *out_num_cen
 #else
     table_close(pq_rel, AccessShareLock);
 #endif
-    // for(int i = 0; i < opts.dimensions * 256; i++) {
-    //     if(codebook[ i ] == 0) {
-    //         elog(WARNING,
-    //              "codebook at centroid id: %d subvector id: %d is zero",
-    //              i / (opts.dimensions),
-    //              i % (opts.dimensions) / subvector_dim);
-    //     }
-    // }
     return codebook;
 }
