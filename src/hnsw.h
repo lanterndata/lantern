@@ -40,7 +40,7 @@ PGDLLEXPORT Datum lantern_reindex_external_index(PG_FUNCTION_ARGS);
 
 HnswColumnType GetColumnTypeFromOid(Oid oid);
 HnswColumnType GetIndexColumnType(Relation index);
-void*          DatumGetSizedArray(Datum datum, HnswColumnType type, int dimensions);
+void*          DatumGetSizedArray(Datum datum, HnswColumnType type, int dimensions, bool copy);
 
 #define LDB_UNUSED(x) (void)(x)
 

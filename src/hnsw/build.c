@@ -78,14 +78,15 @@
 #define UpdateProgress(index, val) ((void)val)
 #endif
 
-static void AddTupleToUsearchIndex(ItemPointer tid, Datum *values, ldb_HnswBuildState *buildstate, Relation index)
+static void AddTupleToUsearchIndex(ItemPointer         tid,
+                                   Datum               detoasted_vector,
+                                   ldb_HnswBuildState *buildstate,
+                                   Relation            index)
 {
-    /* Detoast once for all calls */
     usearch_error_t       error = NULL;
-    Datum                 value = PointerGetDatum(PG_DETOAST_DATUM(values[ 0 ]));
     usearch_scalar_kind_t usearch_scalar;
 
-    void *vector = DatumGetSizedArray(value, buildstate->columnType, buildstate->dimensions);
+    void *vector = DatumGetSizedArray(detoasted_vector, buildstate->columnType, buildstate->dimensions, false);
     switch(buildstate->columnType) {
         case REAL_ARRAY:
         case VECTOR:
@@ -144,9 +145,6 @@ static void BuildCallback(
 
     /* Skip nulls */
     if(isnull[ 0 ]) return;
-
-    CheckHnswIndexDimensions(index, values[ 0 ], buildstate->dimensions);
-
     /* Use memory context since detoast can allocate */
     oldCtx = MemoryContextSwitchTo(buildstate->tmpCtx);
 
@@ -156,7 +154,16 @@ static void BuildCallback(
 
     // todo:: the argument values is assumed to be a real[] or vector (they have the same layout)
     // do proper type checking instead of this assumption and test int int arrays and others
-    LanternBench("AddTupleToUsearch", AddTupleToUsearchIndex(tid, values, buildstate, index));
+    LanternBench("AddTupleToUsearch", AddTupleToUsearchIndex(tid, detoasted_array, buildstate, index));
+
+    // free the detoasted value if we allocated for it, to avoid accumulating them during index construction
+    // would be cleaner to create a memory context but not sure how much overhead
+    // creating/destroying memory context in a tight loop has
+    // if we did not allocate for value, then PG_DETOAST_DATUM returns the same pointer - that is what the check below
+    // is
+    if(detoasted_array != values[ 0 ]) {
+        pfree(DatumGetPointer(detoasted_array));
+    }
 
     /* Reset memory context */
     MemoryContextSwitchTo(oldCtx);
@@ -266,8 +273,9 @@ static int GetArrayLengthFromHeap(Relation heap, int indexCol, IndexInfo *indexI
         // Get the indexed column out of the row and return it's dimensions
         datum = heap_getattr(tuple, indexCol, RelationGetDescr(heap), &isNull);
         if(!isNull) {
-            array = DatumGetArrayTypePCopy(datum);
+            array = DatumGetArrayTypeP(datum);
             n_items = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
+            // todo:: probably can pfree the array
         }
     }
 
@@ -328,8 +336,7 @@ void CheckHnswIndexDimensions(Relation index, Datum arrayDatum, int dimensions)
     HnswColumnType indexType = GetIndexColumnType(index);
 
     if(indexType == REAL_ARRAY || indexType == INT_ARRAY) {
-        /* Check dimensions of vector */
-        array = DatumGetArrayTypePCopy(arrayDatum);
+        array = DatumGetArrayTypeP(arrayDatum);
         n_items = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
         if(n_items != dimensions) {
             elog(ERROR, "Wrong number of dimensions: %d instead of %d expected", n_items, dimensions);
