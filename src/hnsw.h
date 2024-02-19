@@ -41,7 +41,7 @@ PGDLLEXPORT Datum create_pq_codebook(PG_FUNCTION_ARGS);
 
 HnswColumnType GetColumnTypeFromOid(Oid oid);
 HnswColumnType GetIndexColumnType(Relation index);
-void*          DatumGetSizedArray(Datum datum, HnswColumnType type, int dimensions);
+void*          DatumGetSizedArray(Datum datum, HnswColumnType type, int dimensions, bool copy);
 
 #define LDB_UNUSED(x) (void)(x)
 

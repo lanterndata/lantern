@@ -156,7 +156,7 @@ bool ldb_aminsert(Relation         index,
     assert(!error);
 
     datum = PointerGetDatum(PG_DETOAST_DATUM(values[ 0 ]));
-    void *vector = DatumGetSizedArray(datum, insertstate->columnType, opts.dimensions);
+    void *vector = DatumGetSizedArray(datum, insertstate->columnType, opts.dimensions, false);
 
 #if LANTERNDB_COPYNODES
     // currently not fully ported to the latest changes
