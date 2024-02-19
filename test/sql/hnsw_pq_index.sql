@@ -104,9 +104,16 @@ FOR EACH ROW
 EXECUTE FUNCTION v_pq_dec_update_trigger();
 
 UPDATE sift_base1k SET v_pq_dec=decompress_vector(v_pq, '_lantern_internal._codebook_sift_base1k_v');
+-- this will always be one
+-- SELECT calculate_table_recall('sift_base1k', 'sift_query1k', 'sift_truth1k', 'v', 10, 100) as recall \gset
+
+SELECT calculate_table_recall('sift_base1k', 'sift_query1k', 'sift_truth1k', 'v_pq_dec', 10, 100) as recall_pq \gset
 CREATE INDEX sift_base1k_pq_index ON sift_base1k USING lantern_hnsw(v) WITH (pq=True);
-SELECT (calculate_table_recall('sift_base1k', 'sift_query1k', 'sift_truth1k', 'v', 10, 100) -
-       calculate_table_recall('sift_base1k', 'sift_query1k', 'sift_truth1k', 'v_pq_dec', 10, 100)) < 0.1 as recall_diff;
+SELECT calculate_table_recall('sift_base1k', 'sift_query1k', 'sift_truth1k', 'v', 10, 100) as recall_pq_index \gset
+SELECT (:'recall_pq'::float - :'recall_pq_index'::float)::float as recall_diff \gset
+-- pq index costs no more than 10% in addition to what quantization has already cost us
+-- recall diff must be positive but not large - the positive check sanity-checks that the index was used in calculate_table_recall
+SELECT :recall_diff > 0 AND :recall_diff < 0.1 as recall_within_range;
 
 -- inserts
 SELECT v as v2 FROM sift_base1k WHERE id=2 \gset
