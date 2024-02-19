@@ -209,12 +209,12 @@ SELECT id FROM small_world_pq ORDER BY v <-> :'v4' LIMIT 1;
 
 -- add another entry with vector v4, and search for it again
 INSERT INTO small_world_pq(id, v) VALUES (42, :'v4');
-SELECT id FROM small_world_pq ORDER BY v <-> :'v4' LIMIT 2;
- id 
-----
- 42
-  4
-(2 rows)
+SELECT ARRAY_AGG(id ORDER BY id) FROM
+  (SELECT id FROM small_world_pq ORDER BY v <-> :'v4' LIMIT 2) b;
+ array_agg 
+-----------
+ {4,42}
+(1 row)
 
 ALTER TABLE small_world_pq DROP COLUMN v_pq;
 ALTER TABLE small_world_pq DROP COLUMN v_pq_dec;
@@ -239,22 +239,21 @@ INFO:  done init usearch index
 INFO:  inserted 11 elements
 INFO:  done saving 11 vectors
 -- we had inserted a value with id=42 and vector=:'v4' above, before making the table unlogged
-SELECT id FROM small_world_pq ORDER BY v <-> :'v4' LIMIT 2;
- id 
-----
- 42
-  4
-(2 rows)
+SELECT ARRAY_AGG(id ORDER BY id) FROM
+  (SELECT id FROM small_world_pq ORDER BY v <-> :'v4' LIMIT 2) b;
+ array_agg 
+-----------
+ {4,42}
+(1 row)
 
 -- add another entry with vector v4, and search for it again
 INSERT INTO small_world_pq(id, v) VALUES (44, :'v4');
-SELECT id FROM small_world_pq ORDER BY v <-> :'v4' LIMIT 3;
- id 
-----
- 44
- 42
-  4
-(3 rows)
+SELECT ARRAY_AGG(id ORDER BY id) FROM
+  (SELECT id FROM small_world_pq ORDER BY v <-> :'v4' LIMIT 3) b;
+ array_agg 
+-----------
+ {4,42,44}
+(1 row)
 
 -- Larger indexes
 SELECT quantize_table('sift_base1k'::regclass, 'v', 200, 32, 'l2sq');
@@ -318,12 +317,11 @@ SELECT SUM(id1002::int) = 1 as contains_id_1002 FROM (SELECT id = 1002 as id1002
 (1 row)
 
 -- the top two results must be the vectors corresponding to v2
-SELECT id FROM sift_base1k ORDER BY v <-> :'v2' LIMIT 2;
-  id  
-------
- 1001
-    2
-(2 rows)
+SELECT ARRAY_AGG(id ORDER BY id) FROM (SELECT id FROM sift_base1k ORDER BY v <-> :'v2' LIMIT 2) b;
+ array_agg 
+-----------
+ {2,1001}
+(1 row)
 
 -- since codebook are generated each time and are non deterministic, we cannot print them in regression tests.
 -- run something like the following to view the results

@@ -60,7 +60,8 @@ EXPLAIN (COSTS FALSE) SELECT id, v, v_pq, v_pq_dec, (v <-> :'v4') as dist, (v_pq
 SELECT id FROM small_world_pq ORDER BY v <-> :'v4' LIMIT 1;
 -- add another entry with vector v4, and search for it again
 INSERT INTO small_world_pq(id, v) VALUES (42, :'v4');
-SELECT id FROM small_world_pq ORDER BY v <-> :'v4' LIMIT 2;
+SELECT ARRAY_AGG(id ORDER BY id) FROM
+  (SELECT id FROM small_world_pq ORDER BY v <-> :'v4' LIMIT 2) b;
 
 ALTER TABLE small_world_pq DROP COLUMN v_pq;
 ALTER TABLE small_world_pq DROP COLUMN v_pq_dec;
@@ -74,10 +75,12 @@ ALTER TABLE small_world_pq ADD COLUMN v_pq_dec REAL[];
 UPDATE small_world_pq SET v_pq_dec=decompress_vector(v_pq, '_lantern_internal._codebook_small_world_pq_v');
 CREATE INDEX hnsw_pq_l2_index ON small_world_pq USING lantern_hnsw(v) WITH (pq=True);
 -- we had inserted a value with id=42 and vector=:'v4' above, before making the table unlogged
-SELECT id FROM small_world_pq ORDER BY v <-> :'v4' LIMIT 2;
+SELECT ARRAY_AGG(id ORDER BY id) FROM
+  (SELECT id FROM small_world_pq ORDER BY v <-> :'v4' LIMIT 2) b;
 -- add another entry with vector v4, and search for it again
 INSERT INTO small_world_pq(id, v) VALUES (44, :'v4');
-SELECT id FROM small_world_pq ORDER BY v <-> :'v4' LIMIT 3;
+SELECT ARRAY_AGG(id ORDER BY id) FROM
+  (SELECT id FROM small_world_pq ORDER BY v <-> :'v4' LIMIT 3) b;
 
 
 -- Larger indexes
@@ -123,7 +126,7 @@ INSERT INTO sift_base1k(id, v) VALUES (1002, :'v1002');
 -- check that the random vector is in the top 5 position
 SELECT SUM(id1002::int) = 1 as contains_id_1002 FROM (SELECT id = 1002 as id1002 FROM sift_base1k ORDER BY v <-> :'v1002' LIMIT 5) b;
 -- the top two results must be the vectors corresponding to v2
-SELECT id FROM sift_base1k ORDER BY v <-> :'v2' LIMIT 2;
+SELECT ARRAY_AGG(id ORDER BY id) FROM (SELECT id FROM sift_base1k ORDER BY v <-> :'v2' LIMIT 2) b;
 -- since codebook are generated each time and are non deterministic, we cannot print them in regression tests.
 -- run something like the following to view the results
 -- SELECT id, v_pq, (v <-> :'v1002') as dist, (v_pq_dec <-> :'v1002') pq_dist FROM sift_base1k ORDER BY dist LIMIT 3;
