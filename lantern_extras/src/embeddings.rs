@@ -50,6 +50,7 @@ fn openai_embedding<'a>(
 
     let runtime_params = serde_json::to_string(&OpenAiRuntimeParams {
         dimensions,
+        base_url: None,
         api_token: Some(OPENAI_TOKEN.get().unwrap().to_str().unwrap().to_owned()),
     })?;
 
