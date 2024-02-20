@@ -113,6 +113,10 @@ pub struct CreateIndexArgs {
     #[arg(short, long)]
     pub column: String,
 
+    /// Use already created codebook to create product-quantized binary index
+    #[arg(short, long, default_value_t = false)]
+    pub pq: bool,
+
     /// Number of neighbours for each vector
     #[arg(short, default_value_t = 16)]
     pub m: usize,

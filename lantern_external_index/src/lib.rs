@@ -114,6 +114,7 @@ pub fn create_usearch_index(
     let full_table_name = get_full_table_name(&args.schema, &args.table);
 
     transaction.execute("SET lock_timeout='5s'", &[])?;
+    //todo:: ask-Varik: why is this necessary?
     transaction.execute(
         &format!("LOCK TABLE ONLY {full_table_name} IN SHARE MODE"),
         &[],
@@ -142,6 +143,60 @@ pub fn create_usearch_index(
         dimensions, args.m, args.ef, args.efc
     ));
 
+    let mut pq_codebook: *const f32 = std::ptr::null();
+    let mut num_centroids: usize = 0;
+    let mut num_subvectors: usize = 0;
+
+    if args.pq {
+        let rows_c = transaction.query(
+            &format!(
+                "SELECT count(*) FROM _lantern_internal._codebook_{table_name}_{column_name} WHERE subvector_id = 0;",
+                table_name = args.table,
+                column_name = args.column,
+            ),
+            &[],
+        )?;
+        let rows_sv = transaction.query(
+            &format!(
+                "SELECT count(*) FROM _lantern_internal._codebook_{table_name}_{column_name} WHERE centroid_id = 0;",
+                table_name = args.table,
+                column_name = args.column,
+            ),
+            &[],
+        )?;
+
+        if rows_c.len() == 0 || rows_sv.len() == 0 {
+            anyhow::bail!("Invalid codebook table");
+        }
+
+        num_centroids = rows_c.first().unwrap().get::<usize, i64>(0) as usize;
+        num_subvectors = rows_sv.first().unwrap().get::<usize, i64>(0) as usize;
+
+        let rows = transaction.query(
+            &format!(
+                "SELECT subvector_id, centroid_id, c FROM _lantern_internal._codebook_{table_name}_{column_name};",
+                table_name = args.table,
+                column_name = args.column,
+            ),
+            &[],
+        )?;
+        let mut v = vec![0.; num_centroids * dimensions];
+        pq_codebook = v.as_ptr();
+        logger.info(&format!(
+            "codebook has {} rows - {num_centroids} centroids and {num_subvectors} subvectors",
+            rows.len()
+        ));
+
+        for r in rows {
+            let subvector_id: i32 = r.get(0);
+            let centroid_id: i32 = r.get(1);
+            let subvector: Vec<f32> = r.get(2);
+            for i in 0..subvector.len() {
+                v[centroid_id as usize * dimensions + subvector_id as usize + i] = subvector[i];
+            }
+        }
+    }
+
     let options = IndexOptions {
         dimensions,
         metric: args.metric_kind.value(),
@@ -150,6 +205,20 @@ pub fn create_usearch_index(
         connectivity: args.m,
         expansion_add: args.efc,
         expansion_search: args.ef,
+
+        num_threads: 0, // automatic
+
+        // note: pq_construction and pq_output distinction is not yet implemented in usearch
+        // in the future, if pq_construction is false, we will use full vectors in memory (and
+        // require large memory for construction) but will output pq-quantized graph
+        //
+        // currently, regardless of pq_construction value, as long as pq_output is true,
+        // we construct a pq_quantized index using quantized values during construction
+        pq_construction: args.pq,
+        pq_output: args.pq,
+        num_centroids,
+        num_subvectors,
+        codebook: pq_codebook,
     };
     let index = Index::new(&options)?;
 
