@@ -6,7 +6,7 @@ use lantern_embeddings_core::{
 };
 use pgrx::prelude::*;
 
-use crate::{COHERE_TOKEN, OPENAI_TOKEN};
+use crate::{COHERE_TOKEN, OPENAI_AZURE_API_TOKEN, OPENAI_AZURE_ENTRA_TOKEN, OPENAI_TOKEN};
 
 pub static ORT_RUNTIME_PARAMS: &'static str = r#"{ "cache": true }"#;
 
@@ -39,8 +39,11 @@ fn openai_embedding<'a>(
     base_url: default!(&'a str, "''"),
     dimensions: default!(i32, 1536),
 ) -> Result<Vec<f32>, anyhow::Error> {
-    if OPENAI_TOKEN.get().is_none() {
-        error!("'lantern_extras.openai_token' is required for 'openai' runtime");
+    if OPENAI_TOKEN.get().is_none()
+        && OPENAI_AZURE_API_TOKEN.get().is_none()
+        && OPENAI_AZURE_ENTRA_TOKEN.get().is_none()
+    {
+        error!("'lantern_extras.openai_token', 'lantern_extras.openai_azure_api_token' or 'lantern_extras.openai_azure_entra_token' is required for 'openai' runtime");
     }
 
     let dimensions = if dimensions > 0 {
@@ -55,10 +58,30 @@ fn openai_embedding<'a>(
         Some(base_url.to_owned())
     };
 
+    let api_token = if let Some(api_token) = OPENAI_TOKEN.get() {
+        Some(api_token.to_str().unwrap().to_owned())
+    } else {
+        None
+    };
+
+    let azure_api_token = if let Some(api_token) = OPENAI_AZURE_API_TOKEN.get() {
+        Some(api_token.to_str().unwrap().to_owned())
+    } else {
+        None
+    };
+
+    let azure_entra_token = if let Some(api_token) = OPENAI_AZURE_ENTRA_TOKEN.get() {
+        Some(api_token.to_str().unwrap().to_owned())
+    } else {
+        None
+    };
+
     let runtime_params = serde_json::to_string(&OpenAiRuntimeParams {
         dimensions,
         base_url,
-        api_token: Some(OPENAI_TOKEN.get().unwrap().to_str().unwrap().to_owned()),
+        api_token,
+        azure_api_token,
+        azure_entra_token,
     })?;
 
     let runtime = get_runtime(

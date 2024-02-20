@@ -34,6 +34,11 @@ struct OpenAiResponse {
     usage: OpenAiUsage,
 }
 
+enum OpenAiDeployment {
+    Azure,
+    OpenAi,
+}
+
 static AZURE_OPENAI_REGEX: &'static str = r"^https:\/\/[a-zA-Z0-9_\-]+\.openai\.azure\.com\/openai\/deployments\/[a-zA-Z0-9_\-]+\/embeddings\?api-version=2023-05-15$";
 
 impl ModelInfo {
@@ -97,6 +102,8 @@ pub struct OpenAiRuntime<'a> {
 pub struct OpenAiRuntimeParams {
     pub base_url: Option<String>,
     pub api_token: Option<String>,
+    pub azure_api_token: Option<String>,
+    pub azure_entra_token: Option<String>,
     pub dimensions: Option<usize>,
 }
 
@@ -104,11 +111,38 @@ impl<'a> OpenAiRuntime<'a> {
     pub fn new(logger: &'a LoggerFn, params: &'a str) -> Result<Self, anyhow::Error> {
         let runtime_params: OpenAiRuntimeParams = serde_json::from_str(&params)?;
 
-        if runtime_params.api_token.is_none() {
-            anyhow::bail!("'api_token' is required for OpenAi runtime");
-        }
+        let (deployment, base_url) = Self::get_base_url(&runtime_params.base_url)?;
 
-        let base_url = Self::get_base_url(&runtime_params.base_url)?;
+        let auth_header = match deployment {
+            OpenAiDeployment::OpenAi => {
+                if runtime_params.api_token.is_none() {
+                    anyhow::bail!("'api_token' is required for OpenAi runtime");
+                }
+                (
+                    "Authorization".to_owned(),
+                    format!("Bearer {}", runtime_params.api_token.unwrap()),
+                )
+            }
+            OpenAiDeployment::Azure => {
+                // https://learn.microsoft.com/en-us/azure/ai-services/openai/reference
+                if runtime_params.azure_api_token.is_none()
+                    && runtime_params.azure_entra_token.is_none()
+                {
+                    anyhow::bail!(
+                        "'azure_api_key' or 'azure_entra_id' is required for Azure OpenAi runtime"
+                    );
+                }
+
+                if let Some(key) = runtime_params.azure_api_token {
+                    ("api-key".to_owned(), format!("{}", key))
+                } else {
+                    (
+                        "Authorization".to_owned(),
+                        format!("Bearer {}", runtime_params.azure_entra_token.unwrap()),
+                    )
+                }
+            }
+        };
 
         Ok(Self {
             base_url,
@@ -116,25 +150,27 @@ impl<'a> OpenAiRuntime<'a> {
             request_timeout: 120,
             headers: vec![
                 ("Content-Type".to_owned(), "application/json".to_owned()),
-                (
-                    "Authorization".to_owned(),
-                    format!("Bearer {}", runtime_params.api_token.unwrap()),
-                ),
+                auth_header,
             ],
             dimensions: runtime_params.dimensions,
         })
     }
 
-    fn get_base_url(base_url: &Option<String>) -> Result<String, anyhow::Error> {
+    fn get_base_url(
+        base_url: &Option<String>,
+    ) -> Result<(OpenAiDeployment, String), anyhow::Error> {
         if base_url.is_none() {
-            return Ok("https://api.openai.com/v1/embeddings".to_owned());
+            return Ok((
+                OpenAiDeployment::OpenAi,
+                "https://api.openai.com/v1/embeddings".to_owned(),
+            ));
         }
 
         let base_url = base_url.as_ref().unwrap();
         let azure_openai_re = Regex::new(AZURE_OPENAI_REGEX).unwrap();
 
         if azure_openai_re.is_match(base_url) {
-            return Ok(base_url.clone());
+            return Ok((OpenAiDeployment::Azure, base_url.clone()));
         }
 
         anyhow::bail!("Invalid base url for OpenAi Runtime: {base_url}");
