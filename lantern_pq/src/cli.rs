@@ -23,11 +23,15 @@ pub struct PQArgs {
     #[arg(long)]
     pub codebook_table_name: Option<String>,
 
-    /// Stream data to output table while still generating
+    /// Dataset limit. Limit should be greater or equal to cluster count
+    #[arg(long)]
+    pub dataset_limit: Option<usize>,
+
+    /// Cluster count for kmeans
     #[arg(long, default_value_t = 256)]
     pub clusters: usize,
 
-    /// Stream data to output table while still generating
+    /// Subvector count to split vector
     #[arg(long, default_value_t = 1)]
     pub splits: usize,
 

@@ -2,7 +2,7 @@ use lantern_logger::Logger;
 use lantern_utils::quote_ident;
 use postgres::Transaction;
 
-use crate::AnyhowVoidResult;
+use crate::{AnyhowVoidResult, LANTERN_INTERNAL_SCHEMA_NAME};
 
 // Will create a codebook table add neccessary indexes and add PQVEC column into target table
 pub fn setup_tables<'a>(
@@ -41,7 +41,7 @@ pub fn setup_triggers<'a>(
     let name_hash = md5::compute(format!("{}{}", full_table_name, pq_column));
     let insert_trigger_name = format!("_pq_trigger_in_{:x}", name_hash);
     let update_trigger_name = format!("_pq_trigger_up_{:x}", name_hash);
-    let trigger_fn_name = format!("_set_pq_col_{:x}", name_hash);
+    let trigger_fn_name = format!("{LANTERN_INTERNAL_SCHEMA_NAME}._set_pq_col_{:x}", name_hash);
 
     transaction.batch_execute(&format!("
       DROP TRIGGER IF EXISTS {insert_trigger_name} ON {full_table_name};
@@ -55,7 +55,7 @@ pub fn setup_triggers<'a>(
           IF NEW.{column} IS NULL THEN
             NEW.{pq_column} := NULL;
           ELSE
-            NEW.{pq_column} := _lantern_internal.quantize_vector(NEW.{column}, {splits}, '{full_codebook_table_name}'::regclass, '{distance_metric}');
+            NEW.{pq_column} := {LANTERN_INTERNAL_SCHEMA_NAME}.quantize_vector(NEW.{column}, {splits}, '{full_codebook_table_name}'::regclass, '{distance_metric}');
           END IF;
           RETURN NEW;
         END
@@ -73,7 +73,7 @@ pub fn make_codebook_logged_and_readonly<'a>(
 ) -> AnyhowVoidResult {
     transaction.batch_execute(&format!("
     ALTER TABLE {full_codebook_table_name} SET LOGGED;
-    CREATE TRIGGER readonly_guard BEFORE INSERT OR UPDATE OR DELETE ON {full_codebook_table_name} EXECUTE PROCEDURE _lantern_internal.forbid_table_change();
+    CREATE TRIGGER readonly_guard BEFORE INSERT OR UPDATE OR DELETE ON {full_codebook_table_name} EXECUTE PROCEDURE {LANTERN_INTERNAL_SCHEMA_NAME}.forbid_table_change();
     "))?;
     Ok(())
 }

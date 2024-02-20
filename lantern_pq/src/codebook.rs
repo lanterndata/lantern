@@ -163,12 +163,12 @@ pub fn create_codebook<'a> (
             let mut client = Client::connect(db_uri, NoTls)?;
             let mut transaction = client.transaction()?;
             let range_start = i * chunk_count;
-            let range_end = if i == num_cores - 1 { total_row_count + 1 } else { range_start + chunk_count + 1 };
+            let range_end = if i == num_cores - 1 { total_row_count } else { range_start + chunk_count };
 
             let fetch_start_time = Instant::now();
             let rows = transaction.query(
                 &format!(
-                    "SELECT {pk}::text, {column}[{start_idx}:{end_idx}] FROM {full_table_name} WHERE {pk} > {range_start} AND {pk} < {range_end} ORDER BY id;",
+                    "SELECT {pk}::text, {column}[{start_idx}:{end_idx}] FROM {full_table_name} WHERE {pk} >= {range_start} AND {pk} < {range_end} ORDER BY id;",
                     pk = quote_ident(&pk),
                     column = quote_ident(column),
                     start_idx = subvector_start_idx + 1,

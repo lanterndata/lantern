@@ -18,6 +18,7 @@ type AnyhowVoidResult = Result<(), anyhow::Error>;
 pub type ProgressCbFn = Box<dyn Fn(u8) + Send + Sync>;
 
 static CONNECTION_PARAMS: &'static str = "connect_timeout=10";
+pub static LANTERN_INTERNAL_SCHEMA_NAME: &'static str = "_lantern_internal";
 
 // This function will increment current progress and report it
 fn report_progress(
@@ -118,6 +119,16 @@ fn quantize_table_local(
         }
     }
 
+    let limit = if let Some(limit) = args.dataset_limit {
+        limit
+    } else {
+        0
+    };
+
+    if limit > 0 && limit < args.clusters {
+        anyhow::bail!("--dataset-limit should be greater than or equal to cluster count");
+    }
+
     let total_row_count = transaction.query_one(
         &format!(
             "SELECT COUNT({pk}) FROM {full_table_name};",
@@ -127,6 +138,12 @@ fn quantize_table_local(
     )?;
 
     let total_row_count = total_row_count.try_get::<usize, i64>(0)? as usize;
+
+    let total_row_count = if limit > 0 && limit <= total_row_count {
+        limit
+    } else {
+        total_row_count
+    };
 
     let max_connections = transaction.query_one(
         "SELECT setting::int FROM pg_settings WHERE name = 'max_connections'",
@@ -270,7 +287,8 @@ pub fn quantize_table(
         .codebook_table_name
         .clone()
         .unwrap_or(format!("_codebook_{}_{}", args.table, args.column));
-    let full_codebook_table_name = get_full_table_name("_lantern_internal", &codebook_table_name);
+    let full_codebook_table_name =
+        get_full_table_name(LANTERN_INTERNAL_SCHEMA_NAME, &codebook_table_name);
     let pq_column_name = format!("{}_pq", args.column);
     let db_uri = append_params_to_uri(&args.uri, CONNECTION_PARAMS);
 
