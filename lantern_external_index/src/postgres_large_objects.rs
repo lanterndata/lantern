@@ -41,6 +41,7 @@ impl<'a> LargeObject<'a> {
         ef_construction: usize,
         dim: usize,
         m: usize,
+        pq: bool,
     ) -> crate::AnyhowVoidResult {
         let mut transaction = self.transaction.unwrap();
         transaction.execute(
@@ -57,7 +58,8 @@ impl<'a> LargeObject<'a> {
         }
 
         transaction.execute(
-            &format!("CREATE INDEX {idx_name} ON {table_name} USING lantern_hnsw({column_name} {op_class}) WITH (_experimental_index_path='{index_path}', ef={ef}, dim={dim}, m={m}, ef_construction={ef_construction});", index_path=self.index_path),
+            &format!("CREATE INDEX {idx_name} ON {table_name} USING lantern_hnsw({column_name} {op_class}) WITH (_experimental_index_path='{index_path}', pq={pq}, ef={ef}, dim={dim}, m={m}, ef_construction={ef_construction});", 
+            index_path=self.index_path),
             &[],
         )?;
 
