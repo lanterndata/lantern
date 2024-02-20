@@ -41,6 +41,7 @@ Datum       create_pq_codebook(PG_FUNCTION_ARGS)
     uint32                cluster_cnt = PG_GETARG_UINT32(2);
     uint32                subvector_cnt = PG_GETARG_UINT32(3);
     text                 *distance_metric_text = PG_GETARG_TEXT_P(4);
+    uint32                dataset_size_limit = PG_GETARG_UINT32(5);
     usearch_metric_kind_t distance_metric;
     // -----------------
     // Dataset variables
@@ -80,6 +81,10 @@ Datum       create_pq_codebook(PG_FUNCTION_ARGS)
         elog(ERROR, "Cluster count can not be greater than %d", 1 << 8);
     }
 
+    if(dataset_size_limit > 0 && dataset_size_limit < cluster_cnt) {
+        elog(ERROR, "Dataset size limit should be greater or equal to cluster_cnt count");
+    }
+
     distance_metric = GetMetricKindFromStr(text_to_cstring(distance_metric_text));
 
     table = relation_open(tablerelid, AccessShareLock);
@@ -106,14 +111,21 @@ Datum       create_pq_codebook(PG_FUNCTION_ARGS)
             dataset_dim = current_tuple_dim;
             // TODO:: this check can be removed as soon as we resolve return type issue from this function
             if(dataset_dim % subvector_cnt != 0) {
+                heap_endscan(scan);
+                relation_close(table, AccessShareLock);
                 elog(ERROR, "Dataset dimensions should be divisible by subvector count");
             }
         } else if(current_tuple_dim != dataset_dim) {
             heap_endscan(scan);
+            relation_close(table, AccessShareLock);
             elog(ERROR, "Table should have equally sized array: expected %d got %d", dataset_dim, current_tuple_dim);
         }
 
         dataset[ dataset_size++ ] = (float4 *)ARR_DATA_PTR(array);
+
+        if(dataset_size_limit > 0 && dataset_size == dataset_size_limit) {
+            break;
+        }
 
         if(estimated_row_count == dataset_size - 1) {
             dataset = repalloc(dataset, estimated_row_count * 2 * sizeof(size_t));
