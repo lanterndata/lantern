@@ -36,7 +36,8 @@ fn text_embedding<'a>(model_name: &'a str, text: &'a str) -> Result<Vec<f32>, an
 fn openai_embedding<'a>(
     model_name: &'a str,
     text: &'a str,
-    dimensions: default!(i32, 0),
+    base_url: default!(&'a str, "''"),
+    dimensions: default!(i32, 1536),
 ) -> Result<Vec<f32>, anyhow::Error> {
     if OPENAI_TOKEN.get().is_none() {
         error!("'lantern_extras.openai_token' is required for 'openai' runtime");
@@ -48,9 +49,15 @@ fn openai_embedding<'a>(
         None
     };
 
+    let base_url = if base_url == "" {
+        None
+    } else {
+        Some(base_url.to_owned())
+    };
+
     let runtime_params = serde_json::to_string(&OpenAiRuntimeParams {
         dimensions,
-        base_url: None,
+        base_url,
         api_token: Some(OPENAI_TOKEN.get().unwrap().to_str().unwrap().to_owned()),
     })?;
 
