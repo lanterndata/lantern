@@ -59,7 +59,7 @@ CREATE FUNCTION _lantern_internal.failure_point_enable(func TEXT, name TEXT, don
 CREATE FUNCTION _lantern_internal.continue_blockmap_group_initialization(index regclass) RETURNS VOID
 	AS 'MODULE_PATHNAME', 'lantern_internal_continue_blockmap_group_initialization' LANGUAGE C STABLE STRICT PARALLEL UNSAFE;
 
-CREATE FUNCTION _lantern_internal.create_pq_codebook(REGCLASS, NAME, INT, INT, TEXT) RETURNS REAL[][][]
+CREATE FUNCTION _lantern_internal.create_pq_codebook(REGCLASS, NAME, INT, INT, TEXT, INT) RETURNS REAL[][][]
 	AS 'MODULE_PATHNAME', 'create_pq_codebook' LANGUAGE C STABLE STRICT PARALLEL UNSAFE;
 -- operator classes
 CREATE OR REPLACE FUNCTION _lantern_internal._create_ldb_operator_classes(access_method_name TEXT) RETURNS BOOLEAN AS $$
@@ -235,9 +235,11 @@ END;
 $$
 LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION create_pq_codebook(tbl REGCLASS, col NAME, cluster_cnt INT, subvector_count INT, distance_metric TEXT)
+CREATE OR REPLACE FUNCTION create_pq_codebook(p_tbl REGCLASS, p_col NAME, cluster_cnt INT, subvector_count INT, distance_metric TEXT, dataset_size_limit INT DEFAULT 0)
 RETURNS NAME AS $$
 DECLARE
+  tbl NAME;
+  col NAME;
   stmt TEXT;
   res REAL[];
   codebooks REAL[][][];
@@ -246,12 +248,14 @@ DECLARE
   codebook_table NAME;
   dim INT;
 BEGIN
-  
+  tbl := regexp_replace(trim(both '"' FROM p_tbl::TEXT), '^.*\.', '');
+  col := trim(both '"' FROM p_col);
+
   stmt := format('SELECT array_length(%I, 1) FROM %I WHERE %1$I IS NOT NULL LIMIT 1', col, tbl);
   EXECUTE stmt INTO dim;
 
 	-- Get codebooks
-	codebooks := _lantern_internal.create_pq_codebook(tbl, col, cluster_cnt, subvector_count, distance_metric);
+	codebooks := _lantern_internal.create_pq_codebook(p_tbl, col, cluster_cnt, subvector_count, distance_metric, dataset_size_limit);
 
 	-- Create codebook table
   codebook_table := format('_lantern_internal."_codebook_%s_%s"', tbl, col);
@@ -338,8 +342,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Decompress vector using codebook
-CREATE OR REPLACE FUNCTION decompress_vector(v pqvec, codebook regclass)
+-- Dequantize vector using codebook
+CREATE OR REPLACE FUNCTION dequantize_vector(v pqvec, codebook regclass)
 RETURNS REAL[] AS $$
 DECLARE
   res REAL[];
@@ -371,12 +375,14 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Quantize table
-CREATE OR REPLACE FUNCTION quantize_table(tbl regclass, col NAME, cluster_cnt INT,subvector_count INT, distance_metric TEXT)
+CREATE OR REPLACE FUNCTION quantize_table(p_tbl regclass, p_col NAME, cluster_cnt INT,subvector_count INT, distance_metric TEXT, dataset_size_limit INT DEFAULT 0)
 RETURNS VOID AS $$
 DECLARE
   subvector REAL[];
   id INT;
   stmt TEXT;
+  tbl NAME;
+  col NAME;
   pq_col_name NAME;
   codebook_table NAME;
   trigger_func_name NAME;
@@ -385,16 +391,19 @@ DECLARE
   pg_version INT;
   column_exists BOOLEAN;
 BEGIN
+  tbl := regexp_replace(trim(both '"' FROM p_tbl::TEXT), '^.*\.', '');
+  col := trim(both '"' FROM p_col);
+
   pg_version := (SELECT setting FROM pg_settings WHERE name = 'server_version_num');
-  pq_col_name := format('%I_pq', col);
+  pq_col_name := format('%s_pq', col);
   
-  column_exists := (SELECT true FROM pg_attribute WHERE attrelid = tbl AND attname = pq_col_name AND NOT attisdropped);
+  column_exists := (SELECT true FROM pg_attribute WHERE attrelid = p_tbl AND attname = pq_col_name AND NOT attisdropped);
 
   IF column_exists THEN
     RAISE EXCEPTION 'Column % already exists in table', pq_col_name;
   END IF;
   -- Create codebook
-  codebook_table := create_pq_codebook(tbl, col, cluster_cnt, subvector_count, distance_metric);
+  codebook_table := create_pq_codebook(p_tbl, col, cluster_cnt, subvector_count, distance_metric, dataset_size_limit);
 
   -- Compress vectors
   RAISE INFO 'Compressing vectors...';
@@ -406,13 +415,13 @@ BEGIN
     stmt := format('ALTER TABLE %I ADD COLUMN %I PQVEC', tbl, pq_col_name);
     EXECUTE stmt;
 
-    stmt := format('UPDATE %1$I SET %2$I_pq=_lantern_internal.quantize_vector(%2$I, %3$L, %4$L::regclass, %5$L)', tbl, col, subvector_count, codebook_table, distance_metric);
+    stmt := format('UPDATE %1$I SET "%2$s_pq"=_lantern_internal.quantize_vector(%2$I, %3$L, %4$L::regclass, %5$L)', tbl, col, subvector_count, codebook_table, distance_metric);
     EXECUTE stmt;
 
     -- Create trigger to update pq values based on vector value
-    trigger_func_name := format('_set_pq_col_%s', md5(tbl || col));
+    trigger_func_name := format('"_lantern_internal"._set_pq_col_%s', md5(tbl || col));
     stmt := format('
-      CREATE OR REPLACE FUNCTION %I()
+      CREATE OR REPLACE FUNCTION %s()
         RETURNS trigger
         LANGUAGE plpgsql AS
       $body$
@@ -435,7 +444,7 @@ BEGIN
     stmt := format('DROP TRIGGER IF EXISTS %I ON %I', update_trigger_name, tbl);
     EXECUTE stmt;
     
-    stmt := format('CREATE TRIGGER %I BEFORE INSERT ON %I FOR EACH ROW WHEN (NEW.%I IS NOT NULL) EXECUTE FUNCTION %I()', 
+    stmt := format('CREATE TRIGGER %I BEFORE INSERT ON %I FOR EACH ROW WHEN (NEW.%I IS NOT NULL) EXECUTE FUNCTION %s()', 
       insert_trigger_name,
       tbl,
       col,
@@ -444,7 +453,7 @@ BEGIN
 
     EXECUTE stmt;
 
-    stmt := format('CREATE TRIGGER %1$I BEFORE UPDATE OF %2$I ON %3$I FOR EACH ROW WHEN (NEW.%2$I IS NOT NULL) EXECUTE FUNCTION %4$I()', 
+    stmt := format('CREATE TRIGGER %1$I BEFORE UPDATE OF %2$I ON %3$I FOR EACH ROW WHEN (NEW.%2$I IS NOT NULL) EXECUTE FUNCTION %4$s()', 
       update_trigger_name,
       col,
       tbl,
@@ -452,5 +461,28 @@ BEGIN
     );
     EXECUTE stmt;
   END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE FUNCTION drop_quantization(p_tbl regclass, p_col NAME)
+RETURNS VOID AS $$
+DECLARE
+  tbl NAME;
+  col NAME;
+  pq_col_name NAME;
+  codebook_table NAME;
+  trigger_func_name NAME;
+BEGIN
+  tbl := regexp_replace(trim(both '"' FROM p_tbl::TEXT), '^.*\.', '');
+  col := trim(both '"' FROM p_col);
+  codebook_table := format('_lantern_internal."_codebook_%s_%s"', tbl, col);
+  pq_col_name := format('%s_pq', col);
+  trigger_func_name := format('"_lantern_internal"._set_pq_col_%s', md5(tbl || col));
+  
+  EXECUTE format('DROP TABLE IF EXISTS %s CASCADE', codebook_table);
+  
+  EXECUTE format('ALTER TABLE %I DROP COLUMN IF EXISTS %I', tbl, pq_col_name);
+
+  EXECUTE format('DROP FUNCTION IF EXISTS %s CASCADE',  trigger_func_name);
 END;
 $$ LANGUAGE plpgsql;
