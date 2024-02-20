@@ -180,7 +180,7 @@ pub fn create_usearch_index(
             ),
             &[],
         )?;
-        let mut v = vec![0.; num_centroids * dimensions];
+        let mut v: Vec<f32> = vec![0.; num_centroids * dimensions];
         pq_codebook = v.as_ptr();
         logger.info(&format!(
             "codebook has {} rows - {num_centroids} centroids and {num_subvectors} subvectors",
@@ -192,7 +192,9 @@ pub fn create_usearch_index(
             let centroid_id: i32 = r.get(1);
             let subvector: Vec<f32> = r.get(2);
             for i in 0..subvector.len() {
-                v[centroid_id as usize * dimensions + subvector_id as usize + i] = subvector[i];
+                v[centroid_id as usize * dimensions
+                    + subvector_id as usize * subvector.len()
+                    + i] = subvector[i];
             }
         }
     }
