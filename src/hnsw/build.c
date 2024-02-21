@@ -492,7 +492,10 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
         opts.dimensions = metadata.dimensions;
         opts.expansion_add = metadata.expansion_add;
         opts.expansion_search = metadata.expansion_search;
-        opts.metric_kind = metadata.metric_kind;
+        opts.metric_kind = metadata.init_options.metric_kind;
+        opts.pq = metadata.init_options.pq;
+        opts.num_centroids = metadata.init_options.num_centroids;
+        opts.num_subvectors = metadata.init_options.num_subvectors;
     } else {
         uint32_t estimated_row_count = EstimateRowCount(heap);
         CheckMem(maintenance_work_mem,
