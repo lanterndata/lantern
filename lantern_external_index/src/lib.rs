@@ -144,6 +144,7 @@ pub fn create_usearch_index(
     ));
 
     let mut pq_codebook: *const f32 = std::ptr::null();
+    let mut v: Vec<f32> = vec![];
     let mut num_centroids: usize = 0;
     let mut num_subvectors: usize = 0;
 
@@ -172,6 +173,8 @@ pub fn create_usearch_index(
         num_centroids = rows_c.first().unwrap().get::<usize, i64>(0) as usize;
         num_subvectors = rows_sv.first().unwrap().get::<usize, i64>(0) as usize;
 
+        v.resize(num_centroids * dimensions, 0.);
+
         let rows = transaction.query(
             &format!(
                 "SELECT subvector_id, centroid_id, c FROM _lantern_internal._codebook_{table_name}_{column_name};",
@@ -180,8 +183,6 @@ pub fn create_usearch_index(
             ),
             &[],
         )?;
-        let mut v: Vec<f32> = vec![0.; num_centroids * dimensions];
-        pq_codebook = v.as_ptr();
         logger.info(&format!(
             "codebook has {} rows - {num_centroids} centroids and {num_subvectors} subvectors",
             rows.len()
@@ -197,6 +198,7 @@ pub fn create_usearch_index(
                     + i] = subvector[i];
             }
         }
+        pq_codebook = v.as_ptr();
     }
 
     let options = IndexOptions {
