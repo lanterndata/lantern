@@ -56,7 +56,7 @@ function setup_lantern() {
       git submodule update --recursive && \
       mkdir build 
       pushd build
-        cmake -DUSEARCH_NO_MARCH_NATIVE=ON .. && \
+        cmake -DMARCH_NATIVE=OFF -DBUILD_FOR_DSTRIBUTING=1 .. && \
         make install
       popd
     popd

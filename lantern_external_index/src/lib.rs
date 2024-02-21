@@ -148,20 +148,26 @@ pub fn create_usearch_index(
     let mut num_subvectors: usize = 0;
 
     if args.pq {
+        let codebook_table_name = format!(
+            "_codebook_{table_name}_{column_name}",
+            table_name = &args.table,
+            column_name = &args.column
+        );
+        let full_codebook_table_name =
+            get_full_table_name("_lantern_internal", &codebook_table_name);
+
+        let rows_codebook_exists = transaction.query("SELECT true FROM information_schema.tables WHERE table_schema='_lantern_internal' AND table_name=$1;", &[&codebook_table_name])?;
+
+        if rows_codebook_exists.len() == 0 {
+            anyhow::bail!("Codebook table {full_codebook_table_name} does not exist");
+        }
+
         let rows_c = transaction.query(
-            &format!(
-                "SELECT count(*) FROM _lantern_internal._codebook_{table_name}_{column_name} WHERE subvector_id = 0;",
-                table_name = args.table,
-                column_name = args.column,
-            ),
+            &format!("SELECT COUNT(*) FROM {full_codebook_table_name} WHERE subvector_id = 0;"),
             &[],
         )?;
         let rows_sv = transaction.query(
-            &format!(
-                "SELECT count(*) FROM _lantern_internal._codebook_{table_name}_{column_name} WHERE centroid_id = 0;",
-                table_name = args.table,
-                column_name = args.column,
-            ),
+            &format!("SELECT COUNT(*) FROM {full_codebook_table_name} WHERE centroid_id = 0;"),
             &[],
         )?;
 
@@ -182,8 +188,9 @@ pub fn create_usearch_index(
             ),
             &[],
         )?;
+
         logger.info(&format!(
-            "codebook has {} rows - {num_centroids} centroids and {num_subvectors} subvectors",
+            "Codebook has {} rows - {num_centroids} centroids and {num_subvectors} subvectors",
             rows.len()
         ));
 

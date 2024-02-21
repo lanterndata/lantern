@@ -13,7 +13,7 @@ clap = { version = "4.4.0", features = ["derive"] }
 cxx = "1.0.106"
 postgres = "0.19.7"
 postgres-types = { version = "0.2.6", features = ["derive"] }
-usearch = { git = "https://github.com/Ngalstyan4/usearch.git", branch = "main-lantern" }
+usearch = { git = "https://github.com/Ngalstyan4/usearch.git", branch="main-lantern" }
 lantern_logger = { path = "../lantern_logger" }
 lantern_utils = { path = "../lantern_utils" }
 rand = "0.8.5"
