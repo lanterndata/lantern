@@ -653,7 +653,7 @@ void ldb_reindex_external_index(Oid indrelid)
     Page                 page;
     Oid                  lantern_extras_namespace_oid = InvalidOid;
     Oid                  function_oid;
-    Oid                  function_argtypes_oid[ 6 ];
+    Oid                  function_argtypes_oid[ 7 ];
     oidvector           *function_argtypes;
     char                *metric_kind;
     const char          *lantern_extras_schema = "lantern_extras";
@@ -661,6 +661,7 @@ void ldb_reindex_external_index(Oid indrelid)
     uint32_t             m = 0;
     uint32_t             ef_construction = 0;
     uint32_t             ef = 0;
+    bool                 pq = false;
     char *ext_not_found_err = "Please install 'lantern_extras' extension or update it to the latest version";
 
     lantern_extras_namespace_oid = get_namespace_oid(lantern_extras_schema, true);
@@ -676,7 +677,8 @@ void ldb_reindex_external_index(Oid indrelid)
     function_argtypes_oid[ 3 ] = INT4OID;
     function_argtypes_oid[ 4 ] = INT4OID;
     function_argtypes_oid[ 5 ] = INT4OID;
-    function_argtypes = buildoidvector(function_argtypes_oid, 6);
+    function_argtypes_oid[ 6 ] = BOOLOID;
+    function_argtypes = buildoidvector(function_argtypes_oid, 7);
 
     function_oid = GetSysCacheOid(PROCNAMEARGSNSP,
 #if PG_VERSION_NUM >= 120000
@@ -719,6 +721,7 @@ void ldb_reindex_external_index(Oid indrelid)
     m = headerp->m;
     ef = headerp->ef;
     ef_construction = headerp->ef_construction;
+    pq = headerp->pq;
 
     UnlockReleaseBuffer(buf);
     relation_close(index_rel, AccessShareLock);
@@ -733,11 +736,12 @@ void ldb_reindex_external_index(Oid indrelid)
 
     assert(reindex_finfo.fn_addr != NULL);
 
-    DirectFunctionCall6(reindex_finfo.fn_addr,
+    DirectFunctionCall7(reindex_finfo.fn_addr,
                         ObjectIdGetDatum(indrelid),
                         CStringGetTextDatum(metric_kind),
                         Int32GetDatum(dim),
                         Int32GetDatum(m),
                         Int32GetDatum(ef_construction),
-                        Int32GetDatum(ef));
+                        Int32GetDatum(ef),
+                        BoolGetDatum(pq));
 }

@@ -140,3 +140,8 @@ explain select id, ARRAY_AGG(dist) as dists, count(id) as cnt from (select id, (
         select id, ARRAY_AGG(dist) as dists, count(id) as cnt from (select id, (v <-> ARRAY[0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4]) as dist FROM small_world_repeat order by dist LIMIT 200) b group by id order by cnt DESC, dists, id limit 10;
 set hnsw.init_k=200;
         select id, ARRAY_AGG(dist) as dists, count(id) as cnt from (select id, (v <-> ARRAY[0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4]) as dist FROM small_world_repeat order by dist LIMIT 200) b group by id order by cnt DESC, dists, id limit 10;
+
+-- Currently this fails to validate pq index should fix that
+SELECT quantize_table('sift_base1k'::regclass, 'v', 10, 32, 'cos');
+SELECT lantern_create_external_index('v', 'sift_base1k', 'public', 'cos', 128, 10, 10, 10, true, 'hnsw_cos_index_pq');
+SELECT _lantern_internal.validate_index('hnsw_cos_index_pq', false);

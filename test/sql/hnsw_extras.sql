@@ -32,7 +32,7 @@ SET lantern.pgvector_compat=TRUE;
 DROP INDEX sift_base1k_v_idx;
 
 -- Create with params
-SELECT lantern_create_external_index('v', 'sift_base1k', 'public', 'cos', 128, 10, 10, 10, 'hnsw_cos_index');
+SELECT lantern_create_external_index('v', 'sift_base1k', 'public', 'cos', 128, 10, 10, 10, false, 'hnsw_cos_index');
 SELECT _lantern_internal.validate_index('hnsw_cos_index', false);
 SET lantern.pgvector_compat=TRUE;
 EXPLAIN (COSTS FALSE) SELECT id FROM sift_base1k order by v <=> :'v777' LIMIT 10;
@@ -46,5 +46,17 @@ SELECT lantern_reindex_external_index('hnsw_cos_index');
 SELECT _lantern_internal.validate_index('hnsw_cos_index', false);
 
 -- Validate that using corresponding operator triggers index scan
+SET lantern.pgvector_compat=TRUE;
+EXPLAIN (COSTS FALSE) SELECT id FROM sift_base1k order by v <=> :'v777' LIMIT 10;
+
+-- Create PQ Index
+DROP INDEX hnsw_cos_index;
+-- Verify error that codebook does not exist
+\set ON_ERROR_STOP off
+SELECT lantern_create_external_index('v', 'sift_base1k', 'public', 'cos', 128, 10, 10, 10, true, 'hnsw_cos_index_pq');
+\set ON_ERROR_STOP on
+SELECT quantize_table('sift_base1k'::regclass, 'v', 10, 32, 'cos');
+SELECT lantern_create_external_index('v', 'sift_base1k', 'public', 'cos', 128, 10, 10, 10, true, 'hnsw_cos_index_pq');
+SELECT lantern_reindex_external_index('hnsw_cos_index_pq');
 SET lantern.pgvector_compat=TRUE;
 EXPLAIN (COSTS FALSE) SELECT id FROM sift_base1k order by v <=> :'v777' LIMIT 10;
