@@ -114,7 +114,6 @@ pub fn create_usearch_index(
     let full_table_name = get_full_table_name(&args.schema, &args.table);
 
     transaction.execute("SET lock_timeout='5s'", &[])?;
-    //todo:: ask-Varik: why is this necessary?
     transaction.execute(
         &format!("LOCK TABLE ONLY {full_table_name} IN SHARE MODE"),
         &[],
