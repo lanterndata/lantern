@@ -18,6 +18,7 @@ fn lantern_create_external_index<'a>(
     m: default!(i32, 16),
     ef_construction: default!(i32, 16),
     ef: default!(i32, 16),
+    pq: default!(bool, false),
     index_name: default!(&'a str, "''"),
 ) -> Result<(), anyhow::Error> {
     validate_index_param("ef", ef, 1, 400);
@@ -84,6 +85,7 @@ fn lantern_create_external_index<'a>(
             dims: dim as usize,
             index_name,
             remote_database: false,
+            pq,
         },
         None,
         None,
@@ -111,6 +113,7 @@ mod lantern_extras {
         m: i32,
         ef_construction: i32,
         ef: i32,
+        pq: default!(bool, false),
     ) -> Result<(), anyhow::Error> {
         let index_name = index.name().to_owned();
         let schema = index.namespace().to_owned();
@@ -152,6 +155,7 @@ mod lantern_extras {
             m,
             ef_construction,
             ef,
+            pq,
             &index_name,
         )
     }
