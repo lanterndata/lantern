@@ -238,7 +238,7 @@ static int GetArrayLengthFromHeap(Relation heap, int indexCol, IndexInfo *indexI
     tuple = heap_getnext(scan, ForwardScanDirection);
     if(tuple == NULL) {
         heap_endscan(scan);
-        return n_items;
+        return 0;
     }
 
     if(indexInfo->ii_Expressions != NULL) {
@@ -357,8 +357,13 @@ static void InitBuildState(HnswBuildState *buildstate, Relation heap, Relation i
     if(heap != NULL && buildstate->dimensions < 1) {
         buildstate->dimensions = InferDimension(heap, indexInfo);
     }
-    /* Require column to have dimensions to be indexed */
-    if(buildstate->dimensions < 1) elog(ERROR, "column does not have dimensions, please specify one");
+
+    // At this point, (buildstate->dimensions == 0) if this is building an index with no dim specified on an empty table
+    // The zero is a sentinel value that we check upon the first insertion of a row
+    // Note that (buildstate->dimensions == -1) if something went wrong
+    if(buildstate->dimensions < 0) {
+        elog(ERROR, "could not infer a dimension when no dimension was specified");
+    }
 
     // not supported because of 8K page limit in postgres WAL pages
     // can pass this limit once quantization is supported

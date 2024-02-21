@@ -476,6 +476,23 @@ HnswColumnType GetIndexColumnType(Relation index)
 }
 
 /*
+ * Returns length of vector from datum
+ */
+int DatumGetLength(Datum datum, HnswColumnType type)
+{
+    if(type == VECTOR) {
+        Vector *vector = DatumGetVector(datum);
+        return vector->dim;
+    } else if(type == REAL_ARRAY || type == INT_ARRAY) {
+        ArrayType *array = DatumGetArrayTypePCopy(datum);
+        return ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
+    } else {
+        elog(ERROR, "Unsupported type");
+    }
+    return -1;
+}
+
+/*
  * Given vector data and vector type, read it as either a float4 or int32 array and return as void*
  */
 void *DatumGetSizedArray(Datum datum, HnswColumnType type, int dimensions)
