@@ -8,6 +8,8 @@ pub mod external_index;
 
 pub static OPENAI_TOKEN: GucSetting<Option<&'static CStr>> =
     GucSetting::<Option<&'static CStr>>::new(None);
+pub static OPENAI_DEPLOYMENT_URL: GucSetting<Option<&'static CStr>> =
+    GucSetting::<Option<&'static CStr>>::new(None);
 pub static OPENAI_AZURE_API_TOKEN: GucSetting<Option<&'static CStr>> =
     GucSetting::<Option<&'static CStr>>::new(None);
 pub static OPENAI_AZURE_ENTRA_TOKEN: GucSetting<Option<&'static CStr>> =
@@ -23,6 +25,14 @@ pub unsafe extern "C" fn _PG_init() {
         "OpenAI API token.",
         "Used when generating embeddings with OpenAI models",
         &OPENAI_TOKEN,
+        GucContext::Userset,
+        GucFlags::NO_SHOW_ALL,
+    );
+    GucRegistry::define_string_guc(
+        "lantern_extras.openai_deployment_url",
+        "OpenAI Deployment URL.",
+        "Currently only Azure deployments of API version 2023-05-15 are supported",
+        &OPENAI_DEPLOYMENT_URL,
         GucContext::Userset,
         GucFlags::NO_SHOW_ALL,
     );

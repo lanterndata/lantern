@@ -6,7 +6,10 @@ use lantern_embeddings_core::{
 };
 use pgrx::prelude::*;
 
-use crate::{COHERE_TOKEN, OPENAI_AZURE_API_TOKEN, OPENAI_AZURE_ENTRA_TOKEN, OPENAI_TOKEN};
+use crate::{
+    COHERE_TOKEN, OPENAI_AZURE_API_TOKEN, OPENAI_AZURE_ENTRA_TOKEN, OPENAI_DEPLOYMENT_URL,
+    OPENAI_TOKEN,
+};
 
 pub static ORT_RUNTIME_PARAMS: &'static str = r#"{ "cache": true }"#;
 
@@ -53,7 +56,11 @@ fn openai_embedding<'a>(
     };
 
     let base_url = if base_url == "" {
-        None
+        if let Some(deployment_url) = OPENAI_DEPLOYMENT_URL.get() {
+            Some(deployment_url.to_str().unwrap().to_owned())
+        } else {
+            None
+        }
     } else {
         Some(base_url.to_owned())
     };
@@ -280,7 +287,7 @@ pub mod tests {
                 .select(
                     &format!(
                         "
-                         SELECT openai_embedding('openai/text-embedding-3-small','{HELLO_WORLD_TEXT}', 384) as embedding
+                         SELECT openai_embedding('openai/text-embedding-3-small','{HELLO_WORLD_TEXT}', '', 384) as embedding
                      "
                     ),
                     None,
@@ -293,7 +300,7 @@ pub mod tests {
                 .select(
                     &format!(
                         "
-                         SELECT openai_embedding('openai/text-embedding-3-large','{HELLO_WORLD_TEXT}', 768) as embedding
+                         SELECT openai_embedding('openai/text-embedding-3-large','{HELLO_WORLD_TEXT}', '', 768) as embedding
                      "
                     ),
                     None,

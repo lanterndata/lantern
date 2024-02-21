@@ -18,17 +18,17 @@ struct ModelInfo {
     var_dimension: bool,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct OpenAiEmbedding {
     embedding: Vec<f32>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct OpenAiUsage {
     total_tokens: usize,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct OpenAiResponse {
     data: Vec<OpenAiEmbedding>,
     usage: OpenAiUsage,
