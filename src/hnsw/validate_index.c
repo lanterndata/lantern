@@ -118,16 +118,16 @@ static void ldb_vi_analyze_blockmap(HnswBlockmapPage    *blockmap,
         }
     }
 }
-static void ldb_vi_read_codebook(Relation             index,
-                                 HnswIndexHeaderPage *index_header,
+static void ldb_vi_read_pq_codebook(Relation             index,
+                                    HnswIndexHeaderPage *index_header,
 
-                                 struct ldb_vi_block *vi_blocks,
-                                 BlockNumber          blocks_nr)
+                                    struct ldb_vi_block *vi_blocks,
+                                    BlockNumber          blocks_nr)
 {
     LDB_UNUSED(index);
     if(blocks_nr < 1) return;
     int num_clusters = 256;
-    for(int i = 0; i < ceil((float)(num_clusters)*index_header->vector_dim * sizeof(float) / BLCKSZ); i++) {
+    for(int i = 0; i < ceil((float)((num_clusters)*index_header->vector_dim * sizeof(float)) / BLCKSZ); i++) {
         vi_blocks[ i + 1 ].vp_type = LDB_VI_BLOCK_CODEBOOK;
     }
 }
@@ -302,8 +302,7 @@ static void ldb_vi_read_node_chunk(const struct ldb_vi_node *vi_node,
 /* See "Load nodes one by one" loop in usearch index_gt::load() */
 static void ldb_vi_read_node_carefully(void               *node_tape,
                                        unsigned            node_tape_size,
-                                       uint32              vector_dim,
-                                       size_t              scalar_size,
+                                       uint32              vector_size_bytes,
                                        const uint32        M,
                                        struct ldb_vi_node *vi_node,
                                        uint32              nodes_nr)
@@ -391,7 +390,7 @@ static void ldb_vi_read_node_carefully(void               *node_tape,
         vi_node->vn_neighbors[ level ] = neighbors;
     }
     /* the vector of floats is at the end */
-    tape_pos += vector_dim * scalar_size;
+    tape_pos += vector_size_bytes;
     if(tape_pos != node_tape_size) {
         elog(ERROR,
              "tape_pos=%u != node_tape_size=%u for "
@@ -435,6 +434,13 @@ static void ldb_vi_read_nodes(Relation                   index,
             HnswIndexTuple *index_tuple = (HnswIndexTuple *)PageGetItem(page, item_id);
             unsigned        index_tuple_length = ItemIdGetLength(item_id);
             uint32          node_id;
+            uint32          vector_size_bytes;
+
+            if(index_header->pq) {
+                vector_size_bytes = index_header->num_subvectors * 1;
+            } else {
+                vector_size_bytes = index_header->vector_dim * scalar_size;
+            }
 
             if(sizeof(*index_tuple) > index_tuple_length) {
                 elog(ERROR,
@@ -494,8 +500,7 @@ static void ldb_vi_read_nodes(Relation                   index,
             vi_nodes[ node_id ].vn_level = index_tuple->level;
             ldb_vi_read_node_carefully(&index_tuple->node,
                                        index_tuple->size,
-                                       index_header->vector_dim,
-                                       scalar_size,
+                                       vector_size_bytes,
                                        index_header->m,
                                        &vi_nodes[ node_id ],
                                        nodes_nr);
@@ -659,13 +664,15 @@ void ldb_validate_index(Oid indrelid, bool print_info)
         elog(INFO,
              "index_header = HnswIndexHeaderPage("
              "version=%" PRIu32 " vector_dim=%" PRIu32 " m=%" PRIu32 " ef_construction=%" PRIu32 " ef=%" PRIu32
-             " metric_kind=%d num_vectors=%" PRIu32 " last_data_block=%" PRIu32 " blockmap_groups_nr=%" PRIu32 ")",
+             " pq=%d metric_kind=%d num_vectors=%" PRIu32 " last_data_block=%" PRIu32 " blockmap_groups_nr=%" PRIu32
+             ")",
              index_header->version,
              index_header->vector_dim,
              index_header->m,
              index_header->ef_construction,
              index_header->ef,
              index_header->metric_kind,
+             index_header->pq,
              index_header->num_vectors,
              index_header->last_data_block,
              index_header->blockmap_groups_nr);
@@ -693,7 +700,7 @@ void ldb_validate_index(Oid indrelid, bool print_info)
     }
 
     if(index_header->pq) {
-        ldb_vi_read_codebook(index, index_header, vi_blocks, blocks_nr);
+        ldb_vi_read_pq_codebook(index, index_header, vi_blocks, blocks_nr);
     }
     ldb_vi_read_blockmaps(index, index_header, vi_blocks, blocks_nr, vi_nodes, nodes_nr);
     for(BlockNumber block = 0; block < blocks_nr; ++block) {
