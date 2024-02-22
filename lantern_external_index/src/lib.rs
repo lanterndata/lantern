@@ -149,7 +149,7 @@ pub fn create_usearch_index(
 
     if args.pq {
         let codebook_table_name = format!(
-            "_codebook_{table_name}_{column_name}",
+            "pq_{table_name}_{column_name}",
             table_name = &args.table,
             column_name = &args.column
         );
@@ -181,11 +181,7 @@ pub fn create_usearch_index(
         v.resize(num_centroids * dimensions, 0.);
 
         let rows = transaction.query(
-            &format!(
-                "SELECT subvector_id, centroid_id, c FROM _lantern_internal._codebook_{table_name}_{column_name};",
-                table_name = args.table,
-                column_name = args.column,
-            ),
+            &format!("SELECT subvector_id, centroid_id, c FROM {full_codebook_table_name};",),
             &[],
         )?;
 

@@ -286,7 +286,7 @@ pub fn quantize_table(
     let codebook_table_name = args
         .codebook_table_name
         .clone()
-        .unwrap_or(format!("_codebook_{}_{}", args.table, args.column));
+        .unwrap_or(format!("pq_{}_{}", args.table, args.column));
     let full_codebook_table_name =
         get_full_table_name(LANTERN_INTERNAL_SCHEMA_NAME, &codebook_table_name);
     let pq_column_name = format!("{}_pq", args.column);

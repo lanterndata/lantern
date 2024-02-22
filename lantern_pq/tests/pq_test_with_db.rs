@@ -37,8 +37,7 @@ fn drop_db_tables(client: &mut Client, table_name: &str, codebook_table_name: &s
 fn test_full_pq() {
     let db_url = env::var("DB_URL").expect("`DB_URL` not specified");
     let table_name = String::from("_lantern_pq_test");
-    let codebook_table_name =
-        get_full_table_name("_lantern_internal", "_codebook__lantern_pq_test_v");
+    let codebook_table_name = get_full_table_name("_lantern_internal", "pq__lantern_pq_test_v");
     let mut db_client = Client::connect(&db_url, NoTls).expect("Database connection failed");
     drop_db_tables(&mut db_client, &table_name, &codebook_table_name);
     setup_db_tables(&mut db_client, &table_name);
@@ -120,8 +119,7 @@ fn test_chunked_pq() {
     let db_url = env::var("DB_URL").expect("`DB_URL` not specified");
     let table_name = String::from("_lantern_Pq_TeSt_2");
     let quoted_table_name = quote_ident(&table_name);
-    let codebook_table_name =
-        get_full_table_name("_lantern_internal", "_codebook__lantern_Pq_TeSt_2_v");
+    let codebook_table_name = get_full_table_name("_lantern_internal", "pq__lantern_Pq_TeSt_2_v");
     let mut db_client = Client::connect(&db_url, NoTls).expect("Database connection failed");
     drop_db_tables(&mut db_client, &table_name, &codebook_table_name);
     setup_db_tables(&mut db_client, &table_name);
@@ -330,8 +328,7 @@ fn test_chunked_pq_with_limit() {
     let db_url = env::var("DB_URL").expect("`DB_URL` not specified");
     let table_name = String::from("_lantern_Pq_TeSt_3");
     let quoted_table_name = quote_ident(&table_name);
-    let codebook_table_name =
-        get_full_table_name("_lantern_internal", "_codebook__lantern_Pq_TeSt_3_v");
+    let codebook_table_name = get_full_table_name("_lantern_internal", "pq__lantern_Pq_TeSt_3_v");
     let mut db_client = Client::connect(&db_url, NoTls).expect("Database connection failed");
     drop_db_tables(&mut db_client, &table_name, &codebook_table_name);
     setup_db_tables(&mut db_client, &table_name);
