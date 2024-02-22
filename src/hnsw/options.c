@@ -231,7 +231,7 @@ void _PG_init(void)
 #endif
 
     );
-    DefineCustomIntVariable("hnsw.init_k",
+    DefineCustomIntVariable("lantern_hnsw.init_k",
                             "Number of elements to initially retrieve from the index in a scan",
                             "Valid values are in range [1, 1000]",
                             &ldb_hnsw_init_k,

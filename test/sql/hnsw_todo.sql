@@ -133,12 +133,12 @@ $$ LANGUAGE plpgsql;
 SELECT fill_same();
 
 CREATE INDEX hnsw_l2_index_repeat ON small_world_repeat USING lantern_hnsw(v);
-set hnsw.init_k=3;
+set lantern_hnsw.init_k=3;
 -- the query searches for the nearest 600 vectors closest to the duplicated constant vector above. It then aggregates all results in the outer query by number of times each id appears
 -- if pagination worked correctly, we would expect all ids to appear at most once, but as you can see many of them appear 3 times below
 explain select id, ARRAY_AGG(dist) as dists, count(id) as cnt from (select id, (v <-> ARRAY[0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4]) as dist FROM small_world_repeat order by dist LIMIT 200) b group by id order by cnt DESC, dists, id limit 10;
         select id, ARRAY_AGG(dist) as dists, count(id) as cnt from (select id, (v <-> ARRAY[0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4]) as dist FROM small_world_repeat order by dist LIMIT 200) b group by id order by cnt DESC, dists, id limit 10;
-set hnsw.init_k=200;
+set lantern_hnsw.init_k=200;
         select id, ARRAY_AGG(dist) as dists, count(id) as cnt from (select id, (v <-> ARRAY[0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4]) as dist FROM small_world_repeat order by dist LIMIT 200) b group by id order by cnt DESC, dists, id limit 10;
 
 -- Currently this fails to validate pq index should fix that
