@@ -95,7 +95,7 @@ SET client_min_messages=ERROR;
 VACUUM ANALYZE;
 SET client_min_messages=debug5;
 
-SET hnsw.init_k = 10;
+SET lantern_hnsw.init_k = 10;
 
 -- Note that the (views < 100) condition is quite rare (out of 10,000 rows)
 SELECT COUNT(*) FROM views_vec10k WHERE views < 100;

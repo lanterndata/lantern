@@ -83,7 +83,7 @@ CREATE TABLE small_world_pq (
 );
 -- increase search window to reduce regression failures because of
 -- bad centroids
-set hnsw.init_k = 50;
+set lantern_hnsw.init_k = 50;
 INSERT INTO small_world_pq (id,v) VALUES
 (0, ARRAY[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]),
 (1, ARRAY[0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1]),
