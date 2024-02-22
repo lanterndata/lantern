@@ -287,6 +287,11 @@ pub fn quantize_table(
         .codebook_table_name
         .clone()
         .unwrap_or(format!("pq_{}_{}", args.table, args.column));
+
+    if codebook_table_name.len() > 63 {
+        anyhow::bail!("Codebook table name \"{codebook_table_name}\" exceeds 63 char limit")
+    }
+
     let full_codebook_table_name =
         get_full_table_name(LANTERN_INTERNAL_SCHEMA_NAME, &codebook_table_name);
     let pq_column_name = format!("{}_pq", args.column);
