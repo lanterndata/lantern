@@ -1,5 +1,5 @@
 ------------------------------------------------------------------------------
--- Test changing hnsw.ef variable at runtime 
+-- Test changing lantern_hnsw.ef variable at runtime 
 ------------------------------------------------------------------------------
 \ir utils/sift1k_array.sql
 CREATE TABLE IF NOT EXISTS sift_base1k (
@@ -22,11 +22,11 @@ INSERT INTO sift_base1k (id, v) VALUES
 (1002, array_fill(2, ARRAY[128]));
 -- Validate error on invalid ef_search values
 \set ON_ERROR_STOP off
-SET hnsw.ef = -1;
-ERROR:  -1 is outside the valid range for parameter "hnsw.ef" (0 .. 400)
-SET hnsw.ef = 0;
-SET hnsw.ef = 401;
-ERROR:  401 is outside the valid range for parameter "hnsw.ef" (0 .. 400)
+SET lantern_hnsw.ef = -1;
+ERROR:  -1 is outside the valid range for parameter "lantern_hnsw.ef" (0 .. 400)
+SET lantern_hnsw.ef = 0;
+SET lantern_hnsw.ef = 401;
+ERROR:  401 is outside the valid range for parameter "lantern_hnsw.ef" (0 .. 400)
 \set ON_ERROR_STOP on
 -- Repeat the same query while varying ef parameter
 -- NOTE: it is not entirely known if the results of these are deterministic
@@ -34,7 +34,7 @@ SET enable_seqscan=FALSE;
 SET lantern.pgvector_compat=FALSE;
 SELECT v AS v1001 FROM sift_base1k WHERE id = 1001 \gset
 -- Queries below have the same result
-SET hnsw.ef = 1;
+SET lantern_hnsw.ef = 1;
 SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <?> :'v1001' LIMIT 10;
    round   
 -----------
@@ -50,7 +50,7 @@ SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <?>
  249675.00
 (10 rows)
 
-SET hnsw.ef = 2;
+SET lantern_hnsw.ef = 2;
 SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <?> :'v1001' LIMIT 10;
    round   
 -----------
@@ -66,7 +66,7 @@ SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <?>
  249675.00
 (10 rows)
 
-SET hnsw.ef = 4;
+SET lantern_hnsw.ef = 4;
 SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <?> :'v1001' LIMIT 10;
    round   
 -----------
@@ -82,7 +82,7 @@ SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <?>
  249675.00
 (10 rows)
 
-SET hnsw.ef = 8;
+SET lantern_hnsw.ef = 8;
 SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <?> :'v1001' LIMIT 10;
    round   
 -----------
@@ -98,7 +98,7 @@ SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <?>
  249675.00
 (10 rows)
 
-SET hnsw.ef = 16;
+SET lantern_hnsw.ef = 16;
 SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <?> :'v1001' LIMIT 10;
    round   
 -----------
@@ -115,7 +115,7 @@ SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <?>
 (10 rows)
 
 -- Queries below have the same result, which is different from above
-SET hnsw.ef = 32;
+SET lantern_hnsw.ef = 32;
 SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <?> :'v1001' LIMIT 10;
    round   
 -----------
@@ -131,7 +131,7 @@ SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <?>
  249652.00
 (10 rows)
 
-SET hnsw.ef = 64;
+SET lantern_hnsw.ef = 64;
 SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <?> :'v1001' LIMIT 10;
    round   
 -----------
@@ -147,7 +147,7 @@ SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <?>
  249652.00
 (10 rows)
 
-SET hnsw.ef = 128;
+SET lantern_hnsw.ef = 128;
 SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <?> :'v1001' LIMIT 10;
    round   
 -----------
@@ -163,7 +163,7 @@ SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <?>
  249652.00
 (10 rows)
 
-SET hnsw.ef = 256;
+SET lantern_hnsw.ef = 256;
 SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <?> :'v1001' LIMIT 10;
    round   
 -----------
@@ -179,7 +179,7 @@ SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <?>
  249652.00
 (10 rows)
 
-SET hnsw.ef = 400;
+SET lantern_hnsw.ef = 400;
 SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <?> :'v1001' LIMIT 10;
    round   
 -----------
