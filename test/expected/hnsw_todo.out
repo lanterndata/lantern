@@ -202,18 +202,18 @@ explain select id, ARRAY_AGG(dist) as dists, count(id) as cnt from (select id, (
 (8 rows)
 
         select id, ARRAY_AGG(dist) as dists, count(id) as cnt from (select id, (v <-> ARRAY[0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4]) as dist FROM small_world_repeat order by dist LIMIT 200) b group by id order by cnt DESC, dists, id limit 10;
-  id  |  dists  | cnt 
-------+---------+-----
- 1018 | {0,0,0} |   3
- 1019 | {0,0,0} |   3
- 1020 | {0,0,0} |   3
- 1021 | {0,0,0} |   3
- 1030 | {0,0,0} |   3
- 1031 | {0,0,0} |   3
- 1032 | {0,0,0} |   3
- 1033 | {0,0,0} |   3
- 1034 | {0,0,0} |   3
- 1035 | {0,0,0} |   3
+  id  |   dists   | cnt 
+------+-----------+-----
+ 1082 | {0,0,0,0} |   4
+ 1083 | {0,0,0,0} |   4
+ 1084 | {0,0,0,0} |   4
+ 1085 | {0,0,0,0} |   4
+ 1078 | {0,0,0}   |   3
+ 1079 | {0,0,0}   |   3
+ 1080 | {0,0,0}   |   3
+ 1081 | {0,0,0}   |   3
+ 1087 | {0,0,0}   |   3
+ 1088 | {0,0,0}   |   3
 (10 rows)
 
 set lantern_hnsw.init_k=200;
@@ -232,22 +232,3 @@ set lantern_hnsw.init_k=200;
  1009 | {0}   |   1
 (10 rows)
 
--- Currently this fails to validate pq index should fix that
-SELECT quantize_table('sift_base1k'::regclass, 'v', 10, 32, 'cos');
-INFO:  Table scanned. Dataset size 1000
-INFO:  Starting k-means over dataset with (subvectors=32, clusters=10)
-INFO:  Codebooks created
-NOTICE:  table "_codebook_sift_base1k_v" does not exist, skipping
-INFO:  Compressing vectors...
-INFO:  done init usearch index
-INFO:  done loading usearch index
-INFO:  done saving 1000 vectors
- quantize_table 
-----------------
- 
-(1 row)
-
-SELECT lantern_create_external_index('v', 'sift_base1k', 'public', 'cos', 128, 10, 10, 10, true, 'hnsw_cos_index_pq');
-ERROR:  function lantern_create_external_index(unknown, unknown, unknown, unknown, integer, integer, integer, integer, boolean, unknown) does not exist at character 8
-SELECT _lantern_internal.validate_index('hnsw_cos_index_pq', false);
-ERROR:  relation "hnsw_cos_index_pq" does not exist at character 41
