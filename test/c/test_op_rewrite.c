@@ -36,7 +36,7 @@ int test_op_rewrite(TestCaseState *state)
     }
     PQclear(res);
 
-    res = PQexec(conn, "CREATE INDEX ON _lantern_test_op USING hnsw(v)");
+    res = PQexec(conn, "CREATE INDEX ON _lantern_test_op USING lantern_hnsw(v)");
     if(PQresultStatus(res) != PGRES_COMMAND_OK) {
         fprintf(stderr, "Failed to create index: %s\n", PQerrorMessage(conn));
         PQclear(res);

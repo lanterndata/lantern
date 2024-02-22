@@ -56,7 +56,7 @@ subprocess.run([lantern_cli, 'create-index', '--uri', 'postgresql://localhost:54
 # Create the hnsw_l2_index
 cur.execute("""
 CREATE EXTENSION IF NOT EXISTS lantern;
-CREATE INDEX hnsw_l2_index ON sift_base10k USING hnsw(v) WITH (_experimental_index_path='/lantern_shared/build/index.usearch');
+CREATE INDEX hnsw_l2_index ON sift_base10k USING lantern_hnsw(v) WITH (_experimental_index_path='/lantern_shared/build/index.usearch');
 """)
 
 # Validate the index
