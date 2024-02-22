@@ -120,6 +120,7 @@ EXPLAIN (COSTS FALSE) SELECT id FROM sift_base1k order by v <=> :'v777' LIMIT 10
 (3 rows)
 
 -- Create PQ Index
+SET client_min_messages=ERROR;
 DROP INDEX hnsw_cos_index;
 -- Verify error that codebook does not exist
 \set ON_ERROR_STOP off
@@ -130,7 +131,6 @@ SELECT quantize_table('sift_base1k'::regclass, 'v', 10, 32, 'cos');
 INFO:  Table scanned. Dataset size 1000
 INFO:  Starting k-means over dataset with (subvectors=32, clusters=10)
 INFO:  Codebooks created
-NOTICE:  table "_codebook_sift_base1k_v" does not exist, skipping
 INFO:  Compressing vectors...
  quantize_table 
 ----------------
@@ -143,9 +143,25 @@ SELECT lantern_create_external_index('v', 'sift_base1k', 'public', 'cos', 128, 1
  
 (1 row)
 
+SELECT _lantern_internal.validate_index('hnsw_cos_index_pq', false);
+INFO:  validate_index() start for hnsw_cos_index_pq
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
 SELECT lantern_reindex_external_index('hnsw_cos_index_pq');
  lantern_reindex_external_index 
 --------------------------------
+ 
+(1 row)
+
+SELECT _lantern_internal.validate_index('hnsw_cos_index_pq', false);
+INFO:  validate_index() start for hnsw_cos_index_pq
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
  
 (1 row)
 
