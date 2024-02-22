@@ -227,11 +227,18 @@ DECLARE
   codebooks REAL[][][];
   i INT;
   end_idx INT;
-  codebook_table NAME;
+  codebook_table TEXT;
   dim INT;
 BEGIN
   tbl := regexp_replace(trim(both '"' FROM p_tbl::TEXT), '^.*\.', '');
   col := trim(both '"' FROM p_col);
+  codebook_table := format('pq_%s_%s', tbl, col);
+
+  IF length(codebook_table) > 63 THEN
+    RAISE EXCEPTION 'Codebook table name "%" exceeds 63 char limit', codebook_table;
+  END IF;
+
+  codebook_table := format('_lantern_internal."%s"', codebook_table);
 
   stmt := format('SELECT array_length(%I, 1) FROM %I WHERE %1$I IS NOT NULL LIMIT 1', col, tbl);
   EXECUTE stmt INTO dim;
@@ -240,7 +247,6 @@ BEGIN
 	codebooks := _lantern_internal.create_pq_codebook(p_tbl, col, cluster_cnt, subvector_count, distance_metric, dataset_size_limit);
 
 	-- Create codebook table
-  codebook_table := format('_lantern_internal."_codebook_%s_%s"', tbl, col);
   stmt := format('DROP TABLE IF EXISTS %s CASCADE', codebook_table);
   EXECUTE stmt;
   
@@ -457,7 +463,7 @@ DECLARE
 BEGIN
   tbl := regexp_replace(trim(both '"' FROM p_tbl::TEXT), '^.*\.', '');
   col := trim(both '"' FROM p_col);
-  codebook_table := format('_lantern_internal."_codebook_%s_%s"', tbl, col);
+  codebook_table := format('_lantern_internal."pq_%s_%s"', tbl, col);
   pq_col_name := format('%s_pq', col);
   trigger_func_name := format('"_lantern_internal"._set_pq_col_%s', md5(tbl || col));
   

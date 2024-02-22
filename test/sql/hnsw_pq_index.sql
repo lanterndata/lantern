@@ -29,11 +29,11 @@ INSERT INTO small_world_pq (id,v) VALUES
 (9, ARRAY[0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9]);
 
 SELECT quantize_table('small_world_pq', 'v', 10, 4, 'l2sq');
-SELECT COUNT(DISTINCT subvector_id) FROM _lantern_internal._codebook_small_world_pq_v;
-SELECT COUNT(DISTINCT centroid_id) FROM _lantern_internal._codebook_small_world_pq_v;
+SELECT COUNT(DISTINCT subvector_id) FROM _lantern_internal.pq_small_world_pq_v;
+SELECT COUNT(DISTINCT centroid_id) FROM _lantern_internal.pq_small_world_pq_v;
 
 ALTER TABLE small_world_pq ADD COLUMN v_pq_dec REAL[];
-UPDATE small_world_pq SET v_pq_dec=dequantize_vector(v_pq, '_lantern_internal._codebook_small_world_pq_v');
+UPDATE small_world_pq SET v_pq_dec=dequantize_vector(v_pq, '_lantern_internal.pq_small_world_pq_v');
 
 SET enable_seqscan=OFF;
 
@@ -54,12 +54,12 @@ SELECT id FROM small_world_pq ORDER BY v <-> :'v4' LIMIT 1;
 
 ALTER TABLE small_world_pq DROP COLUMN v_pq;
 ALTER TABLE small_world_pq DROP COLUMN v_pq_dec;
-DROP TABLE _lantern_internal._codebook_small_world_pq_v;
+DROP TABLE _lantern_internal.pq_small_world_pq_v;
 DROP INDEX hnsw_pq_l2_index;
 
 SELECT quantize_table('small_world_pq', 'v', 4, 8, 'l2sq');
-ALTER TABLE small_world_pq ADD COLUMN v_pq_dec REAL[]; --  GENERATED ALWAYS AS (dequantize_vector("v_pq", '_lantern_codebook_small_world_pq')) STORED; -- << cannot do because genrated columns cannot refer to other generated columns
-UPDATE small_world_pq SET v_pq_dec=dequantize_vector(v_pq, '_lantern_internal._codebook_small_world_pq_v');
+ALTER TABLE small_world_pq ADD COLUMN v_pq_dec REAL[]; --  GENERATED ALWAYS AS (dequantize_vector("v_pq", '_lanternpq_small_world_pq')) STORED; -- << cannot do because genrated columns cannot refer to other generated columns
+UPDATE small_world_pq SET v_pq_dec=dequantize_vector(v_pq, '_lantern_internal.pq_small_world_pq_v');
 CREATE INDEX hnsw_pq_l2_index ON small_world_pq USING lantern_hnsw(v) WITH (pq=True);
 SELECT _lantern_internal.validate_index('hnsw_pq_l2_index', false);
 EXPLAIN (COSTS FALSE) SELECT id, v, v_pq, v_pq_dec, (v <-> :'v4') as dist, (v_pq_dec <-> :'v4') real_dist FROM small_world_pq ORDER BY dist LIMIT 1;
@@ -71,14 +71,14 @@ SELECT ARRAY_AGG(id ORDER BY id) FROM
 
 ALTER TABLE small_world_pq DROP COLUMN v_pq;
 ALTER TABLE small_world_pq DROP COLUMN v_pq_dec;
-DROP TABLE _lantern_internal._codebook_small_world_pq_v;
+DROP TABLE _lantern_internal.pq_small_world_pq_v;
 DROP INDEX hnsw_pq_l2_index;
 
 ALTER TABLE small_world_pq SET UNLOGGED;
 
 SELECT quantize_table('small_world_pq', 'v', 7, 2, 'l2sq');
 ALTER TABLE small_world_pq ADD COLUMN v_pq_dec REAL[];
-UPDATE small_world_pq SET v_pq_dec=dequantize_vector(v_pq, '_lantern_internal._codebook_small_world_pq_v');
+UPDATE small_world_pq SET v_pq_dec=dequantize_vector(v_pq, '_lantern_internal.pq_small_world_pq_v');
 CREATE INDEX hnsw_pq_l2_index ON small_world_pq USING lantern_hnsw(v) WITH (pq=True);
 SELECT _lantern_internal.validate_index('hnsw_pq_l2_index', false);
 -- we had inserted a value with id=42 and vector=:'v4' above, before making the table unlogged
@@ -102,8 +102,8 @@ DECLARE
    v_pq pqvec;
 BEGIN
   -- cannot use the generated column as it has not been created at this point
-  v_pq = quantize_vector(NEW.v, '_lantern_internal._codebook_sift_base1k_v', 'l2sq');
-  NEW.v_pq_dec :=  dequantize_vector(v_pq, '_lantern_internal._codebook_sift_base1k_v');
+  v_pq = quantize_vector(NEW.v, '_lantern_internal.pq_sift_base1k_v', 'l2sq');
+  NEW.v_pq_dec :=  dequantize_vector(v_pq, '_lantern_internal.pq_sift_base1k_v');
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -113,7 +113,7 @@ BEFORE INSERT OR UPDATE ON sift_base1k
 FOR EACH ROW
 EXECUTE FUNCTION v_pq_dec_update_trigger();
 
-UPDATE sift_base1k SET v_pq_dec=dequantize_vector(v_pq, '_lantern_internal._codebook_sift_base1k_v');
+UPDATE sift_base1k SET v_pq_dec=dequantize_vector(v_pq, '_lantern_internal.pq_sift_base1k_v');
 -- this will always be one
 -- SELECT calculate_table_recall('sift_base1k', 'sift_query1k', 'sift_truth1k', 'v', 10, 100) as recall \gset
 
