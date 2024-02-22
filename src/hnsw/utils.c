@@ -175,7 +175,7 @@ bool VersionsMatch()
         version_text = DatumGetTextP(val);
         version = text_to_cstring(version_text);
         version_length = strlen(version);
-        if(sizeof(LDB_BINARY_VERSION) >= (unsigned)version_length) {
+        if(sizeof(LDB_BINARY_VERSION) < (unsigned)version_length) {
             version_length = sizeof(LDB_BINARY_VERSION);
         }
 
@@ -189,6 +189,10 @@ bool VersionsMatch()
         SPI_finish();
 
         if(!versions_match) {
+            if(!version) {
+                version = "[NULL]";
+            }
+
             elog(WARNING,
                  "LanternDB binary version (%s) does not match the version in SQL (%s). This can cause errors as the "
                  "two "
