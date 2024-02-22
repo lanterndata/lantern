@@ -14,7 +14,7 @@ int replica_test_index(TestCaseState* state)
                  "    DROP TABLE IF EXISTS small_world;\n"
                  "    CREATE TABLE small_world (id SERIAL PRIMARY KEY, v real[]);\n"
                  "    IF create_index THEN\n"
-                 "        CREATE INDEX ON small_world USING hnsw (v) WITH (dim=3);\n"
+                 "        CREATE INDEX ON small_world USING lantern_hnsw (v) WITH (dim=3);\n"
                  "    END IF;\n"
                  "    -- let's insert HNSW_BLOCKMAP_BLOCKS_PER_PAGE (2000) record to fill the first blockmap page\n"
                  "    BEGIN\n"
@@ -35,7 +35,7 @@ int replica_test_index(TestCaseState* state)
 
     res = PQexec(state->conn,
                  "SELECT prepare(FALSE);"
-                 "CREATE INDEX ON small_world USING hnsw (v) WITH (dim=3);"
+                 "CREATE INDEX ON small_world USING lantern_hnsw (v) WITH (dim=3);"
                  "CHECKPOINT;");
 
     if(PQresultStatus(res) != PGRES_COMMAND_OK) {

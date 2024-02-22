@@ -7,7 +7,7 @@
 
 Lantern is an open-source PostgreSQL database extension to store vector data, generate embeddings, and handle vector search operations.
 
-It provides a new index type for vector columns called `hnsw` which speeds up `ORDER BY ... LIMIT` queries.
+It provides a new index type for vector columns called `lantern_hnsw` which speeds up `ORDER BY ... LIMIT` queries.
 
 Lantern builds and uses [usearch](https://github.com/unum-cloud/usearch), a single-header state-of-the-art HNSW implementation.
 
@@ -69,16 +69,16 @@ CREATE TABLE small_world (id integer, vector real[3]);
 INSERT INTO small_world (id, vector) VALUES (0, '{0,0,0}'), (1, '{0,0,1}');
 ```
 
-Create an `hnsw` index on the table
+Create an hnsw index on the table via `lantern_hnsw`:
 
 ```sql
-CREATE INDEX ON small_world USING hnsw (vector);
+CREATE INDEX ON small_world USING lantern_hnsw (vector);
 ```
 
-Customize `hnsw` index parameters depending on your vector data, such as the distance function (e.g., `dist_l2sq_ops`), index construction parameters, and index search parameters.
+Customize `lantern_hnsw` index parameters depending on your vector data, such as the distance function (e.g., `dist_l2sq_ops`), index construction parameters, and index search parameters.
 
 ```sql
-CREATE INDEX ON small_world USING hnsw (vector dist_l2sq_ops)
+CREATE INDEX ON small_world USING lantern_hnsw (vector dist_l2sq_ops)
 WITH (M=2, ef_construction=10, ef=4, dim=3);
 ```
 

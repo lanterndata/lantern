@@ -21,7 +21,7 @@ int replica_test_unlogged(TestCaseState* state)
     res = PQexec(state->conn,
                  "DROP TABLE IF EXISTS small_world;"
                  "CREATE UNLOGGED TABLE small_world (id SERIAL PRIMARY KEY, v real[]);"
-                 "CREATE INDEX ON small_world USING hnsw (v) WITH (dim=3);"
+                 "CREATE INDEX ON small_world USING lantern_hnsw (v) WITH (dim=3);"
                  "INSERT INTO small_world (v) VALUES (ARRAY[0,0,1]), (ARRAY[0,1,0]), (ARRAY[1,0,0]);"
                  "CHECKPOINT;");
 
