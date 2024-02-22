@@ -48,6 +48,7 @@ DROP INDEX hnsw_l2_index;
 
 -- index with pq
 CREATE INDEX hnsw_pq_l2_index ON small_world_pq USING lantern_hnsw(v) WITH (pq=True);
+SELECT _lantern_internal.validate_index('hnsw_pq_l2_index', false);
 EXPLAIN (COSTS FALSE) SELECT id, v, v_pq, v_pq_dec, (v <-> :'v4') as dist, (v_pq_dec <-> :'v4') real_dist FROM small_world_pq ORDER BY dist LIMIT 1;
 SELECT id FROM small_world_pq ORDER BY v <-> :'v4' LIMIT 1;
 
@@ -60,6 +61,7 @@ SELECT quantize_table('small_world_pq', 'v', 4, 8, 'l2sq');
 ALTER TABLE small_world_pq ADD COLUMN v_pq_dec REAL[]; --  GENERATED ALWAYS AS (dequantize_vector("v_pq", '_lantern_codebook_small_world_pq')) STORED; -- << cannot do because genrated columns cannot refer to other generated columns
 UPDATE small_world_pq SET v_pq_dec=dequantize_vector(v_pq, '_lantern_internal._codebook_small_world_pq_v');
 CREATE INDEX hnsw_pq_l2_index ON small_world_pq USING lantern_hnsw(v) WITH (pq=True);
+SELECT _lantern_internal.validate_index('hnsw_pq_l2_index', false);
 EXPLAIN (COSTS FALSE) SELECT id, v, v_pq, v_pq_dec, (v <-> :'v4') as dist, (v_pq_dec <-> :'v4') real_dist FROM small_world_pq ORDER BY dist LIMIT 1;
 SELECT id FROM small_world_pq ORDER BY v <-> :'v4' LIMIT 1;
 -- add another entry with vector v4, and search for it again
@@ -78,6 +80,7 @@ SELECT quantize_table('small_world_pq', 'v', 7, 2, 'l2sq');
 ALTER TABLE small_world_pq ADD COLUMN v_pq_dec REAL[];
 UPDATE small_world_pq SET v_pq_dec=dequantize_vector(v_pq, '_lantern_internal._codebook_small_world_pq_v');
 CREATE INDEX hnsw_pq_l2_index ON small_world_pq USING lantern_hnsw(v) WITH (pq=True);
+SELECT _lantern_internal.validate_index('hnsw_pq_l2_index', false);
 -- we had inserted a value with id=42 and vector=:'v4' above, before making the table unlogged
 SELECT ARRAY_AGG(id ORDER BY id) FROM
   (SELECT id FROM small_world_pq ORDER BY v <-> :'v4' LIMIT 2) b;
@@ -116,6 +119,7 @@ UPDATE sift_base1k SET v_pq_dec=dequantize_vector(v_pq, '_lantern_internal._code
 
 SELECT calculate_table_recall('sift_base1k', 'sift_query1k', 'sift_truth1k', 'v_pq_dec', 10, 100) as recall_pq \gset
 CREATE INDEX sift_base1k_pq_index ON sift_base1k USING lantern_hnsw(v) WITH (pq=True);
+SELECT _lantern_internal.validate_index('sift_base1k_pq_index', false);
 SELECT calculate_table_recall('sift_base1k', 'sift_query1k', 'sift_truth1k', 'v', 10, 100) as recall_pq_index \gset
 SELECT (:'recall_pq'::float - :'recall_pq_index'::float)::float as recall_diff \gset
 -- pq index costs no more than 10% in addition to what quantization has already cost us
