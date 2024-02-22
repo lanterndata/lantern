@@ -186,8 +186,6 @@ bool VersionsMatch()
         }
         version_checked = true;
 
-        SPI_finish();
-
         if(!versions_match) {
             if(!version) {
                 version = "[NULL]";
@@ -202,6 +200,7 @@ bool VersionsMatch()
                  LDB_BINARY_VERSION,
                  version);
         }
+        SPI_finish();
         return versions_match;
     }
 }
