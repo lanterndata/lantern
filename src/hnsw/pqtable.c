@@ -21,7 +21,7 @@
 #define TYPALIGN_INT 'i'
 #endif
 
-#define COOKBOOK_RELATION_FMT "_codebook_%s_%s"
+#define COOKBOOK_RELATION_FMT "pq_%s_%s"
 
 /*
  * Create codebook to be used for product quantization of vectors
