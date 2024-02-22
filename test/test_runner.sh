@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# set -euo pipefail
+
+UPDATE_EXTENSION=${UPDATE_EXTENSION:-0}
+
 # Get current test file name
 TESTFILE_NAME=${PGAPPNAME##pg_regress/}
 
@@ -58,7 +62,7 @@ if [[ ("$PARALLEL" -eq 0  &&  "$MISC" -eq 0) || "$TESTFILE_NAME" == "begin" ]]; 
      psql "$@" -U ${DB_USER} -d postgres -v ECHO=none -q -c "DROP DATABASE IF EXISTS ${TEST_CASE_DB};" 2>/dev/null
      psql "$@" -U ${DB_USER} -d postgres -v ECHO=none -q -c "CREATE DATABASE ${TEST_CASE_DB};" 2>/dev/null
 fi
-if [ ! -z "$UPDATE_EXTENSION" ]
+if [ ! "$UPDATE_EXTENSION" -eq 0 ]
 then
      if [ -z "$UPDATE_FROM" ] || [ -z "$UPDATE_TO" ]
      then
@@ -70,6 +74,11 @@ then
      # psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -q -c "SELECT * FROM pg_extension_update_paths('lantern');" 2>/dev/null
      # install the old version of the extension and sanity-check that all tests pass
      psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -c "SET client_min_messages=error; CREATE EXTENSION IF NOT EXISTS lantern VERSION '$UPDATE_FROM';"
+     if [[ "$PARALLEL" -eq 0 ]]; then
+          psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -f utils/common.sql 2>/dev/null
+          psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -c "SET client_min_messages=error; ALTER EXTENSION lantern UPDATE TO '$UPDATE_TO';" 2>/dev/null
+     fi
+     # need to ignore output because pageinspect is not always found
      # upgrade to the new version of the extension and make sure that all existing tests still pass
      # todo:: this approach currently is broken for pgvector-compat related upgrade scripts as that regression test drops
      # and recreates the extension so whatever we do here is ignored
@@ -82,7 +91,7 @@ then
          if flock -xn 200; then
              if [ ! -f "$FINISHEDFILE" ]; then
                  psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -f utils/common.sql 2>/dev/null
-                 psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -c "SET client_min_messages=error; ALTER EXTENSION lantern UPDATE TO '$UPDATE_TO';" 2>/dev/null
+                 psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -c "SET client_min_messages=error; ALTER EXTENSION lantern UPDATE TO '$UPDATE_TO';" 2>/dev/null 
                  touch $FINISHEDFILE
              fi
          fi
@@ -95,7 +104,8 @@ then
      run_regression_test $@
 else
 
-     psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -c "SET client_min_messages=error; CREATE EXTENSION lantern;" 2>/dev/null
+     # "if not exists" is necessary below for parallel tests
+     psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -c "SET client_min_messages=error; CREATE EXTENSION IF NOT EXISTS lantern;"
      psql "$@" -U ${DB_USER} -d ${TEST_CASE_DB} -v ECHO=none -q -f utils/common.sql 2>/dev/null
 
      run_regression_test $@
