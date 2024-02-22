@@ -188,16 +188,16 @@ INFO:  done saving 1010 vectors
 set lantern_hnsw.init_k=3;
 -- the query searches for the nearest 600 vectors closest to the duplicated constant vector above. It then aggregates all results in the outer query by number of times each id appears
 -- if pagination worked correctly, we would expect all ids to appear at most once, but as you can see many of them appear 3 times below
-explain select id, ARRAY_AGG(dist) as dists, count(id) as cnt from (select id, (v <-> ARRAY[0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4]) as dist FROM small_world_repeat order by dist LIMIT 200) b group by id order by cnt DESC, dists, id limit 10;
+explain (costs false) select id, ARRAY_AGG(dist) as dists, count(id) as cnt from (select id, (v <-> ARRAY[0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4]) as dist FROM small_world_repeat order by dist LIMIT 200) b group by id order by cnt DESC, dists, id limit 10;
                                                                                              QUERY PLAN                                                                                              
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Limit  (cost=34.71..34.73 rows=10 width=44)
-   ->  Sort  (cost=34.71..35.21 rows=200 width=44)
+ Limit
+   ->  Sort
          Sort Key: (count(small_world_repeat.id)) DESC, (array_agg(((small_world_repeat.v <-> '{0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4}'::real[])))), small_world_repeat.id
-         ->  HashAggregate  (cost=27.89..30.39 rows=200 width=44)
+         ->  HashAggregate
                Group Key: small_world_repeat.id
-               ->  Limit  (cost=0.00..24.39 rows=200 width=8)
-                     ->  Index Scan using hnsw_l2_index_repeat on small_world_repeat  (cost=0.00..123.15 rows=1010 width=8)
+               ->  Limit
+                     ->  Index Scan using hnsw_l2_index_repeat on small_world_repeat
                            Order By: (v <-> '{0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4}'::real[])
 (8 rows)
 
