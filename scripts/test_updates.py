@@ -126,6 +126,7 @@ def update_from_tag(from_version: str, to_version: str):
     if Version(from_version) > Version('0.1.1'):
         res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-misc FILTER=version_mismatch")
 
+    res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={to_version} make test")
     # run the actual parallel tests after the upgrade
     res = shell('rm -f /tmp/ldb_update.lock')
     res = shell('rm -f /tmp/ldb_update_finished')
