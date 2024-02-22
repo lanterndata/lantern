@@ -188,5 +188,7 @@ SELECT ROUND(l2sq_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <?> 
 (10 rows)
 
 -- Should throw error when lantern_extras is not installed
+\set ON_ERROR_STOP off
 SELECT lantern_reindex_external_index('hnsw_l2_index');
 ERROR:  Please install 'lantern_extras' extension or update it to the latest version
+\set ON_ERROR_STOP on

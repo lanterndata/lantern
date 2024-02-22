@@ -65,4 +65,6 @@ SELECT _lantern_internal.validate_index('hnsw_l2_index', false);
 SELECT ROUND(l2sq_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <?> :'v777' LIMIT 10;
 
 -- Should throw error when lantern_extras is not installed
+\set ON_ERROR_STOP off
 SELECT lantern_reindex_external_index('hnsw_l2_index');
+\set ON_ERROR_STOP on
