@@ -124,7 +124,8 @@ SELECT calculate_table_recall('sift_base1k', 'sift_query1k', 'sift_truth1k', 'v'
 SELECT (:'recall_pq'::float - :'recall_pq_index'::float)::float as recall_diff \gset
 -- pq index costs no more than 10% in addition to what quantization has already cost us
 -- recall diff must be positive but not large - the positive check sanity-checks that the index was used in calculate_table_recall
-SELECT :recall_diff > 0 AND :recall_diff < 0.1 as recall_within_range;
+SELECT :recall_diff;
+SELECT :recall_diff >= 0 AND :recall_diff <= 0.1 as recall_within_range;
 
 -- inserts
 SELECT v as v2 FROM sift_base1k WHERE id=2 \gset
