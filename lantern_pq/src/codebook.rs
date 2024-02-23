@@ -147,7 +147,7 @@ pub fn create_codebook<'a> (
 
     // Avoid division by zero error
     let num_connections = cmp::max(num_connections, 1);
-    let chunk_count = total_row_count / num_connections;
+    let chunk_size = total_row_count / num_connections;
     logger.debug(&format!("max_connections: {max_connections}, num_cores: {num_cores}, num_connections: {num_connections}", max_connections = max_connections));
 
     let total_fetch_start_time = Instant::now();
@@ -162,8 +162,8 @@ pub fn create_codebook<'a> (
         .map(|i| {
             let mut client = Client::connect(db_uri, NoTls)?;
             let mut transaction = client.transaction()?;
-            let range_start = i * chunk_count;
-            let range_end = if i == num_cores - 1 { total_row_count } else { range_start + chunk_count };
+            let range_start = i * chunk_size;
+            let range_end = if i == num_cores - 1 { total_row_count + 1 } else { range_start + chunk_size };
 
             let fetch_start_time = Instant::now();
             let rows = transaction.query(

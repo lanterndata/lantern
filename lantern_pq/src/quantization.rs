@@ -273,9 +273,9 @@ pub fn quantize_and_write_vectors(args: QuantizeAndWriteVectorArgs, mut client: 
 
     // Avoid division by zero error
     let num_connections = cmp::max(num_connections, 1);
-    let chunk_count = range_row_count / num_connections;
+    let chunk_size = range_row_count / num_connections;
  
-    logger.debug(&format!("max_connections: {}, num_cores: {num_cores}, num_connections: {num_connections}, chunk_count: {chunk_count}", args.max_connections));
+    logger.debug(&format!("max_connections: {}, num_cores: {num_cores}, num_connections: {num_connections}, chunk_count: {chunk_size}", args.max_connections));
 
     let quantization_and_write_start_time = Instant::now();
     
@@ -284,8 +284,8 @@ pub fn quantize_and_write_vectors(args: QuantizeAndWriteVectorArgs, mut client: 
         .map_with(codebooks_hashmap, |map, i| {
             let mut client = Client::connect(&db_uri, NoTls)?;
             let mut transaction = client.transaction()?;
-            let range_start = limit_start + (i * chunk_count);
-            let range_end = if i == num_cores - 1 { limit_end + 1 } else { range_start + chunk_count };
+            let range_start = limit_start + (i * chunk_size);
+            let range_end = if i == num_cores - 1 { limit_end + 1 } else { range_start + chunk_size };
 
             let fetch_start_time = Instant::now();
             let rows = transaction.query(

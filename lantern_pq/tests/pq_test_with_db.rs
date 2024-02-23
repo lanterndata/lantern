@@ -10,13 +10,13 @@ use lantern_pq::cli;
 use lantern_utils::{get_full_table_name, quote_ident};
 use postgres::{Client, NoTls};
 
-fn setup_db_tables(client: &mut Client, table_name: &str) {
+fn setup_db_tables(client: &mut Client, table_name: &str, range_start: usize, range_end: usize) {
     client
         .batch_execute(&format!(
             "
     DROP TABLE IF EXISTS \"{table_name}\";
     CREATE TABLE \"{table_name}\" (id SERIAL PRIMARY KEY, v REAL[]);
-    INSERT INTO \"{table_name}\" SELECT generate_series(0, 999), (select array_agg(random() * 1.0) from generate_series (0, 128 - 1));
+    INSERT INTO \"{table_name}\" SELECT generate_series({range_start}, {range_end}), (select array_agg(random() * 1.0) from generate_series (0, 128 - 1));
 "
         ))
         .expect("Could not create necessarry tables");
@@ -40,7 +40,7 @@ fn test_full_pq() {
     let codebook_table_name = get_full_table_name("_lantern_internal", "pq__lantern_pq_test_v");
     let mut db_client = Client::connect(&db_url, NoTls).expect("Database connection failed");
     drop_db_tables(&mut db_client, &table_name, &codebook_table_name);
-    setup_db_tables(&mut db_client, &table_name);
+    setup_db_tables(&mut db_client, &table_name, 1, 1000);
 
     let final_progress = Arc::new(AtomicU8::new(0));
     let final_progress_r1 = final_progress.clone();
@@ -102,7 +102,7 @@ fn test_full_pq() {
 
     let cnt = db_client
         .query_one(
-            &format!("SELECT COUNT(*) FROM {table_name} WHERE ARRAY_LENGTH(v_pq::INT[], 1) != 32"),
+            &format!("SELECT COUNT(*) FROM {table_name} WHERE ARRAY_LENGTH(v_pq::INT[], 1) != 32 or v_pq is null"),
             &[],
         )
         .unwrap();
@@ -122,7 +122,7 @@ fn test_chunked_pq() {
     let codebook_table_name = get_full_table_name("_lantern_internal", "pq__lantern_Pq_TeSt_2_v");
     let mut db_client = Client::connect(&db_url, NoTls).expect("Database connection failed");
     drop_db_tables(&mut db_client, &table_name, &codebook_table_name);
-    setup_db_tables(&mut db_client, &table_name);
+    setup_db_tables(&mut db_client, &table_name, 0, 999);
 
     // ================= Run setup job ================
     lantern_pq::quantize_table(
@@ -310,7 +310,7 @@ fn test_chunked_pq() {
     let cnt = db_client
         .query_one(
             &format!(
-                "SELECT COUNT(*) FROM {quoted_table_name} WHERE ARRAY_LENGTH(v_pq::INT[], 1) != 32"
+                "SELECT COUNT(*) FROM {quoted_table_name} WHERE ARRAY_LENGTH(v_pq::INT[], 1) != 32 or v_pq is null"
             ),
             &[],
         )
@@ -320,7 +320,7 @@ fn test_chunked_pq() {
 
     assert_eq!(cnt, 0);
     // ==================================================================================
-    // drop_db_tables(&mut db_client, &table_name, &codebook_table_name);
+    drop_db_tables(&mut db_client, &table_name, &codebook_table_name);
 }
 
 #[test]
@@ -331,7 +331,7 @@ fn test_chunked_pq_with_limit() {
     let codebook_table_name = get_full_table_name("_lantern_internal", "pq__lantern_Pq_TeSt_3_v");
     let mut db_client = Client::connect(&db_url, NoTls).expect("Database connection failed");
     drop_db_tables(&mut db_client, &table_name, &codebook_table_name);
-    setup_db_tables(&mut db_client, &table_name);
+    setup_db_tables(&mut db_client, &table_name, 1, 1000);
 
     // ================= Run setup job ================
     lantern_pq::quantize_table(
