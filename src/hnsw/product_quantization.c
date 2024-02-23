@@ -178,7 +178,7 @@ bool should_stop_iterations(float4              **old_centers,
 {
     usearch_error_t error = NULL;
     uint32          i;
-    float4          threshold = 0.15f;
+    float4          threshold = 0.1f;
     float4          distance = 0.0f;
 
     for(i = 0; i < cluster_count; i++) {
