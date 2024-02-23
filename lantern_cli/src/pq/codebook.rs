@@ -1,5 +1,5 @@
-use crate::lantern_logger::Logger;
-use crate::lantern_utils::quote_ident;
+use crate::logger::Logger;
+use crate::utils::quote_ident;
 use rayon::prelude::*;
 use std::cmp;
 use std::collections::HashMap;

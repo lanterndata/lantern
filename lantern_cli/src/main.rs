@@ -2,10 +2,10 @@ use std::process;
 
 use clap::Parser;
 use lantern_cli::*;
-use lantern_daemon;
-use lantern_embeddings;
-use lantern_external_index;
-use crate::lantern_logger::{LogLevel, Logger};
+use daemon;
+use embeddings;
+use external_index;
+use crate::logger::{LogLevel, Logger};
 mod cli;
 
 fn main() {
@@ -15,13 +15,13 @@ fn main() {
         cli::Commands::CreateIndex(args) => {
             let logger = Logger::new("Lantern Index", LogLevel::Debug);
             _main_logger = Some(logger.clone());
-            lantern_external_index::create_usearch_index(&args, None, None, Some(logger))
+            external_index::create_usearch_index(&args, None, None, Some(logger))
         }
         cli::Commands::CreateEmbeddings(args) => {
             let logger = Logger::new("Lantern Embeddings", LogLevel::Debug);
             _main_logger = Some(logger.clone());
             let res =
-                lantern_embeddings::create_embeddings_from_db(args, true, None, None, Some(logger));
+                embeddings::create_embeddings_from_db(args, true, None, None, Some(logger));
             // Handle error here as this call does not return void as others
             let logger = _main_logger.as_ref().unwrap();
             if let Err(e) = res {
@@ -32,32 +32,32 @@ fn main() {
         cli::Commands::ShowModels(args) => {
             let logger = Logger::new("Lantern Embeddings", LogLevel::Debug);
             _main_logger = Some(logger.clone());
-            lantern_embeddings::show_available_models(&args, Some(logger))
+            embeddings::show_available_models(&args, Some(logger))
         }
         cli::Commands::ShowRuntimes => {
             let logger = Logger::new("Lantern Embeddings", LogLevel::Debug);
             _main_logger = Some(logger.clone());
-            lantern_embeddings::show_available_runtimes(Some(logger))
+            embeddings::show_available_runtimes(Some(logger))
         }
         cli::Commands::MeasureModelSpeed(args) => {
             let logger = Logger::new("Lantern Embeddings", LogLevel::Info);
             _main_logger = Some(logger.clone());
-            lantern_embeddings::measure_speed::start_speed_test(&args, Some(logger))
+            embeddings::measure_speed::start_speed_test(&args, Some(logger))
         }
         cli::Commands::AutotuneIndex(args) => {
             let logger = Logger::new("Lantern Index Autotune", LogLevel::Debug);
             _main_logger = Some(logger.clone());
-            lantern_index_autotune::autotune_index(&args, None, None, Some(logger))
+            index_autotune::autotune_index(&args, None, None, Some(logger))
         }
         cli::Commands::PQTable(args) => {
             let logger = Logger::new("Lantern PQ", LogLevel::Debug);
             _main_logger = Some(logger.clone());
-            lantern_pq::quantize_table(args, None, None, Some(logger))
+            pq::quantize_table(args, None, None, Some(logger))
         }
         cli::Commands::StartDaemon(args) => {
             let logger = Logger::new("Lantern Daemon", args.log_level.value());
             _main_logger = Some(logger.clone());
-            lantern_daemon::start(args, Some(logger))
+            daemon::start(args, Some(logger))
         }
     };
 

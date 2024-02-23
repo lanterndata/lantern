@@ -1,6 +1,6 @@
 use codebook::CreateCodebookArgs;
-use crate::lantern_logger::{LogLevel, Logger};
-use crate::lantern_utils::{append_params_to_uri, get_full_table_name, quote_ident};
+use crate::logger::{LogLevel, Logger};
+use crate::utils::{append_params_to_uri, get_full_table_name, quote_ident};
 use quantization::QuantizeAndWriteVectorArgs;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, RwLock};

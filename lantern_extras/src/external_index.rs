@@ -1,4 +1,5 @@
-use lantern_cli::lantern_external_index::cli::{CreateIndexArgs, UMetricKind};
+use lantern_cli::external_index;
+use lantern_cli::external_index::cli::{CreateIndexArgs, UMetricKind};
 use pgrx::prelude::*;
 use rand::Rng;
 
@@ -70,7 +71,7 @@ fn lantern_create_external_index<'a>(
     let mut rng = rand::thread_rng();
     let index_path = format!("{data_dir}/ldb-index-{}.usearch", rng.gen_range(0..1000));
 
-    let res = lantern_external_index::create_usearch_index(
+    let res = external_index::create_usearch_index(
         &CreateIndexArgs {
             import: true,
             out: index_path,

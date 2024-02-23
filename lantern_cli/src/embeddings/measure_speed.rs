@@ -1,7 +1,7 @@
 use std::{cmp, time::Instant};
 
 use super::core::{get_runtime, Runtime};
-use crate::lantern_logger::{LogLevel, Logger};
+use crate::logger::{LogLevel, Logger};
 use postgres::{Client, NoTls};
 
 use super::cli::MeasureModelSpeedArgs;

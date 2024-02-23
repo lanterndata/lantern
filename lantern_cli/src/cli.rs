@@ -1,8 +1,8 @@
-use super::lantern_daemon::cli::DaemonArgs;
-use super::lantern_embeddings::cli::{EmbeddingArgs, MeasureModelSpeedArgs, ShowModelsArgs};
-use super::lantern_external_index::cli::CreateIndexArgs;
-use super::lantern_index_autotune::cli::IndexAutotuneArgs;
-use super::lantern_pq::cli::PQArgs;
+use super::daemon::cli::DaemonArgs;
+use super::embeddings::cli::{EmbeddingArgs, MeasureModelSpeedArgs, ShowModelsArgs};
+use super::external_index::cli::CreateIndexArgs;
+use super::index_autotune::cli::IndexAutotuneArgs;
+use super::pq::cli::PQArgs;
 use clap::{Parser, Subcommand};
 
 #[derive(Subcommand, Debug)]

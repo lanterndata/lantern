@@ -1,5 +1,5 @@
-use crate::lantern_logger::Logger;
-use crate::lantern_utils::{get_full_table_name, quote_ident};
+use crate::logger::Logger;
+use crate::utils::{get_full_table_name, quote_ident};
 use rand::Rng;
 use rayon::prelude::*;
 use std::cmp;
@@ -95,7 +95,7 @@ pub fn write_quantized_rows<'a>(
 ) -> AnyhowVoidResult {
     let mut rng = rand::thread_rng();
     let full_table_name = get_full_table_name(schema, table);
-    let temp_table_name = format!("_lantern_pq_tmp_{tmp_table_suffix}_{}", rng.gen_range(0..1000000));
+    let temp_table_name = format!("_pq_tmp_{tmp_table_suffix}_{}", rng.gen_range(0..1000000));
     let export_time_start = Instant::now();
 
     transaction

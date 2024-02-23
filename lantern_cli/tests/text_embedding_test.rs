@@ -1,4 +1,4 @@
-use lantern_cli::lantern_embeddings::core::{get_runtime, Runtime};
+use lantern_cli::embeddings::core::{get_runtime, Runtime};
 
 static HELLO_WORLD_TEXT: &'static str = "Hello world!";
 #[rustfmt::skip]

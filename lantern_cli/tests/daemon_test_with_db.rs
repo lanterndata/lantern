@@ -4,19 +4,19 @@ use std::{
     time::Duration,
 };
 
-use lantern_cli::lantern_daemon::{
+use lantern_cli::daemon::{
     self,
     cli::{DaemonArgs, LogLevel},
 };
 use tokio_postgres::{Client, NoTls};
 
 static EMB_LOCK_TABLE_NAME: &'static str = "_lantern_emb_job_locks";
-static EMBEDDING_JOBS_TABLE_NAME: &'static str = "_lantern_daemon_embedding_jobs";
-static AUTOTUNE_JOBS_TABLE_NAME: &'static str = "_lantern_daemon_autotune_jobs";
-static INDEX_JOBS_TABLE_NAME: &'static str = "_lantern_daemon_index_jobs";
+static EMBEDDING_JOBS_TABLE_NAME: &'static str = "_daemon_embedding_jobs";
+static AUTOTUNE_JOBS_TABLE_NAME: &'static str = "_daemon_autotune_jobs";
+static INDEX_JOBS_TABLE_NAME: &'static str = "_daemon_index_jobs";
 static CLIENT_TABLE_NAME: &'static str = "_lantern_cloud_client1";
-static AUTOTUNE_RESULTS_TABLE_NAME: &'static str = "_lantern_daemon_autotune_results";
-static EMBEDDING_USAGE_TABLE_NAME: &'static str = "_lantern_daemon_embedding_usage";
+static AUTOTUNE_RESULTS_TABLE_NAME: &'static str = "_daemon_autotune_results";
+static EMBEDDING_USAGE_TABLE_NAME: &'static str = "_daemon_embedding_usage";
 
 async fn setup_db_tables(client: &mut Client) {
     client
@@ -182,7 +182,7 @@ fn start_daemon(
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         std::thread::spawn(move || {
-            lantern_daemon::start(
+            daemon::start(
                 DaemonArgs {
                     uri: db_uri,
                     schema: "public".to_owned(),

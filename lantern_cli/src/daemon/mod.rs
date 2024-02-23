@@ -9,7 +9,7 @@ mod types;
 
 use std::sync::{mpsc, Arc};
 
-use crate::lantern_logger::Logger;
+use crate::logger::Logger;
 use crate::types::AnyhowVoidResult;
 
 pub fn start(args: cli::DaemonArgs, logger: Option<Logger>) -> AnyhowVoidResult {

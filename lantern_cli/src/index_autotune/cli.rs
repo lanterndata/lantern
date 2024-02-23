@@ -1,4 +1,4 @@
-use crate::lantern_external_index::cli::UMetricKind;
+use crate::external_index::cli::UMetricKind;
 use clap::Parser;
 
 #[derive(Parser, Debug)]

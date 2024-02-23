@@ -6,9 +6,9 @@ use std::{
     },
 };
 
-use lantern_cli::lantern_pq;
-use lantern_cli::lantern_pq::*;
-use lantern_cli::lantern_utils::{get_full_table_name, quote_ident};
+use lantern_cli::pq;
+use lantern_cli::pq::*;
+use lantern_cli::utils::{get_full_table_name, quote_ident};
 use postgres::{Client, NoTls};
 
 fn setup_db_tables(client: &mut Client, table_name: &str, range_start: usize, range_end: usize) {
@@ -37,8 +37,8 @@ fn drop_db_tables(client: &mut Client, table_name: &str, codebook_table_name: &s
 #[test]
 fn test_full_pq() {
     let db_url = env::var("DB_URL").expect("`DB_URL` not specified");
-    let table_name = String::from("_lantern_pq_test");
-    let codebook_table_name = get_full_table_name("_lantern_internal", "pq__lantern_pq_test_v");
+    let table_name = String::from("_pq_test");
+    let codebook_table_name = get_full_table_name("_lantern_internal", "pq__pq_test_v");
     let mut db_client = Client::connect(&db_url, NoTls).expect("Database connection failed");
     drop_db_tables(&mut db_client, &table_name, &codebook_table_name);
     setup_db_tables(&mut db_client, &table_name, 1, 1000);
@@ -50,7 +50,7 @@ fn test_full_pq() {
         final_progress_r1.store(progress, Ordering::SeqCst);
     };
 
-    lantern_cli::lantern_pq::quantize_table(
+    lantern_cli::pq::quantize_table(
         cli::PQArgs {
             uri: db_url.clone(),
             column: "v".to_owned(),
@@ -126,7 +126,7 @@ fn test_chunked_pq() {
     setup_db_tables(&mut db_client, &table_name, 0, 999);
 
     // ================= Run setup job ================
-    lantern_pq::quantize_table(
+    pq::quantize_table(
         cli::PQArgs {
             uri: db_url.clone(),
             column: "v".to_owned(),
@@ -190,7 +190,7 @@ fn test_chunked_pq() {
 
     // ================= Run clustering job ================
     for i in 0..32 {
-        lantern_pq::quantize_table(
+        pq::quantize_table(
             cli::PQArgs {
                 uri: db_url.clone(),
                 column: "v".to_owned(),
@@ -257,7 +257,7 @@ fn test_chunked_pq() {
 
     // ================= Run quantization job ================
     for i in 0..3 {
-        lantern_pq::quantize_table(
+        pq::quantize_table(
             cli::PQArgs {
                 uri: db_url.clone(),
                 column: "v".to_owned(),
@@ -335,7 +335,7 @@ fn test_chunked_pq_with_limit() {
     setup_db_tables(&mut db_client, &table_name, 1, 1000);
 
     // ================= Run setup job ================
-    lantern_pq::quantize_table(
+    pq::quantize_table(
         cli::PQArgs {
             uri: db_url.clone(),
             column: "v".to_owned(),
@@ -399,7 +399,7 @@ fn test_chunked_pq_with_limit() {
 
     // ================= Run clustering job ================
     for i in 0..32 {
-        lantern_pq::quantize_table(
+        pq::quantize_table(
             cli::PQArgs {
                 uri: db_url.clone(),
                 column: "v".to_owned(),
@@ -466,7 +466,7 @@ fn test_chunked_pq_with_limit() {
 
     // ================= Run quantization job ================
     for i in 0..3 {
-        lantern_pq::quantize_table(
+        pq::quantize_table(
             cli::PQArgs {
                 uri: db_url.clone(),
                 column: "v".to_owned(),

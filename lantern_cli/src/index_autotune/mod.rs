@@ -4,9 +4,9 @@ use std::{
     time::Instant,
 };
 
-use crate::lantern_external_index::cli::CreateIndexArgs;
-use crate::lantern_logger::{LogLevel, Logger};
-use crate::lantern_utils::{append_params_to_uri, get_full_table_name, quote_ident};
+use crate::external_index::cli::CreateIndexArgs;
+use crate::logger::{LogLevel, Logger};
+use crate::utils::{append_params_to_uri, get_full_table_name, quote_ident};
 use crate::types::*;
 use postgres::{types::ToSql, Client, NoTls};
 use rand::Rng;
@@ -409,7 +409,7 @@ pub fn autotune_index(
     if autotune_results.len() == 0 {
         // If no existing results were found, we will iterate over the variations and do the following:
         // 1. DROP previous iteration index if exists (if not the first iteration)
-        // 2. Start external index creation with lantern_external_index.
+        // 2. Start external index creation with external_index.
         //    It will have import flag, which means it will import the index file using large
         //    objects
         // 3. Calculate the index creation time, latency and recall for this variation
@@ -430,7 +430,7 @@ pub fn autotune_index(
             }
 
             let start = Instant::now();
-            crate::lantern_external_index::create_usearch_index(
+            crate::external_index::create_usearch_index(
                 &CreateIndexArgs {
                     import: true,
                     out: index_path.clone(),
@@ -516,7 +516,7 @@ pub fn autotune_index(
             "Creating index with the best result for job {job_id}"
         ));
         let start = Instant::now();
-        crate::lantern_external_index::create_usearch_index(
+        crate::external_index::create_usearch_index(
             &CreateIndexArgs {
                 import: true,
                 out: index_path.clone(),

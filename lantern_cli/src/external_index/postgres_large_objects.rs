@@ -1,5 +1,5 @@
 use crate::types::AnyhowVoidResult;
-use crate::lantern_utils::quote_ident;
+use crate::utils::quote_ident;
 use postgres::Transaction;
 use postgres_types::Oid;
 use std::{cmp, io};

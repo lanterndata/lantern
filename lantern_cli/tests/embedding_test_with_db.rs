@@ -6,9 +6,9 @@ use std::{
     },
 };
 
-use lantern_cli::lantern_embeddings;
-use lantern_cli::lantern_embeddings::cli;
-use lantern_cli::lantern_embeddings::core::Runtime;
+use lantern_cli::embeddings;
+use lantern_cli::embeddings::cli;
+use lantern_cli::embeddings::core::Runtime;
 use postgres::{Client, NoTls};
 
 fn setup_db_tables(client: &mut Client, table_name: &str) {
@@ -36,7 +36,7 @@ fn drop_db_tables(client: &mut Client, table_name: &str) {
 #[test]
 fn test_embedding_generation_from_db() {
     let db_url = env::var("DB_URL").expect("`DB_URL` not specified");
-    let table_name = String::from("_lantern_embeddings_test");
+    let table_name = String::from("_embeddings_test");
     let mut db_client = Client::connect(&db_url, NoTls).expect("Database connection failed");
     setup_db_tables(&mut db_client, &table_name);
 
@@ -47,7 +47,7 @@ fn test_embedding_generation_from_db() {
         final_progress_r1.store(progress, Ordering::SeqCst);
     };
 
-    lantern_embeddings::create_embeddings_from_db(
+    embeddings::create_embeddings_from_db(
         cli::EmbeddingArgs {
             model: "BAAI/bge-small-en".to_owned(),
             uri: db_url.clone(),

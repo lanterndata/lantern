@@ -1,8 +1,6 @@
-use lantern_cli::lantern_embeddings::core::{
-    self,
-    cohere_runtime::CohereRuntimeParams,
-    core::{get_runtime, Runtime},
-    openai_runtime::OpenAiRuntimeParams,
+use lantern_cli::embeddings::core::{
+    cohere_runtime::CohereRuntimeParams, get_runtime, openai_runtime::OpenAiRuntimeParams,
+    LoggerFn, Runtime,
 };
 use pgrx::prelude::*;
 
@@ -28,7 +26,7 @@ fn get_dummy_runtime_params(runtime: &Runtime) -> String {
 fn text_embedding<'a>(model_name: &'a str, text: &'a str) -> Result<Vec<f32>, anyhow::Error> {
     let runtime = get_runtime(
         &Runtime::Ort,
-        Some(&(notice_fn as lantern_embeddings_core::core::LoggerFn)),
+        Some(&(notice_fn as LoggerFn)),
         &ORT_RUNTIME_PARAMS,
     )?;
     let mut res = runtime.process(model_name, &vec![text])?;
@@ -93,7 +91,7 @@ fn openai_embedding<'a>(
 
     let runtime = get_runtime(
         &Runtime::OpenAi,
-        Some(&(notice_fn as lantern_embeddings_core::core::LoggerFn)),
+        Some(&(notice_fn as LoggerFn)),
         &runtime_params,
     )?;
     let mut res = runtime.process(model_name, &vec![text])?;
@@ -116,7 +114,7 @@ fn cohere_embedding<'a>(
 
     let runtime = get_runtime(
         &Runtime::Cohere,
-        Some(&(notice_fn as lantern_embeddings_core::core::LoggerFn)),
+        Some(&(notice_fn as LoggerFn)),
         &runtime_params,
     )?;
     let mut res = runtime.process(model_name, &vec![text])?;
@@ -147,7 +145,7 @@ fn get_available_models<'a>(runtime: default!(&'a str, "'ort'")) -> Result<Strin
     let runtime_params = get_dummy_runtime_params(&runtime_name);
     let runtime = get_runtime(
         &runtime_name,
-        Some(&(notice_fn as lantern_embeddings_core::core::LoggerFn)),
+        Some(&(notice_fn as LoggerFn)),
         &runtime_params,
     )?;
     return Ok(runtime.get_available_models().0);
@@ -155,7 +153,7 @@ fn get_available_models<'a>(runtime: default!(&'a str, "'ort'")) -> Result<Strin
 
 #[pg_extern(immutable, parallel_safe, create_or_replace)]
 fn get_available_runtimes() -> Result<String, anyhow::Error> {
-    let mut runtimes_str = lantern_embeddings_core::core::get_available_runtimes().join("\n");
+    let mut runtimes_str = lantern_cli::embeddings::core::get_available_runtimes().join("\n");
     runtimes_str.push_str("\n");
     return Ok(runtimes_str);
 }

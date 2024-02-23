@@ -1,4 +1,4 @@
-use crate::lantern_logger;
+use crate::logger;
 use clap::{Parser, ValueEnum};
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -10,19 +10,19 @@ pub enum LogLevel {
 }
 
 impl LogLevel {
-    pub fn value(&self) -> lantern_logger::LogLevel {
+    pub fn value(&self) -> logger::LogLevel {
         match self {
             LogLevel::Info => {
-                return lantern_logger::LogLevel::Info;
+                return logger::LogLevel::Info;
             }
             LogLevel::Debug => {
-                return lantern_logger::LogLevel::Debug;
+                return logger::LogLevel::Debug;
             }
             LogLevel::Warn => {
-                return lantern_logger::LogLevel::Warn;
+                return logger::LogLevel::Warn;
             }
             LogLevel::Error => {
-                return lantern_logger::LogLevel::Error;
+                return logger::LogLevel::Error;
             }
         }
     }

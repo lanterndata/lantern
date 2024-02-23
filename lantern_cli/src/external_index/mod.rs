@@ -10,8 +10,8 @@ use usearch::ffi::{IndexOptions, ScalarKind};
 use usearch::Index;
 
 use crate::types::*;
-use crate::lantern_logger::{LogLevel, Logger};
-use crate::lantern_utils::{get_full_table_name, quote_ident};
+use crate::logger::{LogLevel, Logger};
+use crate::utils::{get_full_table_name, quote_ident};
 use postgres::{Client, NoTls, Row};
 use postgres_large_objects::LargeObject;
 use postgres_types::FromSql;

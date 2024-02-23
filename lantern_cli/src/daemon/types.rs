@@ -1,5 +1,5 @@
-use crate::lantern_embeddings::cli::Runtime;
-use crate::lantern_external_index::cli::UMetricKind;
+use crate::embeddings::cli::Runtime;
+use crate::external_index::cli::UMetricKind;
 use crate::types::AnyhowVoidResult;
 use futures::Future;
 use std::{collections::HashMap, pin::Pin};

@@ -1,8 +1,8 @@
 use crate::types::*;
 use core::{get_available_runtimes, get_runtime};
 use csv::Writer;
-use crate::lantern_logger::{LogLevel, Logger};
-use crate::lantern_utils::{append_params_to_uri, get_full_table_name, quote_ident};
+use crate::logger::{LogLevel, Logger};
+use crate::utils::{append_params_to_uri, get_full_table_name, quote_ident};
 use rand::Rng;
 use std::hint;
 use std::io::Write;
@@ -141,7 +141,7 @@ fn producer_worker(
 }
 
 // Embedding worker will listen to the producer channel
-// and execute lantern_embeddings_core's corresponding function to generate embeddings
+// and execute embeddings_core's corresponding function to generate embeddings
 // we will here map each vector to it's row ctid before sending the results over channel
 // So we will get Vec<Row<String, String> and output Vec<(String, Vec<f32>)> the output will
 // contain generated embeddings for the text. If text will be null we will skip that row

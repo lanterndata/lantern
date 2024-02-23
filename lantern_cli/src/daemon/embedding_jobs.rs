@@ -31,9 +31,9 @@ use super::types::{
 };
 use futures::future;
 use itertools::Itertools;
-use crate::lantern_embeddings::cli::EmbeddingArgs;
-use crate::lantern_logger::Logger;
-use crate::lantern_utils::get_full_table_name;
+use crate::embeddings::cli::EmbeddingArgs;
+use crate::logger::Logger;
+use crate::utils::get_full_table_name;
 use tokio_postgres::types::ToSql;
 use std::collections::HashMap;
 use std::path::Path;
@@ -180,7 +180,7 @@ async fn embedding_worker(
                 let is_canceled = Arc::new(std::sync::RwLock::new(false));
                 let is_canceled_clone = is_canceled.clone();
                 let embedding_task = tokio::spawn(async move {
-                    let result = crate::lantern_embeddings::create_embeddings_from_db(EmbeddingArgs {
+                    let result = crate::embeddings::create_embeddings_from_db(EmbeddingArgs {
                             model: job_clone.model.clone(),
                             schema: job_clone.schema.clone(),
                             uri: job_clone.db_uri.clone(),

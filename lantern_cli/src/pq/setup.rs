@@ -1,5 +1,5 @@
-use crate::lantern_logger::Logger;
-use crate::lantern_utils::quote_ident;
+use crate::logger::Logger;
+use crate::utils::quote_ident;
 use postgres::Transaction;
 
 use super::{AnyhowVoidResult, LANTERN_INTERNAL_SCHEMA_NAME};
