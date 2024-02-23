@@ -24,8 +24,7 @@ tar = "0.4"
 itertools = "0.11"
 backtrace = "0.3"
 url = "2.2"
-lantern_embeddings_core = { path = "../lantern_embeddings_core" }
-lantern_external_index = { path = "../lantern_external_index" }
+lantern_cli = { path = "../lantern_cli" }
 anyhow = "1.0.75"
 rand = "0.8.5"
 serde_json = "1.0.111"

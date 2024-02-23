@@ -1,4 +1,4 @@
-use lantern_external_index::cli::{CreateIndexArgs, UMetricKind};
+use lantern_cli::lantern_external_index::cli::{CreateIndexArgs, UMetricKind};
 use pgrx::prelude::*;
 use rand::Rng;
 

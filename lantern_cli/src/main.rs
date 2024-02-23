@@ -1,11 +1,11 @@
 use std::process;
 
 use clap::Parser;
+use lantern_cli::*;
 use lantern_daemon;
 use lantern_embeddings;
 use lantern_external_index;
-use lantern_logger::{LogLevel, Logger};
-use lantern_pq;
+use crate::lantern_logger::{LogLevel, Logger};
 mod cli;
 
 fn main() {

@@ -1,4 +1,4 @@
-use lantern_embeddings_core::{
+use lantern_cli::lantern_embeddings::core::{
     self,
     cohere_runtime::CohereRuntimeParams,
     core::{get_runtime, Runtime},
