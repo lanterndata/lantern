@@ -14,8 +14,8 @@ pub async fn drop_old_triggers_and_functions(
     client
         .batch_execute(&format!(
             "
-       DROP FUNCTION IF EXISTS notify_insert_daemon CASCADE;
-       DROP FUNCTION IF EXISTS notify_update_daemon CASCADE;
+       DROP FUNCTION IF EXISTS notify_insert_lantern_daemon CASCADE;
+       DROP FUNCTION IF EXISTS notify_update_lantern_daemon CASCADE;
        DROP TRIGGER IF EXISTS trigger_lantern_jobs_insert ON {emb_jobs_full_table_name} CASCADE;
        DROP TRIGGER IF EXISTS trigger_lantern_jobs_update ON {emb_jobs_full_table_name} CASCADE;
     ",

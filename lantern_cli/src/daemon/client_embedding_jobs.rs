@@ -1,9 +1,9 @@
 use super::helpers::check_table_exists;
 use super::types::JobInsertNotification;
-use crate::types::AnyhowVoidResult;
-use futures::StreamExt;
 use crate::logger::{LogLevel, Logger};
+use crate::types::AnyhowVoidResult;
 use crate::utils::{append_params_to_uri, get_full_table_name, quote_ident};
+use futures::StreamExt;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -70,7 +70,7 @@ fn get_trigger_name(job_id: i32, operation: &str) -> String {
 }
 
 fn get_function_name(job_id: i32) -> String {
-    return format!("notify_insert_daemon_{job_id}");
+    return format!("notify_insert_lantern_daemon_{job_id}");
 }
 
 fn get_notification_channel_name(job_id: i32) -> String {
