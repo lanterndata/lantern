@@ -797,11 +797,18 @@ impl<'a> EmbeddingRuntime for OrtRuntime<'a> {
                 .filter(|b| b.len() > 0)
                 .collect::<Vec<&Vec<u8>>>();
 
-            let model_result = model_info
-                .encoder
-                .as_ref()
-                .unwrap()
-                .process_image(&filtered_buffers);
+            let model_result = if filtered_buffers.len() > 0 {
+                model_info
+                    .encoder
+                    .as_ref()
+                    .unwrap()
+                    .process_image(&filtered_buffers)
+            } else {
+                Ok(EmbeddingResult {
+                    embeddings: Vec::new(),
+                    processed_tokens: 0,
+                })
+            };
 
             let model_result: EmbeddingResult = match model_result {
                 Ok(res) => res,
@@ -811,13 +818,35 @@ impl<'a> EmbeddingRuntime for OrtRuntime<'a> {
             };
 
             // Now we are mapping back the results, and for failed images
-            // We will put an empty vector, which will later become null in DB
+            // We will put an a vector filled with -1
+            // We are not putting an empty vector here
+            // Because on each daemon start it would take null values
+            // And try to generate embeddings for them, so startup will slow down
             let mut idx = 0;
+            // We are unwrapping here, as models are static
+            // And we believe the model file to have the outputs
+            // And output shuold have the dimensions
+            // This should be checked when adding new model
+
+            let output_dims = model_info
+                .encoder
+                .as_ref()
+                .unwrap()
+                .encoder
+                .outputs
+                .last()
+                .unwrap()
+                .dimensions()
+                .last()
+                .unwrap()
+                .unwrap();
+
+            let invalid_vec = vec![-1.0; output_dims];
             let return_res = buffers
                 .iter()
                 .map(|el| {
                     if el.len() == 0 {
-                        Vec::new()
+                        invalid_vec.clone()
                     } else {
                         let vec = model_result.embeddings[idx].clone();
                         idx += 1;
