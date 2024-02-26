@@ -49,7 +49,7 @@ pub struct EncoderOptions {
 }
 
 const DATA_PATH: &'static str = ".ldb_extras_data/";
-const MAX_IMAGE_SIZE: usize = 1024 * 1024 * 10; // 10 MB
+const MAX_IMAGE_SIZE: usize = 1024 * 1024 * 20; // 20 MB
 
 struct ModelInfo {
     url: String,
@@ -457,7 +457,7 @@ impl EncoderService {
 
     pub fn process_image_clip(
         &self,
-        images_bytes: &Vec<Vec<u8>>,
+        images_bytes: &Vec<&Vec<u8>>,
     ) -> Result<EmbeddingResult, Box<dyn std::error::Error + Send + Sync>> {
         let session = &self.encoder;
         let mean = vec![0.48145466, 0.4578275, 0.40821073]; // CLIP Dataset
@@ -515,7 +515,7 @@ impl EncoderService {
 
     fn process_image(
         &self,
-        images_bytes: &Vec<Vec<u8>>,
+        images_bytes: &Vec<&Vec<u8>>,
     ) -> Result<EmbeddingResult, Box<dyn std::error::Error + Send + Sync>> {
         match self.name.as_str() {
             "clip/ViT-B-32-visual" => self.process_image_clip(images_bytes),
@@ -683,7 +683,7 @@ impl<'a> OrtRuntime<'a> {
     async fn get_image_buffer(&self, path_or_url: &str) -> Result<Vec<u8>, anyhow::Error> {
         if let Ok(url) = Url::parse(path_or_url) {
             let client = HttpClient::builder()
-                .timeout(Duration::from_secs(3))
+                .timeout(Duration::from_secs(15))
                 .redirect_policy(RedirectPolicy::Limit(2))
                 .build()?;
 
@@ -697,7 +697,17 @@ impl<'a> OrtRuntime<'a> {
                 );
             }
 
-            let response = response?.bytes().await?;
+            let mut response = response?;
+            let status = response.status();
+
+            if status.as_u16() > 304 {
+                anyhow::bail!(
+                    "[X] Request failed with status {status}. Error: {}",
+                    response.text().await?
+                )
+            }
+
+            let response = response.bytes().await?;
 
             if response.len() > MAX_IMAGE_SIZE {
                 anyhow::bail!(
@@ -741,9 +751,11 @@ impl<'a> OrtRuntime<'a> {
             while let Some(result) = tasks.next().await {
                 let mut buffers = buffers.lock().unwrap();
                 if let Err(e) = result {
-                    anyhow::bail!("{}", e);
+                    eprintln!("{}", e);
+                    buffers.push(Vec::new());
+                } else {
+                    buffers.push(result.unwrap());
                 }
-                buffers.push(result.unwrap());
             }
             Ok::<(), anyhow::Error>(())
         });
@@ -776,7 +788,48 @@ impl<'a> EmbeddingRuntime for OrtRuntime<'a> {
         let result;
         if model_info.encoder_args.visual {
             let buffers = self.get_images_parallel(inputs)?;
-            result = model_info.encoder.as_ref().unwrap().process_image(&buffers);
+
+            // If buffer will return error while downloading
+            // We will put an empty array instead, to omit that image
+            // So here we are filtering the images which succeed to be downloaded
+            let filtered_buffers = buffers
+                .iter()
+                .filter(|b| b.len() > 0)
+                .collect::<Vec<&Vec<u8>>>();
+
+            let model_result = model_info
+                .encoder
+                .as_ref()
+                .unwrap()
+                .process_image(&filtered_buffers);
+
+            let model_result: EmbeddingResult = match model_result {
+                Ok(res) => res,
+                Err(err) => {
+                    anyhow::bail!("Error happened while generating image embeddings {:?}", err);
+                }
+            };
+
+            // Now we are mapping back the results, and for failed images
+            // We will put an empty vector, which will later become null in DB
+            let mut idx = 0;
+            let return_res = buffers
+                .iter()
+                .map(|el| {
+                    if el.len() == 0 {
+                        Vec::new()
+                    } else {
+                        let vec = model_result.embeddings[idx].clone();
+                        idx += 1;
+                        vec
+                    }
+                })
+                .collect();
+
+            result = Ok(EmbeddingResult {
+                embeddings: return_res,
+                processed_tokens: model_result.processed_tokens,
+            })
         } else {
             result = model_info.encoder.as_ref().unwrap().process_text(inputs);
         }

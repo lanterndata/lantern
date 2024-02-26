@@ -286,7 +286,9 @@ fn db_exporter_worker(
         transaction.commit()?;
 
         let mut transaction = client.transaction()?;
-        let mut writer = transaction.copy_in(&format!("COPY {temp_table_name} FROM stdin"))?;
+        let mut writer = transaction.copy_in(&format!(
+            "COPY {temp_table_name} FROM stdin WITH NULL AS 'NULL'"
+        ))?;
         let update_sql = &format!("UPDATE {full_table_name} dest SET {column} = src.{column} FROM {temp_table_name} src WHERE src.id::tid = dest.ctid", column=quote_ident(column), temp_table_name=quote_ident(&temp_table_name));
 
         let flush_interval = 10;
@@ -300,11 +302,15 @@ fn db_exporter_worker(
             for row in &rows {
                 writer.write(row.0.as_bytes())?;
                 writer.write("\t".as_bytes())?;
-                writer.write("{".as_bytes())?;
-                let row_str: String = row.1.iter().map(|&x| x.to_string() + ",").collect();
-                writer.write(row_str[0..row_str.len() - 1].as_bytes())?;
-                drop(row_str);
-                writer.write("}".as_bytes())?;
+                if row.1.len() > 0 {
+                    writer.write("{".as_bytes())?;
+                    let row_str: String = row.1.iter().map(|&x| x.to_string() + ",").collect();
+                    writer.write(row_str[0..row_str.len() - 1].as_bytes())?;
+                    drop(row_str);
+                    writer.write("}".as_bytes())?;
+                } else {
+                    writer.write("NULL".as_bytes())?;
+                }
                 writer.write("\n".as_bytes())?;
                 collected_row_cnt += 1;
             }
@@ -413,7 +419,7 @@ fn csv_exporter_worker(
 fn get_default_batch_size(model: &str) -> usize {
     match model {
         "clip/ViT-B-32-textual" => 2000,
-        "clip/ViT-B-32-visual" => 100,
+        "clip/ViT-B-32-visual" => 50,
         "BAAI/bge-small-en" => 300,
         "BAAI/bge-base-en" => 100,
         "BAAI/bge-large-en" => 60,
