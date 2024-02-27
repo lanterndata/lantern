@@ -225,7 +225,7 @@ async fn embedding_worker(
 
                     if processed_tokens > 0 {
                         let fn_name = get_full_table_name(&schema_ref, "increment_embedding_usage_and_tokens");
-                        let res = client_ref.execute(&format!("SELECT {fn_name}({job_id},{usage},{tokens})", job_id=job.id, usage=processed_rows, tokens=processed_tokens), &[]).await;
+                        let res = client_ref.execute(&format!("SELECT {fn_name}({job_id},{usage},{tokens}::bigint)", job_id=job.id, usage=processed_rows, tokens=processed_tokens), &[]).await;
 
                         if let Err(e) = res {
                             logger.error(&format!("Error while updating usage for {job_id}: {e}", job_id=job.id));

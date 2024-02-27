@@ -2,8 +2,9 @@ use futures::StreamExt;
 use image::{imageops::FilterType, io::Reader as ImageReader, GenericImageView};
 use isahc::{config::RedirectPolicy, prelude::*, HttpClient};
 use itertools::Itertools;
-use ndarray::{s, Array2, Array4, ArrayBase, CowArray, CowRepr, Dim, IxDynImpl};
+use ndarray::{s, Array2, Array4, ArrayBase, Axis, CowArray, CowRepr, Dim, IxDynImpl};
 use ort::session::Session;
+use ort::tensor::ort_owned_tensor::ViewHolder;
 use ort::{Environment, ExecutionProvider, GraphOptimizationLevel, SessionBuilder, Value};
 use serde::Deserialize;
 use std::{
@@ -26,10 +27,39 @@ use super::LoggerFn;
 type SessionInput<'a> = ArrayBase<CowRepr<'a, i64>, Dim<IxDynImpl>>;
 
 #[derive(Debug, Clone)]
+pub enum PoolingStrategy {
+    CLS,
+    Mean,
+}
+
+impl PoolingStrategy {
+    fn cls_pooling(embeddings: ViewHolder<'_, f32, Dim<IxDynImpl>>) -> Vec<f32> {
+        embeddings.slice(s![.., 0, ..]).iter().map(|s| *s).collect()
+    }
+
+    fn mean_pooling(embeddings: ViewHolder<'_, f32, Dim<IxDynImpl>>) -> Vec<f32> {
+        embeddings
+            .mean_axis(Axis(1))
+            .unwrap()
+            .iter()
+            .map(|s| *s)
+            .collect()
+    }
+
+    pub fn pool(&self, embeddings: ViewHolder<'_, f32, Dim<IxDynImpl>>) -> Vec<f32> {
+        match self {
+            &PoolingStrategy::CLS => PoolingStrategy::cls_pooling(embeddings),
+            &PoolingStrategy::Mean => PoolingStrategy::mean_pooling(embeddings),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct ModelParams {
     layer_cnt: Option<usize>,
     head_cnt: Option<usize>,
     head_dim: Option<usize>,
+    pooling_strategy: PoolingStrategy,
 }
 
 pub struct EncoderService {
@@ -61,6 +91,7 @@ struct ModelInfo {
 
 struct ModelInfoBuilder {
     base_url: &'static str,
+    pooling_strategy: Option<PoolingStrategy>,
     use_tokenizer: Option<bool>,
     visual: Option<bool>,
     input_image_size: Option<usize>,
@@ -75,6 +106,7 @@ impl ModelInfoBuilder {
     fn new(base_url: &'static str) -> Self {
         ModelInfoBuilder {
             base_url,
+            pooling_strategy: None,
             use_tokenizer: None,
             visual: None,
             input_image_size: None,
@@ -116,6 +148,11 @@ impl ModelInfoBuilder {
         self
     }
 
+    fn with_pooling_strategy(&mut self, strategy: PoolingStrategy) -> &mut Self {
+        self.pooling_strategy = Some(strategy);
+        self
+    }
+
     fn build(&self) -> ModelInfo {
         let model_url = format!("{}/model.onnx", self.base_url);
         let mut tokenizer_url = None;
@@ -139,6 +176,10 @@ impl ModelInfoBuilder {
                 layer_cnt: self.layer_cnt.clone(),
                 head_cnt: self.head_cnt.clone(),
                 head_dim: self.head_dim.clone(),
+                pooling_strategy: self
+                    .pooling_strategy
+                    .clone()
+                    .unwrap_or(PoolingStrategy::CLS),
             },
             encoder: None,
             encoder_args,
@@ -161,8 +202,8 @@ lazy_static! {
         ("microsoft/all-MiniLM-L12-v2", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/microsoft/all-MiniLM-L12-v2").with_tokenizer(true).build()),
         ("microsoft/all-mpnet-base-v2", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/microsoft/all-mpnet-base-v2").with_tokenizer(true).build()),
         ("transformers/multi-qa-mpnet-base-dot-v1", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/transformers/multi-qa-mpnet-base-dot-v1").with_tokenizer(true).build()),
-        ("jinaai/jina-embeddings-v2-small-en", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/jinaai/jina-embeddings-v2-small-en").with_tokenizer(true).with_layer_cnt(4).with_head_cnt(4).with_head_dim(64).build()),
-        ("jinaai/jina-embeddings-v2-base-en", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/jinaai/jina-embeddings-v2-base-en").with_tokenizer(true).with_layer_cnt(12).with_head_cnt(12).with_head_dim(64).build())
+        ("jinaai/jina-embeddings-v2-small-en", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/jinaai/jina-embeddings-v2-small-en").with_tokenizer(true).with_layer_cnt(4).with_head_cnt(4).with_head_dim(64).with_pooling_strategy(PoolingStrategy::Mean).build()),
+        ("jinaai/jina-embeddings-v2-base-en", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/jinaai/jina-embeddings-v2-base-en").with_tokenizer(true).with_layer_cnt(12).with_head_cnt(12).with_head_dim(64).with_pooling_strategy(PoolingStrategy::Mean).build())
     ]));
 }
 
@@ -368,8 +409,8 @@ impl EncoderService {
 
                 let binding = outputs[0].try_extract()?;
                 let embeddings = binding.view();
-                let embeddings = embeddings.slice(s![.., 0, ..]);
-                let embeddings: Vec<f32> = embeddings.iter().map(|s| *s).collect();
+                let embeddings: Vec<f32> = self.model_params.pooling_strategy.pool(embeddings);
+
                 let output_dims = session.outputs[0].dimensions.last().unwrap().unwrap() as usize;
 
                 Ok(embeddings
