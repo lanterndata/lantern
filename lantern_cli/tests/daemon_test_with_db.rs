@@ -113,11 +113,11 @@ async fn setup_db_tables(client: &mut Client) {
         id SERIAL PRIMARY KEY,
         job_id INT NOT NULL UNIQUE,
         usage INT NOT NULL DEFAULT 0,
-        tokens INT  NOT NULL DEFAULT 0
+        tokens BIGINT NOT NULL DEFAULT 0
    );
 
 
-    CREATE OR REPLACE FUNCTION public.increment_embedding_usage_and_tokens(v_job_id integer, v_usage integer, v_tokens integer DEFAULT 0)
+    CREATE OR REPLACE FUNCTION public.increment_embedding_usage_and_tokens(v_job_id integer, v_usage integer, v_tokens BIGINT DEFAULT 0)
      RETURNS VOID
      LANGUAGE plpgsql
     AS $function$
