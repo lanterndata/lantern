@@ -1,10 +1,11 @@
 use super::cli::PQArgs;
 use super::setup::{make_codebook_logged_and_readonly, setup_tables, setup_triggers};
 use super::{set_and_report_progress, AnyhowVoidResult, ProgressCbFn};
-use isahc::{prelude::*, HttpClient, Request};
 use crate::logger::Logger;
 use crate::utils::quote_ident;
+use isahc::{prelude::*, HttpClient, Request};
 use postgres::{Client, NoTls};
+use rand::Rng;
 use serde::Deserialize;
 use serde_json::{self, json, Value};
 use std::cmp;
@@ -23,7 +24,7 @@ static CLUSTERING_TASK_TEMPLATE: &'static str = r#"{
            "entrypoint": "/bin/sh",
            "commands": [
              "-c",
-             "/lantern-cli pq-table --uri ${DB_URI} --table ${TABLE} --column ${COLUMN} --clusters ${CLUSTERS} --splits ${SPLITS} --parallel-task-count ${PARALLEL_TASK_COUNT} --subvector-id ${BATCH_TASK_INDEX} --skip-table-setup --skip-vector-quantization; exit $?"
+             "/lantern-cli pq-table --uri ${DB_URI} --table ${TABLE} --column ${COLUMN} --clusters ${CLUSTERS} --splits ${SPLITS} --parallel-task-count ${PARALLEL_TASK_COUNT} --dataset-size ${DATASET_SIZE} --start-offset-id ${START_OFFSET_ID} --subvector-id ${BATCH_TASK_INDEX} --skip-table-setup --skip-vector-quantization; exit $?"
            ]
          },
          "environment": {
@@ -33,7 +34,9 @@ static CLUSTERING_TASK_TEMPLATE: &'static str = r#"{
              "COLUMN": "{column}",
              "CLUSTERS": "{cluster_count}",
              "SPLITS": "{splits}",
-             "PARALLEL_TASK_COUNT": "{gcp_quantization_task_parallelism}"
+             "PARALLEL_TASK_COUNT": "{gcp_quantization_task_parallelism}",
+             "DATASET_SIZE": "{dataset_size}",
+             "START_OFFSET_ID": "{start_offset_id}"
            }
          }
        }
@@ -309,6 +312,33 @@ pub fn quantize_table_on_gcp(
 
     if !args.skip_codebook_creation {
         let task_start = Instant::now();
+
+        let limit = if let Some(limit) = args.dataset_limit {
+            limit
+        } else {
+            0
+        };
+
+        if limit > 0 && limit < args.clusters {
+            anyhow::bail!("--dataset-limit should be greater than or equal to cluster count");
+        }
+
+        let start_offset_id = if limit > 0 {
+            let mut rng = rand::thread_rng();
+            let max_id = if limit > total_row_count {
+                0
+            } else {
+                total_row_count - limit
+            };
+
+            // Generate random offset to take portion of dataset
+            // We are not doing order by random() limit X, because it is slow, and chunking based on id
+            // will become harder
+            rng.gen_range(0..max_id)
+        } else {
+            0
+        };
+
         let mut body_json: Value = serde_json::from_str(CLUSTERING_TASK_TEMPLATE)?;
         body_json["taskGroups"][0]["taskSpec"]["runnables"][0]["container"]["imageUri"] =
             json!(gcp_image);
@@ -324,6 +354,10 @@ pub fn quantize_table_on_gcp(
             ["CLUSTERS"] = json!(args.clusters.to_string());
         body_json["taskGroups"][0]["taskSpec"]["runnables"][0]["environment"]["variables"]
             ["SPLITS"] = json!(args.splits.to_string());
+        body_json["taskGroups"][0]["taskSpec"]["runnables"][0]["environment"]["variables"]
+            ["START_OFFSET_ID"] = json!(start_offset_id.to_string());
+        body_json["taskGroups"][0]["taskSpec"]["runnables"][0]["environment"]["variables"]
+            ["DATASET_SIZE"] = json!(total_row_count.to_string());
         body_json["taskGroups"][0]["taskSpec"]["runnables"][0]["environment"]["variables"]
             ["PARALLEL_TASK_COUNT"] = json!(gcp_clustering_task_parallelism.to_string());
         body_json["taskGroups"][0]["taskSpec"]["computeResource"]["cpuMilli"] =

@@ -1,7 +1,8 @@
-use codebook::CreateCodebookArgs;
 use crate::logger::{LogLevel, Logger};
 use crate::utils::{append_params_to_uri, get_full_table_name, quote_ident};
+use codebook::CreateCodebookArgs;
 use quantization::QuantizeAndWriteVectorArgs;
+use rand::Rng;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
@@ -129,15 +130,38 @@ fn quantize_table_local(
         anyhow::bail!("--dataset-limit should be greater than or equal to cluster count");
     }
 
-    let total_row_count = transaction.query_one(
-        &format!(
-            "SELECT COUNT({pk}) FROM {full_table_name};",
-            pk = quote_ident(&args.pk)
-        ),
-        &[],
-    )?;
+    let total_row_count = match args.dataset_size {
+        Some(row_cnt) => row_cnt,
+        None => {
+            let count_query = transaction.query_one(
+                &format!(
+                    "SELECT COUNT({pk}) FROM {full_table_name};",
+                    pk = quote_ident(&args.pk)
+                ),
+                &[],
+            )?;
 
-    let total_row_count = total_row_count.try_get::<usize, i64>(0)? as usize;
+            count_query.try_get::<usize, i64>(0)? as usize
+        }
+    };
+
+    let start_offset_id = if args.start_offset_id.is_some() {
+        args.start_offset_id.unwrap()
+    } else if limit > 0 {
+        let mut rng = rand::thread_rng();
+        let max_id = if limit > total_row_count {
+            0
+        } else {
+            total_row_count - limit
+        };
+
+        // Generate random offset to take portion of dataset
+        // We are not doing order by random() limit X, because it is slow, and chunking based on id
+        // will become harder
+        rng.gen_range(0..max_id)
+    } else {
+        0
+    };
 
     let total_row_count = if limit > 0 && limit <= total_row_count {
         limit
@@ -210,6 +234,7 @@ fn quantize_table_local(
             full_table_name: &full_table_name,
             codebook_table_name: &full_codebook_table_name,
             total_row_count,
+            start_offset_id,
             max_connections,
             splits: args.splits,
             vector_dim,

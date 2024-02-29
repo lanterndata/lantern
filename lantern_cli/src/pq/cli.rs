@@ -27,6 +27,14 @@ pub struct PQArgs {
     #[arg(long)]
     pub dataset_limit: Option<usize>,
 
+    /// Start Offset ID, used in GCP job, to keep the random generated offset for parallel tasks
+    #[arg(long)]
+    pub start_offset_id: Option<usize>,
+
+    /// Dataset size, used in GCP job, to not fetch it on every task
+    #[arg(long)]
+    pub dataset_size: Option<usize>,
+
     /// Cluster count for kmeans
     #[arg(long, default_value_t = 256)]
     pub clusters: usize,

@@ -82,6 +82,7 @@ pub struct CreateCodebookArgs<'a> {
    pub vector_dim: usize,
    pub subvector_dim: usize,
    pub cluster_count: usize,
+   pub start_offset_id: usize,
    pub subvector_id: &'a Option<usize>,
    pub parallel_task_count: &'a Option<usize>,
 }
@@ -106,6 +107,7 @@ pub fn create_codebook<'a> (
     let parallel_task_count = args.parallel_task_count.unwrap_or(splits);
     let max_connections = args.max_connections;
     let vector_dim = args.vector_dim;
+    let start_offset_id = args.start_offset_id;
     
     let mut subvector_start_idx = 0;
     let mut subvector_end_idx = args.vector_dim;
@@ -147,8 +149,8 @@ pub fn create_codebook<'a> (
 
     // Avoid division by zero error
     let num_connections = cmp::max(num_connections, 1);
-    let chunk_size = total_row_count / num_connections;
-    logger.debug(&format!("max_connections: {max_connections}, num_cores: {num_cores}, num_connections: {num_connections}", max_connections = max_connections));
+    let chunk_size = usize::div_ceil(total_row_count, num_connections);
+    logger.debug(&format!("max_connections: {max_connections}, num_cores: {num_cores}, num_connections: {num_connections}, total_row_count: {total_row_count}, start_offset_id: {start_offset_id}, chunk_size: {chunk_size}"));
 
     let total_fetch_start_time = Instant::now();
     // Select all data from database
@@ -162,8 +164,8 @@ pub fn create_codebook<'a> (
         .map(|i| {
             let mut client = Client::connect(db_uri, NoTls)?;
             let mut transaction = client.transaction()?;
-            let range_start = i * chunk_size;
-            let range_end = if i == num_cores - 1 { total_row_count + 1 } else { range_start + chunk_size };
+            let range_start = i * chunk_size + start_offset_id;
+            let range_end = if i == num_cores - 1 { start_offset_id + total_row_count + 1 } else { range_start + chunk_size };
 
             let fetch_start_time = Instant::now();
             let rows = transaction.query(
