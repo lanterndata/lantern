@@ -5,12 +5,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender, SyncSender};
 use std::sync::{mpsc, RwLock};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use std::{fs, io};
 use usearch::ffi::{IndexOptions, ScalarKind};
 use usearch::Index;
 
-use crate::types::*;
 use crate::logger::{LogLevel, Logger};
+use crate::types::*;
 use crate::utils::{get_full_table_name, quote_ident};
 use postgres::{Client, NoTls, Row};
 use postgres_large_objects::LargeObject;
@@ -102,6 +103,7 @@ pub fn create_usearch_index(
 ) -> Result<(), anyhow::Error> {
     let logger = Arc::new(logger.unwrap_or(Logger::new("Lantern Index", LogLevel::Debug)));
     let num_cores: usize = std::thread::available_parallelism().unwrap().into();
+    let total_start_time = Instant::now();
     logger.info(&format!("Number of available CPU cores: {}", num_cores));
 
     // get all row count
@@ -224,6 +226,7 @@ pub fn create_usearch_index(
     };
     let index = Index::new(&options)?;
 
+    let start_time = Instant::now();
     let rows = transaction.query(
         &format!(
             "SELECT COUNT(*) FROM {full_table_name} WHERE {} IS NOT NULL;",
@@ -231,6 +234,12 @@ pub fn create_usearch_index(
         ),
         &[],
     )?;
+    logger.debug(&format!(
+        "Count estimation took {}",
+        start_time.elapsed().as_secs()
+    ));
+
+    let start_time = Instant::now();
     let count: i64 = rows[0].get(0);
     // reserve enough memory on index
     index.reserve(count as usize)?;
@@ -352,9 +361,17 @@ pub fn create_usearch_index(
             anyhow::bail!("{:?}", e);
         }
     }
+    logger.debug(&format!(
+        "Indexing took {}s",
+        start_time.elapsed().as_secs()
+    ));
 
     index_arc.save(&args.out)?;
-    logger.info(&format!("Index saved under {}", &args.out));
+    logger.info(&format!(
+        "Index saved under {} in {}s",
+        &args.out,
+        start_time.elapsed().as_secs()
+    ));
 
     drop(index_arc);
     drop(portal);
@@ -363,6 +380,7 @@ pub fn create_usearch_index(
     if args.import {
         let op_class = args.metric_kind.to_ops();
         if args.remote_database {
+            let start_time = Instant::now();
             logger.info("Copying index file into database server...");
             let mut rng = rand::thread_rng();
             let data_dir = transaction.query_one("SHOW data_directory", &[])?;
@@ -374,11 +392,15 @@ pub fn create_usearch_index(
             let mut buf_writer =
                 BufWriter::with_capacity(COPY_BUFFER_CHUNK_SIZE, &mut large_object);
             io::copy(&mut reader, &mut buf_writer)?;
-            fs::remove_file(Path::new(&args.out))?;
+            logger.debug(&format!(
+                "Index copy to database took {}s",
+                start_time.elapsed().as_secs()
+            ));
             progress_tx.send(90)?;
             drop(reader);
             drop(buf_writer);
             logger.info("Creating index from file...");
+            let start_time = Instant::now();
             large_object.finish(
                 &get_full_table_name(&args.schema, &args.table),
                 &quote_ident(&args.column),
@@ -390,10 +412,16 @@ pub fn create_usearch_index(
                 args.m,
                 args.pq,
             )?;
+            logger.debug(&format!(
+                "Index import took {}s",
+                start_time.elapsed().as_secs()
+            ));
+            fs::remove_file(Path::new(&args.out))?;
         } else {
             // If job is run on the same server as database we can skip copying part
             progress_tx.send(90)?;
             logger.info("Creating index from file...");
+            let start_time = Instant::now();
 
             let mut idx_name = "".to_owned();
 
@@ -409,12 +437,20 @@ pub fn create_usearch_index(
             )?;
 
             transaction.commit()?;
+            logger.debug(&format!(
+                "Index import took {}s",
+                start_time.elapsed().as_secs()
+            ));
             fs::remove_file(Path::new(&args.out))?;
         }
         progress_tx.send(100)?;
         logger.info(&format!(
             "Index imported to table {} and removed from filesystem",
             &args.table
+        ));
+        logger.debug(&format!(
+            "Total indexing took {}s",
+            total_start_time.elapsed().as_secs()
         ));
     }
 
