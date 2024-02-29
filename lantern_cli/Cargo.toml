@@ -41,3 +41,4 @@ tiktoken-rs = "0.5.8"
 regex = "1.10.3"
 postgres-types = { version = "0.2.6", features = ["derive"] }
 usearch = { git = "https://github.com/Ngalstyan4/usearch.git", branch="main-lantern" }
+actix-web = "4.5.1"

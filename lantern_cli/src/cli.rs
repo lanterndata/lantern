@@ -1,6 +1,7 @@
 use super::daemon::cli::DaemonArgs;
 use super::embeddings::cli::{EmbeddingArgs, MeasureModelSpeedArgs, ShowModelsArgs};
 use super::external_index::cli::CreateIndexArgs;
+use super::http_server::cli::HttpServerArgs;
 use super::index_autotune::cli::IndexAutotuneArgs;
 use super::pq::cli::PQArgs;
 use clap::{Parser, Subcommand};
@@ -23,6 +24,8 @@ pub enum Commands {
     PQTable(PQArgs),
     /// Start in daemon mode
     StartDaemon(DaemonArgs),
+    /// Start in http mode
+    StartServer(HttpServerArgs),
 }
 
 #[derive(Parser, Debug)]

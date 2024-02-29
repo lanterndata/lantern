@@ -1,11 +1,12 @@
 use std::process;
 
+use crate::logger::{LogLevel, Logger};
 use clap::Parser;
-use lantern_cli::*;
 use daemon;
 use embeddings;
 use external_index;
-use crate::logger::{LogLevel, Logger};
+use http_server;
+use lantern_cli::*;
 mod cli;
 
 fn main() {
@@ -20,8 +21,7 @@ fn main() {
         cli::Commands::CreateEmbeddings(args) => {
             let logger = Logger::new("Lantern Embeddings", LogLevel::Debug);
             _main_logger = Some(logger.clone());
-            let res =
-                embeddings::create_embeddings_from_db(args, true, None, None, Some(logger));
+            let res = embeddings::create_embeddings_from_db(args, true, None, None, Some(logger));
             // Handle error here as this call does not return void as others
             let logger = _main_logger.as_ref().unwrap();
             if let Err(e) = res {
@@ -59,6 +59,7 @@ fn main() {
             _main_logger = Some(logger.clone());
             daemon::start(args, Some(logger))
         }
+        cli::Commands::StartServer(args) => http_server::run(args),
     };
 
     let logger = _main_logger.unwrap();
