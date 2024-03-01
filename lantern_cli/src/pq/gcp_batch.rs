@@ -55,6 +55,13 @@ static CLUSTERING_TASK_TEMPLATE: &'static str = r#"{
    }],
    "logsPolicy": {
      "destination": "CLOUD_LOGGING"
+   },
+   "allocationPolicy": {
+     "instances": [
+       {
+         "policy": { "machineType": "{machine_type}" }
+       }
+     ]
    }
 }"#;
 
@@ -99,23 +106,30 @@ static QUANTIZATION_TASK_TEMPLATE: &'static str = r#"{
    }],
    "logsPolicy": {
      "destination": "CLOUD_LOGGING"
+   },
+   "allocationPolicy": {
+     "instances": [
+       {
+         "policy": { "machineType": "{machine_type}" }
+       }
+     ]
    }
 }"#;
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct JobStatusEvent {
     description: String,
 }
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct JobStatus {
     state: String,
     status_events: Option<Vec<JobStatusEvent>>,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct BatchJobResponse {
-    name: String,
+    name: Option<String>,
     status: JobStatus,
 }
 
@@ -145,9 +159,14 @@ fn run_batch_job(logger: &Logger, task_body: &str, parent: &str) -> AnyhowVoidRe
 
     let result = result.unwrap();
 
-    let job_url = format!("https://batch.googleapis.com/v1alpha/{}", result.name);
+    if result.name.is_none() {
+        anyhow::bail!("Invalid job response: {:?}", result);
+    }
 
-    logger.info(&format!("Job {} created. Waiting to succeed", result.name));
+    let job_name = result.name.unwrap();
+    let job_url = format!("https://batch.googleapis.com/v1alpha/{}", job_name);
+
+    logger.info(&format!("Job {} created. Waiting to succeed", job_name));
     loop {
         let token = runtime.block_on(
             authentication_manager.get_token(&["https://www.googleapis.com/auth/cloud-platform"]),
@@ -179,7 +198,7 @@ fn run_batch_job(logger: &Logger, task_body: &str, parent: &str) -> AnyhowVoidRe
                 }
                 anyhow::bail!(
                     "Job: {} failed. Last event description: {}",
-                    job.name,
+                    job_name,
                     descrption
                 )
             }
@@ -272,11 +291,6 @@ pub fn quantize_table_on_gcp(
     let gcp_quantization_task_parallelism = args
         .gcp_quantization_task_parallelism
         .unwrap_or(cmp::max(1, max_connections / gcp_quantization_cpu_count));
-
-    let gcp_quantization_task_parallelism = cmp::min(
-        gcp_quantization_task_parallelism,
-        gcp_quantization_task_count,
-    );
 
     let gcp_quantization_task_parallelism = cmp::min(
         gcp_quantization_task_parallelism,
@@ -378,6 +392,8 @@ pub fn quantize_table_on_gcp(
             json!(gcp_clustering_memory_gb * 1000);
         body_json["taskGroups"][0]["taskCount"] = json!(args.splits);
         body_json["taskGroups"][0]["parallelism"] = json!(gcp_clustering_task_parallelism);
+        body_json["allocationPolicy"]["instances"][0]["policy"]["machineType"] =
+            json!(format!("n1-standard-{gcp_clustering_cpu_count}"));
 
         run_batch_job(
             &logger,
@@ -422,6 +438,8 @@ pub fn quantize_table_on_gcp(
             json!(gcp_quantization_memory_gb * 1000);
         body_json["taskGroups"][0]["taskCount"] = json!(gcp_quantization_task_count);
         body_json["taskGroups"][0]["parallelism"] = json!(gcp_quantization_task_parallelism);
+        body_json["allocationPolicy"]["instances"][0]["policy"]["machineType"] =
+            json!(format!("n1-standard-{gcp_quantization_cpu_count}"));
 
         run_batch_job(
             &logger,
