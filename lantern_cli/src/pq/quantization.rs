@@ -192,7 +192,7 @@ pub fn quantize_and_write_vectors(args: QuantizeAndWriteVectorArgs, mut client: 
     let progress_cb =  args.progress_cb;
     
     let mut limit_start = 0;
-    let mut limit_end = args.total_row_count ;
+    let mut limit_end = args.total_row_count;
 
     // In batch mode each task will operate on a range of vectors from dataset
     // Here we will determine the range from the task id
@@ -204,7 +204,7 @@ pub fn quantize_and_write_vectors(args: QuantizeAndWriteVectorArgs, mut client: 
         
         let chunk_per_task = limit_end / quantization_task_count;
         limit_start = chunk_per_task * quantization_task_id;
-        limit_end = if *quantization_task_id == quantization_task_count - 1 { limit_end } else { limit_start + chunk_per_task };
+        limit_end = if *quantization_task_id == quantization_task_count - 1 { limit_end + 1 } else { limit_start + chunk_per_task };
     }
 
     // Read all codebook and create a hashmap from it
@@ -285,7 +285,7 @@ pub fn quantize_and_write_vectors(args: QuantizeAndWriteVectorArgs, mut client: 
             let mut client = Client::connect(&db_uri, NoTls)?;
             let mut transaction = client.transaction()?;
             let range_start = limit_start + (i * chunk_size);
-            let range_end = if i == num_cores - 1 { limit_end + 1 } else { range_start + chunk_size };
+            let range_end = if i == num_cores - 1 { limit_end } else { range_start + chunk_size };
 
             let fetch_start_time = Instant::now();
             let rows = transaction.query(

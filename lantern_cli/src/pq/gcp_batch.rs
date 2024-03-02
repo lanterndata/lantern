@@ -98,7 +98,7 @@ static QUANTIZATION_TASK_TEMPLATE: &'static str = r#"{
         "memoryMib": 0
       },
       "maxRetryCount": 1,
-      "maxRunDuration": "2000s"
+      "maxRunDuration": "3000s"
      },
      "taskCount": "{gcp_quantization_task_count}",
      "taskCountPerNode": 1,
@@ -285,7 +285,7 @@ pub fn quantize_table_on_gcp(
     // Let each vm process max 50k rows
     let gcp_quantization_task_count = args
         .gcp_quantization_task_count
-        .unwrap_or(cmp::max(total_row_count / 50000, 1));
+        .unwrap_or(cmp::max(total_row_count / 100000, 1));
 
     // Limit parallel task count to not exceed max connection limit
     let gcp_quantization_task_parallelism = args
