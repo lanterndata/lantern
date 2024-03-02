@@ -235,7 +235,7 @@ pub fn create_usearch_index(
         &[],
     )?;
     logger.debug(&format!(
-        "Count estimation took {}",
+        "Count estimation took {}s",
         start_time.elapsed().as_secs()
     ));
 
