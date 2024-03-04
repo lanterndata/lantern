@@ -42,3 +42,6 @@ regex = "1.10.3"
 postgres-types = { version = "0.2.6", features = ["derive"] }
 usearch = { git = "https://github.com/Ngalstyan4/usearch.git", branch="main-lantern" }
 actix-web = "4.5.1"
+env_logger = "0.11.2"
+deadpool-postgres = "0.12.1"
+deadpool = "0.10.0"

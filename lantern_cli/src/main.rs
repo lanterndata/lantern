@@ -59,7 +59,11 @@ fn main() {
             _main_logger = Some(logger.clone());
             daemon::start(args, Some(logger))
         }
-        cli::Commands::StartServer(args) => http_server::run(args),
+        cli::Commands::StartServer(args) => {
+            let logger = Logger::new("Lantern HTTP", LogLevel::Debug);
+            _main_logger = Some(logger.clone());
+            http_server::run(args, logger)
+        }
     };
 
     let logger = _main_logger.unwrap();

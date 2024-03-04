@@ -1,20 +1,87 @@
-use actix_web::{get, web, App, HttpServer, Responder};
-use cli::HttpServerArgs;
-
 use crate::types::AnyhowVoidResult;
+use actix_web::{
+    error::ErrorInternalServerError, middleware::Logger, web, App, HttpServer, Result,
+};
+use cli::HttpServerArgs;
+use deadpool_postgres::{Config as PoolConfig, Manager, Pool};
+use tokio_postgres::NoTls;
 
 pub mod cli;
+mod data;
+mod index;
+mod setup;
+mod table;
 
-#[get("/hello/{name}")]
-async fn greet(name: web::Path<String>) -> impl Responder {
-    format!("Hello {name}!")
+type PoolClient = deadpool::managed::Object<Manager>;
+
+pub const COLLECTION_TABLE_NAME: &str = "_lantern_internal.collections";
+
+struct AppPool {
+    inner: Pool,
 }
 
+impl AppPool {
+    fn new(pool: Pool) -> AppPool {
+        Self { inner: pool }
+    }
+
+    async fn get(&self) -> Result<PoolClient, actix_web::Error> {
+        let client = self.inner.get().await;
+        match client {
+            Err(e) => Err(ErrorInternalServerError(e)),
+            Ok(client) => Ok(client),
+        }
+    }
+}
+
+// This struct represents state
+pub struct AppState {
+    db_uri: String,
+    pool: AppPool,
+    is_remote_database: bool,
+    #[allow(dead_code)]
+    logger: crate::logger::Logger,
+}
+
+/*
+* GET - /collection/:name
+* PATCH - /collection/:name/:id -
+*   { row: Row }
+* */
+
 #[actix_web::main]
-pub async fn run(args: HttpServerArgs) -> AnyhowVoidResult {
-    HttpServer::new(|| App::new().service(greet))
-        .bind((args.host.clone(), args.port))?
-        .run()
-        .await?;
+pub async fn run(args: HttpServerArgs, logger: crate::logger::Logger) -> AnyhowVoidResult {
+    logger.info(&format!(
+        "Starting web server on http://{host}:{port}",
+        host = args.host,
+        port = args.port,
+    ));
+    env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
+    let mut config = PoolConfig::new();
+    config.url = Some(args.db_uri.clone());
+    let pool = config.create_pool(None, NoTls)?;
+
+    setup::setup_tables(&pool).await?;
+    let state = web::Data::new(AppState {
+        db_uri: args.db_uri.clone(),
+        is_remote_database: args.remote_database,
+        pool: AppPool::new(pool),
+        logger,
+    });
+    HttpServer::new(move || {
+        App::new()
+            .wrap(Logger::new("%r - %s %Dms"))
+            .app_data(state.clone())
+            .service(table::get_all_tables)
+            .service(table::create_table)
+            .service(table::delete_table)
+            .service(data::insert_data)
+            .service(data::search)
+            .service(index::create_index)
+            .service(index::delete_index)
+    })
+    .bind((args.host.clone(), args.port))?
+    .run()
+    .await?;
     Ok(())
 }
