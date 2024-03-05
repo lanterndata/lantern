@@ -93,6 +93,20 @@ impl UMetricKind {
             }
         }
     }
+
+    pub fn sql_operator(&self) -> String {
+        match self {
+            UMetricKind::L2sq => {
+                return "<->".to_owned();
+            }
+            UMetricKind::Cos => {
+                return "<=>".to_owned();
+            }
+            UMetricKind::Hamming => {
+                return "<+>".to_owned();
+            }
+        }
+    }
 }
 
 #[derive(Parser, Debug)]

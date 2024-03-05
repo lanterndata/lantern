@@ -21,7 +21,8 @@ use super::AppState;
 #[derive(Deserialize, Debug)]
 struct CreateIndexInput {
     name: Option<String>,
-    metric_kind: Option<String>,
+    column: String,
+    metric: Option<String>,
     ef: Option<usize>,
     ef_construction: Option<usize>,
     m: Option<usize>,
@@ -36,25 +37,19 @@ async fn create_index(
     name: web::Path<String>,
 ) -> Result<impl Responder> {
     let external = body.external.unwrap_or(true);
-    let metric = body.metric_kind.clone().unwrap_or("l2sq".to_owned());
-    let column = "vector";
+    let metric = body.metric.clone().unwrap_or("l2sq".to_owned());
+    let column = body.column.clone();
     let ef = body.ef.unwrap_or(64);
     let ef_construction = body.ef_construction.unwrap_or(128);
     let m = body.m.unwrap_or(16);
     let pq = body.pq.unwrap_or(false);
     let index_name = body.name.clone().unwrap_or("".to_owned());
 
-    let metric_kind = UMetricKind::from(&metric);
-
-    if let Err(e) = metric_kind {
-        return Err(ErrorBadRequest(e));
-    }
-
-    let metric_kind = metric_kind.unwrap();
+    let metric_kind = UMetricKind::from(&metric).map_err(ErrorBadRequest)?;
 
     let client = data.pool.get().await?;
     if !external {
-        let res = client
+        client
             .execute(
                 &format!(
                     "CREATE INDEX {index_name} ON {name} USING lantern_hnsw({column} {op_class}) WITH (m={m}, ef={ef}, ef_construction={ef_construction}, pq={pq})",
@@ -65,11 +60,7 @@ async fn create_index(
                 ),
                 &[],
             )
-            .await;
-
-        if let Err(e) = res {
-            return Err(ErrorInternalServerError(e));
-        }
+            .await.map_err(ErrorInternalServerError)?;
     } else {
         let data_dir = match client
             .query_one(
@@ -87,7 +78,7 @@ async fn create_index(
         let mut rng = rand::thread_rng();
         let index_path = format!("{data_dir}/ldb-index-{}.usearch", rng.gen_range(0..1000));
         let body_index_name = body.name.clone();
-        let res = tokio::task::spawn_blocking(move || {
+        tokio::task::spawn_blocking(move || {
             create_usearch_index(
                 &CreateIndexArgs {
                     column: column.to_owned(),
@@ -110,11 +101,9 @@ async fn create_index(
                 None,
             )
         })
-        .await;
-
-        if let Err(e) = res {
-            return Err(ErrorInternalServerError(e));
-        }
+        .await
+        .map_err(ErrorInternalServerError)?
+        .map_err(ErrorInternalServerError)?;
     }
 
     Ok(HttpResponse::new(StatusCode::from_u16(200).unwrap()))
