@@ -1,3 +1,6 @@
+use bytes::BytesMut;
+use futures::SinkExt;
+use itertools::Itertools;
 use std::collections::HashMap;
 
 use actix_web::{
@@ -5,7 +8,7 @@ use actix_web::{
     error::{ErrorBadRequest, ErrorInternalServerError},
     get,
     http::StatusCode,
-    post, web, HttpResponse, Responder, Result,
+    post, put, web, HttpResponse, Responder, Result,
 };
 
 use crate::utils::quote_ident;
@@ -17,7 +20,7 @@ use serde::{Deserialize, Serialize};
 pub struct CollectionInfo {
     name: String,
 }
-/// Get all tables created with Lantern HTTP API
+/// Get all collections
 #[utoipa::path(
     get,
     path = "/collections",
@@ -27,7 +30,7 @@ pub struct CollectionInfo {
     )
 )]
 #[get("/collections")]
-pub async fn get_all_tables(data: web::Data<AppState>) -> Result<impl Responder> {
+pub async fn list(data: web::Data<AppState>) -> Result<impl Responder> {
     let client = data.pool.get().await?;
     let rows = client
         .query(&format!("SELECT name FROM {COLLECTION_TABLE_NAME}"), &[])
@@ -54,15 +57,15 @@ pub struct CreateTableInput {
     schema: Option<HashMap<String, String>>,
 }
 
-/// Creates new table with specified schema
+/// Create new table with specified schema
 ///
 /// If schema is empty the default schema will be used
-/// ```
+/// ```no_run
 /// (bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, vector REAL[], data TEXT, metadata JSONB)
 /// ```
 ///
 /// schema should be specified like this:
-/// ```
+/// ```no_run
 /// { "id": "serial primary key", "v": "REAL[]", "t": "TEXT" }
 /// ```
 #[utoipa::path(
@@ -70,7 +73,7 @@ pub struct CreateTableInput {
     path = "/collections",
     request_body (
         content = CreateTableInput,
-        example = json!(r#"{"id": "bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY", "v": "REAL[]", "t": "TEXT" }"#)
+        example = json!(r#"{ "name": "my_test_collection", "schema": {"id": "bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY", "v": "REAL[]", "t": "TEXT" } }"#)
     ),
     responses(
         (status = 200, description = "Returns the created table", body = CollectionInfo),
@@ -79,7 +82,7 @@ pub struct CreateTableInput {
     )
 )]
 #[post("/collections")]
-pub async fn create_table(
+pub async fn create(
     data: web::Data<AppState>,
     body: web::Json<CreateTableInput>,
 ) -> Result<impl Responder> {
@@ -143,7 +146,7 @@ pub async fn create_table(
     }))
 }
 
-/// Deletes the specified table by name
+/// Delete the specified collection by name
 #[utoipa::path(
     delete,
     path = "/collections/{name}",
@@ -156,10 +159,7 @@ pub async fn create_table(
     ),
 )]
 #[delete("/collections/{name}")]
-pub async fn delete_table(
-    data: web::Data<AppState>,
-    name: web::Path<String>,
-) -> Result<impl Responder> {
+pub async fn delete(data: web::Data<AppState>, name: web::Path<String>) -> Result<impl Responder> {
     let client = data.pool.get().await.unwrap();
 
     let statement = format!(
@@ -173,6 +173,118 @@ pub async fn delete_table(
         .batch_execute(&statement)
         .await
         .map_err(ErrorBadRequest)?;
+
+    Ok(HttpResponse::new(StatusCode::from_u16(200).unwrap()))
+}
+
+#[derive(Deserialize, Debug, utoipa::ToSchema)]
+pub struct InserDataInput {
+    rows: Vec<serde_json::Value>,
+}
+
+/// Insert rows into collection
+///
+/// Rows will be inserted using `COPY` protocol
+/// for maximum performance.
+///
+/// Keys from the first row will be taken as column names
+#[utoipa::path(
+    put,
+    path = "/collections/{name}",
+    request_body  (
+        content = InserDataInput,
+        example = json!(r#"{ "rows": [{"vector": [1,1,1], "data": "t1", "metadata": {"k": "v"}}, {"vector": [2,2,2], "data": "t2", "metadata": {"k": "v"}}] }"#)
+    ),
+    responses(
+        (status = 200, description = "Rows successfully inserted"),
+        (status = 400, description = "Bad request"),
+        (status = 500, description = "Internal Server Error")
+    ),
+    params(
+       ("name", description = "Collection name")
+    ),
+)]
+#[put("/collections/{name}")]
+async fn insert_data(
+    data: web::Data<AppState>,
+    body: web::Json<InserDataInput>,
+    name: web::Path<String>,
+) -> Result<impl Responder> {
+    let mut client = data.pool.get().await.unwrap();
+
+    if body.rows.len() == 0 {
+        return Ok(HttpResponse::new(StatusCode::from_u16(200).unwrap()));
+    }
+
+    let mut columns: Option<Vec<String>> = None;
+    for row in &body.rows {
+        let map = match row.as_object() {
+            Some(m) => m,
+            None => {
+                continue;
+            }
+        };
+        columns = Some(map.keys().map(|k| k.to_owned()).collect());
+        break;
+    }
+
+    let columns = match columns {
+        Some(c) => c,
+        None => return Err(ErrorBadRequest("all rows are empty")),
+    };
+
+    let column_names = columns.iter().map(|k| quote_ident(k)).join(",");
+    let copy_statement = format!(
+        "COPY {name} ({column_names}) FROM stdin NULL 'null'",
+        name = quote_ident(&name)
+    );
+
+    let transaction = client
+        .transaction()
+        .await
+        .map_err(ErrorInternalServerError)?;
+
+    let writer_sink = transaction
+        .copy_in(&copy_statement)
+        .await
+        .map_err(ErrorInternalServerError)?;
+
+    futures::pin_mut!(writer_sink);
+    let mut buf = BytesMut::new();
+    for row in &body.rows {
+        let mut row_str = String::from("");
+        for (idx, column) in columns.iter().enumerate() {
+            let entry = row[column].to_string().replace("[", "{").replace("]", "}");
+            row_str.push_str(&entry);
+            if idx != columns.len() - 1 {
+                row_str.push_str("\t");
+            }
+        }
+        row_str.push_str("\n");
+
+        if buf.len() > 4096 {
+            writer_sink
+                .send(buf.split().freeze())
+                .await
+                .map_err(ErrorInternalServerError)?;
+        }
+
+        buf.extend_from_slice(row_str.as_bytes());
+    }
+
+    if !buf.is_empty() {
+        writer_sink
+            .send(buf.split().freeze())
+            .await
+            .map_err(ErrorInternalServerError)?;
+    }
+
+    writer_sink.finish().await.map_err(ErrorBadRequest)?;
+
+    transaction
+        .commit()
+        .await
+        .map_err(ErrorInternalServerError)?;
 
     Ok(HttpResponse::new(StatusCode::from_u16(200).unwrap()))
 }

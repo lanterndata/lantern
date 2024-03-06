@@ -145,6 +145,13 @@ fn quantize_table_local(
         }
     };
 
+    if total_row_count < args.clusters {
+        anyhow::bail!(
+            "--clusters ({clusters}) should be smaller than dataset size ({total_row_count})",
+            clusters = args.clusters
+        );
+    }
+
     let start_offset_id = if args.start_offset_id.is_some() {
         args.start_offset_id.unwrap()
     } else if limit > 0 {
@@ -216,6 +223,12 @@ fn quantize_table_local(
         &[],
     )?;
     let vector_dim = row.try_get::<usize, i32>(0)? as usize;
+    if vector_dim < args.splits {
+        anyhow::bail!(
+            "--splits ({splits}) should be less than or equal to vector dimensions ({vector_dim})",
+            splits = args.splits
+        )
+    }
     // Get subvector dimension
     // It is not neccessary that vector_dim will be divisible to split count
     // If there's reminder the last subvector's dimensions will be higher

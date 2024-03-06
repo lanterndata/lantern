@@ -4,22 +4,48 @@ use actix_web::{
     post, web, HttpResponse, Responder, Result,
 };
 
-use crate::pq::{cli::PQArgs, quantize_table};
+use crate::pq::cli::PQArgs;
 
 use serde::Deserialize;
 
 use super::AppState;
 
-#[derive(Deserialize, Debug)]
-struct CreatePQInput {
+#[derive(Deserialize, Debug, utoipa::ToSchema)]
+pub struct CreatePQInput {
     column: String,
     clusters: Option<usize>,
     splits: usize,
     limit: Option<usize>,
 }
 
+/// Quantize the collection
+///
+/// It will create codebook which can later be used for index construction
+///
+/// The `clusters` param indicates number of clusters for kmeans
+///
+/// The `splits` param indicates on how many parts one vector will be splitted. It is preffered to
+/// be divisible by vector length.
+///
+/// If the `limit` param is passed PQ will be done on subset of the data
+#[utoipa::path(
+    post,
+    path = "/collections/{name}/pq",
+    request_body  (
+        content = CreateIndexInput,
+        example = json!(r#"{ "column": "vector", "clusters": 256, "splits": 32 }"#),
+    ),
+    responses(
+        (status = 200, description = "Index created successfully"),
+        (status = 400, description = "Bad request"),
+        (status = 500, description = "Internal Server Error")
+    ),
+    params(
+       ("name", description = "Collection name")
+    ),
+)]
 #[post("/collections/{name}/pq")]
-async fn quantize_table_route(
+async fn quantize_table(
     data: web::Data<AppState>,
     body: web::Json<CreatePQInput>,
     name: web::Path<String>,
@@ -46,7 +72,7 @@ async fn quantize_table_route(
     };
 
     tokio::task::spawn_blocking(move || {
-        quantize_table(
+        crate::pq::quantize_table(
             PQArgs {
                 column,
                 clusters,
@@ -58,9 +84,9 @@ async fn quantize_table_route(
                 codebook_table_name: None,
                 dataset_limit,
                 subvector_id: None,
-                skip_table_setup: true,
+                skip_table_setup: false,
                 skip_vector_quantization: false,
-                skip_codebook_creation: true,
+                skip_codebook_creation: false,
                 total_task_count: None,
                 parallel_task_count: None,
                 quantization_task_id: None,

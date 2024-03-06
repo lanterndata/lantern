@@ -18,8 +18,8 @@ use serde::Deserialize;
 
 use super::AppState;
 
-#[derive(Deserialize, Debug)]
-struct CreateIndexInput {
+#[derive(Deserialize, Debug, utoipa::ToSchema)]
+pub struct CreateIndexInput {
     name: Option<String>,
     column: String,
     metric: Option<String>,
@@ -30,6 +30,31 @@ struct CreateIndexInput {
     external: Option<bool>,
 }
 
+/// Create vector index on the collection
+///
+/// The `external` param indicates if the index should be built using lantern_cli's high performant
+/// indexing or inside postgres on a single core.
+///
+/// The `pq` argument should be passed only if you have quantized your table and want to create a
+/// pq index over it
+///
+/// Metric can be one of `cosine`, `l2sq`, `hamming`
+#[utoipa::path(
+    post,
+    path = "/collections/{name}/index",
+    request_body  (
+        content = CreateIndexInput,
+        example = json!(r#"{ "metric": "cosine", "column": "vector", "ef_construction": 128, "ef": 64, "m": 16, "pq": false, "external": true }"#),
+    ),
+    responses(
+        (status = 200, description = "Index created successfully"),
+        (status = 400, description = "Bad request"),
+        (status = 500, description = "Internal Server Error")
+    ),
+    params(
+       ("name", description = "Collection name")
+    ),
+)]
 #[post("/collections/{name}/index")]
 async fn create_index(
     data: web::Data<AppState>,
@@ -109,6 +134,18 @@ async fn create_index(
     Ok(HttpResponse::new(StatusCode::from_u16(200).unwrap()))
 }
 
+/// Delete the specified index by name
+#[utoipa::path(
+    delete,
+    path = "/index/{index_name}",
+    responses(
+        (status = 200, description = "Index succesfully deleted"),
+        (status = 500, description = "Internal server error"),
+    ),
+    params(
+       ("index_name", description = "Name of the index")
+    ),
+)]
 #[delete("/index/{index_name}")]
 async fn delete_index(
     data: web::Data<AppState>,

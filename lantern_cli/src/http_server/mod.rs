@@ -1,4 +1,4 @@
-use crate::types::AnyhowVoidResult;
+use crate::{logger::LogLevel, types::AnyhowVoidResult};
 use actix_web::{
     error::ErrorInternalServerError, middleware::Logger, web, App, HttpServer, Result,
 };
@@ -9,15 +9,15 @@ use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 pub mod cli;
-mod data;
+mod collection;
 mod index;
 mod pq;
+mod search;
 mod setup;
-mod table;
 
 type PoolClient = deadpool::managed::Object<Manager>;
 
-pub const COLLECTION_TABLE_NAME: &str = "_lantern_internal.collections";
+pub const COLLECTION_TABLE_NAME: &str = "_lantern_internal.http_collections";
 
 struct AppPool {
     inner: Pool,
@@ -52,20 +52,47 @@ pub struct AppState {
 
 #[derive(OpenApi)]
 #[openapi(
-    paths(
-        table::get_all_tables,
-        table::create_table,
-        table::delete_table,
-        data::insert_data
+    info(
+        title = "Lantern HTTP API",
+        description = "This is an HTTP wrapper over Lantern database, which also includes pq and external indexing functionalities from Lantern CLI.
+
+The API endpoints are not SQL injection safe, so it can provide maximum flexibility for data manipulation, so please sanitize user input before sending requests to this API."
     ),
-    components(schemas(table::CollectionInfo, table::CreateTableInput, data::InserDataInput))
+    paths(
+        collection::list,
+        collection::create,
+        collection::delete,
+        collection::insert_data,
+        search::vector_search,
+        index::create_index,
+        index::delete_index,
+        pq::quantize_table,
+    ),
+    components(schemas(
+        collection::CollectionInfo,
+        collection::CreateTableInput,
+        collection::InserDataInput,
+        search::SearchInput,
+        search::SearchResponse,
+        index::CreateIndexInput,
+        pq::CreatePQInput
+    ))
 )]
 pub struct ApiDoc;
-#[actix_web::main]
 
-pub async fn run(args: HttpServerArgs, logger: crate::logger::Logger) -> AnyhowVoidResult {
+#[actix_web::main]
+pub async fn start(
+    args: HttpServerArgs,
+    logger: Option<crate::logger::Logger>,
+) -> AnyhowVoidResult {
+    let logger = logger.unwrap_or(crate::logger::Logger::new("Lantern HTTP", LogLevel::Debug));
     logger.info(&format!(
         "Starting web server on http://{host}:{port}",
+        host = args.host,
+        port = args.port,
+    ));
+    logger.info(&format!(
+        "Documentation available at http://{host}:{port}/swagger-ui/",
         host = args.host,
         port = args.port,
     ));
@@ -90,14 +117,14 @@ pub async fn run(args: HttpServerArgs, logger: crate::logger::Logger) -> AnyhowV
                 SwaggerUi::new("/swagger-ui/{_:.*}")
                     .url("/api-docs/openapi.json", ApiDoc::openapi()),
             )
-            .service(table::get_all_tables)
-            .service(table::create_table)
-            .service(table::delete_table)
-            .service(data::insert_data)
-            .service(data::search)
+            .service(collection::list)
+            .service(collection::create)
+            .service(collection::delete)
+            .service(collection::insert_data)
+            .service(search::vector_search)
             .service(index::create_index)
             .service(index::delete_index)
-            .service(pq::quantize_table_route)
+            .service(pq::quantize_table)
     })
     .bind((args.host.clone(), args.port))?
     .run()

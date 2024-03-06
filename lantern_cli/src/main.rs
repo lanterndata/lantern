@@ -2,13 +2,10 @@ use std::process;
 
 use crate::logger::{LogLevel, Logger};
 use clap::Parser;
-use daemon;
-use embeddings;
-use external_index;
-use http_server;
 use lantern_cli::*;
 mod cli;
 
+#[cfg(feature = "cli")]
 fn main() {
     let cli = cli::Cli::parse();
     let mut _main_logger = None;
@@ -62,7 +59,7 @@ fn main() {
         cli::Commands::StartServer(args) => {
             let logger = Logger::new("Lantern HTTP", LogLevel::Debug);
             _main_logger = Some(logger.clone());
-            http_server::run(args, logger)
+            http_server::start(args, Some(logger))
         }
     };
 
@@ -72,3 +69,5 @@ fn main() {
         process::exit(1);
     }
 }
+#[cfg(not(feature = "cli"))]
+fn main() {}
