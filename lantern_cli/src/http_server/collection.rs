@@ -73,7 +73,7 @@ pub struct CreateTableInput {
     path = "/collections",
     request_body (
         content = CreateTableInput,
-        example = json!(r#"{ "name": "my_test_collection", "schema": {"id": "bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY", "v": "REAL[]", "t": "TEXT" } }"#)
+        example = json!(r#"{ "name": "my_test_collection", "schema": {"id": "bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY", "vector": "REAL[]", "data": "TEXT", "metadata": "JSONB" } }"#)
     ),
     responses(
         (status = 200, description = "Returns the created table", body = CollectionInfo),

@@ -10,8 +10,18 @@ pub fn setup_tables<'a>(
     full_table_name: &str,
     full_codebook_table_name: &str,
     pq_column_name: &str,
+    overwrite: bool,
     logger: &Logger,
 ) -> AnyhowVoidResult {
+    if overwrite {
+        transaction.batch_execute(&format!(
+            "
+             DROP TABLE IF EXISTS {full_codebook_table_name} CASCADE;
+             ALTER TABLE {full_table_name} DROP COLUMN IF EXISTS {pq_column_name};
+        ",
+            pq_column_name = quote_ident(&pq_column_name)
+        ))?;
+    }
     transaction.batch_execute(&format!(
         "
              CREATE UNLOGGED TABLE {full_codebook_table_name} (subvector_id INT, centroid_id INT, c REAL[]);

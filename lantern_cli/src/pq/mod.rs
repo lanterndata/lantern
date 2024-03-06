@@ -95,6 +95,7 @@ fn quantize_table_local(
             &full_table_name,
             &full_codebook_table_name,
             &pq_column_name,
+            args.overwrite,
             &logger,
         )?;
 

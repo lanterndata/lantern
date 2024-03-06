@@ -33,7 +33,7 @@ pub struct CreatePQInput {
     path = "/collections/{name}/pq",
     request_body  (
         content = CreateIndexInput,
-        example = json!(r#"{ "column": "vector", "clusters": 256, "splits": 32 }"#),
+        example = json!(r#"{ "column": "vector", "clusters": 2, "splits": 1 }"#),
     ),
     responses(
         (status = 200, description = "Index created successfully"),
@@ -84,6 +84,7 @@ async fn quantize_table(
                 codebook_table_name: None,
                 dataset_limit,
                 subvector_id: None,
+                overwrite: true,
                 skip_table_setup: false,
                 skip_vector_quantization: false,
                 skip_codebook_creation: false,

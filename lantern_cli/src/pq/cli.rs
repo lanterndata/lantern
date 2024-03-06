@@ -64,6 +64,10 @@ pub struct PQArgs {
     #[arg(long, default_value = "id")]
     pub pk: String,
 
+    /// If true codebook table and pq column will be deleted if exists
+    #[arg(long, default_value_t = false)]
+    pub overwrite: bool,
+
     /// Number of total tasks running (used in gcp batch jobs)
     #[arg(long)]
     pub total_task_count: Option<usize>,
