@@ -1,8 +1,8 @@
+use crate::logger::{LogLevel, Logger};
 use crate::types::*;
+use crate::utils::{append_params_to_uri, get_full_table_name, quote_ident};
 use core::{get_available_runtimes, get_runtime};
 use csv::Writer;
-use crate::logger::{LogLevel, Logger};
-use crate::utils::{append_params_to_uri, get_full_table_name, quote_ident};
 use rand::Rng;
 use std::hint;
 use std::io::Write;
@@ -433,14 +433,16 @@ fn get_default_batch_size(model: &str) -> usize {
         "microsoft/all-MiniLM-L12-v2" => 1000,
         "microsoft/all-mpnet-base-v2" => 400,
         "transformers/multi-qa-mpnet-base-dot-v1" => 300,
-        "openai/text-embedding-ada-002" => 30,
+        "openai/text-embedding-ada-002" => 500,
+        "openai/text-embedding-3-small" => 500,
+        "openai/text-embedding-3-large" => 500,
         "cohere/embed-english-v3.0"
         | "cohere/embed-multilingual-v3.0"
         | "cohere/embed-english-light-v3.0"
         | "cohere/embed-multilingual-light-v3.0"
         | "cohere/embed-english-v2.0"
         | "cohere/embed-english-light-v2.0"
-        | "cohere/embed-multilingual-v2.0" => 96,
+        | "cohere/embed-multilingual-v2.0" => 5000,
         _ => 100,
     }
 }
