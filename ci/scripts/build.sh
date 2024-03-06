@@ -100,6 +100,10 @@ function package_cli() {
   popd
 }
 
+function install_extension() {
+  cargo pgrx install --pg-config /usr/bin/pg_config --package lantern_extras
+}
+
 function package_extension() {
   cargo pgrx package --pg-config /usr/bin/pg_config --package lantern_extras
   source "$(dirname "$0")/get_arch_and_platform.sh"
@@ -181,6 +185,8 @@ if [ ! -z "$SETUP_TESTS" ]
 then
   setup_lantern && \
   setup_onnx && \
+  setup_cargo_deps && \
+  install_extension && \
   configure_and_start_postgres
 fi
 
