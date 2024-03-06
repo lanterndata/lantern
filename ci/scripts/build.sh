@@ -165,6 +165,7 @@ function configure_and_start_postgres() {
   wait_for_pg
 
   psql -U postgres -c "CREATE EXTENSION lantern" postgres
+  psql -U postgres -c "CREATE EXTENSION lantern_extras" postgres
 }
 
 setup_environment && \
