@@ -1,24 +1,83 @@
 use bytes::BytesMut;
 use futures::SinkExt;
 use itertools::Itertools;
+use regex::Regex;
 use std::collections::HashMap;
 
 use actix_web::{
     delete,
-    error::{ErrorBadRequest, ErrorInternalServerError},
+    error::{ErrorBadRequest, ErrorInternalServerError, ErrorNotFound},
     get,
     http::StatusCode,
     post, put, web, HttpResponse, Responder, Result,
 };
 
-use crate::utils::quote_ident;
+use crate::{external_index::cli::UMetricKind, utils::quote_ident};
 
 use super::{AppState, COLLECTION_TABLE_NAME};
 use serde::{Deserialize, Serialize};
 
+fn parse_index_def(definition: &str) -> HashMap<String, String> {
+    let mut result = HashMap::new();
+    for key in [
+        "ef_construction",
+        "ef",
+        "m",
+        "dim",
+        "pq",
+        "_experimental_index_path",
+    ]
+    .iter()
+    {
+        let regex = Regex::new(&format!(r"[\(,\s]{}='(.*?)'", key)).unwrap();
+        if let Some(match_) = regex.captures(&definition) {
+            if *key == "_experimental_index_path" {
+                result.insert("external".to_string(), "true".to_string());
+            } else {
+                result.insert(key.to_string(), match_[1].to_string());
+            }
+        }
+    }
+
+    let mut metric = "l2sq".to_string();
+    let operator_match = Regex::new(r"hnsw\s*\(.*?\s+(\w+)\s*\)")
+        .unwrap()
+        .captures(&definition);
+
+    if let Some(operator_class) = operator_match {
+        let _match = operator_class[1].to_string();
+        let umetric = UMetricKind::from_ops(&_match).unwrap();
+        metric = umetric.to_string();
+    }
+
+    result.insert("metric".to_string(), metric);
+
+    return result;
+}
+
+fn parse_indexes(index_definitions: Vec<HashMap<String, String>>) -> Vec<HashMap<String, String>> {
+    let mut result = Vec::with_capacity(index_definitions.len());
+    for index_info in &index_definitions {
+        let mut parsed_info = parse_index_def(index_info.get("definition").unwrap());
+        parsed_info.insert(
+            "name".to_owned(),
+            index_info.get("name").unwrap().to_string(),
+        );
+        result.push(parsed_info);
+    }
+
+    result
+}
+
+fn get_collection_query(filter: &str) -> String {
+    format!("SELECT b.name, b.schema, COALESCE(json_agg(json_build_object('name', i.indexname , 'definition', i.indexdef)) FILTER (WHERE i.indexname IS NOT NULL), '[]')::text as indexes FROM (SELECT c.name, json_object_agg(t.column_name, t.data_type)::text as schema FROM {COLLECTION_TABLE_NAME} c INNER JOIN information_schema.columns t ON t.table_name=c.name  {filter} GROUP BY c.name) b LEFT JOIN pg_indexes i ON i.tablename=b.name AND i.indexdef ILIKE '%USING lantern_hnsw%' GROUP BY b.name, b.schema")
+}
+
 #[derive(Serialize, Debug, utoipa::ToSchema)]
 pub struct CollectionInfo {
     name: String,
+    schema: HashMap<String, String>,
+    indexes: Vec<HashMap<String, String>>,
 }
 /// Get all collections
 #[utoipa::path(
@@ -33,22 +92,58 @@ pub struct CollectionInfo {
 pub async fn list(data: web::Data<AppState>) -> Result<impl Responder> {
     let client = data.pool.get().await?;
     let rows = client
-        .query(&format!("SELECT name FROM {COLLECTION_TABLE_NAME}"), &[])
-        .await;
-
-    let rows = match rows {
-        Ok(rows) => rows,
-        Err(e) => return Err(ErrorInternalServerError(e)),
-    };
+        .query(&get_collection_query(""), &[])
+        .await
+        .map_err(ErrorInternalServerError)?;
 
     let tables: Vec<CollectionInfo> = rows
         .iter()
         .map(|r| CollectionInfo {
             name: r.get::<usize, String>(0),
+            schema: serde_json::from_str(r.get::<usize, &str>(1)).unwrap(),
+            indexes: parse_indexes(serde_json::from_str(r.get::<usize, &str>(2)).unwrap()),
         })
         .collect();
 
     Ok(web::Json(tables))
+}
+
+/// Get collection by name
+#[utoipa::path(
+    get,
+    path = "/collections/{name}",
+    responses(
+        (status = 200, description = "Returns the collection data", body = CollectionInfo),
+        (status = 500, description = "Internal Server Error")
+    ),
+    params(
+       ("name", description = "Collection name")
+    ),
+)]
+#[get("/collections/{name}")]
+pub async fn get(data: web::Data<AppState>, name: web::Path<String>) -> Result<impl Responder> {
+    let client = data.pool.get().await?;
+    let rows = client
+        .query(
+            &get_collection_query("WHERE c.name=$1"),
+            &[&name.to_string()],
+        )
+        .await
+        .map_err(ErrorInternalServerError)?;
+
+    if rows.is_empty() {
+        return Err(ErrorNotFound("Collection not found"));
+    }
+
+    let first_row = rows.first().unwrap();
+
+    let table: CollectionInfo = CollectionInfo {
+        name: first_row.get::<usize, String>(0),
+        schema: serde_json::from_str(first_row.get::<usize, &str>(1)).unwrap(),
+        indexes: parse_indexes(serde_json::from_str(first_row.get::<usize, &str>(2)).unwrap()),
+    };
+
+    Ok(web::Json(table))
 }
 
 #[derive(Deserialize, Debug, Clone, utoipa::ToSchema)]
@@ -143,6 +238,8 @@ pub async fn create(
 
     Ok(web::Json(CollectionInfo {
         name: body.name.clone(),
+        schema,
+        indexes: Vec::new(),
     }))
 }
 

@@ -89,7 +89,8 @@ async fn test_collection_create() -> AnyhowVoidResult {
     let mut body: Vec<u8> = Vec::with_capacity(body.capacity());
     response.copy_to(&mut body)?;
     let body_json = String::from_utf8(body)?;
-    let body_json: HashMap<String, String> = serde_json::from_str(&body_json)?;
+    println!("Response: {:?}", body_json);
+    let body_json: HashMap<String, serde_json::Value> = serde_json::from_str(&body_json)?;
     assert_eq!(body_json.get("name").unwrap(), TEST_COLLECTION_NAME);
 
     Ok(())
@@ -128,13 +129,34 @@ async fn test_collection_list() -> AnyhowVoidResult {
     let mut body: Vec<u8> = Vec::new();
     response.copy_to(&mut body)?;
     let body_json = String::from_utf8(body)?;
-    let body_json: Vec<HashMap<String, String>> = serde_json::from_str(&body_json)?;
+    println!("Response: {:?}", body_json);
+    let body_json: Vec<HashMap<String, serde_json::Value>> = serde_json::from_str(&body_json)?;
 
     assert_eq!(body_json.len(), 1);
     assert_eq!(
         body_json.first().unwrap().get("name").unwrap(),
         TEST_COLLECTION_NAME
     );
+
+    Ok(())
+}
+
+async fn test_collection_get() -> AnyhowVoidResult {
+    let mut response = isahc::get(&format!("{SERVER_URL}/collections/{TEST_COLLECTION_NAME}"))?;
+
+    let mut body: Vec<u8> = Vec::new();
+    response.copy_to(&mut body)?;
+    let body_json = String::from_utf8(body)?;
+    println!("Response: {:?}", body_json);
+    let body_json: HashMap<String, serde_json::Value> = serde_json::from_str(&body_json)?;
+
+    assert_eq!(body_json.get("name").unwrap(), TEST_COLLECTION_NAME);
+    assert_eq!(body_json.get("schema").unwrap().get("v").unwrap(), "ARRAY");
+    assert_eq!(
+        body_json.get("schema").unwrap().get("id").unwrap(),
+        "integer"
+    );
+    assert_eq!(body_json.get("schema").unwrap().get("m").unwrap(), "jsonb");
 
     Ok(())
 }
@@ -195,6 +217,23 @@ async fn test_index_create() -> AnyhowVoidResult {
     let response = isahc::send(request)?;
     assert_eq!(response.status(), StatusCode::from_u16(200)?);
 
+    let mut response = isahc::get(&format!("{SERVER_URL}/collections/{TEST_COLLECTION_NAME}"))?;
+
+    let mut body: Vec<u8> = Vec::new();
+    response.copy_to(&mut body)?;
+    let body_json = String::from_utf8(body)?;
+    println!("Response: {:?}", body_json);
+    let body_json: HashMap<String, serde_json::Value> = serde_json::from_str(&body_json)?;
+    let indexes: Vec<HashMap<String, String>> =
+        serde_json::from_value(body_json.get("indexes").unwrap().clone())?;
+
+    assert_eq!(indexes.len(), 1);
+    assert_eq!(indexes[0].get("name").unwrap(), "test_idx");
+    assert_eq!(indexes[0].get("m").unwrap(), "16");
+    assert_eq!(indexes[0].get("ef_construction").unwrap(), "128");
+    assert_eq!(indexes[0].get("ef").unwrap(), "64");
+    assert_eq!(indexes[0].get("dim").unwrap(), "3");
+    assert_eq!(indexes[0].get("metric").unwrap(), "cos");
     Ok(())
 }
 
@@ -356,6 +395,7 @@ async fn test_http_server() {
     let tx = test_setup().await;
     test_collection_create().await.unwrap();
     test_collection_list().await.unwrap();
+    test_collection_get().await.unwrap();
     test_collection_insert().await.unwrap();
     test_pq().await.unwrap();
     test_index_create().await.unwrap();

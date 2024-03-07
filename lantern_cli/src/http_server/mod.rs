@@ -59,8 +59,9 @@ pub struct AppState {
 The API endpoints are not SQL injection safe, so it can provide maximum flexibility for data manipulation, so please sanitize user input before sending requests to this API."
     ),
     paths(
-        collection::list,
         collection::create,
+        collection::list,
+        collection::get,
         collection::delete,
         collection::insert_data,
         search::vector_search,
@@ -118,6 +119,7 @@ pub async fn start(
                     .url("/api-docs/openapi.json", ApiDoc::openapi()),
             )
             .service(collection::list)
+            .service(collection::get)
             .service(collection::create)
             .service(collection::delete)
             .service(collection::insert_data)
