@@ -338,7 +338,7 @@ async fn test_embedding_generation_runtime(
     let mut check_cnt = 0;
     db_client
         .execute(
-            &format!("INSERT INTO {CLIENT_TABLE_NAME} (id, title) VALUES (7777, 'Test inesert')"),
+            &format!("INSERT INTO {CLIENT_TABLE_NAME} (id, title) VALUES (7777, 'Test inesert'), (8888, ''), (9999, ' ')"),
             &[],
         )
         .await
@@ -444,7 +444,15 @@ async fn test_embedding_generation_runtime(
         )
         .await
         .unwrap();
-    assert_eq!(client_data.len(), 0);
+    assert_eq!(client_data.len(), 2);
+
+    db_client
+        .execute(
+            &format!("DELETE FROM {CLIENT_TABLE_NAME} WHERE id in (8888, 9999)"),
+            &[],
+        )
+        .await
+        .unwrap();
 
     let updated_embedding = db_client
         .query_one(

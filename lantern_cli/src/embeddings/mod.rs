@@ -176,8 +176,10 @@ fn embedding_worker(
 
             for row in &rows {
                 if let Ok(Some(src_data)) = row.try_get::<usize, Option<&str>>(1) {
-                    input_vectors.push(src_data);
-                    input_ids.push(row.get::<usize, String>(0));
+                    if src_data.trim() != "" {
+                        input_vectors.push(src_data);
+                        input_ids.push(row.get::<usize, String>(0));
+                    }
                 }
             }
 
