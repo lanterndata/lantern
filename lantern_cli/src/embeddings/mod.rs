@@ -293,6 +293,7 @@ fn db_exporter_worker(
 
         let flush_interval = 10;
         let min_flush_rows = 50;
+        let max_flush_rows = 1000;
         let mut start = Instant::now();
         let mut collected_row_cnt = 0;
         let mut processed_row_cnt = 0;
@@ -333,10 +334,13 @@ fn db_exporter_worker(
                 continue;
             }
 
-            if flush_interval <= start.elapsed().as_secs() && collected_row_cnt >= min_flush_rows {
+            if collected_row_cnt >= max_flush_rows
+                || (flush_interval <= start.elapsed().as_secs()
+                    && collected_row_cnt >= min_flush_rows)
+            {
                 // if job is run in streaming mode
                 // it will write results to target table each 10 seconds (if collected rows are
-                // more than 50)
+                // more than 50) or if collected row count is more than 1000 rows
                 writer.flush()?;
                 writer.finish()?;
                 transaction.batch_execute(&format!(

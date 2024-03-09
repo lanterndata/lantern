@@ -1,6 +1,6 @@
 [package]
 name = "lantern_extras"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 
 [lib]
@@ -25,7 +25,7 @@ tar = "0.4"
 itertools = "0.11"
 backtrace = "0.3"
 url = "2.2"
-lantern_cli = { path = "../lantern_cli", features=["external-index", "embeddings"] }
+lantern_cli = { path = "../lantern_cli", default-features = false, features=["external-index", "embeddings"] }
 anyhow = "1.0.75"
 rand = "0.8.5"
 serde_json = "1.0.111"
