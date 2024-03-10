@@ -154,14 +154,6 @@ void _PG_init(void)
              "Make sure to restart the server before running ALTER EXTENSION lantern UPDATE");
     }
 
-    // Print a warning with helpful info
-    (void)VersionsMatch();
-
-    original_post_parse_analyze_hook = post_parse_analyze_hook;
-    original_ExecutorStart_hook = ExecutorStart_hook;
-
-    post_parse_analyze_hook = post_parse_analyze_hook_with_operator_check;
-    ExecutorStart_hook = ExecutorStart_hook_with_operator_check;
     // todo:: cross-check with this`
     // https://github.com/zombodb/zombodb/blob/34c732a0b143b5e424ced64c96e8c4d567a14177/src/access_method/options.rs#L895
     ldb_hnsw_index_withopts = add_reloption_kind();
@@ -278,6 +270,15 @@ void _PG_init(void)
                              NULL,
                              NULL,
                              NULL);
+
+    // Print a warning with helpful info
+    (void)VersionsMatch();
+
+    original_post_parse_analyze_hook = post_parse_analyze_hook;
+    original_ExecutorStart_hook = ExecutorStart_hook;
+
+    post_parse_analyze_hook = post_parse_analyze_hook_with_operator_check;
+    ExecutorStart_hook = ExecutorStart_hook_with_operator_check;
 }
 
 // Called with extension unload.
