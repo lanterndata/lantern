@@ -6,6 +6,7 @@ function setup_environment() {
   export DEBIAN_FRONTEND=noninteractive
   export PG_VERSION=${PG_VERSION:-15}
   export GITHUB_OUTPUT=${GITHUB_OUTPUT:-/dev/null}
+  export PGDATA=/etc/postgresql/$PG_VERSION/main
 }
 
 function setup_onnx() {
@@ -45,6 +46,12 @@ function setup_postgres() {
   apt install -y postgresql-$PG_VERSION postgresql-server-dev-$PG_VERSION
   # Fix pg_config (sometimes it points to wrong version)
   rm -f /usr/bin/pg_config && ln -s /usr/lib/postgresql/$PG_VERSION/bin/pg_config /usr/bin/pg_config
+  # Enable auth without password
+  echo "local   all             all                                     trust" >  $PGDATA/pg_hba.conf
+  echo "host    all             all             127.0.0.1/32            trust" >>  $PGDATA/pg_hba.conf
+  echo "host    all             all             ::1/128                 trust" >>  $PGDATA/pg_hba.conf
+  # Set port
+  echo "port = 5432" >> ${PGDATA}/postgresql.conf
 }
 
 function setup_lantern() {
@@ -152,13 +159,6 @@ function wait_for_pg(){
 }
 
 function configure_and_start_postgres() {
-  PGDATA=/etc/postgresql/$PG_VERSION/main
-  # Enable auth without password
-  echo "local   all             all                                     trust" >  $PGDATA/pg_hba.conf
-  echo "host    all             all             127.0.0.1/32            trust" >>  $PGDATA/pg_hba.conf
-  echo "host    all             all             ::1/128                 trust" >>  $PGDATA/pg_hba.conf
-  # Set port
-  echo "port = 5432" >> ${PGDATA}/postgresql.conf
   # Start postgres
   sudo service postgresql start
   
