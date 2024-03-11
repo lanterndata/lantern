@@ -256,16 +256,7 @@ endif()
 # =========================================================================
 
 set (_update_files
-  sql/updates/0.0.5--0.0.6.sql
-  sql/updates/0.0.6--0.0.7.sql
-  sql/updates/0.0.7--0.0.8.sql
-  sql/updates/0.0.8--0.0.9.sql
-  sql/updates/0.0.9--0.0.10.sql
-  sql/updates/0.0.10--0.0.11.sql
-  sql/updates/0.0.11--0.0.12.sql
-  sql/updates/0.0.12--0.1.0.sql
-  sql/updates/0.1.0--0.1.1.sql
-  sql/updates/0.1.1--0.2.0.sql
+  sql/updates/0.2.0--0.2.1.sql
 )
 
 # Generate version information for the binary
