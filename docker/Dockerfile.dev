@@ -22,6 +22,7 @@ RUN apt update && apt install -y clang-15
 
 # allow non-root users to install in the container to make it easier to run update-tests
 RUN chmod 777 /usr/local/pgsql/lib/ /usr/local/pgsql/share/extension/ /usr/local/pgsql/include/server/
+RUN cd /root/postgresql-15.5/contrib && make install -j
 
 RUN mkdir -p /var/lib/postgresql/data && chown postgres:postgres /var/lib/postgresql/data
 USER postgres
@@ -55,5 +56,8 @@ ENV LANTERN_DATABASE_URL=postgres://postgres@localhost:5432/postgres
 # Uncomment the following to change the data directory of the running postgres
 # RUN /usr/local/pgsql/bin/initdb -D /var/lib/postgresql/data
 # RUN echo "listen_addresses '*' " >> /var/lib/postgresql/data/postgresql.conf
+RUN /usr/local/pgsql/bin/initdb -D /var/lib/postgresql/data
+RUN echo "shared_preload_libraries = 'pg_stat_statements' " >> /var/lib/postgresql/data/postgresql.conf
 # RUN echo "host    all             all             0.0.0.0/0               trust" >> /var/lib/postgresql/data/pg_hba.conf
 # CMD ["/usr/local/pgsql/bin/postgres", "-D", "/var/lib/postgresql/data"]
+CMD ["/usr/local/pgsql/bin/postgres", "-D", "/var/lib/postgresql/data"]
