@@ -15,7 +15,7 @@ function setup_onnx() {
     if [[ $ARCH == *"arm"* ]]; then PACKAGE_URL="https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-linux-aarch64-${ONNX_VERSION}.tgz"; fi && \
     mkdir -p /usr/local/lib && \
     cd /usr/local/lib && \
-    wget $PACKAGE_URL && \
+    wget -q $PACKAGE_URL && \
     tar xzf ./onnx*.tgz && \
     rm -rf ./onnx*.tgz && \
     mv ./onnx* ./onnxruntime && \
@@ -168,9 +168,19 @@ function configure_and_start_postgres() {
   psql -U postgres -c "CREATE EXTENSION lantern_extras" postgres
 }
 
+if [ ! -z "$RUN_POSTGRES" ]
+then
+  configure_and_start_postgres
+  exit 0
+fi
+
 setup_environment && \
-setup_locale_and_install_packages && \
-setup_rust
+setup_locale_and_install_packages
+
+if [ -z "$SETUP_TESTS" ]
+then
+  setup_rust
+fi
 
 if [ ! -z "$PACKAGE_CLI" ]
 then
@@ -185,10 +195,7 @@ fi
 if [ ! -z "$SETUP_TESTS" ]
 then
   setup_lantern && \
-  setup_onnx && \
-  setup_cargo_deps && \
-  install_extension && \
-  configure_and_start_postgres
+  setup_onnx
 fi
 
 if [ ! -z "$PACKAGE_EXTENSION" ]

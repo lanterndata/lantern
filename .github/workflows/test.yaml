@@ -20,12 +20,38 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: "recursive"
+      - name: Setup Rust
+        run: rustup toolchain install stable --profile minimal --no-self-update
+      - name: Configure sccache
+        run: |
+          echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
+          echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.4
+      - name: Cache cargo deps
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            lantern_cli
+            lantern_extras
       - name: Setup test env
-        run: sudo su -c "SETUP_POSTGRES=1 SETUP_TESTS=1 ./ci/scripts/build.sh"
+        run: sudo su -c "PG_VERSION=$PG_VERSION SETUP_POSTGRES=1 SETUP_TESTS=1 ./ci/scripts/build.sh"
+        env:
+          PG_VERSION: ${{ matrix.postgres }}
+      - name: Install extension
+        run: |
+          cargo install cargo-pgrx --version 0.11.3
+          cargo pgrx init "--pg$PG_VERSION" /usr/bin/pg_config
+          RUSTFLAGS="--cfg profile=\"ci-build\"" cargo pgrx install --sudo --pg-config /usr/bin/pg_config --package lantern_extras
+        env:
+          PG_VERSION: ${{ matrix.postgres }}
+      - name: Run postgres
+        run: RUN_POSTGRES=1 ./ci/scripts/build.sh
         env:
           PG_VERSION: ${{ matrix.postgres }}
       - name: Run tests
-        run: sudo su -c ". $HOME/.cargo/env && OPENAI_TOKEN=$OPENAI_TOKEN COHERE_TOKEN=$COHERE_TOKEN DB_URL='postgres://postgres@127.0.0.1:5432/postgres' cargo test --workspace --exclude lantern_extras --  --nocapture --test-threads=1"
+        run: cargo test --workspace --exclude lantern_extras --  --nocapture --test-threads=1
         env:
           OPENAI_TOKEN: ${{ secrets.OPENAI_TOKEN }}
           COHERE_TOKEN: ${{ secrets.COHERE_TOKEN }}
+          DB_URL: "postgres://postgres@127.0.0.1:5432/postgres"
