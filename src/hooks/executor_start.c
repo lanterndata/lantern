@@ -68,12 +68,12 @@ static void validate_operator_usage(Plan *plan, List *oidList)
 
 void ExecutorStart_hook_with_operator_check(QueryDesc *queryDesc, int eflags)
 {
-    if(original_ExecutorStart_hook) {
-        original_ExecutorStart_hook(queryDesc, eflags);
-    }
-
     if(ldb_pgvector_compat) {
-        standard_ExecutorStart(queryDesc, eflags);
+        if(original_ExecutorStart_hook) {
+            original_ExecutorStart_hook(queryDesc, eflags);
+        } else {
+            standard_ExecutorStart(queryDesc, eflags);
+        }
         return;
     }
 
@@ -101,5 +101,9 @@ void ExecutorStart_hook_with_operator_check(QueryDesc *queryDesc, int eflags)
         list_free(oidList);
     }
 
-    standard_ExecutorStart(queryDesc, eflags);
+    if(original_ExecutorStart_hook) {
+        original_ExecutorStart_hook(queryDesc, eflags);
+    } else {
+        standard_ExecutorStart(queryDesc, eflags);
+    }
 }
