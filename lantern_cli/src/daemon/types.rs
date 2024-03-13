@@ -6,7 +6,7 @@ use std::{collections::HashMap, pin::Pin};
 use tokio::sync::{mpsc::Sender, RwLock};
 use tokio_postgres::Row;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EmbeddingJob {
     pub id: i32,
     pub is_init: bool,

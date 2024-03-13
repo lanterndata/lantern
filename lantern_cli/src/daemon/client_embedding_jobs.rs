@@ -1,4 +1,4 @@
-use super::helpers::check_table_exists;
+use super::helpers::{check_table_exists, get_missing_rows_filter};
 use super::types::JobInsertNotification;
 use crate::logger::{LogLevel, Logger};
 use crate::types::AnyhowVoidResult;
@@ -7,7 +7,7 @@ use futures::StreamExt;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 use tokio::sync::{
     mpsc,
@@ -28,6 +28,7 @@ pub async fn toggle_client_job(
     job_id: i32,
     db_uri: String,
     column: String,
+    out_column: String,
     table: String,
     schema: String,
     log_level: LogLevel,
@@ -45,6 +46,7 @@ pub async fn toggle_client_job(
                 job_id,
                 db_uri,
                 column,
+                out_column,
                 table,
                 schema,
                 job_insert_queue_tx,
@@ -179,6 +181,10 @@ async fn client_notification_listener(
 
     logger.info("Listening for notifications");
 
+    let ping_logger = logger.clone();
+    let start = SystemTime::now();
+    let since_the_epoch = start.duration_since(UNIX_EPOCH).unwrap().as_millis();
+    let since_the_epoch_clone = since_the_epoch.clone();
     let client_ref = client.clone();
     let task = tokio::spawn(async move {
         // Poll messages from connection and forward it to stream
@@ -221,6 +227,9 @@ async fn client_notification_listener(
             }
         }
         drop(client_ref);
+        logger.debug(&format!(
+            "Database connection stream finished, task_id: {since_the_epoch}"
+        ));
     });
 
     client
@@ -237,6 +246,38 @@ async fn client_notification_listener(
         }
     });
 
+    let cancel_tx = tx.clone();
+    tokio::spawn(async move {
+        ping_logger.debug(&format!(
+            "Sending ping queries each 30s, task_id: {since_the_epoch_clone}"
+        ));
+        loop {
+            match client.query_one("SELECT 1", &[]).await {
+                Ok(_) => {}
+                Err(e) => {
+                    ping_logger.error(&format!(
+                        "Ping query failed with {e}. Sending restart, task_id: {since_the_epoch_clone}"
+                    ));
+                    tokio::select! {
+                        _ = tokio::time::sleep(Duration::from_secs(1)) => {
+                            ping_logger.warn(&format!("Task {since_the_epoch_clone} already canceled. Stop sending after 1s"));
+                        }
+                        res = cancel_tx.send(()) => {
+                            match res {
+                                Ok(_) => {}
+                                Err(e) => {
+                                    ping_logger.error(&format!("Sending cancel event failed with {e}, task_id: {since_the_epoch_clone}"));
+                                }
+                            }
+                        }
+                    };
+                    break;
+                }
+            };
+            tokio::time::sleep(Duration::from_secs(30)).await;
+        }
+    });
+
     Ok(tx)
 }
 
@@ -245,6 +286,7 @@ async fn start_client_job(
     job_id: i32,
     db_uri: String,
     column: String,
+    out_column: String,
     table: String,
     schema: String,
     job_insert_queue_tx: Sender<JobInsertNotification>,
@@ -291,6 +333,7 @@ async fn start_client_job(
     .await?;
     // close the database connection as we will create a new one for notification listener
     db_connection_task.abort();
+    drop(db_connection_task);
 
     let client_task_logger = logger.clone();
     let job_signal_tx_clone = job_signal_tx.clone();
@@ -338,6 +381,16 @@ async fn start_client_job(
 
                     if let Ok(tx) = res {
                         cancel_listener_task = tx;
+                        job_insert_queue_tx
+                            .send(JobInsertNotification {
+                                id: job_id,
+                                init: false,
+                                generate_missing: true,
+                                row_id: None,
+                                filter: Some(get_missing_rows_filter(&column, &out_column)),
+                                limit: None,
+                            })
+                            .await?;
                         break;
                     } else {
                         tokio::time::sleep(Duration::from_secs(10)).await;

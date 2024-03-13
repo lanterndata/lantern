@@ -1,11 +1,11 @@
-use super::types::JobTaskCancelTx;
+use super::types::{EmbeddingJob, JobTaskCancelTx};
 use super::types::{JobCancellationHandlersMap, JobInsertNotification, JobUpdateNotification};
 use crate::logger::Logger;
-use crate::utils::{get_full_table_name, quote_ident};
 use crate::types::AnyhowVoidResult;
+use crate::utils::{get_full_table_name, quote_ident};
 use futures::StreamExt;
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio_postgres::AsyncMessage;
 use tokio_postgres::Client;
@@ -256,5 +256,41 @@ pub async fn set_job_handle(
 pub async fn remove_job_handle(map: &JobCancellationHandlersMap, job_id: i32) -> AnyhowVoidResult {
     let mut jobs = map.write().await;
     jobs.remove(&job_id);
+    Ok(())
+}
+
+pub fn get_missing_rows_filter(src_column: &str, out_column: &str) -> String {
+    format!(
+        "({src_column} IS NOT NULL OR {src_column} != '') AND {out_column} IS NULL",
+        src_column = quote_ident(&src_column),
+        out_column = quote_ident(&out_column)
+    )
+}
+
+pub async fn schedule_job_retry(
+    logger: Arc<Logger>,
+    job: EmbeddingJob,
+    tx: Sender<EmbeddingJob>,
+    retry_after: Duration,
+) -> AnyhowVoidResult {
+    tokio::spawn(async move {
+        let job_id = job.id;
+        let batch_len = if let Some(row_ids) = &job.row_ids {
+            row_ids.len()
+        } else {
+            0
+        };
+        logger.info(&format!(
+            "Scheduling retry after {}s for job {job_id} with batch len ({batch_len})",
+            retry_after.as_secs(),
+        ));
+        tokio::time::sleep(retry_after).await;
+        match tx.send(job).await {
+            Ok(_) => {}
+            Err(e) => logger.error(&format!(
+                "Sending retry for failed job: {job_id} with batch len ({batch_len}) failed with error: {e}",
+            )),
+        };
+    });
     Ok(())
 }

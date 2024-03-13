@@ -24,7 +24,7 @@
 
 use super::cli;
 use super::client_embedding_jobs::toggle_client_job;
-use super::helpers::{db_notification_listener, startup_hook, set_job_handle, remove_job_handle};
+use super::helpers::{db_notification_listener, startup_hook, set_job_handle, remove_job_handle, get_missing_rows_filter, schedule_job_retry};
 use crate::types::*;
 use super::types::{
      EmbeddingJob, JobInsertNotification, JobUpdateNotification, VoidFuture,  JobCancellationHandlersMap, 
@@ -117,6 +117,7 @@ async fn unlock_rows(
 
 async fn embedding_worker(
     mut job_queue_rx: Receiver<EmbeddingJob>,
+    job_queue_tx: Sender<EmbeddingJob>,
     notifications_tx: Sender<JobInsertNotification>,
     client: Arc<Client>,
     schema: String,
@@ -135,6 +136,7 @@ async fn embedding_worker(
             let client_ref = client.clone();
             let client_ref2 = client.clone();
             let logger_ref = logger.clone();
+            let orig_job_clone = job.clone();
             let job = Arc::new(job);
             let job_ref = job.clone();
             let jobs_table_name_r1 = jobs_table_name.clone();
@@ -173,7 +175,7 @@ async fn embedding_worker(
 
             // Enable triggers for job
             if job.is_init {
-              toggle_client_job(job.id.clone(), job.db_uri.clone(), job.column.clone(), job.table.clone(), job.schema.clone(), logger.level.clone(), Some(notifications_tx.clone()), true ).await?;
+              toggle_client_job(job.id.clone(), job.db_uri.clone(), job.column.clone(), job.out_column.clone(), job.table.clone(), job.schema.clone(), logger.level.clone(), Some(notifications_tx.clone()), true ).await?;
             }
 
             let task_handle = tokio::spawn(async move {
@@ -238,7 +240,9 @@ async fn embedding_worker(
                     if job.is_init {
                         // update failure reason
                         client_ref.execute(&format!("UPDATE {jobs_table_name} SET init_failed_at=NOW(), updated_at=NOW(), init_failure_reason=$1 WHERE id=$2"), &[&e.to_string(), &job.id]).await?;
-                        toggle_client_job(job.id.clone(), job.db_uri.clone(), job.column.clone(), job.table.clone(), job.schema.clone(), logger.level.clone(), Some(notifications_tx.clone()), false).await?;
+                        toggle_client_job(job.id.clone(), job.db_uri.clone(), job.column.clone(), job.out_column.clone(), job.table.clone(), job.schema.clone(), logger.level.clone(), Some(notifications_tx.clone()), false).await?;
+                    } else {
+                        schedule_job_retry(logger.clone(), orig_job_clone, job_queue_tx.clone(), Duration::from_secs(300)).await?;
                     }
                 }
             }
@@ -286,7 +290,7 @@ async fn collect_pending_jobs(
 }
 
 async fn job_insert_processor(
-    client: Arc<Client>,
+    db_uri: String,
     mut notifications_rx: Receiver<JobInsertNotification>,
     job_tx: Sender<EmbeddingJob>,
     schema: String,
@@ -311,6 +315,11 @@ async fn job_insert_processor(
     // each 10 sconds the second running task the collector task will drain the hashmap and create
     // batch jobs for the rows. This will optimize embedding generation as if there will be lots of
     // inserts to the table between 10 seconds all that rows will be batched.
+
+    let (client, connection) = tokio_postgres::connect(&db_uri, NoTls).await?;
+    tokio::spawn(async move { connection.await.unwrap() });
+
+    let client = Arc::new(client);
 
     let full_table_name = Arc::new(get_full_table_name(&schema, &table));
     let job_query_sql = Arc::new(format!("SELECT id, db_connection as db_uri, src_column as \"column\", dst_column, \"table\", \"schema\", embedding_model as model, runtime, runtime_params::text FROM {0}", &full_table_name));
@@ -441,8 +450,10 @@ async fn job_insert_processor(
                 let mut job = job.unwrap();
                 job.set_is_init(false);
                 let row_ctids_str = row_ids.iter().map(|r| format!("'{r}'::tid")).join(",");
+                let rows_len = row_ids.len();
                 job.set_row_ids(row_ids);
                 job.set_filter(&format!("ctid IN ({row_ctids_str})"));
+                logger.debug(&format!("Sending batch job {job_id} (len: {rows_len}) to embedding_worker"));
                 let _ = job_tx.send(job).await;
             }
 
@@ -483,7 +494,7 @@ async fn job_update_processor(
             }
 
             if init_finished_at.is_some() {
-              toggle_client_job(id, row.get::<&str, String>("db_uri").to_owned(), row.get::<&str, String>("column").to_owned(), row.get::<&str, String>("table").to_owned(), row.get::<&str, String>("schema").to_owned(), logger.level.clone(), Some(job_insert_queue_tx.clone()), canceled_at.is_none()).await?;
+              toggle_client_job(id, row.get::<&str, String>("db_uri").to_owned(), row.get::<&str, String>("column").to_owned(), row.get::<&str, String>("dst_column").to_owned(), row.get::<&str, String>("table").to_owned(), row.get::<&str, String>("schema").to_owned(), logger.level.clone(), Some(job_insert_queue_tx.clone()), canceled_at.is_none()).await?;
             } else if canceled_at.is_some() {
                 // Cancel ongoing job
                 let jobs = JOBS.read().await;
@@ -503,7 +514,7 @@ async fn job_update_processor(
             if canceled_at.is_none() && notification.generate_missing {
                 // this will be on startup to generate embeddings for rows that might be inserted
                 // while daemon is offline
-                job_insert_queue_tx.send(JobInsertNotification { id, init: init_finished_at.is_none(), generate_missing: true, filter: Some(format!("\"{src_column}\" IS NOT NULL AND \"{out_column}\" IS NULL")), limit: None, row_id: None }).await?;
+                job_insert_queue_tx.send(JobInsertNotification { id, init: init_finished_at.is_none(), generate_missing: true, filter: Some(get_missing_rows_filter(&src_column, &out_column)), limit: None, row_id: None }).await?;
             }
         }
         Ok(()) as AnyhowVoidResult
@@ -586,9 +597,9 @@ pub async fn start(args: cli::DaemonArgs, logger: Arc<Logger>) -> AnyhowVoidResu
             logger.clone(),
         )) as VoidFuture,
         Box::pin(job_insert_processor(
-            main_db_client.clone(),
+            args.uri.clone(),
             insert_notification_queue_rx,
-            job_queue_tx,
+            job_queue_tx.clone(),
             args.schema.clone(),
             args.internal_schema.clone(),
             table.clone(),
@@ -605,6 +616,7 @@ pub async fn start(args: cli::DaemonArgs, logger: Arc<Logger>) -> AnyhowVoidResu
         )) as VoidFuture,
         Box::pin(embedding_worker(
             job_queue_rx,
+            job_queue_tx.clone(),
             insert_notification_queue_tx.clone(),
             main_db_client.clone(),
             args.schema.clone(),
