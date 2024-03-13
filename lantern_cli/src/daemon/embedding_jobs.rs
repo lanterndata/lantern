@@ -119,7 +119,7 @@ async fn embedding_worker(
     mut job_queue_rx: Receiver<EmbeddingJob>,
     job_queue_tx: Sender<EmbeddingJob>,
     notifications_tx: Sender<JobInsertNotification>,
-    client: Arc<Client>,
+    db_uri: String,
     schema: String,
     internal_schema: String,
     table: String,
@@ -130,6 +130,9 @@ async fn embedding_worker(
     let jobs_table_name = Arc::new(get_full_table_name(&schema, &table));
 
     tokio::spawn(async move {
+        let (client, connection) = tokio_postgres::connect(&db_uri, NoTls).await?;
+        tokio::spawn(async move { connection.await.unwrap() });
+        let client = Arc::new(client);
         logger.info("Embedding worker started");
         while let Some(job) = job_queue_rx.recv().await {
             logger.info(&format!("Starting execution of embedding job {}", job.id));
@@ -315,30 +318,27 @@ async fn job_insert_processor(
     // each 10 sconds the second running task the collector task will drain the hashmap and create
     // batch jobs for the rows. This will optimize embedding generation as if there will be lots of
     // inserts to the table between 10 seconds all that rows will be batched.
-
-    let (client, connection) = tokio_postgres::connect(&db_uri, NoTls).await?;
-    tokio::spawn(async move { connection.await.unwrap() });
-
-    let client = Arc::new(client);
-
     let full_table_name = Arc::new(get_full_table_name(&schema, &table));
     let job_query_sql = Arc::new(format!("SELECT id, db_connection as db_uri, src_column as \"column\", dst_column, \"table\", \"schema\", embedding_model as model, runtime, runtime_params::text FROM {0}", &full_table_name));
 
+    let db_uri_r1 = db_uri.clone();
     let full_table_name_r1 = full_table_name.clone();
     let job_query_sql_r1 = job_query_sql.clone();
-    let client_r1 = client.clone();
     let job_tx_r1 = job_tx.clone();
     let logger_r1 = logger.clone();
     let lock_table_name = Arc::new(get_full_table_name(&lock_table_schema, EMB_LOCK_TABLE_NAME));
     let job_batching_hashmap_r1 = JOB_BATCHING_HASHMAP.clone();
 
     let insert_processor_task = tokio::spawn(async move {
+        let (insert_client, connection) = tokio_postgres::connect(&db_uri_r1, NoTls).await?;
+        let insert_client = Arc::new(insert_client);
+        tokio::spawn(async move { connection.await.unwrap() });
         while let Some(notification) = notifications_rx.recv().await {
             let id = notification.id;
 
             if let Some(row_id) = notification.row_id {
                 // Do this in a non-blocking way to not block collecting of updates while locking
-                let client_r1 = client_r1.clone();
+                let client_r1 = insert_client.clone();
                 let logger_r1 = logger_r1.clone();
                 let job_batching_hashmap_r1 = job_batching_hashmap_r1.clone();
                 let lock_table_name = lock_table_name.clone();
@@ -383,13 +383,13 @@ async fn job_insert_processor(
             // will pick that job and try to generate embeddings (though this is very rare case)
             if notification.init && !notification.generate_missing {
                 // Only update init time if this is the first time job is being executed
-                let updated_count = client_r1.execute(&format!("UPDATE {0} SET init_started_at=NOW() WHERE init_started_at IS NULL AND id=$1", &full_table_name_r1), &[&id]).await?;
+                let updated_count = insert_client.execute(&format!("UPDATE {0} SET init_started_at=NOW() WHERE init_started_at IS NULL AND id=$1", &full_table_name_r1), &[&id]).await?;
                 if updated_count == 0 {
                     continue;
                 }
             }
 
-            let job_result = client_r1
+            let job_result = insert_client
                 .query_one(
                     &format!("{job_query_sql_r1} WHERE id=$1 AND canceled_at IS NULL"),
                     &[&id],
@@ -423,6 +423,8 @@ async fn job_insert_processor(
 
     let job_batching_hashmap = JOB_BATCHING_HASHMAP.clone();
     let batch_collector_task = tokio::spawn(async move {
+        let (batch_client, connection) = tokio_postgres::connect(&db_uri, NoTls).await?;
+        tokio::spawn(async move { connection.await.unwrap() });
         loop {
             let mut job_map = job_batching_hashmap.lock().await;
             let jobs: Vec<(i32, Vec<String>)> = job_map.drain().collect();
@@ -430,7 +432,7 @@ async fn job_insert_processor(
             drop(job_map);
 
             for (job_id, row_ids) in jobs {
-                let job_result = client
+                let job_result = batch_client
                     .query_one(
                         &format!("{job_query_sql} WHERE id=$1 AND canceled_at IS NULL"),
                         &[&job_id],
@@ -471,7 +473,7 @@ async fn job_insert_processor(
 }
 
 async fn job_update_processor(
-    client: Arc<Client>,
+    db_uri: String,
     mut update_queue_rx: Receiver<JobUpdateNotification>,
     job_insert_queue_tx: Sender<JobInsertNotification>,
     schema: String,
@@ -480,6 +482,8 @@ async fn job_update_processor(
 ) -> AnyhowVoidResult {
     tokio::spawn(async move {
         while let Some(notification) = update_queue_rx.recv().await {
+            let (client, connection) = tokio_postgres::connect(&db_uri, NoTls).await?;
+            tokio::spawn(async move { connection.await.unwrap() });
             let full_table_name =  get_full_table_name(&schema, &table);
             let id = notification.id;
             let row = client.query_one(&format!("SELECT db_connection as db_uri, dst_column, src_column as \"column\", \"table\", \"schema\", canceled_at, init_finished_at FROM {0} WHERE id=$1", &full_table_name), &[&id]).await?;
@@ -607,7 +611,7 @@ pub async fn start(args: cli::DaemonArgs, logger: Arc<Logger>) -> AnyhowVoidResu
             logger.clone(),
         )) as VoidFuture,
         Box::pin(job_update_processor(
-            main_db_client.clone(),
+            args.uri.clone(),
             update_notification_queue_rx,
             insert_notification_queue_tx.clone(),
             args.schema.clone(),
@@ -618,7 +622,7 @@ pub async fn start(args: cli::DaemonArgs, logger: Arc<Logger>) -> AnyhowVoidResu
             job_queue_rx,
             job_queue_tx.clone(),
             insert_notification_queue_tx.clone(),
-            main_db_client.clone(),
+            args.uri.clone(),
             args.schema.clone(),
             args.internal_schema.clone(),
             table.clone(),
@@ -630,6 +634,8 @@ pub async fn start(args: cli::DaemonArgs, logger: Arc<Logger>) -> AnyhowVoidResu
             get_full_table_name(&args.schema, &table),
         )) as VoidFuture,
     ];
+
+    drop(main_db_client);
 
     if let Err(e) = future::try_join_all(handles).await {
         logger.error(&e.to_string());
