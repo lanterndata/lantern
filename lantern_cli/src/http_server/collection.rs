@@ -2,7 +2,7 @@ use bytes::BytesMut;
 use futures::SinkExt;
 use itertools::Itertools;
 use regex::Regex;
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Instant};
 
 use actix_web::{
     delete,
@@ -347,11 +347,25 @@ async fn insert_data(
         .map_err(ErrorInternalServerError)?;
 
     futures::pin_mut!(writer_sink);
-    let mut buf = BytesMut::new();
+    let chunk_size = 1024 * 1024 * 100; // 10 MB
+    let mut buf = BytesMut::with_capacity(chunk_size * 2);
+    let mut row_cap = 2000;
+    let now = Instant::now();
     for row in &body.rows {
-        let mut row_str = String::from("");
+        let mut row_str = String::with_capacity(row_cap);
+        // let now = Instant::now();
         for (idx, column) in columns.iter().enumerate() {
-            let entry = row[column].to_string().replace("[", "{").replace("]", "}");
+            let elem = row[column].to_string();
+
+            let mut chars = elem.chars();
+            let first_char = chars.next().unwrap();
+            let last_char = chars.next_back().unwrap();
+            let entry = if first_char == '[' && last_char == ']' {
+                format!("{{{}}}", chars.as_str())
+            } else {
+                elem
+            };
+
             row_str.push_str(&entry);
             if idx != columns.len() - 1 {
                 row_str.push_str("\t");
@@ -359,13 +373,14 @@ async fn insert_data(
         }
         row_str.push_str("\n");
 
-        if buf.len() > 4096 {
+        if buf.len() > chunk_size {
             writer_sink
                 .send(buf.split().freeze())
                 .await
                 .map_err(ErrorInternalServerError)?;
         }
 
+        row_cap = row_str.len();
         buf.extend_from_slice(row_str.as_bytes());
     }
 
@@ -375,13 +390,16 @@ async fn insert_data(
             .await
             .map_err(ErrorInternalServerError)?;
     }
+    println!("Copy took {}s", now.elapsed().as_secs());
 
+    let now = Instant::now();
     writer_sink.finish().await.map_err(ErrorBadRequest)?;
 
     transaction
         .commit()
         .await
         .map_err(ErrorInternalServerError)?;
+    println!("Commit took {}s", now.elapsed().as_secs());
 
     Ok(HttpResponse::new(StatusCode::from_u16(200).unwrap()))
 }

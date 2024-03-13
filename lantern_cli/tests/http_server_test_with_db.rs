@@ -41,7 +41,7 @@ fn start_server(db_uri: String) -> Sender<()> {
             http_server::start(
                 HttpServerArgs {
                     db_uri,
-                    remote_database: false,
+                    remote_database: true,
                     host: "127.0.0.1".to_owned(),
                     port: 7777,
                 },

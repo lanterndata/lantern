@@ -87,17 +87,21 @@ async fn create_index(
             )
             .await.map_err(ErrorInternalServerError)?;
     } else {
-        let data_dir = match client
-            .query_one(
-                "SELECT setting::text FROM pg_settings WHERE name = 'data_directory'",
-                &[],
-            )
-            .await
-        {
-            Err(e) => {
-                return Err(ErrorInternalServerError(e));
+        let data_dir = if !data.is_remote_database {
+            match client
+                .query_one(
+                    "SELECT setting::text FROM pg_settings WHERE name = 'data_directory'",
+                    &[],
+                )
+                .await
+            {
+                Err(e) => {
+                    return Err(ErrorInternalServerError(e));
+                }
+                Ok(row) => row.get::<usize, String>(0),
             }
-            Ok(row) => row.get::<usize, String>(0),
+        } else {
+            "/tmp".to_owned()
         };
 
         let mut rng = rand::thread_rng();

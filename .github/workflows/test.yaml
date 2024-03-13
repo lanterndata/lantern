@@ -49,8 +49,6 @@ jobs:
         run: RUN_POSTGRES=1 ./ci/scripts/build.sh
         env:
           PG_VERSION: ${{ matrix.postgres }}
-      - name: Setup tmate session
-        uses: mxschmitt/action-tmate@v3
       - name: Run tests
         run: cargo test --workspace --exclude lantern_extras -- --nocapture --test-threads=1
         env:

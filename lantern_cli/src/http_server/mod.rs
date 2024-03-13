@@ -114,6 +114,11 @@ pub async fn start(
         App::new()
             .wrap(Logger::new("%r - %s %Dms"))
             .app_data(state.clone())
+            .app_data(
+                web::JsonConfig::default()
+                    // limit request payload size to 1GB
+                    .limit(1024 * 1024 * 1024),
+            )
             .service(
                 SwaggerUi::new("/swagger-ui/{_:.*}")
                     .url("/api-docs/openapi.json", ApiDoc::openapi()),
