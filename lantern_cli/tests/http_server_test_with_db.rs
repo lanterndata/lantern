@@ -215,7 +215,7 @@ async fn test_index_create() -> AnyhowVoidResult {
     .body(body.as_bytes())?;
 
     let response = isahc::send(request)?;
-    let mut body: Vec<u8> = Vec::new();
+    let body: Vec<u8> = Vec::new();
     let body_json = String::from_utf8(body)?;
     println!("Response: {:?}", body_json);
     assert_eq!(response.status(), StatusCode::from_u16(200)?);

@@ -2,7 +2,7 @@ use bytes::BytesMut;
 use futures::SinkExt;
 use itertools::Itertools;
 use regex::Regex;
-use std::{collections::HashMap, time::Instant};
+use std::collections::HashMap;
 
 use actix_web::{
     delete,
