@@ -18,4 +18,12 @@ pub struct HttpServerArgs {
     /// Port to bind
     #[arg(long, default_value_t = 8080)]
     pub port: u16,
+
+    /// Username for HTTP Auth
+    #[arg(short, long)]
+    pub username: Option<String>,
+
+    /// Password for HTTP Auth
+    #[arg(short, long)]
+    pub password: Option<String>,
 }

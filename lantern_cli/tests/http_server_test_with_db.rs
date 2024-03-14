@@ -44,6 +44,8 @@ fn start_server(db_uri: String) -> Sender<()> {
                     remote_database: true,
                     host: "127.0.0.1".to_owned(),
                     port: 7777,
+                    username: None,
+                    password: None,
                 },
                 None,
             )

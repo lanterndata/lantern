@@ -14,7 +14,7 @@ clap = { version = "4.4.0", features = ["derive"] }
 anyhow = "1.0.75"
 postgres = "0.19.7"
 rand = "0.8.5"
-linfa-clustering = { version = "0.7.0", features = ["ndarray-linalg"], optional=true }
+linfa-clustering = { version = "0.7.0", features = ["ndarray-linalg"], optional = true }
 linfa = {version = "0.7.0", optional = true}
 ndarray = { version = "0.15.6", features = ["rayon"] }
 rayon = { version="1.8.1", optional = true }
@@ -22,8 +22,8 @@ md5 = {version="0.7.0", optional = true }
 isahc = "1.7.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.111"
-gcp_auth = {version="0.10.0", optional=true}
-tokio-postgres = { version="0.7.10", optional=true }
+gcp_auth = {version="0.10.0", optional = true}
+tokio-postgres = { version="0.7.10", optional = true }
 futures = "0.3.28"
 tokio = { version = "1.33.0", features = ["full"] }
 lazy_static = "1.4.0"
@@ -40,19 +40,20 @@ strum = { version = "0.25", features = ["derive"] }
 tiktoken-rs = "0.5.8"
 regex = "1.10.3"
 postgres-types = { version = "0.2.6", features = ["derive"] }
-usearch = { git = "https://github.com/Ngalstyan4/usearch.git", branch="main-lantern" }
-actix-web = { version="4.5.1", optional = true }
-env_logger = { version="0.11.2", optional = true }
-deadpool-postgres = {version="0.12.1", optional = true}
-deadpool = {version="0.10.0", optional=true}
-bytes = {version="1.5.0", optional=true}
-utoipa = {version="4.2.0", optional=true}
-utoipa-swagger-ui = { version= "6.0.0", features=["actix-web"], optional=true }
+usearch = { git = "https://github.com/Ngalstyan4/usearch.git", branch = "main-lantern" }
+actix-web = { version = "4.5.1", optional = true }
+env_logger = { version = "0.11.2", optional = true }
+deadpool-postgres = { version = "0.12.1", optional = true }
+deadpool = { version = "0.10.0", optional = true}
+bytes = { version = "1.5.0", optional = true}
+utoipa = { version = "4.2.0", optional = true}
+utoipa-swagger-ui = { version = "6.0.0", features = ["actix-web"], optional = true }
+actix-web-httpauth = { version = "0.8.1", optional = true }
 
 [features]
 default = ["cli", "daemon", "http-server", "autotune", "pq", "external-index", "embeddings"]
 daemon = ["dep:tokio-postgres"]
-http-server = ["dep:deadpool-postgres", "dep:deadpool", "dep:bytes", "dep:utoipa", "dep:utoipa-swagger-ui", "dep:actix-web", "dep:tokio-postgres", "dep:env_logger"]
+http-server = ["dep:deadpool-postgres", "dep:deadpool", "dep:bytes", "dep:utoipa", "dep:utoipa-swagger-ui", "dep:actix-web", "dep:tokio-postgres", "dep:env_logger", "dep:actix-web-httpauth"]
 autotune = []
 pq = ["dep:gcp_auth", "dep:linfa", "dep:linfa-clustering", "dep:md5", "dep:rayon"]
 cli = []

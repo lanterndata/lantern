@@ -1,7 +1,11 @@
 use crate::{logger::LogLevel, types::AnyhowVoidResult};
 use actix_web::{
-    error::ErrorInternalServerError, middleware::Logger, web, App, HttpServer, Result,
+    dev::ServiceRequest,
+    error::{ErrorInternalServerError, ErrorUnauthorized},
+    middleware::Logger,
+    web, App, Error, HttpServer, Result,
 };
+use actix_web_httpauth::{extractors::basic::BasicAuth, middleware::HttpAuthentication};
 use cli::HttpServerArgs;
 use deadpool_postgres::{Config as PoolConfig, Manager, Pool};
 use tokio_postgres::NoTls;
@@ -37,18 +41,37 @@ impl AppPool {
     }
 }
 
+#[derive(Debug)]
+pub struct AuthCredentials {
+    username: String,
+    password: String,
+}
+
 pub struct AppState {
     db_uri: String,
+    auth_credentials: Option<AuthCredentials>,
     pool: AppPool,
     is_remote_database: bool,
     #[allow(dead_code)]
     logger: crate::logger::Logger,
 }
 
-/*
-* PATCH - /collection/:name/:id -
-*   { row: Row }
-* */
+pub type AppData = web::Data<AppState>;
+
+async fn auth_validator(
+    req: ServiceRequest,
+    credentials: BasicAuth,
+) -> Result<ServiceRequest, (Error, ServiceRequest)> {
+    let data = req.app_data::<AppData>().unwrap();
+    if let Some(creds) = &data.auth_credentials {
+        if creds.username != credentials.user_id()
+            || creds.password != credentials.password().unwrap_or("")
+        {
+            return Err((ErrorUnauthorized("Unauthorized"), req));
+        }
+    }
+    Ok(req)
+}
 
 #[derive(OpenApi)]
 #[openapi(
@@ -103,7 +126,18 @@ pub async fn start(
     let pool = config.create_pool(None, NoTls)?;
 
     setup::setup_tables(&pool).await?;
+
+    let auth_credentials = if args.username.is_some() && args.password.is_some() {
+        Some(AuthCredentials {
+            username: args.username.clone().unwrap(),
+            password: args.password.clone().unwrap(),
+        })
+    } else {
+        None
+    };
+
     let state = web::Data::new(AppState {
+        auth_credentials,
         db_uri: args.db_uri.clone(),
         is_remote_database: args.remote_database,
         pool: AppPool::new(pool),
@@ -114,6 +148,7 @@ pub async fn start(
         App::new()
             .wrap(Logger::new("%r - %s %Dms"))
             .app_data(state.clone())
+            .wrap(HttpAuthentication::basic(auth_validator))
             .app_data(
                 web::JsonConfig::default()
                     // limit request payload size to 1GB
