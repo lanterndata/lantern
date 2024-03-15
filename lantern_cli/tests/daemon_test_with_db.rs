@@ -191,7 +191,6 @@ fn start_daemon(
                     autotune_table,
                     autotune_results_table: Some(AUTOTUNE_RESULTS_TABLE_NAME.to_owned()),
                     external_index_table,
-                    queue_size: 1,
                     log_level: LogLevel::Debug,
                 },
                 None,

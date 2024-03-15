@@ -15,6 +15,7 @@ use tokio_postgres::{Client, NoTls};
 
 static TEST_COLLECTION_NAME: &'static str = "_lantern_http_test1";
 static SERVER_URL: &'static str = "http://127.0.0.1:7777";
+static AUTH_HEADER: (&'static str, &'static str) = ("Authorization", "Basic dGVzdDp0ZXN0");
 
 async fn drop_db_tables(client: &mut Client) {
     client
@@ -44,8 +45,8 @@ fn start_server(db_uri: String) -> Sender<()> {
                     remote_database: true,
                     host: "127.0.0.1".to_owned(),
                     port: 7777,
-                    username: None,
-                    password: None,
+                    username: Some("test".to_owned()),
+                    password: Some("test".to_owned()),
                 },
                 None,
             )
@@ -84,6 +85,7 @@ async fn test_collection_create() -> AnyhowVoidResult {
     );
     let request = Request::post(&format!("{SERVER_URL}/collections"))
         .header("content-type", "application/json")
+        .header(AUTH_HEADER.0, AUTH_HEADER.1)
         .body(body.as_bytes())?;
 
     let mut response = isahc::send(request)?;
@@ -91,6 +93,7 @@ async fn test_collection_create() -> AnyhowVoidResult {
     let mut body: Vec<u8> = Vec::with_capacity(body.capacity());
     response.copy_to(&mut body)?;
     let body_json = String::from_utf8(body)?;
+    println!("Status: {:?}", response.status());
     println!("Response: {:?}", body_json);
     let body_json: HashMap<String, serde_json::Value> = serde_json::from_str(&body_json)?;
     assert_eq!(body_json.get("name").unwrap(), TEST_COLLECTION_NAME);
@@ -117,6 +120,7 @@ async fn test_collection_insert() -> AnyhowVoidResult {
     );
     let request = Request::put(&format!("{SERVER_URL}/collections/{TEST_COLLECTION_NAME}"))
         .header("content-type", "application/json")
+        .header(AUTH_HEADER.0, AUTH_HEADER.1)
         .body(body.as_bytes())?;
 
     let response = isahc::send(request)?;
@@ -126,7 +130,12 @@ async fn test_collection_insert() -> AnyhowVoidResult {
 }
 
 async fn test_collection_list() -> AnyhowVoidResult {
-    let mut response = isahc::get(&format!("{SERVER_URL}/collections"))?;
+    let request = Request::get(&format!("{SERVER_URL}/collections"))
+        .header("content-type", "application/json")
+        .header(AUTH_HEADER.0, AUTH_HEADER.1)
+        .body("")?;
+
+    let mut response = isahc::send(request)?;
 
     let mut body: Vec<u8> = Vec::new();
     response.copy_to(&mut body)?;
@@ -144,7 +153,12 @@ async fn test_collection_list() -> AnyhowVoidResult {
 }
 
 async fn test_collection_get() -> AnyhowVoidResult {
-    let mut response = isahc::get(&format!("{SERVER_URL}/collections/{TEST_COLLECTION_NAME}"))?;
+    let request = Request::get(&format!("{SERVER_URL}/collections/{TEST_COLLECTION_NAME}"))
+        .header("content-type", "application/json")
+        .header(AUTH_HEADER.0, AUTH_HEADER.1)
+        .body("")?;
+
+    let mut response = isahc::send(request)?;
 
     let mut body: Vec<u8> = Vec::new();
     response.copy_to(&mut body)?;
@@ -164,9 +178,20 @@ async fn test_collection_get() -> AnyhowVoidResult {
 }
 
 async fn test_collection_delete() -> AnyhowVoidResult {
-    isahc::delete(&format!("{SERVER_URL}/collections/{TEST_COLLECTION_NAME}"))?;
+    let request = Request::delete(&format!("{SERVER_URL}/collections/{TEST_COLLECTION_NAME}"))
+        .header("content-type", "application/json")
+        .header(AUTH_HEADER.0, AUTH_HEADER.1)
+        .body("")?;
 
-    let mut response = isahc::get(&format!("{SERVER_URL}/collections"))?;
+    isahc::send(request)?;
+
+    let request = Request::get(&format!("{SERVER_URL}/collections"))
+        .header("content-type", "application/json")
+        .header(AUTH_HEADER.0, AUTH_HEADER.1)
+        .body("")?;
+
+    let mut response = isahc::send(request)?;
+
     let mut body: Vec<u8> = Vec::new();
     response.copy_to(&mut body)?;
     let body_json = String::from_utf8(body)?;
@@ -188,6 +213,7 @@ async fn test_pq() -> AnyhowVoidResult {
         "{SERVER_URL}/collections/{TEST_COLLECTION_NAME}/pq"
     ))
     .header("content-type", "application/json")
+    .header(AUTH_HEADER.0, AUTH_HEADER.1)
     .body(body.as_bytes())?;
 
     let mut response = isahc::send(request)?;
@@ -214,6 +240,7 @@ async fn test_index_create() -> AnyhowVoidResult {
         "{SERVER_URL}/collections/{TEST_COLLECTION_NAME}/index"
     ))
     .header("content-type", "application/json")
+    .header(AUTH_HEADER.0, AUTH_HEADER.1)
     .body(body.as_bytes())?;
 
     let response = isahc::send(request)?;
@@ -222,7 +249,12 @@ async fn test_index_create() -> AnyhowVoidResult {
     println!("Response: {:?}", body_json);
     assert_eq!(response.status(), StatusCode::from_u16(200)?);
 
-    let mut response = isahc::get(&format!("{SERVER_URL}/collections/{TEST_COLLECTION_NAME}"))?;
+    let request = Request::get(&format!("{SERVER_URL}/collections/{TEST_COLLECTION_NAME}"))
+        .header("content-type", "application/json")
+        .header(AUTH_HEADER.0, AUTH_HEADER.1)
+        .body("")?;
+
+    let mut response = isahc::send(request)?;
 
     let mut body: Vec<u8> = Vec::new();
     response.copy_to(&mut body)?;
@@ -255,6 +287,7 @@ async fn test_search_vector() -> AnyhowVoidResult {
         "{SERVER_URL}/collections/{TEST_COLLECTION_NAME}/search"
     ))
     .header("content-type", "application/json")
+    .header(AUTH_HEADER.0, AUTH_HEADER.1)
     .body(body.as_bytes())?;
 
     let mut response = isahc::send(request)?;
@@ -286,6 +319,7 @@ async fn test_search_vector() -> AnyhowVoidResult {
         "{SERVER_URL}/collections/{TEST_COLLECTION_NAME}/search"
     ))
     .header("content-type", "application/json")
+    .header(AUTH_HEADER.0, AUTH_HEADER.1)
     .body(body.as_bytes())?;
 
     let mut response = isahc::send(request)?;
@@ -328,6 +362,7 @@ async fn test_search_vector() -> AnyhowVoidResult {
         "{SERVER_URL}/collections/{TEST_COLLECTION_NAME}/search"
     ))
     .header("content-type", "application/json")
+    .header(AUTH_HEADER.0, AUTH_HEADER.1)
     .body(body.as_bytes())?;
 
     let mut response = isahc::send(request)?;
@@ -358,6 +393,7 @@ async fn test_search_vector() -> AnyhowVoidResult {
         "{SERVER_URL}/collections/{TEST_COLLECTION_NAME}/search"
     ))
     .header("content-type", "application/json")
+    .header(AUTH_HEADER.0, AUTH_HEADER.1)
     .body(body.as_bytes())?;
 
     let mut response = isahc::send(request)?;
@@ -381,6 +417,7 @@ async fn test_index_delete() -> AnyhowVoidResult {
     let body = String::new();
     let request = Request::delete(&format!("{SERVER_URL}/index/test_idx"))
         .header("content-type", "application/json")
+        .header(AUTH_HEADER.0, AUTH_HEADER.1)
         .body(body.as_bytes())?;
 
     let mut response = isahc::send(request)?;

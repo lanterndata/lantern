@@ -51,7 +51,7 @@ use std::process;
 use std::sync::Arc;
 use tokio::sync::{
     mpsc,
-    mpsc::{Receiver, Sender},
+    mpsc::{UnboundedReceiver, UnboundedSender},
 };
 use tokio_postgres::{Client, NoTls};
 
@@ -60,7 +60,7 @@ lazy_static! {
 }
 
 async fn autotune_worker(
-    mut job_queue_rx: Receiver<AutotuneJob>,
+    mut job_queue_rx: UnboundedReceiver<AutotuneJob>,
     client: Arc<Client>,
     export_db_uri: String,
     schema: String,
@@ -188,8 +188,8 @@ async fn autotune_worker(
 
 async fn job_insert_processor(
     client: Arc<Client>,
-    mut notifications_rx: Receiver<JobInsertNotification>,
-    job_tx: Sender<AutotuneJob>,
+    mut notifications_rx: UnboundedReceiver<JobInsertNotification>,
+    job_tx: UnboundedSender<AutotuneJob>,
     schema: String,
     table: String,
     logger: Arc<Logger>,
@@ -221,7 +221,7 @@ async fn job_insert_processor(
                 .await;
 
             if let Ok(row) = job_result {
-                job_tx.send(AutotuneJob::new(row)).await?;
+                job_tx.send(AutotuneJob::new(row))?;
             } else {
                 logger.error(&format!(
                     "Error while getting job {id}: {}",
@@ -253,16 +253,16 @@ pub async fn start(args: cli::DaemonArgs, logger: Arc<Logger>) -> AnyhowVoidResu
     let notification_channel = "lantern_cloud_autotune_jobs";
 
     let (insert_notification_queue_tx, insert_notification_queue_rx): (
-        Sender<JobInsertNotification>,
-        Receiver<JobInsertNotification>,
-    ) = mpsc::channel(args.queue_size);
+        UnboundedSender<JobInsertNotification>,
+        UnboundedReceiver<JobInsertNotification>,
+    ) = mpsc::unbounded_channel();
     let (update_notification_queue_tx, update_notification_queue_rx): (
-        Sender<JobUpdateNotification>,
-        Receiver<JobUpdateNotification>,
-    ) = mpsc::channel(args.queue_size);
+        UnboundedSender<JobUpdateNotification>,
+        UnboundedReceiver<JobUpdateNotification>,
+    ) = mpsc::unbounded_channel();
 
-    let (job_queue_tx, job_queue_rx): (Sender<AutotuneJob>, Receiver<AutotuneJob>) =
-        mpsc::channel(args.queue_size);
+    let (job_queue_tx, job_queue_rx): (UnboundedSender<AutotuneJob>, UnboundedReceiver<AutotuneJob>) =
+        mpsc::unbounded_channel();
 
     let table = args.autotune_table.unwrap();
 

@@ -11,7 +11,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 use tokio::sync::{
     mpsc,
-    mpsc::{Receiver, Sender},
+    mpsc::{UnboundedReceiver, UnboundedSender},
 };
 use tokio_postgres::{AsyncMessage, Client, NoTls};
 
@@ -21,7 +21,8 @@ enum Signal {
 }
 
 lazy_static! {
-    static ref CLIENT_JOBS: RwLock<HashMap<i32, Sender<Signal>>> = RwLock::new(HashMap::new());
+    static ref CLIENT_JOBS: RwLock<HashMap<i32, UnboundedSender<Signal>>> =
+        RwLock::new(HashMap::new());
 }
 
 pub async fn toggle_client_job(
@@ -32,7 +33,7 @@ pub async fn toggle_client_job(
     table: String,
     schema: String,
     log_level: LogLevel,
-    job_insert_queue_tx: Option<Sender<JobInsertNotification>>,
+    job_insert_queue_tx: Option<UnboundedSender<JobInsertNotification>>,
     enable: bool,
 ) -> AnyhowVoidResult {
     let logger = Arc::new(Logger::new(&format!("Embedding Job {job_id}"), log_level));
@@ -170,10 +171,10 @@ async fn remove_client_triggers(
 async fn client_notification_listener(
     db_uri: Arc<String>,
     notification_channel: Arc<String>,
-    job_signal_tx: Sender<Signal>,
-    job_insert_queue_tx: Sender<JobInsertNotification>,
+    job_signal_tx: UnboundedSender<Signal>,
+    job_insert_queue_tx: UnboundedSender<JobInsertNotification>,
     logger: Arc<Logger>,
-) -> Result<Sender<()>, anyhow::Error> {
+) -> Result<UnboundedSender<()>, anyhow::Error> {
     let uri = append_params_to_uri(&db_uri, "connect_timeout=10");
     let (client, mut connection) = tokio_postgres::connect(&uri.as_str(), NoTls).await?;
 
@@ -195,7 +196,7 @@ async fn client_notification_listener(
                     "Error receiving message from DB: {}",
                     &e.to_string()
                 ));
-                let _ = job_signal_tx.send(Signal::Restart).await;
+                let _ = job_signal_tx.send(Signal::Restart);
                 break;
             }
 
@@ -210,16 +211,14 @@ async fn client_notification_listener(
                 }
                 let pk: &str = parts[0];
                 let job_id = i32::from_str_radix(parts[1], 10).unwrap();
-                let result = job_insert_queue_tx
-                    .send(JobInsertNotification {
-                        id: job_id,
-                        init: false,
-                        generate_missing: false,
-                        row_id: Some(pk.to_owned()),
-                        filter: None,
-                        limit: None,
-                    })
-                    .await;
+                let result = job_insert_queue_tx.send(JobInsertNotification {
+                    id: job_id,
+                    init: false,
+                    generate_missing: false,
+                    row_id: Some(pk.to_owned()),
+                    filter: None,
+                    limit: None,
+                });
 
                 if let Err(e) = result {
                     logger.error(&e.to_string());
@@ -237,7 +236,7 @@ async fn client_notification_listener(
         .await?;
 
     // Task cancellation handler
-    let (tx, mut rx): (Sender<()>, Receiver<()>) = mpsc::channel(1);
+    let (tx, mut rx): (UnboundedSender<()>, UnboundedReceiver<()>) = mpsc::unbounded_channel();
 
     tokio::spawn(async move {
         while let Some(_) = rx.recv().await {
@@ -258,19 +257,12 @@ async fn client_notification_listener(
                     ping_logger.error(&format!(
                         "Ping query failed with {e}. Sending restart, task_id: {since_the_epoch_clone}"
                     ));
-                    tokio::select! {
-                        _ = tokio::time::sleep(Duration::from_secs(1)) => {
-                            ping_logger.warn(&format!("Task {since_the_epoch_clone} already canceled. Stop sending after 1s"));
+                    match cancel_tx.send(()) {
+                        Ok(_) => {}
+                        Err(e) => {
+                            ping_logger.error(&format!("Sending cancel event failed with {e}, task_id: {since_the_epoch_clone}"));
                         }
-                        res = cancel_tx.send(()) => {
-                            match res {
-                                Ok(_) => {}
-                                Err(e) => {
-                                    ping_logger.error(&format!("Sending cancel event failed with {e}, task_id: {since_the_epoch_clone}"));
-                                }
-                            }
-                        }
-                    };
+                    }
                     break;
                 }
             };
@@ -289,7 +281,7 @@ async fn start_client_job(
     out_column: String,
     table: String,
     schema: String,
-    job_insert_queue_tx: Sender<JobInsertNotification>,
+    job_insert_queue_tx: UnboundedSender<JobInsertNotification>,
 ) -> AnyhowVoidResult {
     let jobs = CLIENT_JOBS.read().await;
     if jobs.get(&job_id).is_some() {
@@ -300,7 +292,8 @@ async fn start_client_job(
         drop(jobs);
     }
 
-    let (job_signal_tx, mut job_signal_rx): (Sender<Signal>, Receiver<Signal>) = mpsc::channel(1);
+    let (job_signal_tx, mut job_signal_rx): (UnboundedSender<Signal>, UnboundedReceiver<Signal>) =
+        mpsc::unbounded_channel();
     logger.info("Staring Client Listener");
 
     // Connect to client database
@@ -359,7 +352,7 @@ async fn start_client_job(
             match signal {
                 Signal::Stop => {
                     // remove client listener
-                    if let Err(e) = cancel_listener_task.send(()).await {
+                    if let Err(e) = cancel_listener_task.send(()) {
                         signal_listener_logger
                             .error(&format!("Failed to cancel client listener: {e}"));
                     }
@@ -381,16 +374,14 @@ async fn start_client_job(
 
                     if let Ok(tx) = res {
                         cancel_listener_task = tx;
-                        job_insert_queue_tx
-                            .send(JobInsertNotification {
-                                id: job_id,
-                                init: false,
-                                generate_missing: true,
-                                row_id: None,
-                                filter: Some(get_missing_rows_filter(&column, &out_column)),
-                                limit: None,
-                            })
-                            .await?;
+                        job_insert_queue_tx.send(JobInsertNotification {
+                            id: job_id,
+                            init: false,
+                            generate_missing: true,
+                            row_id: None,
+                            filter: Some(get_missing_rows_filter(&column, &out_column)),
+                            limit: None,
+                        })?;
                         break;
                     } else {
                         tokio::time::sleep(Duration::from_secs(10)).await;
@@ -431,7 +422,7 @@ async fn stop_client_job(
             logger.error(&format!("Job {job_id} not found in job list"));
         }
 
-        Some(job) => job.send(Signal::Stop).await?,
+        Some(job) => job.send(Signal::Stop)?,
     }
 
     Ok(())

@@ -31,6 +31,7 @@ use super::types::{
 };
 use futures::future;
 use itertools::Itertools;
+use tokio::sync::mpsc::{UnboundedSender, UnboundedReceiver};
 use crate::embeddings::cli::EmbeddingArgs;
 use crate::logger::Logger;
 use crate::utils::get_full_table_name;
@@ -45,7 +46,6 @@ use tokio::fs;
 use tokio::sync::{
     Mutex,
     mpsc,
-    mpsc::{Receiver, Sender},
     RwLock
 };
 use tokio_postgres::{Client, NoTls};
@@ -116,9 +116,9 @@ async fn unlock_rows(
 }
 
 async fn embedding_worker(
-    mut job_queue_rx: Receiver<EmbeddingJob>,
-    job_queue_tx: Sender<EmbeddingJob>,
-    notifications_tx: Sender<JobInsertNotification>,
+    mut job_queue_rx: UnboundedReceiver<EmbeddingJob>,
+    job_queue_tx: UnboundedSender<EmbeddingJob>,
+    notifications_tx: UnboundedSender<JobInsertNotification>,
     db_uri: String,
     schema: String,
     internal_schema: String,
@@ -268,7 +268,7 @@ async fn embedding_worker(
 
 async fn collect_pending_jobs(
     client: Arc<Client>,
-    update_notification_tx: Sender<JobUpdateNotification>,
+    update_notification_tx: UnboundedSender<JobUpdateNotification>,
     table: String,
 ) -> AnyhowVoidResult {
     // Get all pending jobs and set them in queue
@@ -285,8 +285,7 @@ async fn collect_pending_jobs(
             .send(JobUpdateNotification {
                 id: row.get::<usize, i32>(0).to_owned(),
                 generate_missing: true,
-            })
-            .await?;
+            })?;
     }
 
     Ok(())
@@ -294,8 +293,8 @@ async fn collect_pending_jobs(
 
 async fn job_insert_processor(
     db_uri: String,
-    mut notifications_rx: Receiver<JobInsertNotification>,
-    job_tx: Sender<EmbeddingJob>,
+    mut notifications_rx: UnboundedReceiver<JobInsertNotification>,
+    job_tx: UnboundedSender<EmbeddingJob>,
     schema: String,
     lock_table_schema: String,
     table: String,
@@ -410,7 +409,7 @@ async fn job_insert_processor(
                 if let Some(filter) = notification.filter {
                     job.set_filter(&filter);
                 }
-                job_tx_r1.send(job).await?;
+                job_tx_r1.send(job)?;
             } else {
                 logger_r1.error(&format!(
                     "Error while getting job {id}: {}",
@@ -456,7 +455,7 @@ async fn job_insert_processor(
                 job.set_row_ids(row_ids);
                 job.set_filter(&format!("ctid IN ({row_ctids_str})"));
                 logger.debug(&format!("Sending batch job {job_id} (len: {rows_len}) to embedding_worker"));
-                let _ = job_tx.send(job).await;
+                let _ = job_tx.send(job);
             }
 
             // collect jobs every 10 seconds
@@ -474,8 +473,8 @@ async fn job_insert_processor(
 
 async fn job_update_processor(
     db_uri: String,
-    mut update_queue_rx: Receiver<JobUpdateNotification>,
-    job_insert_queue_tx: Sender<JobInsertNotification>,
+    mut update_queue_rx: UnboundedReceiver<JobUpdateNotification>,
+    job_insert_queue_tx: UnboundedSender<JobInsertNotification>,
     schema: String,
     table: String,
     logger: Arc<Logger>,
@@ -518,7 +517,7 @@ async fn job_update_processor(
             if canceled_at.is_none() && notification.generate_missing {
                 // this will be on startup to generate embeddings for rows that might be inserted
                 // while daemon is offline
-                job_insert_queue_tx.send(JobInsertNotification { id, init: init_finished_at.is_none(), generate_missing: true, filter: Some(get_missing_rows_filter(&src_column, &out_column)), limit: None, row_id: None }).await?;
+                job_insert_queue_tx.send(JobInsertNotification { id, init: init_finished_at.is_none(), generate_missing: true, filter: Some(get_missing_rows_filter(&src_column, &out_column)), limit: None, row_id: None })?;
             }
         }
         Ok(()) as AnyhowVoidResult
@@ -570,15 +569,15 @@ pub async fn start(args: cli::DaemonArgs, logger: Arc<Logger>) -> AnyhowVoidResu
     let data_path = create_data_path(logger.clone()).await;
 
     let (insert_notification_queue_tx, insert_notification_queue_rx): (
-        Sender<JobInsertNotification>,
-        Receiver<JobInsertNotification>,
-    ) = mpsc::channel(args.queue_size);
+        UnboundedSender<JobInsertNotification>,
+        UnboundedReceiver<JobInsertNotification>,
+    ) = mpsc::unbounded_channel();
     let (update_notification_queue_tx, update_notification_queue_rx): (
-        Sender<JobUpdateNotification>,
-        Receiver<JobUpdateNotification>,
-    ) = mpsc::channel(args.queue_size);
-    let (job_queue_tx, job_queue_rx): (Sender<EmbeddingJob>, Receiver<EmbeddingJob>) =
-        mpsc::channel(args.queue_size);
+        UnboundedSender<JobUpdateNotification>,
+        UnboundedReceiver<JobUpdateNotification>,
+    ) = mpsc::unbounded_channel();
+    let (job_queue_tx, job_queue_rx): (UnboundedSender<EmbeddingJob>, UnboundedReceiver<EmbeddingJob>) =
+        mpsc::unbounded_channel();
     let table = args.embedding_table.unwrap();
 
     startup_hook(

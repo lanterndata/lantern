@@ -18,13 +18,13 @@ RUN apt update && \
 # Download onnxruntime
 RUN mkdir -p /usr/local/lib && \
     cd /usr/local/lib && \
-    wget https://github.com/microsoft/onnxruntime/releases/download/v1.16.1/onnxruntime-linux-x64-gpu-1.16.1.tgz && \
+    wget -q https://github.com/microsoft/onnxruntime/releases/download/v1.16.1/onnxruntime-linux-x64-gpu-1.16.1.tgz && \
     tar xzf ./onnx*.tgz && \
     rm -rf ./onnx*.tgz && \
     mv ./onnx* ./onnxruntime 
 
 # Install libcudnn
-RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/libcudnn8_8.7.0.84-1+cuda11.8_amd64.deb -O libcudnn.deb && \
+RUN wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/libcudnn8_8.7.0.84-1+cuda11.8_amd64.deb -O libcudnn.deb && \
     dpkg -i libcudnn.deb && \
     rm -rf libcudnn.deb
 

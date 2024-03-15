@@ -37,7 +37,7 @@ use std::process;
 use std::sync::Arc;
 use tokio::sync::{
     mpsc,
-    mpsc::{Receiver, Sender},
+    mpsc::{UnboundedReceiver, UnboundedSender},
 };
 use tokio_postgres::{Client, NoTls};
 
@@ -58,7 +58,7 @@ async fn remove_job_handle(job_id: i32) -> AnyhowVoidResult {
 }
 
 async fn external_index_worker(
-    mut job_queue_rx: Receiver<ExternalIndexJob>,
+    mut job_queue_rx: UnboundedReceiver<ExternalIndexJob>,
     client: Arc<Client>,
     schema: String,
     table: String,
@@ -177,8 +177,8 @@ async fn external_index_worker(
 
 async fn job_insert_processor(
     client: Arc<Client>,
-    mut notifications_rx: Receiver<JobInsertNotification>,
-    job_tx: Sender<ExternalIndexJob>,
+    mut notifications_rx: UnboundedReceiver<JobInsertNotification>,
+    job_tx: UnboundedSender<ExternalIndexJob>,
     schema: String,
     table: String,
     logger: Arc<Logger>,
@@ -210,7 +210,7 @@ async fn job_insert_processor(
                 .await;
 
             if let Ok(row) = job_result {
-                job_tx.send(ExternalIndexJob::new(row)?).await?;
+                job_tx.send(ExternalIndexJob::new(row)?)?;
             } else {
                 logger.error(&format!(
                     "Error while getting job {id}: {}",
@@ -237,16 +237,16 @@ pub async fn start(args: cli::DaemonArgs, logger: Arc<Logger>) -> AnyhowVoidResu
     let notification_channel = "lantern_cloud_index_jobs";
 
     let (insert_notification_queue_tx, insert_notification_queue_rx): (
-        Sender<JobInsertNotification>,
-        Receiver<JobInsertNotification>,
-    ) = mpsc::channel(args.queue_size);
+        UnboundedSender<JobInsertNotification>,
+        UnboundedReceiver<JobInsertNotification>,
+    ) = mpsc::unbounded_channel();
     let (update_notification_queue_tx, update_notification_queue_rx): (
-        Sender<JobUpdateNotification>,
-        Receiver<JobUpdateNotification>,
-    ) = mpsc::channel(args.queue_size);
+        UnboundedSender<JobUpdateNotification>,
+        UnboundedReceiver<JobUpdateNotification>,
+    ) = mpsc::unbounded_channel();
 
-    let (job_queue_tx, job_queue_rx): (Sender<ExternalIndexJob>, Receiver<ExternalIndexJob>) =
-        mpsc::channel(args.queue_size);
+    let (job_queue_tx, job_queue_rx): (UnboundedSender<ExternalIndexJob>, UnboundedReceiver<ExternalIndexJob>) =
+        mpsc::unbounded_channel();
 
     let table = args.external_index_table.unwrap();
 

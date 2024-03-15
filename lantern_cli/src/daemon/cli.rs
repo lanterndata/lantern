@@ -59,10 +59,6 @@ pub struct DaemonArgs {
     #[arg(short, long, default_value = "lantern")]
     pub internal_schema: String,
 
-    /// Max concurrent jobs
-    #[arg(short, long, default_value_t = 1)]
-    pub queue_size: usize,
-
     /// Log level
     #[arg(long, value_enum, default_value_t = LogLevel::Info)] // arg_enum here
     pub log_level: LogLevel,

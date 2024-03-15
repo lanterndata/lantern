@@ -4,9 +4,7 @@ use crate::utils::{append_params_to_uri, get_full_table_name, quote_ident};
 use core::{get_available_runtimes, get_runtime};
 use csv::Writer;
 use rand::Rng;
-use std::hint;
 use std::io::Write;
-use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{mpsc, Arc, RwLock};
 use std::thread::JoinHandle;
@@ -41,8 +39,8 @@ fn producer_worker(
     estimate_count: bool,
     logger: Arc<Logger>,
 ) -> Result<(JoinHandle<AnyhowVoidResult>, i64), anyhow::Error> {
-    let item_count = Arc::new(AtomicI64::new(-1));
-    let item_count_r1 = item_count.clone();
+    let mut item_count = 0;
+    let (count_tx, count_rx): (Sender<i64>, Receiver<i64>) = mpsc::channel();
 
     let handle = std::thread::spawn(move || {
         let column = &args.column;
@@ -72,7 +70,7 @@ fn producer_worker(
         // loop will never exit
 
         if let Err(e) = client {
-            item_count_r1.store(0, Ordering::SeqCst);
+            count_tx.send(0)?;
             anyhow::bail!("{e}");
         }
         let mut client = client.unwrap();
@@ -86,14 +84,14 @@ fn producer_worker(
             );
 
             if let Err(e) = rows {
-                item_count_r1.store(0, Ordering::SeqCst);
+                count_tx.send(0)?;
                 anyhow::bail!("{e}");
             }
 
             let rows = rows.unwrap();
 
             let count: i64 = rows[0].get(0);
-            item_count_r1.store(count, Ordering::SeqCst);
+            count_tx.send(count)?;
             if count > 0 {
                 logger.info(&format!(
                     "Found approximately {} items in table \"{}\"",
@@ -101,7 +99,7 @@ fn producer_worker(
                 ));
             }
         } else {
-            item_count_r1.store(0, Ordering::SeqCst);
+            count_tx.send(0)?;
         }
 
         // With portal we can execute a query and poll values from it in chunks
@@ -133,11 +131,12 @@ fn producer_worker(
     // the item count and progress anyway, so we won't lock the process waiting
     // for thread
     // Wait for the other thread to release the lock
-    while item_count.load(Ordering::SeqCst) == -1 {
-        hint::spin_loop();
+    while let Ok(count) = count_rx.recv() {
+        item_count = count;
+        break;
     }
 
-    return Ok((handle, item_count.load(Ordering::SeqCst)));
+    return Ok((handle, item_count));
 }
 
 // Embedding worker will listen to the producer channel

@@ -6,7 +6,7 @@ use crate::utils::{get_full_table_name, quote_ident};
 use futures::StreamExt;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio_postgres::AsyncMessage;
 use tokio_postgres::Client;
 
@@ -25,8 +25,8 @@ pub async fn check_table_exists(client: Arc<Client>, table: &str) -> AnyhowVoidR
 pub async fn db_notification_listener(
     db_uri: String,
     notification_channel: &'static str,
-    insert_queue_tx: Sender<JobInsertNotification>,
-    update_queue_tx: Option<Sender<JobUpdateNotification>>,
+    insert_queue_tx: UnboundedSender<JobInsertNotification>,
+    update_queue_tx: Option<UnboundedSender<JobUpdateNotification>>,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
     let (client, mut connection) = tokio_postgres::connect(&db_uri, tokio_postgres::NoTls).await?;
@@ -67,7 +67,6 @@ pub async fn db_notification_listener(
                                 filter: None,
                                 limit: None,
                             })
-                            .await
                             .unwrap();
                     }
                     "update" => {
@@ -77,7 +76,6 @@ pub async fn db_notification_listener(
                                     id,
                                     generate_missing: true,
                                 })
-                                .await
                                 .unwrap();
                         }
                     }
@@ -175,7 +173,7 @@ pub async fn startup_hook(
 
 pub async fn collect_pending_index_jobs(
     client: Arc<Client>,
-    insert_notification_tx: Sender<JobInsertNotification>,
+    insert_notification_tx: UnboundedSender<JobInsertNotification>,
     table: String,
 ) -> AnyhowVoidResult {
     // Get all pending jobs and set them in queue
@@ -187,20 +185,18 @@ pub async fn collect_pending_index_jobs(
         .await?;
 
     for row in rows {
-        insert_notification_tx
-            .send(JobInsertNotification {
-                id: row.get::<usize, i32>(0).to_owned(),
-                init: true,
-                row_id: None,
-                filter: None,
-                limit: None,
-                // if we do not provide this
-                // and some job will be terminated while running
-                // on next start of daemon the job will not be picked as
-                // it will already have started_at set
-                generate_missing: row.get::<usize, Option<SystemTime>>(1).is_some(),
-            })
-            .await?;
+        insert_notification_tx.send(JobInsertNotification {
+            id: row.get::<usize, i32>(0).to_owned(),
+            init: true,
+            row_id: None,
+            filter: None,
+            limit: None,
+            // if we do not provide this
+            // and some job will be terminated while running
+            // on next start of daemon the job will not be picked as
+            // it will already have started_at set
+            generate_missing: row.get::<usize, Option<SystemTime>>(1).is_some(),
+        })?;
     }
 
     Ok(())
@@ -208,7 +204,7 @@ pub async fn collect_pending_index_jobs(
 
 pub async fn index_job_update_processor(
     client: Arc<Client>,
-    mut update_queue_rx: Receiver<JobUpdateNotification>,
+    mut update_queue_rx: UnboundedReceiver<JobUpdateNotification>,
     schema: String,
     table: String,
     job_cancelleation_handlers: &'static JobCancellationHandlersMap,
@@ -270,7 +266,7 @@ pub fn get_missing_rows_filter(src_column: &str, out_column: &str) -> String {
 pub async fn schedule_job_retry(
     logger: Arc<Logger>,
     job: EmbeddingJob,
-    tx: Sender<EmbeddingJob>,
+    tx: UnboundedSender<EmbeddingJob>,
     retry_after: Duration,
 ) -> AnyhowVoidResult {
     tokio::spawn(async move {
@@ -285,7 +281,7 @@ pub async fn schedule_job_retry(
             retry_after.as_secs(),
         ));
         tokio::time::sleep(retry_after).await;
-        match tx.send(job).await {
+        match tx.send(job) {
             Ok(_) => {}
             Err(e) => logger.error(&format!(
                 "Sending retry for failed job: {job_id} with batch len ({batch_len}) failed with error: {e}",
