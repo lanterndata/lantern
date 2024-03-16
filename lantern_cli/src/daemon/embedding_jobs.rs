@@ -24,18 +24,20 @@
 
 use super::cli;
 use super::client_embedding_jobs::toggle_client_job;
-use super::helpers::{db_notification_listener, startup_hook, set_job_handle, remove_job_handle, get_missing_rows_filter, schedule_job_retry};
-use crate::types::*;
-use super::types::{
-     EmbeddingJob, JobInsertNotification, JobUpdateNotification, VoidFuture,  JobCancellationHandlersMap, 
+use super::helpers::{
+    db_notification_listener, get_missing_rows_filter, remove_job_handle, schedule_job_retry,
+    set_job_handle, startup_hook,
 };
-use futures::future;
-use itertools::Itertools;
-use tokio::sync::mpsc::{UnboundedSender, UnboundedReceiver};
+use super::types::{
+    EmbeddingJob, JobCancellationHandlersMap, JobInsertNotification, JobUpdateNotification,
+    VoidFuture,
+};
 use crate::embeddings::cli::EmbeddingArgs;
 use crate::logger::Logger;
-use crate::utils::get_full_table_name;
-use tokio_postgres::types::ToSql;
+use crate::types::*;
+use crate::utils::{get_full_table_name, quote_ident};
+use futures::future;
+use itertools::Itertools;
 use std::collections::HashMap;
 use std::path::Path;
 use std::process;
@@ -43,11 +45,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::SystemTime;
 use tokio::fs;
-use tokio::sync::{
-    Mutex,
-    mpsc,
-    RwLock
-};
+use tokio::sync::mpsc::{Receiver, Sender, UnboundedReceiver, UnboundedSender};
+use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio_postgres::types::ToSql;
 use tokio_postgres::{Client, NoTls};
 
 const EMB_LOCK_TABLE_NAME: &'static str = "_lantern_emb_job_locks";
@@ -83,6 +83,44 @@ async fn lock_row(
     true
 }
 
+async fn lock_rows(
+    client: Arc<Client>,
+    lock_table_name: &str,
+    logger: Arc<Logger>,
+    job_id: i32,
+    row_ids: &Vec<String>,
+) -> bool {
+    let mut statement = format!("INSERT INTO {lock_table_name} (job_id, row_id) VALUES ");
+
+    let mut param_num = 2;
+    let values: Vec<&(dyn ToSql + Sync)> = row_ids
+        .iter()
+        .flat_map(|row_id| {
+            let comma = if (param_num - 2) == row_ids.len() {
+                ""
+            } else {
+                ","
+            };
+            statement = format!("{statement}({job_id}, ${param_num}){comma}");
+            param_num += 1;
+            [row_id as &(dyn ToSql + Sync)]
+        })
+        .collect();
+
+    let res = client.execute(&statement, &values[..]).await;
+
+    if let Err(e) = res {
+        if !e.to_string().to_lowercase().contains("duplicate") {
+            logger.error(&format!(
+                "Error while locking rows: {:?} for job: {job_id} : {e}",
+                row_ids
+            ));
+        }
+        return false;
+    }
+    true
+}
+
 async fn unlock_rows(
     client: Arc<Client>,
     lock_table_name: &str,
@@ -95,8 +133,8 @@ async fn unlock_rows(
         .iter()
         .enumerate()
         .map(|(idx, id)| {
-            let comma = if idx < row_ids.len() - 1 {  "," } else { "" };
-            row_ids_query = format!("{row_ids_query}${}{comma}", idx+1);
+            let comma = if idx < row_ids.len() - 1 { "," } else { "" };
+            row_ids_query = format!("{row_ids_query}${}{comma}", idx + 1);
             id as &(dyn ToSql + Sync)
         })
         .collect();
@@ -109,16 +147,185 @@ async fn unlock_rows(
         .await;
 
     if let Err(e) = res {
-            logger.error(&format!(
-                "Error while unlocking rows: {:?} for job: {job_id} : {e}",row_ids
-            ));
+        logger.error(&format!(
+            "Error while unlocking rows: {:?} for job: {job_id} : {e}",
+            row_ids
+        ));
     }
+}
+
+async fn stream_job(
+    logger: Arc<Logger>,
+    main_client: Arc<Client>,
+    job_queue_tx: UnboundedSender<EmbeddingJob>,
+    notifications_tx: UnboundedSender<JobInsertNotification>,
+    jobs_table_name: String,
+    lock_table_name: String,
+    job: EmbeddingJob,
+) -> AnyhowVoidResult {
+    let top_logger = logger.clone();
+    let job_id = job.id;
+    let task = tokio::spawn(async move {
+        logger.info(&format!("Start streaming init job {}", job.id));
+        // Enable triggers for job
+        if job.is_init {
+            toggle_client_job(
+                job.id.clone(),
+                job.db_uri.clone(),
+                job.column.clone(),
+                job.out_column.clone(),
+                job.table.clone(),
+                job.schema.clone(),
+                logger.level.clone(),
+                Some(notifications_tx.clone()),
+                true,
+            )
+            .await?;
+        }
+
+        let (job_error_tx, mut job_error_rx): (Sender<String>, Receiver<String>) = mpsc::channel(1);
+        set_job_handle(&JOBS, job.id, job_error_tx).await?;
+
+        let connection_logger = logger.clone();
+
+        logger.info(&format!("Connecting to db {}", job.id));
+        let (mut job_client, connection) = tokio_postgres::connect(&job.db_uri, NoTls).await?;
+        logger.info(&format!("Connected to db {}", job.id));
+        let job_id = job.id;
+
+        tokio::spawn(async move {
+            if let Err(e) = connection.await {
+                connection_logger.error(&format!("Error while streaming job: {job_id}. {e}"));
+            }
+        });
+        logger.info(&format!("Polling from db connection {}", job.id));
+
+        let column = &job.column;
+        let schema = &job.schema;
+        let table = &job.table;
+        let full_table_name = get_full_table_name(schema, table);
+
+        let filter_sql = format!(
+            "WHERE {column} IS NOT NULL AND {column} != ''",
+            column = quote_ident(column)
+        );
+
+        logger.info(&format!("Creating transaction {}", job.id));
+        let transaction = job_client.transaction().await?;
+        logger.info(&format!("Created transaction {}", job.id));
+        logger.info(&format!("transaction query {}", job.id));
+        let total_rows = transaction
+            .query_one(
+                &format!("SELECT COUNT(*) FROM {full_table_name} {filter_sql};"),
+                &[],
+            )
+            .await?;
+        logger.info(&format!("transaction query done {}", job.id));
+        let total_rows: i64 = total_rows.get(0);
+        let total_rows = total_rows as usize;
+        let portal = transaction
+            .bind(
+                &format!("SELECT ctid::text FROM {full_table_name} {filter_sql};"),
+                &[],
+            )
+            .await?;
+        let mut progress = 0;
+        let mut processed_rows = 0;
+        logger.debug(&format!("Total rows: {total_rows}"));
+        loop {
+            // Check if job was errored or cancelled
+            if let Ok(err_msg) = job_error_rx.try_recv() {
+                logger.error(&format!("Error received on job {job_id}. {err_msg}"));
+                if job.is_init {
+                    // set init failed at if this is init job
+                    main_client.execute(&format!("UPDATE {jobs_table_name} SET init_failed_at=NOW(), updated_at=NOW(), init_failure_reason=$1 WHERE id=$2"), &[&err_msg.to_string(), &job_id]).await?;
+                }
+                toggle_client_job(
+                    job.id.clone(),
+                    job.db_uri.clone(),
+                    job.column.clone(),
+                    job.out_column.clone(),
+                    job.table.clone(),
+                    job.schema.clone(),
+                    logger.level.clone(),
+                    Some(notifications_tx.clone()),
+                    false,
+                )
+                .await?;
+                anyhow::bail!(err_msg);
+            }
+
+            // poll batch_size rows from portal and send it to embedding thread via channel
+            let rows = transaction.query_portal(&portal, 2000).await?;
+
+            logger.debug(&format!("Polled rows: {}", rows.len()));
+            if rows.len() == 0 {
+                break;
+            }
+
+            let mut streamed_job = job.clone();
+            streamed_job.set_row_ids(rows.iter().map(|r| r.get::<usize, String>(0)).collect());
+            // If this is not init job, but startup job to generate missing rows
+            // We will lock the row ids, so if 2 daemons will be started at the same time
+            // Same rows won't be processed by both of them
+            if !job.is_init
+                && !lock_rows(
+                    main_client.clone(),
+                    &lock_table_name,
+                    logger.clone(),
+                    job_id,
+                    streamed_job.row_ids.as_ref().unwrap(),
+                )
+                .await
+            {
+                logger.warn("Another daemon instance is already processing job {job_id}. Exitting streaming loop");
+                break;
+            }
+
+            let row_ctids_str = streamed_job
+                .row_ids
+                .as_ref()
+                .unwrap()
+                .iter()
+                .map(|r| format!("'{r}'::tid"))
+                .join(",");
+            streamed_job.set_filter(&format!("ctid IN ({row_ctids_str})"));
+
+            processed_rows += streamed_job.row_ids.as_ref().unwrap().len();
+            logger.info(&format!("Job: {:?}", job));
+            if job.is_init {
+                let new_progress = ((processed_rows as f32 / total_rows as f32) * 100.0) as u8;
+
+                logger.info(&format!(
+                    "Old_progress: {progress}, new_progress: {new_progress}"
+                ));
+                if new_progress > progress {
+                    progress = new_progress;
+                    streamed_job.set_report_progress(progress);
+                }
+            }
+
+            if processed_rows == total_rows {
+                streamed_job.set_is_last_chunk(true);
+            }
+
+            job_queue_tx.send(streamed_job)?;
+        }
+
+        Ok::<(), anyhow::Error>(())
+    });
+
+    if let Err(e) = task.await? {
+        top_logger.error(&format!("Error while streaming job {job_id}: {e}"));
+        remove_job_handle(&JOBS, job_id).await?;
+    }
+
+    Ok(())
 }
 
 async fn embedding_worker(
     mut job_queue_rx: UnboundedReceiver<EmbeddingJob>,
     job_queue_tx: UnboundedSender<EmbeddingJob>,
-    notifications_tx: UnboundedSender<JobInsertNotification>,
     db_uri: String,
     schema: String,
     internal_schema: String,
@@ -135,117 +342,141 @@ async fn embedding_worker(
         let client = Arc::new(client);
         logger.info("Embedding worker started");
         while let Some(job) = job_queue_rx.recv().await {
-            logger.info(&format!("Starting execution of embedding job {}", job.id));
-            let client_ref = client.clone();
-            let client_ref2 = client.clone();
-            let logger_ref = logger.clone();
-            let orig_job_clone = job.clone();
-            let job = Arc::new(job);
-            let job_ref = job.clone();
-            let jobs_table_name_r1 = jobs_table_name.clone();
-            let schema_ref = schema.clone();
-
-            let progress_callback = move |progress: u8| {
-                // Passed progress in a format string to avoid type casts between 
-                // different int types
-                let res = futures::executor::block_on(client_ref2.execute(&format!("UPDATE {jobs_table_name_r1} SET init_progress={progress} WHERE id=$1"), &[&job_ref.id]));
-
-                if let Err(e) = res {
-                    logger_ref.error(&format!("Error while updating progress for job {job_id}: {e}", job_id=job_ref.id));
-                }
-            };
-
-            let progress_callback = if job.is_init {
-                Some(Box::new(progress_callback) as ProgressCbFn)
-            } else {
-                None
-            };
-
-            let task_logger = Logger::new(&format!("Embedding Job {}|{:?}", job.id, job.runtime), logger.level.clone());
-            let job_clone = job.clone();
-            
-            let (cancel_tx, mut cancel_rx) = mpsc::channel(1);
-            let cancel_tx_clone = cancel_tx.clone();
-
-            // We will spawn 2 tasks
-            // The first one will run embedding generation job and as soon as it finish
-            // It will send the result via job_tx channel
-            // The second task will listen to cancel_rx channel, so if someone send a message
-            // via cancel_tx channel it will change is_canceled to true
-            // And embedding job will be cancelled on next cycle
-            // We will keep the cancel_tx in static hashmap, so we can cancel the job if
-            // canceled_at will be changed to true
-
-            // Enable triggers for job
             if job.is_init {
-              toggle_client_job(job.id.clone(), job.db_uri.clone(), job.column.clone(), job.out_column.clone(), job.table.clone(), job.schema.clone(), logger.level.clone(), Some(notifications_tx.clone()), true ).await?;
-            }
-
-            let task_handle = tokio::spawn(async move {
-                let is_canceled = Arc::new(std::sync::RwLock::new(false));
-                let is_canceled_clone = is_canceled.clone();
-                let embedding_task = tokio::spawn(async move {
-                    let result = crate::embeddings::create_embeddings_from_db(EmbeddingArgs {
-                            model: job_clone.model.clone(),
-                            schema: job_clone.schema.clone(),
-                            uri: job_clone.db_uri.clone(),
-                            out_uri: Some(job_clone.db_uri.clone()),
-                            table: job_clone.table.clone(),
-                            out_table: Some(job_clone.table.clone()),
-                            column: job_clone.column.clone(),
-                            out_column: job_clone.out_column.clone(),
-                            batch_size: job_clone.batch_size,
-                            runtime: job_clone.runtime.clone(),
-                            runtime_params: job_clone.runtime_params.clone(),
-                            visual: false,
-                            stream: true,
-                            create_column: false,
-                            out_csv: None,
-                            filter: job_clone.filter.clone(),
-                            limit: None
-                        }, progress_callback.is_some(), progress_callback, Some(is_canceled_clone), Some(task_logger));
-                    cancel_tx_clone.send(false).await?;
-                    result
-                });
-
-                while let Some(should_cancel) = cancel_rx.recv().await {
-                    if should_cancel {
-                        *is_canceled.write().unwrap() = true;
-                    }
+                let jobs = JOBS.read().await;
+                if jobs.get(&job.id).is_none() {
+                    // If this is init job and it was failed
+                    // Before the streaming loop will be cancelled there might be
+                    // Notifications left in queue, so we will ignore them
                     break;
                 }
+            }
+            logger.info(&format!("Starting execution of embedding job {}", job.id));
+            let client_ref = client.clone();
+            let orig_job_clone = job.clone();
+            let job = Arc::new(job);
+            let schema_ref = schema.clone();
 
-                embedding_task.await?
-            });
+            let task_logger = Logger::new(
+                &format!("Embedding Job {}|{:?}", job.id, job.runtime),
+                logger.level.clone(),
+            );
+            let job_clone = job.clone();
 
-            set_job_handle(&JOBS, job.id, cancel_tx).await?;
-     
-            match task_handle.await? {
+            let result = crate::embeddings::create_embeddings_from_db(
+                EmbeddingArgs {
+                    model: job_clone.model.clone(),
+                    schema: job_clone.schema.clone(),
+                    uri: job_clone.db_uri.clone(),
+                    out_uri: Some(job_clone.db_uri.clone()),
+                    table: job_clone.table.clone(),
+                    out_table: Some(job_clone.table.clone()),
+                    column: job_clone.column.clone(),
+                    out_column: job_clone.out_column.clone(),
+                    batch_size: job_clone.batch_size,
+                    runtime: job_clone.runtime.clone(),
+                    runtime_params: job_clone.runtime_params.clone(),
+                    visual: false,
+                    stream: true,
+                    create_column: false,
+                    out_csv: None,
+                    filter: job_clone.filter.clone(),
+                    limit: None,
+                },
+                false,
+                None,
+                None,
+                Some(task_logger),
+            );
+            logger.info(&format!("Job {} finished", job.id));
+
+            match result {
                 Ok((processed_rows, processed_tokens)) => {
-                    remove_job_handle(&JOBS, job.id).await?;
-                    if job.is_init {
-                        // mark success
-                        client_ref.execute(&format!("UPDATE {jobs_table_name} SET init_finished_at=NOW(), updated_at=NOW() WHERE id=$1"), &[&job.id]).await?;
-                    }
-
                     if processed_tokens > 0 {
-                        let fn_name = get_full_table_name(&schema_ref, "increment_embedding_usage_and_tokens");
-                        let res = client_ref.execute(&format!("SELECT {fn_name}({job_id},{usage},{tokens}::bigint)", job_id=job.id, usage=processed_rows, tokens=processed_tokens), &[]).await;
+                        let fn_name = get_full_table_name(
+                            &schema_ref,
+                            "increment_embedding_usage_and_tokens",
+                        );
+                        let res = client_ref
+                            .execute(
+                                &format!(
+                                    "SELECT {fn_name}({job_id},{usage},{tokens}::bigint)",
+                                    job_id = job.id,
+                                    usage = processed_rows,
+                                    tokens = processed_tokens
+                                ),
+                                &[],
+                            )
+                            .await;
 
                         if let Err(e) = res {
-                            logger.error(&format!("Error while updating usage for {job_id}: {e}", job_id=job.id));
+                            logger.error(&format!(
+                                "Error while updating usage for {job_id}: {e}",
+                                job_id = job.id
+                            ));
                         }
                     }
-                },
+
+                    if let Some(progress) = job.report_progress {
+                        logger.info(&format!("Job {} report progress {progress}", job.id));
+
+                        let update_statement = if job.is_last_chunk {
+                            "init_finished_at=NOW(), updated_at=NOW(), init_progress=100".to_owned()
+                        } else {
+                            format!("init_progress={progress}")
+                        };
+
+                        logger.info(&format!("Update statement is::::::: {update_statement}"));
+                        client_ref
+                            .execute(
+                                &format!(
+                                    "UPDATE {jobs_table_name} SET {update_statement} WHERE id=$1"
+                                ),
+                                &[&job.id],
+                            )
+                            .await?;
+                    }
+
+                    if job.is_last_chunk {
+                        remove_job_handle(&JOBS, job.id).await?;
+                    }
+                }
                 Err(e) => {
-                    logger.error(&format!("Error while executing job {job_id}: {e}", job_id=job.id));
-                    remove_job_handle(&JOBS, job.id).await?;
-                    if job.is_init {
-                        // update failure reason
-                        client_ref.execute(&format!("UPDATE {jobs_table_name} SET init_failed_at=NOW(), updated_at=NOW(), init_failure_reason=$1 WHERE id=$2"), &[&e.to_string(), &job.id]).await?;
-                        toggle_client_job(job.id.clone(), job.db_uri.clone(), job.column.clone(), job.out_column.clone(), job.table.clone(), job.schema.clone(), logger.level.clone(), Some(notifications_tx.clone()), false).await?;
+                    logger.error(&format!(
+                        "Error while executing job {job_id}: {e}",
+                        job_id = job.id
+                    ));
+                    if !job.is_init {
+                        schedule_job_retry(
+                            logger.clone(),
+                            orig_job_clone,
+                            job_queue_tx.clone(),
+                            Duration::from_secs(300),
+                        )
+                        .await?;
+
+                        let fn_name =
+                            get_full_table_name(&schema_ref, "increment_embedding_failures");
+                        let res = client_ref
+                            .execute(
+                                &format!("SELECT {fn_name}({job_id},1)", job_id = job.id),
+                                &[],
+                            )
+                            .await;
+
+                        if let Err(e) = res {
+                            logger.error(&format!(
+                                "Error while updating failures for {job_id}: {e}",
+                                job_id = job.id
+                            ));
+                        }
                     } else {
-                        schedule_job_retry(logger.clone(), orig_job_clone, job_queue_tx.clone(), Duration::from_secs(300)).await?;
+                        // Send error via channel, so init streaming task will catch that
+                        let jobs = JOBS.read().await;
+                        if let Some(tx) = jobs.get(&job.id) {
+                            tx.send(e.to_string()).await?;
+                        }
+                        drop(jobs);
                     }
                 }
             }
@@ -256,8 +487,15 @@ async fn embedding_worker(
                 // As we are using table ctid for lock key, after table VACUUM the ctids may repeat
                 // And if new row will be inserted with previously locked ctid
                 // it won't be taken by daemon
-               let lock_table_name = get_full_table_name(&internal_schema, EMB_LOCK_TABLE_NAME);
-               unlock_rows(client_ref, &lock_table_name, logger.clone(), job.id, row_ids).await;
+                let lock_table_name = get_full_table_name(&internal_schema, EMB_LOCK_TABLE_NAME);
+                unlock_rows(
+                    client_ref,
+                    &lock_table_name,
+                    logger.clone(),
+                    job.id,
+                    row_ids,
+                )
+                .await;
             }
         }
         Ok(()) as AnyhowVoidResult
@@ -281,11 +519,10 @@ async fn collect_pending_jobs(
 
     for row in rows {
         // TODO This can be optimized
-        update_notification_tx
-            .send(JobUpdateNotification {
-                id: row.get::<usize, i32>(0).to_owned(),
-                generate_missing: true,
-            })?;
+        update_notification_tx.send(JobUpdateNotification {
+            id: row.get::<usize, i32>(0).to_owned(),
+            generate_missing: true,
+        })?;
     }
 
     Ok(())
@@ -294,6 +531,7 @@ async fn collect_pending_jobs(
 async fn job_insert_processor(
     db_uri: String,
     mut notifications_rx: UnboundedReceiver<JobInsertNotification>,
+    notifications_tx: UnboundedSender<JobInsertNotification>,
     job_tx: UnboundedSender<EmbeddingJob>,
     schema: String,
     lock_table_schema: String,
@@ -371,15 +609,6 @@ async fn job_insert_processor(
                 continue;
             }
 
-            // TODO
-            // when we are checking !notification.generate_missing we are excluding job "locking"
-            // so in case if we have more than one daemons running and job will change
-            // `canceled_at` to NULL (e.g. resume job) all daemons will try to generate embeddings
-            // for the missing rows. This will be okay if we every time reset init_start/finish
-            // times when changing canceled_at to NULL and remove this generate_missing check.
-            // This case is also about the startup pending job collector. As there might be a case
-            // when job was failed on init and if 2 daemons will start-up at the same time both
-            // will pick that job and try to generate embeddings (though this is very rare case)
             if notification.init && !notification.generate_missing {
                 // Only update init time if this is the first time job is being executed
                 let updated_count = insert_client.execute(&format!("UPDATE {0} SET init_started_at=NOW() WHERE init_started_at IS NULL AND id=$1", &full_table_name_r1), &[&id]).await?;
@@ -396,12 +625,10 @@ async fn job_insert_processor(
                 .await;
 
             if let Ok(row) = job_result {
-                let  job = EmbeddingJob::new(row, data_path);
+                let job = EmbeddingJob::new(row, data_path);
 
                 if let Err(e) = &job {
-                    logger_r1.error(&format!(
-                        "Error while creating job {id}: {e}",
-                    ));
+                    logger_r1.error(&format!("Error while creating job {id}: {e}",));
                     continue;
                 }
                 let mut job = job.unwrap();
@@ -409,7 +636,16 @@ async fn job_insert_processor(
                 if let Some(filter) = notification.filter {
                     job.set_filter(&filter);
                 }
-                job_tx_r1.send(job)?;
+                // TODO:: Check if passing insert_client does not make deadlocks
+                tokio::spawn(stream_job(
+                    logger_r1.clone(),
+                    insert_client.clone(),
+                    job_tx_r1.clone(),
+                    notifications_tx.clone(),
+                    full_table_name_r1.to_string(),
+                    lock_table_name.to_string(),
+                    job,
+                ));
             } else {
                 logger_r1.error(&format!(
                     "Error while getting job {id}: {}",
@@ -454,7 +690,9 @@ async fn job_insert_processor(
                 let rows_len = row_ids.len();
                 job.set_row_ids(row_ids);
                 job.set_filter(&format!("ctid IN ({row_ctids_str})"));
-                logger.debug(&format!("Sending batch job {job_id} (len: {rows_len}) to embedding_worker"));
+                logger.debug(&format!(
+                    "Sending batch job {job_id} (len: {rows_len}) to embedding_worker"
+                ));
                 let _ = job_tx.send(job);
             }
 
@@ -504,7 +742,7 @@ async fn job_update_processor(
                 let job = jobs.get(&id);
 
                 if let Some(tx) = job {
-                   tx.send(true).await?;
+                   tx.send(JOB_CANCELLED_MESSAGE.to_owned()).await?;
                 }
                 drop(jobs);
 
@@ -576,8 +814,10 @@ pub async fn start(args: cli::DaemonArgs, logger: Arc<Logger>) -> AnyhowVoidResu
         UnboundedSender<JobUpdateNotification>,
         UnboundedReceiver<JobUpdateNotification>,
     ) = mpsc::unbounded_channel();
-    let (job_queue_tx, job_queue_rx): (UnboundedSender<EmbeddingJob>, UnboundedReceiver<EmbeddingJob>) =
-        mpsc::unbounded_channel();
+    let (job_queue_tx, job_queue_rx): (
+        UnboundedSender<EmbeddingJob>,
+        UnboundedReceiver<EmbeddingJob>,
+    ) = mpsc::unbounded_channel();
     let table = args.embedding_table.unwrap();
 
     startup_hook(
@@ -602,6 +842,7 @@ pub async fn start(args: cli::DaemonArgs, logger: Arc<Logger>) -> AnyhowVoidResu
         Box::pin(job_insert_processor(
             args.uri.clone(),
             insert_notification_queue_rx,
+            insert_notification_queue_tx.clone(),
             job_queue_tx.clone(),
             args.schema.clone(),
             args.internal_schema.clone(),
@@ -620,7 +861,6 @@ pub async fn start(args: cli::DaemonArgs, logger: Arc<Logger>) -> AnyhowVoidResu
         Box::pin(embedding_worker(
             job_queue_rx,
             job_queue_tx.clone(),
-            insert_notification_queue_tx.clone(),
             args.uri.clone(),
             args.schema.clone(),
             args.internal_schema.clone(),

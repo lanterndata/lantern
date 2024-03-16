@@ -138,12 +138,12 @@ async fn external_index_worker(
                         remote_database: true,
                         pq: false,
                     }, progress_callback, Some(is_canceled_clone), Some(task_logger));
-                    futures::executor::block_on(cancel_tx_clone.send(false))?;
+                    futures::executor::block_on(cancel_tx_clone.send(String::new()))?;
                     result
                 });
 
                 while let Some(should_cancel) = cancel_rx.recv().await {
-                    if should_cancel {
+                    if should_cancel == JOB_CANCELLED_MESSAGE.to_owned() {
                         *is_canceled.write().unwrap() = true;
                     }
                     break;

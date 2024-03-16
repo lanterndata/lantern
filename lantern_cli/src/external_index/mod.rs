@@ -305,7 +305,7 @@ pub fn create_usearch_index(
                 if *is_canceled.read().unwrap() {
                     // This variable will be changed from outside to gracefully
                     // exit job on next chunk
-                    anyhow::bail!("Job canceled");
+                    anyhow::bail!(JOB_CANCELLED_MESSAGE);
                 }
 
                 let rows = rows.unwrap();
@@ -346,7 +346,7 @@ pub fn create_usearch_index(
         if *is_canceled.read().unwrap() {
             // This variable will be changed from outside to gracefully
             // exit job on next chunk
-            anyhow::bail!("Job canceled");
+            anyhow::bail!(JOB_CANCELLED_MESSAGE);
         }
         tx.send(rows)?;
     }

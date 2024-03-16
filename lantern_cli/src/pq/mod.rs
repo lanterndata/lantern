@@ -1,4 +1,5 @@
 use crate::logger::{LogLevel, Logger};
+use crate::types::JOB_CANCELLED_MESSAGE;
 use crate::utils::{append_params_to_uri, get_full_table_name, quote_ident};
 use codebook::CreateCodebookArgs;
 use quantization::QuantizeAndWriteVectorArgs;
@@ -286,7 +287,7 @@ fn quantize_table_local(
         if *is_canceled.read().unwrap() {
             // This variable will be changed from outside to gracefully
             // exit job on next chunk
-            anyhow::bail!("Job canceled");
+            anyhow::bail!(JOB_CANCELLED_MESSAGE);
         }
 
         quantization::write_quantized_rows(

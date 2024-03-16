@@ -1,7 +1,9 @@
-use super::types::{EmbeddingJob, JobTaskCancelTx};
-use super::types::{JobCancellationHandlersMap, JobInsertNotification, JobUpdateNotification};
+use super::types::{
+    EmbeddingJob, JobCancellationHandlersMap, JobInsertNotification, JobTaskCancelTx,
+    JobUpdateNotification,
+};
 use crate::logger::Logger;
-use crate::types::AnyhowVoidResult;
+use crate::types::{AnyhowVoidResult, JOB_CANCELLED_MESSAGE};
 use crate::utils::{get_full_table_name, quote_ident};
 use futures::StreamExt;
 use std::sync::Arc;
@@ -228,7 +230,7 @@ pub async fn index_job_update_processor(
                 let job = jobs.get(&id);
 
                 if let Some(tx) = job {
-                    tx.send(true).await?;
+                    tx.send(JOB_CANCELLED_MESSAGE.to_owned()).await?;
                 }
                 drop(jobs);
             }

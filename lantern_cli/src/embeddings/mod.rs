@@ -162,7 +162,7 @@ fn embedding_worker(
             if is_canceled.is_some() && *is_canceled.as_ref().unwrap().read().unwrap() {
                 // This variable will be changed from outside to gracefully
                 // exit job on next chunk
-                anyhow::bail!("Job canceled");
+                anyhow::bail!(JOB_CANCELLED_MESSAGE);
             }
 
             if count == 0 {

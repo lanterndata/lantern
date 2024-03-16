@@ -6,8 +6,8 @@ use std::{
 
 use crate::external_index::cli::CreateIndexArgs;
 use crate::logger::{LogLevel, Logger};
-use crate::utils::{append_params_to_uri, get_full_table_name, quote_ident};
 use crate::types::*;
+use crate::utils::{append_params_to_uri, get_full_table_name, quote_ident};
 use postgres::{types::ToSql, Client, NoTls};
 use rand::Rng;
 
@@ -426,7 +426,7 @@ pub fn autotune_index(
             if *is_canceled.read().unwrap() {
                 // This variable will be changed from outside to gracefully
                 // exit job on next chunk
-                anyhow::bail!("Job canceled");
+                anyhow::bail!(JOB_CANCELLED_MESSAGE.to_owned());
             }
 
             let start = Instant::now();
