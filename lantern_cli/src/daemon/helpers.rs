@@ -8,7 +8,7 @@ use crate::utils::{get_full_table_name, quote_ident};
 use futures::StreamExt;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{Sender, UnboundedReceiver, UnboundedSender};
 use tokio_postgres::AsyncMessage;
 use tokio_postgres::Client;
 
@@ -268,7 +268,7 @@ pub fn get_missing_rows_filter(src_column: &str, out_column: &str) -> String {
 pub async fn schedule_job_retry(
     logger: Arc<Logger>,
     job: EmbeddingJob,
-    tx: UnboundedSender<EmbeddingJob>,
+    tx: Sender<EmbeddingJob>,
     retry_after: Duration,
 ) -> AnyhowVoidResult {
     tokio::spawn(async move {
@@ -283,7 +283,7 @@ pub async fn schedule_job_retry(
             retry_after.as_secs(),
         ));
         tokio::time::sleep(retry_after).await;
-        match tx.send(job) {
+        match tx.send(job).await {
             Ok(_) => {}
             Err(e) => logger.error(&format!(
                 "Sending retry for failed job: {job_id} with batch len ({batch_len}) failed with error: {e}",

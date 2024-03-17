@@ -1,6 +1,6 @@
 use std::{
     env,
-    sync::mpsc::{self, Sender, TryRecvError},
+    sync::mpsc::{self, Sender},
     time::Duration,
 };
 
@@ -17,6 +17,7 @@ static INDEX_JOBS_TABLE_NAME: &'static str = "_daemon_index_jobs";
 static CLIENT_TABLE_NAME: &'static str = "_lantern_cloud_client1";
 static AUTOTUNE_RESULTS_TABLE_NAME: &'static str = "_daemon_autotune_results";
 static EMBEDDING_USAGE_TABLE_NAME: &'static str = "_daemon_embedding_usage";
+static STOP_MSG: &'static str = "STOP";
 
 async fn setup_db_tables(client: &mut Client) {
     client
@@ -178,38 +179,33 @@ fn start_daemon(
     embedding_table: Option<String>,
     autotune_table: Option<String>,
     external_index_table: Option<String>,
-) -> Sender<()> {
+) -> Sender<String> {
     let (tx, rx) = mpsc::channel();
+    let tx_clone = tx.clone();
     std::thread::spawn(move || {
-        std::thread::spawn(move || {
-            daemon::start(
-                DaemonArgs {
-                    uri: db_uri,
-                    schema: "public".to_owned(),
-                    internal_schema: "lantern_test".to_owned(),
-                    embedding_table,
-                    autotune_table,
-                    autotune_results_table: Some(AUTOTUNE_RESULTS_TABLE_NAME.to_owned()),
-                    external_index_table,
-                    log_level: LogLevel::Debug,
-                },
-                None,
-            )
-            .expect("Failed to start daemon");
-        });
+        let res = daemon::start(
+            DaemonArgs {
+                uri: db_uri,
+                schema: "public".to_owned(),
+                internal_schema: "lantern_test".to_owned(),
+                embedding_table,
+                autotune_table,
+                autotune_results_table: Some(AUTOTUNE_RESULTS_TABLE_NAME.to_owned()),
+                external_index_table,
+                log_level: LogLevel::Debug,
+            },
+            None,
+            Some((tx, rx)),
+        );
 
-        loop {
-            std::thread::sleep(Duration::from_millis(500));
-            match rx.try_recv() {
-                Ok(_) | Err(TryRecvError::Disconnected) => {
-                    break;
-                }
-                Err(TryRecvError::Empty) => {}
+        if let Err(err_msg) = res {
+            if err_msg.to_string() != STOP_MSG.to_owned() {
+                panic!("{err_msg}");
             }
         }
     });
 
-    return tx;
+    return tx_clone;
 }
 
 async fn test_embedding_generation_runtime(
@@ -252,9 +248,8 @@ async fn test_embedding_generation_runtime(
         ))
         .await
         .unwrap();
-    let db_uri_clone = db_uri.clone();
     let stop_tx = start_daemon(
-        db_uri_clone,
+        db_uri.clone(),
         Some(EMBEDDING_JOBS_TABLE_NAME.to_owned()),
         None,
         None,
@@ -424,7 +419,7 @@ async fn test_embedding_generation_runtime(
             .unwrap();
         let cnt: i64 = client_data.get::<usize, i64>(0);
 
-        if cnt != 0 {
+        if cnt != 2 {
             if check_cnt >= 30 {
                 eprintln!("Force exit after 30 seconds");
                 break;
@@ -483,7 +478,7 @@ async fn test_embedding_generation_runtime(
         .await
         .unwrap();
     assert_eq!(locks.len(), 0);
-    stop_tx.send(()).unwrap();
+    stop_tx.send(STOP_MSG.to_owned()).unwrap();
 }
 
 async fn test_index_creation() {
@@ -546,7 +541,7 @@ async fn test_index_creation() {
         )
         .await
         .unwrap();
-    stop_tx.send(()).unwrap();
+    stop_tx.send(STOP_MSG.to_owned()).unwrap();
 }
 
 async fn test_index_autotune() {
@@ -601,7 +596,7 @@ async fn test_index_autotune() {
         )
         .await
         .unwrap();
-    stop_tx.send(()).unwrap();
+    stop_tx.send(STOP_MSG.to_owned()).unwrap();
 }
 
 async fn test_cleanup() {

@@ -421,7 +421,7 @@ fn csv_exporter_worker(
     return Ok(handle);
 }
 
-fn get_default_batch_size(model: &str) -> usize {
+pub fn get_default_batch_size(model: &str) -> usize {
     match model {
         "clip/ViT-B-32-textual" => 2000,
         "clip/ViT-B-32-visual" => 50,

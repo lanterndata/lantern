@@ -34,8 +34,8 @@ use super::types::{
 };
 use crate::embeddings::cli::EmbeddingArgs;
 use crate::logger::Logger;
-use crate::types::*;
 use crate::utils::{get_full_table_name, quote_ident};
+use crate::{embeddings, types::*};
 use futures::future;
 use itertools::Itertools;
 use std::collections::HashMap;
@@ -83,6 +83,7 @@ async fn lock_row(
     true
 }
 
+#[allow(dead_code)]
 async fn lock_rows(
     client: Arc<Client>,
     lock_table_name: &str,
@@ -92,17 +93,16 @@ async fn lock_rows(
 ) -> bool {
     let mut statement = format!("INSERT INTO {lock_table_name} (job_id, row_id) VALUES ");
 
-    let mut param_num = 2;
+    let mut idx = 0;
     let values: Vec<&(dyn ToSql + Sync)> = row_ids
         .iter()
         .flat_map(|row_id| {
-            let comma = if (param_num - 2) == row_ids.len() {
-                ""
-            } else {
-                ","
-            };
-            statement = format!("{statement}({job_id}, ${param_num}){comma}");
-            param_num += 1;
+            let comma = if idx == row_ids.len() - 1 { "" } else { "," };
+            statement = format!(
+                "{statement}({job_id}, ${param_num}){comma}",
+                param_num = idx + 1
+            );
+            idx += 1;
             [row_id as &(dyn ToSql + Sync)]
         })
         .collect();
@@ -157,16 +157,16 @@ async fn unlock_rows(
 async fn stream_job(
     logger: Arc<Logger>,
     main_client: Arc<Client>,
-    job_queue_tx: UnboundedSender<EmbeddingJob>,
+    job_queue_tx: Sender<EmbeddingJob>,
     notifications_tx: UnboundedSender<JobInsertNotification>,
     jobs_table_name: String,
-    lock_table_name: String,
+    _lock_table_name: String,
     job: EmbeddingJob,
 ) -> AnyhowVoidResult {
     let top_logger = logger.clone();
     let job_id = job.id;
     let task = tokio::spawn(async move {
-        logger.info(&format!("Start streaming init job {}", job.id));
+        logger.info(&format!("Start streaming job {}", job.id));
         // Enable triggers for job
         if job.is_init {
             toggle_client_job(
@@ -188,9 +188,7 @@ async fn stream_job(
 
         let connection_logger = logger.clone();
 
-        logger.info(&format!("Connecting to db {}", job.id));
         let (mut job_client, connection) = tokio_postgres::connect(&job.db_uri, NoTls).await?;
-        logger.info(&format!("Connected to db {}", job.id));
         let job_id = job.id;
 
         tokio::spawn(async move {
@@ -198,31 +196,36 @@ async fn stream_job(
                 connection_logger.error(&format!("Error while streaming job: {job_id}. {e}"));
             }
         });
-        logger.info(&format!("Polling from db connection {}", job.id));
 
         let column = &job.column;
+        let out_column = &job.out_column;
         let schema = &job.schema;
         let table = &job.table;
         let full_table_name = get_full_table_name(schema, table);
 
         let filter_sql = format!(
-            "WHERE {column} IS NOT NULL AND {column} != ''",
+            "WHERE {out_column} IS NULL AND {column} IS NOT NULL AND {column} != ''",
             column = quote_ident(column)
         );
 
-        logger.info(&format!("Creating transaction {}", job.id));
         let transaction = job_client.transaction().await?;
-        logger.info(&format!("Created transaction {}", job.id));
-        logger.info(&format!("transaction query {}", job.id));
+
+        transaction
+            .execute("SET idle_in_transaction_session_timeout=3600000", &[])
+            .await?;
         let total_rows = transaction
             .query_one(
                 &format!("SELECT COUNT(*) FROM {full_table_name} {filter_sql};"),
                 &[],
             )
             .await?;
-        logger.info(&format!("transaction query done {}", job.id));
         let total_rows: i64 = total_rows.get(0);
         let total_rows = total_rows as usize;
+
+        if total_rows == 0 {
+            return Ok(());
+        }
+
         let portal = transaction
             .bind(
                 &format!("SELECT ctid::text FROM {full_table_name} {filter_sql};"),
@@ -231,7 +234,8 @@ async fn stream_job(
             .await?;
         let mut progress = 0;
         let mut processed_rows = 0;
-        logger.debug(&format!("Total rows: {total_rows}"));
+
+        let batch_size = embeddings::get_default_batch_size(&job.model) as i32;
         loop {
             // Check if job was errored or cancelled
             if let Ok(err_msg) = job_error_rx.try_recv() {
@@ -256,49 +260,43 @@ async fn stream_job(
             }
 
             // poll batch_size rows from portal and send it to embedding thread via channel
-            let rows = transaction.query_portal(&portal, 2000).await?;
+            let rows = transaction.query_portal(&portal, batch_size).await?;
 
-            logger.debug(&format!("Polled rows: {}", rows.len()));
             if rows.len() == 0 {
                 break;
             }
 
             let mut streamed_job = job.clone();
-            streamed_job.set_row_ids(rows.iter().map(|r| r.get::<usize, String>(0)).collect());
+            let row_ids: Vec<String> = rows.iter().map(|r| r.get::<usize, String>(0)).collect();
             // If this is not init job, but startup job to generate missing rows
             // We will lock the row ids, so if 2 daemons will be started at the same time
             // Same rows won't be processed by both of them
-            if !job.is_init
-                && !lock_rows(
-                    main_client.clone(),
-                    &lock_table_name,
-                    logger.clone(),
-                    job_id,
-                    streamed_job.row_ids.as_ref().unwrap(),
-                )
-                .await
-            {
-                logger.warn("Another daemon instance is already processing job {job_id}. Exitting streaming loop");
-                break;
-            }
+            // TODO:: This check is now commented because
+            // There might be case when the job will be stopped abnoarmally and
+            // Rows will stay locked, so in next run the missed rows will be considered as locked
+            // And won't be taken to be processed
+            // streamed_job.set_row_ids(row_ids);
+            // if !job.is_init
+            //     && !lock_rows(
+            //         main_client.clone(),
+            //         &lock_table_name,
+            //         logger.clone(),
+            //         job_id,
+            //         streamed_job.row_ids.as_ref().unwrap(),
+            //     )
+            //     .await
+            // {
+            //     logger.warn("Another daemon instance is already processing job {job_id}. Exitting streaming loop");
+            //     break;
+            // }
 
-            let row_ctids_str = streamed_job
-                .row_ids
-                .as_ref()
-                .unwrap()
-                .iter()
-                .map(|r| format!("'{r}'::tid"))
-                .join(",");
+            let row_ctids_str = row_ids.iter().map(|r| format!("'{r}'::tid")).join(",");
             streamed_job.set_filter(&format!("ctid IN ({row_ctids_str})"));
 
-            processed_rows += streamed_job.row_ids.as_ref().unwrap().len();
-            logger.info(&format!("Job: {:?}", job));
+            processed_rows += row_ids.len();
             if job.is_init {
                 let new_progress = ((processed_rows as f32 / total_rows as f32) * 100.0) as u8;
 
-                logger.info(&format!(
-                    "Old_progress: {progress}, new_progress: {new_progress}"
-                ));
                 if new_progress > progress {
                     progress = new_progress;
                     streamed_job.set_report_progress(progress);
@@ -309,7 +307,7 @@ async fn stream_job(
                 streamed_job.set_is_last_chunk(true);
             }
 
-            job_queue_tx.send(streamed_job)?;
+            job_queue_tx.send(streamed_job).await?;
         }
 
         Ok::<(), anyhow::Error>(())
@@ -324,8 +322,8 @@ async fn stream_job(
 }
 
 async fn embedding_worker(
-    mut job_queue_rx: UnboundedReceiver<EmbeddingJob>,
-    job_queue_tx: UnboundedSender<EmbeddingJob>,
+    mut job_queue_rx: Receiver<EmbeddingJob>,
+    job_queue_tx: Sender<EmbeddingJob>,
     db_uri: String,
     schema: String,
     internal_schema: String,
@@ -342,16 +340,6 @@ async fn embedding_worker(
         let client = Arc::new(client);
         logger.info("Embedding worker started");
         while let Some(job) = job_queue_rx.recv().await {
-            if job.is_init {
-                let jobs = JOBS.read().await;
-                if jobs.get(&job.id).is_none() {
-                    // If this is init job and it was failed
-                    // Before the streaming loop will be cancelled there might be
-                    // Notifications left in queue, so we will ignore them
-                    break;
-                }
-            }
-            logger.info(&format!("Starting execution of embedding job {}", job.id));
             let client_ref = client.clone();
             let orig_job_clone = job.clone();
             let job = Arc::new(job);
@@ -388,7 +376,6 @@ async fn embedding_worker(
                 None,
                 Some(task_logger),
             );
-            logger.info(&format!("Job {} finished", job.id));
 
             match result {
                 Ok((processed_rows, processed_tokens)) => {
@@ -418,15 +405,12 @@ async fn embedding_worker(
                     }
 
                     if let Some(progress) = job.report_progress {
-                        logger.info(&format!("Job {} report progress {progress}", job.id));
-
                         let update_statement = if job.is_last_chunk {
                             "init_finished_at=NOW(), updated_at=NOW(), init_progress=100".to_owned()
                         } else {
                             format!("init_progress={progress}")
                         };
 
-                        logger.info(&format!("Update statement is::::::: {update_statement}"));
                         client_ref
                             .execute(
                                 &format!(
@@ -455,21 +439,22 @@ async fn embedding_worker(
                         )
                         .await?;
 
-                        let fn_name =
-                            get_full_table_name(&schema_ref, "increment_embedding_failures");
-                        let res = client_ref
-                            .execute(
-                                &format!("SELECT {fn_name}({job_id},1)", job_id = job.id),
-                                &[],
-                            )
-                            .await;
-
-                        if let Err(e) = res {
-                            logger.error(&format!(
-                                "Error while updating failures for {job_id}: {e}",
-                                job_id = job.id
-                            ));
-                        }
+                        // TODO:: uncomment after done in backend
+                        // let fn_name =
+                        //     get_full_table_name(&schema_ref, "increment_embedding_failures");
+                        // let res = client_ref
+                        //     .execute(
+                        //         &format!("SELECT {fn_name}({job_id},1)", job_id = job.id),
+                        //         &[],
+                        //     )
+                        //     .await;
+                        //
+                        // if let Err(e) = res {
+                        //     logger.error(&format!(
+                        //         "Error while updating failures for {job_id}: {e}",
+                        //         job_id = job.id
+                        //     ));
+                        // }
                     } else {
                         // Send error via channel, so init streaming task will catch that
                         let jobs = JOBS.read().await;
@@ -532,7 +517,7 @@ async fn job_insert_processor(
     db_uri: String,
     mut notifications_rx: UnboundedReceiver<JobInsertNotification>,
     notifications_tx: UnboundedSender<JobInsertNotification>,
-    job_tx: UnboundedSender<EmbeddingJob>,
+    job_tx: Sender<EmbeddingJob>,
     schema: String,
     lock_table_schema: String,
     table: String,
@@ -693,7 +678,15 @@ async fn job_insert_processor(
                 logger.debug(&format!(
                     "Sending batch job {job_id} (len: {rows_len}) to embedding_worker"
                 ));
-                let _ = job_tx.send(job);
+
+                // Send in new tokio task to avoid blocking loop
+                let logger = logger.clone();
+                let job_tx = job_tx.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = job_tx.send(job).await {
+                        logger.error(&format!("Failed to send batch job: {job_id}: {e}"));
+                    }
+                });
             }
 
             // collect jobs every 10 seconds
@@ -814,10 +807,8 @@ pub async fn start(args: cli::DaemonArgs, logger: Arc<Logger>) -> AnyhowVoidResu
         UnboundedSender<JobUpdateNotification>,
         UnboundedReceiver<JobUpdateNotification>,
     ) = mpsc::unbounded_channel();
-    let (job_queue_tx, job_queue_rx): (
-        UnboundedSender<EmbeddingJob>,
-        UnboundedReceiver<EmbeddingJob>,
-    ) = mpsc::unbounded_channel();
+    let (job_queue_tx, job_queue_rx): (Sender<EmbeddingJob>, Receiver<EmbeddingJob>) =
+        mpsc::channel(1);
     let table = args.embedding_table.unwrap();
 
     startup_hook(
