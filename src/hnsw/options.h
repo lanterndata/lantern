@@ -36,6 +36,7 @@ typedef struct ldb_HnswOptions
     int   ef_construction;
     int   ef;
     bool  pq;
+    bool  external;
     int   experimantal_index_path_offset;
 } ldb_HnswOptions;
 
@@ -45,6 +46,7 @@ int                   ldb_HnswGetEfConstruction(Relation index);
 int                   ldb_HnswGetEf(Relation index);
 char*                 ldb_HnswGetIndexFilePath(Relation index);
 bool                  ldb_HnswGetPq(Relation index);
+bool                  ldb_HnswGetExternal(Relation index);
 usearch_metric_kind_t ldb_HnswGetMetricKind(Relation index);
 
 bytea* ldb_amoptions(Datum reloptions, bool validate);

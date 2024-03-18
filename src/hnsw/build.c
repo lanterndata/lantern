@@ -372,6 +372,7 @@ static void InitBuildState(ldb_HnswBuildState *buildstate, Relation heap, Relati
     buildstate->columnType = GetIndexColumnType(index);
     buildstate->dimensions = GetHnswIndexDimensions(index, indexInfo);
     buildstate->index_file_path = ldb_HnswGetIndexFilePath(index);
+    buildstate->external = ldb_HnswGetExternal(index);
 
     // If a dimension wasn't specified try to infer it
     if(heap != NULL && buildstate->dimensions < 1) {
@@ -471,6 +472,10 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
     elog(INFO, "done init usearch index");
     assert(error == NULL);
 
+    if(buildstate->external) {
+        buildstate->index_file_path = ldb_crete_external_index_file(&opts, heap, index);
+    }
+
     if(buildstate->index_file_path) {
         if(access(buildstate->index_file_path, F_OK) != 0) {
             ereport(ERROR,
@@ -567,6 +572,10 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
         // remove index file if it was not externally provided
         unlink(tmp_index_file_path);
         pfree(tmp_index_file_path);
+    }
+
+    if(buildstate->external) {
+        unlink(buildstate->index_file_path);
     }
 
     FreeBuildState(buildstate);
@@ -744,4 +753,105 @@ void ldb_reindex_external_index(Oid indrelid)
                         Int32GetDatum(ef_construction),
                         Int32GetDatum(ef),
                         BoolGetDatum(pq));
+}
+
+char *ldb_crete_external_index_file(usearch_init_options_t *opts, Relation table_heap, Relation index)
+{
+    FmgrInfo    extern_index_finfo = {0};
+    Oid         lantern_extras_namespace_oid = InvalidOid;
+    Oid         function_oid;
+    Oid         function_argtypes_oid[ 9 ];
+    oidvector  *function_argtypes;
+    const char *lantern_extras_schema = "lantern_extras";
+    char       *schema;
+    char       *table;
+    char       *column;
+    char       *metric_kind;
+    uint32_t    dim = opts->dimensions;
+    uint32_t    m = opts->connectivity;
+    uint32_t    ef_construction = opts->expansion_add;
+    uint32_t    ef = opts->expansion_search;
+    bool        pq = opts->pq;
+    int16       attrNum = index->rd_index->indkey.values[ 0 ];
+    char       *ext_not_found_err = "Please install 'lantern_extras' extension or update it to the latest version";
+
+    schema = get_namespace_name(get_rel_namespace(table_heap->rd_id));
+
+    if(schema == NULL) {
+        elog(ERROR, "Could not get schema name");
+    }
+
+    table = get_rel_name(table_heap->rd_id);
+
+    if(table == NULL) {
+        elog(ERROR, "Could not get table name");
+    }
+    // take attrNum of parent table, and lookup its name on the table being indexed
+    column = get_attname(index->rd_index->indrelid, attrNum, true);
+
+    if(column == NULL) {
+        elog(ERROR, "Could not get index column name");
+    }
+
+    lantern_extras_namespace_oid = get_namespace_oid(lantern_extras_schema, true);
+    if(!OidIsValid(lantern_extras_namespace_oid)) {
+        elog(ERROR, "%s", ext_not_found_err);
+    }
+
+    // Convert metric_kind enum to string representation
+    switch(opts->metric_kind) {
+        case usearch_metric_l2sq_k:
+            metric_kind = "l2sq";
+            break;
+        case usearch_metric_cos_k:
+            metric_kind = "cos";
+            break;
+        case usearch_metric_hamming_k:
+            metric_kind = "hamming";
+            break;
+        default:
+            metric_kind = NULL;
+            ldb_invariant(true, "Unsupported metric kind");
+    }
+
+    // Check if _reindex_external_index function exists in lantern schema
+    function_argtypes_oid[ 0 ] = TEXTOID;
+    function_argtypes_oid[ 1 ] = TEXTOID;
+    function_argtypes_oid[ 2 ] = TEXTOID;
+    function_argtypes_oid[ 3 ] = TEXTOID;
+    function_argtypes_oid[ 4 ] = INT4OID;
+    function_argtypes_oid[ 5 ] = INT4OID;
+    function_argtypes_oid[ 6 ] = INT4OID;
+    function_argtypes_oid[ 7 ] = INT4OID;
+    function_argtypes_oid[ 8 ] = BOOLOID;
+    function_argtypes = buildoidvector(function_argtypes_oid, 9);
+
+    function_oid = GetSysCacheOid(PROCNAMEARGSNSP,
+#if PG_VERSION_NUM >= 120000
+                                  Anum_pg_proc_oid,
+#endif
+                                  CStringGetDatum("_create_external_index"),
+                                  PointerGetDatum(function_argtypes),
+                                  ObjectIdGetDatum(lantern_extras_namespace_oid),
+                                  0);
+
+    if(!OidIsValid(function_oid)) {
+        elog(ERROR, "%s", ext_not_found_err);
+    }
+
+    // Get _create_external_index function info to do direct call into it
+    fmgr_info(function_oid, &extern_index_finfo);
+
+    Datum index_path = DirectFunctionCall9(extern_index_finfo.fn_addr,
+                                           CStringGetTextDatum(column),
+                                           CStringGetTextDatum(table),
+                                           CStringGetTextDatum(schema),
+                                           CStringGetTextDatum(metric_kind),
+                                           Int32GetDatum(dim),
+                                           Int32GetDatum(m),
+                                           Int32GetDatum(ef_construction),
+                                           Int32GetDatum(ef),
+                                           BoolGetDatum(pq));
+    text *index_path_str = DatumGetTextP(index_path);
+    return text_to_cstring(index_path_str);
 }
