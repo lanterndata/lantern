@@ -125,6 +125,7 @@ struct ModelInfo {
     url: String,
     params: ModelParams,
     tokenizer_url: Option<String>,
+    onnx_data_url: Option<String>,
     encoder_args: EncoderOptions,
     encoder: Option<EncoderService>,
 }
@@ -140,6 +141,7 @@ struct ModelInfoBuilder {
     layer_cnt: Option<usize>,
     head_cnt: Option<usize>,
     head_dim: Option<usize>,
+    onnx_data: bool,
 }
 
 impl ModelInfoBuilder {
@@ -155,6 +157,7 @@ impl ModelInfoBuilder {
             layer_cnt: None,
             head_cnt: None,
             head_dim: None,
+            onnx_data: false,
         }
     }
 
@@ -193,12 +196,22 @@ impl ModelInfoBuilder {
         self
     }
 
+    fn with_onnx_data(&mut self, status: bool) -> &mut Self {
+        self.onnx_data = status;
+        self
+    }
+
     fn build(&self) -> ModelInfo {
         let model_url = format!("{}/model.onnx", self.base_url);
         let mut tokenizer_url = None;
+        let mut onnx_data_url = None;
 
         if self.use_tokenizer.is_some() {
             tokenizer_url = Some(format!("{}/tokenizer.json", self.base_url));
+        }
+
+        if self.onnx_data {
+            onnx_data_url = Some(format!("{}/model.onnx_data", self.base_url));
         }
 
         let encoder_args = EncoderOptions {
@@ -223,6 +236,7 @@ impl ModelInfoBuilder {
             },
             encoder: None,
             encoder_args,
+            onnx_data_url,
         }
     }
 }
@@ -234,6 +248,7 @@ lazy_static! {
         ("BAAI/bge-small-en", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/BAAI/bge-small-en-v1.5").with_tokenizer(true).build()),
         ("BAAI/bge-base-en", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/BAAI/bge-base-en-v1.5").with_tokenizer(true).build()),
         ("BAAI/bge-large-en", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/BAAI/bge-large-en-v1.5").with_tokenizer(true).build()),
+        ("BAAI/bge-m3", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/BAAI/bge-m3").with_tokenizer(true).with_onnx_data(true).with_layer_cnt(24).with_head_cnt(24).with_head_dim(64).build()),
         ("intfloat/e5-base-v2", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/intfloat/e5-base-v2").with_tokenizer(true).build()),
         ("intfloat/e5-large-v2", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/intfloat/e5-large-v2").with_tokenizer(true).build()),
         ("llmrails/ember-v1", ModelInfoBuilder::new("https://huggingface.co/varik77/onnx-models/resolve/main/llmrails/ember-v1").with_tokenizer(true).build()),
@@ -746,6 +761,15 @@ impl<'a> OrtRuntime<'a> {
             (self.logger)("Downloading tokenizer [this is one time operation]");
             // tokenizer is not downloaded, we should download it
             download_file(&model_info.tokenizer_url.as_ref().unwrap(), &tokenizer_path)?;
+        }
+
+        if let Some(onnx_data_url) = &model_info.onnx_data_url {
+            let onnx_data_path = Path::join(&model_folder, "model.onnx_data");
+
+            if !onnx_data_path.exists() {
+                (self.logger)("Downloading model onnx data [this is one time operation]");
+                download_file(onnx_data_url, &onnx_data_path)?;
+            }
         }
 
         // Check available memory
