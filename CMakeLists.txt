@@ -21,7 +21,7 @@ endif()
 set(RELEASE_ID "latest" CACHE STRING "Release ID placed in the binary. Must be set externally when doing a release")
 
 option(BUILD_FOR_DISTRIBUTING "Build LANTERN_VERSION info into the binary" OFF)
-option(MARCH_NATIVE "Build assuming the presence of all the features in the current CPU model" OFF)
+option(MARCH_NATIVE "Build assuming the presence of all the features in the current CPU model" ON)
 option(USEARCH_USE_SIMSIMD "Build usearch with SIMSIMD" OFF)
 option(POSTGRES_UBSAN "Turn this on when building with a postgres that has UBSAN turned on" OFF)
 
@@ -69,8 +69,11 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 message(STATUS "${CMAKE_COLOR_GREEN}Build type: ${CMAKE_BUILD_TYPE}${CMAKE_COLOR_RESET}")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wno-conversion -Wno-unknown-pragmas")
+
+# Set the C++ standard
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(PostgreSQL REQUIRED)
 
@@ -137,6 +140,16 @@ target_include_directories(
   PRIVATE "./third_party/usearch/robin-map/include/"
 )
 
+target_compile_options(lantern PRIVATE
+    -fstack-protector-strong
+    -Wformat
+    -Werror=format-security
+    -ftree-vectorize
+    -fassociative-math
+    -fno-signed-zeros
+    -fno-trapping-math
+    -fPIC
+)
 if(${MARCH_NATIVE})
   target_compile_options(lantern PRIVATE "-march=native")
 endif()
@@ -216,7 +229,6 @@ endif ()
 # not sure why, but the above is not enough to force pulling cpp runtime into lantern.so
 # the following is also necessary
 target_link_libraries(lantern PRIVATE "libstdc++.a")
-
 set_target_properties(lantern PROPERTIES LINKER_LANGUAGE C)
 # the flag instructs usearch/lib.c to builds with lantern-postgres compatible storage, which
 # assumes storage is handled inside postgres and so usearch allocates no memory for it
