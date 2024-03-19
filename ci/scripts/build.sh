@@ -61,7 +61,7 @@ function build_and_install() {
   
   if [ -n "$ENABLE_COVERAGE" ]
   then
-    flags="$flags -DCMAKE_C_COMPILER=/usr/bin/gcc -DCODECOVERAGE=ON -DBUILD_C_TESTS=ON"
+    flags="$flags -DCMAKE_C_COMPILER=/usr/bin/gcc-13 -DCMAKE_CXX_COMPILER=/usr/bin/g++-13 -DCODECOVERAGE=ON -DBUILD_C_TESTS=ON"
   else
     flags+=" -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang"
   fi
