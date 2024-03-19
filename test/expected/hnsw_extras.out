@@ -174,3 +174,90 @@ EXPLAIN (COSTS FALSE) SELECT id FROM sift_base1k order by v <=> :'v777' LIMIT 10
          Order By: (v <=> '{97,67,0,0,0,0,0,14,49,107,23,0,0,0,5,24,4,25,48,5,0,1,8,3,0,5,17,3,1,1,3,3,126,126,0,0,0,0,0,27,49,126,49,8,1,4,11,14,0,6,37,39,10,22,25,0,0,0,12,27,7,23,35,3,126,9,1,0,0,0,19,126,28,11,8,7,1,39,126,126,0,1,28,27,3,126,126,0,1,3,7,9,0,52,126,5,13,5,8,0,0,0,33,72,78,19,18,3,0,3,21,126,42,13,64,83,1,9,8,23,1,4,22,68,3,1,4,0}'::real[])
 (3 rows)
 
+SELECT drop_quantization('sift_base1k'::regclass, 'v');
+ drop_quantization 
+-------------------
+ 
+(1 row)
+
+DROP INDEX hnsw_cos_index_pq;
+-- Create using CREATE INDEX syntax with defaults
+CREATE INDEX hnsw_l2_index ON sift_base1k USING lantern_hnsw(v) WITH (external=true);
+INFO:  done init usearch index
+INFO:  done loading usearch index
+INFO:  done saving 1000 vectors
+EXPLAIN (COSTS FALSE) SELECT id FROM sift_base1k order by v <-> :'v777' LIMIT 10;
+                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   ->  Index Scan using hnsw_l2_index on sift_base1k
+         Order By: (v <-> '{97,67,0,0,0,0,0,14,49,107,23,0,0,0,5,24,4,25,48,5,0,1,8,3,0,5,17,3,1,1,3,3,126,126,0,0,0,0,0,27,49,126,49,8,1,4,11,14,0,6,37,39,10,22,25,0,0,0,12,27,7,23,35,3,126,9,1,0,0,0,19,126,28,11,8,7,1,39,126,126,0,1,28,27,3,126,126,0,1,3,7,9,0,52,126,5,13,5,8,0,0,0,33,72,78,19,18,3,0,3,21,126,42,13,64,83,1,9,8,23,1,4,22,68,3,1,4,0}'::real[])
+(3 rows)
+
+SELECT _lantern_internal.validate_index('hnsw_l2_index', false);
+INFO:  validate_index() start for hnsw_l2_index
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
+DROP INDEX hnsw_l2_index;
+-- Create using CREATE INDEX syntax with params
+CREATE INDEX hnsw_cos_index ON sift_base1k USING lantern_hnsw(v dist_cos_ops) WITH (m=12, ef=128, ef_construction=32, external=true);
+INFO:  done init usearch index
+INFO:  done loading usearch index
+INFO:  done saving 1000 vectors
+EXPLAIN (COSTS FALSE) SELECT id FROM sift_base1k order by v <=> :'v777' LIMIT 10;
+                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   ->  Index Scan using hnsw_cos_index on sift_base1k
+         Order By: (v <=> '{97,67,0,0,0,0,0,14,49,107,23,0,0,0,5,24,4,25,48,5,0,1,8,3,0,5,17,3,1,1,3,3,126,126,0,0,0,0,0,27,49,126,49,8,1,4,11,14,0,6,37,39,10,22,25,0,0,0,12,27,7,23,35,3,126,9,1,0,0,0,19,126,28,11,8,7,1,39,126,126,0,1,28,27,3,126,126,0,1,3,7,9,0,52,126,5,13,5,8,0,0,0,33,72,78,19,18,3,0,3,21,126,42,13,64,83,1,9,8,23,1,4,22,68,3,1,4,0}'::real[])
+(3 rows)
+
+SELECT _lantern_internal.validate_index('hnsw_cos_index', false);
+INFO:  validate_index() start for hnsw_cos_index
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
+DROP INDEX hnsw_cos_index;
+-- Create using CREATE INDEX syntax with pq (should error)
+\set ON_ERROR_STOP off
+CREATE INDEX hnsw_cos_index ON sift_base1k USING lantern_hnsw(v dist_cos_ops) WITH (m=12, ef=128, ef_construction=32, external=true, pq=true);
+ERROR:  PQ-codebook for relation "sift_base1k" not found
+\set ON_ERROR_STOP on
+SELECT quantize_table('sift_base1k'::regclass, 'v', 10, 32, 'cos');
+INFO:  Table scanned. Dataset size 1000
+INFO:  Starting k-means over dataset with (subvectors=32, clusters=10)
+INFO:  Codebooks created
+INFO:  Compressing vectors...
+ quantize_table 
+----------------
+ 
+(1 row)
+
+CREATE INDEX hnsw_cos_index_pq ON sift_base1k USING lantern_hnsw(v dist_cos_ops) WITH (m=12, ef=128, ef_construction=32, external=true, pq=true);
+INFO:  done init usearch index
+INFO:  done loading usearch index
+INFO:  done saving 1000 vectors
+EXPLAIN (COSTS FALSE) SELECT id FROM sift_base1k order by v <=> :'v777' LIMIT 10;
+                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   ->  Index Scan using hnsw_cos_index_pq on sift_base1k
+         Order By: (v <=> '{97,67,0,0,0,0,0,14,49,107,23,0,0,0,5,24,4,25,48,5,0,1,8,3,0,5,17,3,1,1,3,3,126,126,0,0,0,0,0,27,49,126,49,8,1,4,11,14,0,6,37,39,10,22,25,0,0,0,12,27,7,23,35,3,126,9,1,0,0,0,19,126,28,11,8,7,1,39,126,126,0,1,28,27,3,126,126,0,1,3,7,9,0,52,126,5,13,5,8,0,0,0,33,72,78,19,18,3,0,3,21,126,42,13,64,83,1,9,8,23,1,4,22,68,3,1,4,0}'::real[])
+(3 rows)
+
+SELECT _lantern_internal.validate_index('hnsw_cos_index_pq', false);
+INFO:  validate_index() start for hnsw_cos_index_pq
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
+DROP INDEX hnsw_cos_index_pq;

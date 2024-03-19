@@ -63,3 +63,27 @@ SELECT lantern_reindex_external_index('hnsw_cos_index_pq');
 SELECT _lantern_internal.validate_index('hnsw_cos_index_pq', false);
 SET lantern.pgvector_compat=TRUE;
 EXPLAIN (COSTS FALSE) SELECT id FROM sift_base1k order by v <=> :'v777' LIMIT 10;
+
+SELECT drop_quantization('sift_base1k'::regclass, 'v');
+DROP INDEX hnsw_cos_index_pq;
+
+-- Create using CREATE INDEX syntax with defaults
+CREATE INDEX hnsw_l2_index ON sift_base1k USING lantern_hnsw(v) WITH (external=true);
+EXPLAIN (COSTS FALSE) SELECT id FROM sift_base1k order by v <-> :'v777' LIMIT 10;
+SELECT _lantern_internal.validate_index('hnsw_l2_index', false);
+DROP INDEX hnsw_l2_index;
+-- Create using CREATE INDEX syntax with params
+CREATE INDEX hnsw_cos_index ON sift_base1k USING lantern_hnsw(v dist_cos_ops) WITH (m=12, ef=128, ef_construction=32, external=true);
+EXPLAIN (COSTS FALSE) SELECT id FROM sift_base1k order by v <=> :'v777' LIMIT 10;
+SELECT _lantern_internal.validate_index('hnsw_cos_index', false);
+DROP INDEX hnsw_cos_index;
+-- Create using CREATE INDEX syntax with pq (should error)
+\set ON_ERROR_STOP off
+CREATE INDEX hnsw_cos_index ON sift_base1k USING lantern_hnsw(v dist_cos_ops) WITH (m=12, ef=128, ef_construction=32, external=true, pq=true);
+\set ON_ERROR_STOP on
+SELECT quantize_table('sift_base1k'::regclass, 'v', 10, 32, 'cos');
+CREATE INDEX hnsw_cos_index_pq ON sift_base1k USING lantern_hnsw(v dist_cos_ops) WITH (m=12, ef=128, ef_construction=32, external=true, pq=true);
+EXPLAIN (COSTS FALSE) SELECT id FROM sift_base1k order by v <=> :'v777' LIMIT 10;
+SELECT _lantern_internal.validate_index('hnsw_cos_index_pq', false);
+DROP INDEX hnsw_cos_index_pq;
+
