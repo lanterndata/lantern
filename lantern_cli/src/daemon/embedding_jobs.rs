@@ -19,7 +19,9 @@
         "init_finished_at" timestamp,
         "init_failed_at" timestamp,
         "init_failure_reason" text,
-        "init_progress" int2 DEFAULT 0
+        "init_progress" int2 DEFAULT 0,
+        "failed_requests" bigint DEFAULT 0,
+        "failed_rows" bigint DEFAULT 0
     );
 */
 
@@ -444,22 +446,32 @@ async fn embedding_worker(
                         )
                         .await?;
 
-                        // TODO:: uncomment after done in backend
-                        // let fn_name =
-                        //     get_full_table_name(&schema_ref, "increment_embedding_failures");
-                        // let res = client_ref
-                        //     .execute(
-                        //         &format!("SELECT {fn_name}({job_id},1)", job_id = job.id),
-                        //         &[],
-                        //     )
-                        //     .await;
-                        //
-                        // if let Err(e) = res {
-                        //     logger.error(&format!(
-                        //         "Error while updating failures for {job_id}: {e}",
-                        //         job_id = job.id
-                        //     ));
-                        // }
+                        let fn_name =
+                            get_full_table_name(&schema_ref, "increment_embedding_failures");
+
+                        let row_count = if job.row_ids.is_some() {
+                            job.row_ids.as_ref().unwrap().len()
+                        } else {
+                            0
+                        };
+
+                        let res =
+                            client_ref
+                                .execute(
+                                    &format!(
+                                        "SELECT {fn_name}({job_id},{row_count})",
+                                        job_id = job.id,
+                                    ),
+                                    &[],
+                                )
+                                .await;
+
+                        if let Err(e) = res {
+                            logger.error(&format!(
+                                "Error while updating failures for {job_id}: {e}",
+                                job_id = job.id
+                            ));
+                        }
                     } else {
                         // Send error via channel, so init streaming task will catch that
                         let jobs = JOBS.read().await;
