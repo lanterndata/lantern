@@ -372,7 +372,7 @@ static void InitBuildState(ldb_HnswBuildState *buildstate, Relation heap, Relati
     buildstate->columnType = GetIndexColumnType(index);
     buildstate->dimensions = GetHnswIndexDimensions(index, indexInfo);
     buildstate->index_file_path = ldb_HnswGetIndexFilePath(index);
-    buildstate->external = ldb_HnswGetExternal(index);
+    buildstate->parallel = ldb_HnswGetParallel(index);
 
     // If a dimension wasn't specified try to infer it
     if(heap != NULL && buildstate->dimensions < 1) {
@@ -472,7 +472,7 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
     elog(INFO, "done init usearch index");
     assert(error == NULL);
 
-    if(buildstate->external) {
+    if(buildstate->parallel) {
         buildstate->index_file_path = ldb_crete_external_index_file(&opts, heap, index);
     }
 
@@ -574,7 +574,7 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
         pfree(tmp_index_file_path);
     }
 
-    if(buildstate->external) {
+    if(buildstate->parallel) {
         unlink(buildstate->index_file_path);
     }
 

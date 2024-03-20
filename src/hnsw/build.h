@@ -19,7 +19,7 @@ typedef struct
     int            dimensions;
     HnswColumnType columnType;
     char          *index_file_path;
-    bool           external;
+    bool           parallel;
 
     /* Statistics */
     double tuples_indexed;

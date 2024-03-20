@@ -79,10 +79,10 @@ char *ldb_HnswGetIndexFilePath(Relation index)
     return (char *)opts + opts->experimantal_index_path_offset;
 }
 
-bool ldb_HnswGetExternal(Relation index)
+bool ldb_HnswGetParallel(Relation index)
 {
     ldb_HnswOptions *opts = (ldb_HnswOptions *)index->rd_options;
-    if(opts) return opts->external;
+    if(opts) return opts->parallel;
     return false;
 }
 
@@ -129,7 +129,7 @@ bytea *ldb_amoptions(Datum reloptions, bool validate)
         {"ef_construction", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, ef_construction)},
         {"ef", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, ef)},
         {"pq", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, pq)},
-        {"external", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, external)},
+        {"parallel", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, parallel)},
         {"_experimental_index_path", RELOPT_TYPE_STRING, offsetof(ldb_HnswOptions, experimantal_index_path_offset)},
     };
 
@@ -232,8 +232,8 @@ void _PG_init(void)
 
     );
     add_bool_reloption(ldb_hnsw_index_withopts,
-                       "external",
-                       "Whether or not use lantern_extras' external index creation",
+                       "parallel",
+                       "Whether or not use lantern_extras' parallel index creation",
                        false
 #if PG_VERSION_NUM >= 130000
                        ,
