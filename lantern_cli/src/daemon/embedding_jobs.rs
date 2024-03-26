@@ -6,6 +6,7 @@
         "db_connection" text NOT NULL,
         "schema" text NOT NULL,
         "table" text NOT NULL,
+        "pk" text NOT NULL,
         "runtime" text NOT NULL,
         "runtime_params" jsonb,
         "src_column" text NOT NULL,
@@ -171,6 +172,7 @@ async fn stream_job(
             toggle_client_job(
                 job.id.clone(),
                 job.db_uri.clone(),
+                job.pk.clone(),
                 job.column.clone(),
                 job.out_column.clone(),
                 job.table.clone(),
@@ -227,7 +229,10 @@ async fn stream_job(
 
         let portal = transaction
             .bind(
-                &format!("SELECT id::text FROM {full_table_name} {filter_sql};"),
+                &format!(
+                    "SELECT {pk}::text FROM {full_table_name} {filter_sql};",
+                    pk = quote_ident(&job.pk)
+                ),
                 &[],
             )
             .await?;
@@ -246,6 +251,7 @@ async fn stream_job(
                 toggle_client_job(
                     job.id.clone(),
                     job.db_uri.clone(),
+                    job.pk.clone(),
                     job.column.clone(),
                     job.out_column.clone(),
                     job.table.clone(),
@@ -351,6 +357,7 @@ async fn embedding_worker(
 
             let result = crate::embeddings::create_embeddings_from_db(
                 EmbeddingArgs {
+                    pk: job.pk.clone(),
                     model: job_clone.model.clone(),
                     schema: job_clone.schema.clone(),
                     uri: job_clone.db_uri.clone(),
@@ -539,6 +546,7 @@ async fn job_insert_processor(
     // batch jobs for the rows. This will optimize embedding generation as if there will be lots of
     // inserts to the table between 10 seconds all that rows will be batched.
     let full_table_name = Arc::new(get_full_table_name(&schema, &table));
+    // TODO:: Select pk here
     let job_query_sql = Arc::new(format!("SELECT id, db_connection as db_uri, src_column as \"column\", dst_column, \"table\", \"schema\", embedding_model as model, runtime, runtime_params::text FROM {0}", &full_table_name));
 
     let db_uri_r1 = db_uri.clone();
@@ -713,6 +721,7 @@ async fn job_update_processor(
             tokio::spawn(async move { connection.await.unwrap() });
             let full_table_name =  get_full_table_name(&schema, &table);
             let id = notification.id;
+            // TODO:: Select pk here
             let row = client.query_one(&format!("SELECT db_connection as db_uri, dst_column, src_column as \"column\", \"table\", \"schema\", canceled_at, init_finished_at FROM {0} WHERE id=$1", &full_table_name), &[&id]).await?;
             let src_column = row.get::<&str, String>("column").to_owned();
             let out_column = row.get::<&str, String>("dst_column").to_owned();
@@ -725,7 +734,7 @@ async fn job_update_processor(
             }
 
             if init_finished_at.is_some() {
-              toggle_client_job(id, row.get::<&str, String>("db_uri").to_owned(), row.get::<&str, String>("column").to_owned(), row.get::<&str, String>("dst_column").to_owned(), row.get::<&str, String>("table").to_owned(), row.get::<&str, String>("schema").to_owned(), logger.level.clone(), Some(job_insert_queue_tx.clone()), canceled_at.is_none()).await?;
+              toggle_client_job(id, "id".to_owned(), row.get::<&str, String>("db_uri").to_owned(), row.get::<&str, String>("column").to_owned(), row.get::<&str, String>("dst_column").to_owned(), row.get::<&str, String>("table").to_owned(), row.get::<&str, String>("schema").to_owned(), logger.level.clone(), Some(job_insert_queue_tx.clone()), canceled_at.is_none()).await?;
             } else if canceled_at.is_some() {
                 // Cancel ongoing job
                 let jobs = JOBS.read().await;

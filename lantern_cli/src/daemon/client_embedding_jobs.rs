@@ -28,6 +28,7 @@ lazy_static! {
 pub async fn toggle_client_job(
     job_id: i32,
     db_uri: String,
+    pk: String,
     column: String,
     out_column: String,
     table: String,
@@ -45,6 +46,7 @@ pub async fn toggle_client_job(
             let res = start_client_job(
                 job_logger,
                 job_id,
+                pk,
                 db_uri,
                 column,
                 out_column,
@@ -82,6 +84,7 @@ fn get_notification_channel_name(job_id: i32) -> String {
 
 async fn setup_client_triggers(
     job_id: i32,
+    pk: &str,
     client: Arc<Client>,
     column: Arc<String>,
     table: Arc<String>,
@@ -95,6 +98,7 @@ async fn setup_client_triggers(
     check_table_exists(client.clone(), &full_table_name).await?;
 
     let column_name = quote_ident(&column);
+    let pk = quote_ident(pk);
     let function_name = get_function_name(job_id);
     let insert_trigger_name = get_trigger_name(job_id, "insert");
     let update_trigger_name = get_trigger_name(job_id, "update");
@@ -108,7 +112,7 @@ async fn setup_client_triggers(
               BEGIN
                 IF (NEW.{column_name} IS NOT NULL)
                 THEN
-                    PERFORM pg_notify('{channel}', NEW.id::TEXT || ':' || '{job_id}');
+                    PERFORM pg_notify('{channel}', NEW.{pk}::TEXT || ':' || '{job_id}');
                 END IF;
                 RETURN NULL;
               END;
@@ -276,6 +280,7 @@ async fn client_notification_listener(
 async fn start_client_job(
     logger: Arc<Logger>,
     job_id: i32,
+    pk: String,
     db_uri: String,
     column: String,
     out_column: String,
@@ -316,6 +321,7 @@ async fn start_client_job(
     // Setup triggers on client database table, to get new inserts
     setup_client_triggers(
         job_id,
+        &pk,
         db_client,
         column.clone(),
         table.clone(),

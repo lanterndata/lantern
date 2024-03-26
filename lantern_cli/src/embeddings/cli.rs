@@ -24,6 +24,10 @@ pub struct EmbeddingArgs {
     #[arg(short, long)]
     pub column: String,
 
+    /// Runtime Params JSON string
+    #[arg(long, default_value = "id")]
+    pub pk: String,
+
     /// Output db uri, fully associated database connection string including db name. Defaults to
     #[arg(long)]
     pub out_uri: Option<String>,

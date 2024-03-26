@@ -30,6 +30,7 @@ fn measure_model_speed(
         let logger = Logger::new("Lantern Embeddings", LogLevel::Error);
         let args = super::cli::EmbeddingArgs {
             uri: db_uri.to_owned(),
+            pk: "id".to_owned(),
             create_column: false,
             stream: false,
             model: model_name.to_owned(),

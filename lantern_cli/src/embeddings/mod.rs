@@ -141,7 +141,7 @@ fn producer_worker(
 
 // Embedding worker will listen to the producer channel
 // and execute embeddings_core's corresponding function to generate embeddings
-// we will here map each vector to it's row ctid before sending the results over channel
+// we will here map each vector to it's row id before sending the results over channel
 // So we will get Vec<Row<String, String> and output Vec<(String, Vec<f32>)> the output will
 // contain generated embeddings for the text. If text will be null we will skip that row
 fn embedding_worker(
@@ -250,6 +250,7 @@ fn db_exporter_worker(
         let column = &args.out_column;
         let table = args.out_table.as_ref().unwrap_or(&args.table);
         let schema = &args.schema;
+        let pk = &args.pk;
         let full_table_name = get_full_table_name(schema, table);
 
         let uri = append_params_to_uri(uri, CONNECTION_PARAMS);
@@ -279,7 +280,8 @@ fn db_exporter_worker(
         transaction
             .execute(
                 &format!(
-                    "CREATE TEMPORARY TABLE {temp_table_name} AS SELECT id, '{{}}'::REAL[] AS {column} FROM {full_table_name} LIMIT 0",
+                    "CREATE TEMPORARY TABLE {temp_table_name} AS SELECT {pk}, '{{}}'::REAL[] AS {column} FROM {full_table_name} LIMIT 0",
+                    pk=quote_ident(pk),
                     column=quote_ident(column)
                 ),
                 &[],
@@ -290,7 +292,7 @@ fn db_exporter_worker(
         let mut writer = transaction.copy_in(&format!(
             "COPY {temp_table_name} FROM stdin WITH NULL AS 'NULL'"
         ))?;
-        let update_sql = &format!("UPDATE {full_table_name} dest SET {column} = src.{column} FROM {temp_table_name} src WHERE src.id = dest.id", column=quote_ident(column), temp_table_name=quote_ident(&temp_table_name));
+        let update_sql = &format!("UPDATE {full_table_name} dest SET {column} = src.{column} FROM {temp_table_name} src WHERE src.{pk} = dest.{pk}", column=quote_ident(column), temp_table_name=quote_ident(&temp_table_name), pk=quote_ident(pk));
 
         let flush_interval = 10;
         let min_flush_rows = 50;

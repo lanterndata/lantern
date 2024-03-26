@@ -51,6 +51,7 @@ fn test_embedding_generation_from_db() {
         cli::EmbeddingArgs {
             model: "BAAI/bge-small-en".to_owned(),
             uri: db_url.clone(),
+            pk: "id".to_owned(),
             column: "content".to_owned(),
             table: table_name.clone(),
             schema: "public".to_owned(),

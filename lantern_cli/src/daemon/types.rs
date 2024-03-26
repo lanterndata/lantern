@@ -15,6 +15,7 @@ pub struct EmbeddingJob {
     pub schema: String,
     pub table: String,
     pub column: String,
+    pub pk: String,
     pub filter: Option<String>,
     pub out_column: String,
     pub model: String,
@@ -38,6 +39,7 @@ impl EmbeddingJob {
 
         Ok(Self {
             id: row.get::<&str, i32>("id"),
+            pk: "id".to_owned(), // TODO:: row.get::<&str, String>("pk"),
             db_uri: row.get::<&str, String>("db_uri"),
             schema: row.get::<&str, String>("schema"),
             table: row.get::<&str, String>("table"),
