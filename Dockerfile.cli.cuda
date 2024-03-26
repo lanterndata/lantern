@@ -11,7 +11,7 @@ RUN apt update && \
   apt install -y --no-install-recommends wget build-essential pkg-config clang curl libssl-dev && \
   cargo build --release --package lantern_cli
 
-FROM nvcr.io/nvidia/cuda:12.3.1-runtime-ubuntu22.04
+FROM nvcr.io/nvidia/cuda:11.8.0-runtime-ubuntu22.04
 COPY --from=build /app/target/release/lantern-cli .
 RUN apt update && \
   apt install -y wget && apt clean
