@@ -37,7 +37,6 @@ use crate::logger::Logger;
 use crate::utils::{get_full_table_name, quote_ident};
 use crate::{embeddings, types::*};
 use futures::future;
-use itertools::Itertools;
 use std::collections::HashMap;
 use std::path::Path;
 use std::process;
@@ -228,7 +227,7 @@ async fn stream_job(
 
         let portal = transaction
             .bind(
-                &format!("SELECT ctid::text FROM {full_table_name} {filter_sql};"),
+                &format!("SELECT id::text FROM {full_table_name} {filter_sql};"),
                 &[],
             )
             .await?;
@@ -290,8 +289,7 @@ async fn stream_job(
             //     break;
             // }
 
-            let row_ctids_str = row_ids.iter().map(|r| format!("'{r}'::tid")).join(",");
-            streamed_job.set_filter(&format!("ctid IN ({row_ctids_str})"));
+            streamed_job.set_id_filter(&row_ids);
 
             processed_rows += row_ids.len();
             if job.is_init {
@@ -671,10 +669,9 @@ async fn job_insert_processor(
                 }
                 let mut job = job.unwrap();
                 job.set_is_init(false);
-                let row_ctids_str = row_ids.iter().map(|r| format!("'{r}'::tid")).join(",");
                 let rows_len = row_ids.len();
+                job.set_id_filter(&row_ids);
                 job.set_row_ids(row_ids);
-                job.set_filter(&format!("ctid IN ({row_ctids_str})"));
                 logger.debug(&format!(
                     "Sending batch job {job_id} (len: {rows_len}) to embedding_worker"
                 ));

@@ -108,7 +108,7 @@ async fn setup_client_triggers(
               BEGIN
                 IF (NEW.{column_name} IS NOT NULL)
                 THEN
-                    PERFORM pg_notify('{channel}', NEW.ctid::TEXT || ':' || '{job_id}');
+                    PERFORM pg_notify('{channel}', NEW.id::TEXT || ':' || '{job_id}');
                 END IF;
                 RETURN NULL;
               END;

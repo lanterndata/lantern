@@ -2,6 +2,7 @@ use crate::embeddings::cli::Runtime;
 use crate::external_index::cli::UMetricKind;
 use crate::types::AnyhowVoidResult;
 use futures::Future;
+use itertools::Itertools;
 use std::{collections::HashMap, pin::Pin};
 use tokio::sync::{mpsc::Sender, RwLock};
 use tokio_postgres::Row;
@@ -72,6 +73,25 @@ impl EmbeddingJob {
 
     pub fn set_is_last_chunk(&mut self, status: bool) {
         self.is_last_chunk = status;
+    }
+
+    #[allow(dead_code)]
+    pub fn set_ctid_filter(&mut self, row_ids: &Vec<String>) {
+        let row_ctids_str = row_ids
+            .iter()
+            .map(|r| {
+                format!(
+                    "currtid2('{table_name}','{r}'::tid)",
+                    table_name = &self.table
+                )
+            })
+            .join(",");
+        self.set_filter(&format!("ctid IN ({row_ctids_str})"));
+    }
+
+    pub fn set_id_filter(&mut self, row_ids: &Vec<String>) {
+        let row_ctids_str = row_ids.iter().join(",");
+        self.set_filter(&format!("id IN ({row_ctids_str})"));
     }
 }
 

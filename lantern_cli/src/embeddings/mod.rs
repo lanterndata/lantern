@@ -105,7 +105,7 @@ fn producer_worker(
         // With portal we can execute a query and poll values from it in chunks
         let portal = transaction.bind(
             &format!(
-                "SELECT ctid::text, {column}::text FROM {full_table_name} {filter_sql} {limit_sql};",
+                "SELECT id::text, {column}::text FROM {full_table_name} {filter_sql} {limit_sql};",
                 column = quote_ident(column),
             ),
             &[],
@@ -279,7 +279,7 @@ fn db_exporter_worker(
         transaction
             .execute(
                 &format!(
-                    "CREATE TEMPORARY TABLE {temp_table_name} AS SELECT ctid::TEXT as id, '{{}}'::REAL[] AS {column} FROM {full_table_name} LIMIT 0",
+                    "CREATE TEMPORARY TABLE {temp_table_name} AS SELECT id, '{{}}'::REAL[] AS {column} FROM {full_table_name} LIMIT 0",
                     column=quote_ident(column)
                 ),
                 &[],
@@ -290,7 +290,7 @@ fn db_exporter_worker(
         let mut writer = transaction.copy_in(&format!(
             "COPY {temp_table_name} FROM stdin WITH NULL AS 'NULL'"
         ))?;
-        let update_sql = &format!("UPDATE {full_table_name} dest SET {column} = src.{column} FROM {temp_table_name} src WHERE src.id::tid = dest.ctid", column=quote_ident(column), temp_table_name=quote_ident(&temp_table_name));
+        let update_sql = &format!("UPDATE {full_table_name} dest SET {column} = src.{column} FROM {temp_table_name} src WHERE src.id = dest.id", column=quote_ident(column), temp_table_name=quote_ident(&temp_table_name));
 
         let flush_interval = 10;
         let min_flush_rows = 50;

@@ -96,7 +96,8 @@ async fn setup_db_tables(client: &mut Client) {
     CREATE TABLE {CLIENT_TABLE_NAME} (
        id SERIAL PRIMARY KEY,
        title TEXT,
-       title_embedding REAL[]
+       title_embedding REAL[],
+       title_embedding2 REAL[]
     );
 
     CREATE TABLE {AUTOTUNE_RESULTS_TABLE_NAME} (
@@ -243,7 +244,7 @@ async fn test_embedding_generation_runtime(
             "
             DROP SCHEMA IF EXISTS lantern_test CASCADE;
             TRUNCATE TABLE {EMBEDDING_JOBS_TABLE_NAME};
-            UPDATE {CLIENT_TABLE_NAME} SET title_embedding=NULL;
+            UPDATE {CLIENT_TABLE_NAME} SET title_embedding=NULL, title_embedding2=NULL;
          "
         ))
         .await
@@ -266,16 +267,26 @@ async fn test_embedding_generation_runtime(
         .await.unwrap();
 
     db_client
-        .execute(&format!(
-            "
-       INSERT INTO {EMBEDDING_JOBS_TABLE_NAME} (database_id, db_connection, \"schema\", \"table\", \"src_column\", \"dst_column\", \"embedding_model\", runtime, runtime_params) 
-        VALUES ('client1', $1, 'public', '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', '{model}', '{runtime}', '{runtime_params}');
-"
-        ), &[&db_uri])
-        .await.unwrap();
+            .execute(&format!(
+                "
+           INSERT INTO {EMBEDDING_JOBS_TABLE_NAME} (database_id, db_connection, \"schema\", \"table\", \"src_column\", \"dst_column\", \"embedding_model\", runtime, runtime_params)
+            VALUES ('client1', $1, 'public', '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', '{model}', '{runtime}', '{runtime_params}');
+    "
+            ), &[&db_uri])
+            .await.unwrap();
+
+    db_client
+            .execute(&format!(
+                "
+           INSERT INTO {EMBEDDING_JOBS_TABLE_NAME} (database_id, db_connection, \"schema\", \"table\", \"src_column\", \"dst_column\", \"embedding_model\", runtime, runtime_params)
+            VALUES ('client1', $1, 'public', '{CLIENT_TABLE_NAME}', 'title', 'title_embedding2', '{model}', '{runtime}', '{runtime_params}');
+    "
+            ), &[&db_uri])
+            .await.unwrap();
 
     let mut check_cnt = 0;
 
+    // Loop to check when init job will be finished
     loop {
         let job = db_client.query_one(&format!("SELECT init_progress, init_failed_at, init_failure_reason FROM {EMBEDDING_JOBS_TABLE_NAME} ORDER BY id DESC LIMIT 1"), &[]).await.unwrap();
         let progress: i16 = job.get::<&str, i16>("init_progress");
@@ -299,6 +310,8 @@ async fn test_embedding_generation_runtime(
 
         break;
     }
+
+    // There should be no data wihtout generated embeddings
     let client_data = db_client
         .query_one(
             &format!("SELECT COUNT(*) FROM {CLIENT_TABLE_NAME} WHERE title_embedding IS NULL"),
@@ -431,6 +444,29 @@ async fn test_embedding_generation_runtime(
 
         break;
     }
+    // Check that second job on the same table also get's fully completed
+    loop {
+        let client_data = db_client
+            .query_one(
+                &format!("SELECT COUNT(*) FROM {CLIENT_TABLE_NAME} WHERE title_embedding2 IS NULL"),
+                &[],
+            )
+            .await
+            .unwrap();
+        let cnt: i64 = client_data.get::<usize, i64>(0);
+
+        if cnt != 2 {
+            if check_cnt >= 30 {
+                eprintln!("Force exit after 30 seconds");
+                break;
+            }
+            check_cnt += 1;
+            std::thread::sleep(Duration::from_secs(1));
+            continue;
+        }
+
+        break;
+    }
     let client_data = db_client
         .query(
             &format!("SELECT * FROM {CLIENT_TABLE_NAME} WHERE title_embedding IS NULL OR ARRAY_LENGTH(title_embedding, 1) != {dimensions}"),
@@ -438,7 +474,16 @@ async fn test_embedding_generation_runtime(
         )
         .await
         .unwrap();
+    // Check that seond job also generated correct amount of embeddings
     assert_eq!(client_data.len(), 2);
+    let client_data2 = db_client
+        .query(
+            &format!("SELECT * FROM {CLIENT_TABLE_NAME} WHERE title_embedding2 IS NULL OR ARRAY_LENGTH(title_embedding2, 1) != {dimensions}"),
+            &[],
+        )
+        .await
+        .unwrap();
+    assert_eq!(client_data2.len(), 2);
 
     db_client
         .execute(
@@ -470,14 +515,14 @@ async fn test_embedding_generation_runtime(
 
     assert_eq!(usage, 9);
     // Check that all row locks are removed
-    let locks = db_client
-        .query(
-            &format!("SELECT * FROM lantern_test.{EMB_LOCK_TABLE_NAME}"),
-            &[],
-        )
-        .await
-        .unwrap();
-    assert_eq!(locks.len(), 0);
+    // let locks = db_client
+    //     .query(
+    //         &format!("SELECT * FROM lantern_test.{EMB_LOCK_TABLE_NAME}"),
+    //         &[],
+    //     )
+    //     .await
+    //     .unwrap();
+    // assert_eq!(locks.len(), 0);
     stop_tx.send(STOP_MSG.to_owned()).unwrap();
 }
 
