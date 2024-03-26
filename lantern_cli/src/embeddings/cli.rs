@@ -73,7 +73,7 @@ pub struct EmbeddingArgs {
     pub stream: bool,
 
     /// Create destination column if not exists
-    #[arg(long, default_value_t = true)]
+    #[arg(long, default_value_t = false)]
     pub create_column: bool,
 }
 
