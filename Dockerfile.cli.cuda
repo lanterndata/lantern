@@ -28,6 +28,7 @@ RUN wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/
     dpkg -i libcudnn.deb && \
     rm -rf libcudnn.deb
 
+RUN ln -s /usr/local/cuda/targets/x86_64-linux/lib/libnvrtc.so.11.2 /usr/local/cuda/targets/x86_64-linux/lib/libnvrtc.so
 ENV ORT_STRATEGY=system
 ENV ORT_DYLIB_PATH=/usr/local/lib/onnxruntime/lib/libonnxruntime.so
 # Run the binary
