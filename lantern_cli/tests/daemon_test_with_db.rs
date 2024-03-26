@@ -10,7 +10,7 @@ use lantern_cli::daemon::{
 };
 use tokio_postgres::{Client, NoTls};
 
-static EMB_LOCK_TABLE_NAME: &'static str = "_lantern_emb_job_locks";
+// static EMB_LOCK_TABLE_NAME: &'static str = "_lantern_emb_job_locks";
 static EMBEDDING_JOBS_TABLE_NAME: &'static str = "_daemon_embedding_jobs";
 static AUTOTUNE_JOBS_TABLE_NAME: &'static str = "_daemon_autotune_jobs";
 static INDEX_JOBS_TABLE_NAME: &'static str = "_daemon_index_jobs";

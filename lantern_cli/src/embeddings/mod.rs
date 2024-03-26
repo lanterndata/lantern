@@ -46,6 +46,7 @@ fn producer_worker(
         let column = &args.column;
         let schema = &args.schema;
         let table = &args.table;
+        let pk = &args.pk;
         let full_table_name = get_full_table_name(schema, table);
 
         let filter_sql = if args.filter.is_some() {
@@ -105,8 +106,9 @@ fn producer_worker(
         // With portal we can execute a query and poll values from it in chunks
         let portal = transaction.bind(
             &format!(
-                "SELECT id::text, {column}::text FROM {full_table_name} {filter_sql} {limit_sql};",
+                "SELECT {pk}::text, {column}::text FROM {full_table_name} {filter_sql} {limit_sql};",
                 column = quote_ident(column),
+                pk = quote_ident(pk)
             ),
             &[],
         )?;
