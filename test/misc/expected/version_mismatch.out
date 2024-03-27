@@ -3,4 +3,6 @@
 -- We do not want that for regression tests
 SET client_min_messages=ERROR;
 CREATE INDEX ON sift_base1k USING lantern_hnsw (v) WITH (dim=128, M=4);
-ERROR:  Attempting to build lantern index, but the SQL version and binary version do not match. This can cause errors. Please run `ALTER EXTENSION lantern UPDATE and reconnect
+INFO:  done init usearch index
+INFO:  inserted 1000 elements
+INFO:  done saving 1000 vectors
