@@ -2,6 +2,7 @@ FROM rust:1.74.0 as build
 # Copy the files in your machine to the Docker image
 WORKDIR /app
 COPY . .
+ENV ORT_STRATEGY="system"
 
 # Remove lantern_extras from workspace
 RUN rm -rf lantern_extras && sed -i -e 's/"lantern_extras",//' Cargo.toml
@@ -13,15 +14,23 @@ RUN apt update && \
 
 FROM debian:12
 COPY --from=build /app/target/release/lantern-cli .
+ARG TARGETARCH
+ENV OS_ARCH="${TARGETARCH:-amd64}"
+
 RUN apt update && \
   apt install -y wget && apt clean
+
 # Download onnxruntime
-RUN mkdir -p /usr/local/lib && \
+RUN cd /tmp && \
+    ONNX_VERSION="1.16.1" && \
+    PACKAGE_URL="https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-linux-x64-${ONNX_VERSION}.tgz" && \
+    if [[ $OS_ARCH == *"arm"* ]]; then PACKAGE_URL="https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-linux-aarch64-${ONNX_VERSION}.tgz"; fi && \
+    mkdir -p /usr/local/lib && \
     cd /usr/local/lib && \
-    wget https://github.com/microsoft/onnxruntime/releases/download/v1.16.1/onnxruntime-linux-x64-1.16.1.tgz && \
+    wget -qq $PACKAGE_URL  && \
     tar xzf ./onnx*.tgz && \
     rm -rf ./onnx*.tgz && \
-    mv ./onnx* ./onnxruntime 
+    mv ./onnx* ./onnxruntime
 
 ENV ORT_STRATEGY=system
 ENV ORT_DYLIB_PATH=/usr/local/lib/onnxruntime/lib/libonnxruntime.so
