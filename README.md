@@ -47,7 +47,7 @@ git clone --recursive https://github.com/lanterndata/lantern.git
 cd lantern
 mkdir build
 cd build
-cmake ..
+cmake -DMARCH_NATIVE=ON ..
 make install
 ```
 
