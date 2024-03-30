@@ -1,0 +1,195 @@
+-- Note: We drop the Lantern extension and re-create it because Lantern only supports
+-- async tasks if pg_cron is loaded before lantern
+-- connect to postgres database to run this test as pg_cron can only be installed there
+\c postgres
+SET client_min_messages TO ERROR;
+-- needed because we connected to a different DB which does not have the helper functions
+\ir utils/common.sql
+-- N.B.: This file shall be maintained such that it can safely be rerun without throwing an error
+--      This is because in upgrade tests we may run this multiple times in preparation for sequential
+--      and parallel upgrade tests
+-- test helper functions that should exist in all test runs live here
+-- there is no need to explicitly include this file in other tests as the test runner will
+-- run this before running the actual test
+CREATE EXTENSION IF NOT EXISTS pageinspect;
+\set ON_ERROR_STOP on
+-- retrieves details for all indices associated with a given table, similar to \di+
+-- the output of \di+ is not consistent across postgres versions
+-- todo:: add a columns to this function which returning number of used DB pages
+DROP FUNCTION IF EXISTS ldb_get_indexes;
+CREATE OR REPLACE FUNCTION ldb_get_indexes(tblname text)
+RETURNS TABLE(
+    indexname name,
+    size text,
+    indexdef text,
+    indisvalid boolean
+) AS
+$BODY$
+BEGIN
+    RETURN QUERY
+    SELECT
+      c2.relname,
+      pg_size_pretty(pg_relation_size(c2.oid)),
+      pg_catalog.pg_get_indexdef(i.indexrelid, 0, true),
+      i.indisvalid
+    FROM
+      pg_catalog.pg_class c,
+      pg_catalog.pg_class c2,
+      pg_catalog.pg_index i
+    WHERE
+      c.oid = quote_ident(tblname)::regclass
+      AND c.oid = i.indrelid
+      AND i.indexrelid = c2.oid
+    ORDER BY
+      c2.relname;
+END;
+$BODY$
+LANGUAGE plpgsql;
+-- Determines if the provided SQL query (with an EXPLAIN prefix) uses an "Index Scan"
+-- by examining its execution plan. This function helps ensure consistent analysis
+-- across varying Postgres versions where EXPLAIN output may differ.
+CREATE OR REPLACE FUNCTION has_index_scan(explain_query text) RETURNS boolean AS $$
+DECLARE
+    plan_row RECORD;
+    found boolean := false;
+BEGIN
+    FOR plan_row IN EXECUTE explain_query LOOP
+        IF position('Index Scan' in plan_row."QUERY PLAN") > 0 THEN
+            found := true;
+            EXIT;
+        END IF;
+    END LOOP;
+    RETURN found;
+END;
+$$ LANGUAGE plpgsql;
+-- Determine if the two  queries provided return the same results
+-- At the moment this only works on queries that return rows with the same entries as one another
+-- if you try to compare uneven numbers of columns or columns of different types it will generate an error
+CREATE OR REPLACE FUNCTION results_match(left_query text, right_query text) RETURNS boolean AS $$
+DECLARE
+    left_cursor REFCURSOR;
+    left_row RECORD;
+
+    right_cursor REFCURSOR;
+    right_row RECORD;
+BEGIN
+    OPEN left_cursor FOR EXECUTE left_query;
+    OPEN right_cursor FOR EXECUTE right_query;
+    LOOP
+        FETCH NEXT FROM left_cursor INTO left_row;
+        FETCH NEXT FROM right_cursor INTO right_row;
+        IF left_row != right_row THEN
+            RETURN false;
+        ELSEIF left_row IS NULL AND right_row IS NULL THEN
+            RETURN true;
+        END IF;
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+DROP EXTENSION IF EXISTS lantern CASCADE;
+DROP EXTENSION IF EXISTS pg_cron;
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+CREATE EXTENSION lantern;
+SELECT lantern.async_task($$SELECT pg_sleep(0.1);$$, 'Lantern job name');
+ async_task 
+------------
+          1
+(1 row)
+
+SELECT lantern.async_task($$SELECT pg_sleep(70);$$::text);
+ async_task 
+------------
+          2
+(1 row)
+
+-- will fail since the task is not valid SQL
+SELECT lantern.async_task($$SELECT pg_sleep(haha);$$, 'Lantern job name');
+ async_task 
+------------
+          3
+(1 row)
+
+SELECT jobid, query, pg_cron_job_name, job_name, duration IS NOT NULL AS is_done, status, error_message FROM lantern.tasks;
+ jobid |         query          | pg_cron_job_name |     job_name     | is_done | status | error_message 
+-------+------------------------+------------------+------------------+---------+--------+---------------
+     1 | SELECT pg_sleep(0.1);  | async_task_1     | Lantern job name | f       |        | 
+     2 | SELECT pg_sleep(70);   | async_task_2     |                  | f       |        | 
+     3 | SELECT pg_sleep(haha); | async_task_3     | Lantern job name | f       |        | 
+(3 rows)
+
+SELECT pg_sleep(3);
+ pg_sleep 
+----------
+ 
+(1 row)
+
+SELECT jobid, query, pg_cron_job_name, job_name, duration IS NOT NULL AS is_done, status, error_message FROM lantern.tasks;
+ jobid |         query          | pg_cron_job_name |     job_name     | is_done |  status   |            error_message             
+-------+------------------------+------------------+------------------+---------+-----------+--------------------------------------
+     2 | SELECT pg_sleep(70);   | async_task_2     |                  | f       |           | 
+     3 | SELECT pg_sleep(haha); | async_task_3     | Lantern job name | t       | failed    | ERROR:  column "haha" does not exist+
+       |                        |                  |                  |         |           | LINE 1: SELECT pg_sleep(haha);      +
+       |                        |                  |                  |         |           |                         ^           +
+       |                        |                  |                  |         |           | 
+     1 | SELECT pg_sleep(0.1);  | async_task_1     | Lantern job name | t       | succeeded | 
+(3 rows)
+
+SELECT lantern.cancel_all_async_tasks();
+ cancel_all_async_tasks 
+------------------------
+ 
+(1 row)
+
+-- test async tasks on index creation
+DROP TABLE IF EXISTS small_world;
+DROP TABLE IF EXISTS sift_base1k;
+DROP TABLE IF EXISTS "sift_base1k_UpperCase";
+\ir utils/sift1k_array.sql
+CREATE TABLE IF NOT EXISTS sift_base1k (
+    id SERIAL,
+    v REAL[]
+);
+COPY sift_base1k (v) FROM '/tmp/lantern/vector_datasets/sift_base1k_arrays.csv' WITH csv;
+-- add uppercase symbols to table name to make sure those are handlered properly in async_task function
+ALTER TABLE sift_base1k RENAME TO "sift_base1k_UpperCase";
+SELECT lantern.async_task($$CREATE INDEX idx ON "sift_base1k_UpperCase" USING lantern_hnsw (v) WITH (dim=128, M=6);$$, 'Indexing Job');
+ async_task 
+------------
+          4
+(1 row)
+
+-- blocks DB deletions that is why it is disabled for now
+-- SELECT lantern.async_task($$CREATE INDEX CONCURRENTLY idx_concurrent ON "sift_base1k_UpperCase" USING lantern_hnsw (v) WITH (dim=128, M=6);$$, 'Indexing Job');
+SELECT pg_sleep(5);
+ pg_sleep 
+----------
+ 
+(1 row)
+
+SELECT * FROM ldb_get_indexes('sift_base1k_UpperCase');
+ indexname |  size  |                                          indexdef                                          | indisvalid 
+-----------+--------+--------------------------------------------------------------------------------------------+------------
+ idx       | 632 kB | CREATE INDEX idx ON "sift_base1k_UpperCase" USING lantern_hnsw (v) WITH (dim='128', m='6') | t
+(1 row)
+
+SELECT _lantern_internal.validate_index('idx', false);
+INFO:  validate_index() start for idx
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
+SELECT jobid, query, pg_cron_job_name, job_name, duration IS NOT NULL AS is_done, status, error_message FROM lantern.tasks;
+ jobid |                                          query                                          | pg_cron_job_name |     job_name     | is_done |  status   |            error_message             
+-------+-----------------------------------------------------------------------------------------+------------------+------------------+---------+-----------+--------------------------------------
+     3 | SELECT pg_sleep(haha);                                                                  | async_task_3     | Lantern job name | t       | failed    | ERROR:  column "haha" does not exist+
+       |                                                                                         |                  |                  |         |           | LINE 1: SELECT pg_sleep(haha);      +
+       |                                                                                         |                  |                  |         |           |                         ^           +
+       |                                                                                         |                  |                  |         |           | 
+     1 | SELECT pg_sleep(0.1);                                                                   | async_task_1     | Lantern job name | t       | succeeded | 
+     2 | SELECT pg_sleep(70);                                                                    | async_task_2     |                  | t       | canceled  | Canceled by user
+     4 | CREATE INDEX idx ON "sift_base1k_UpperCase" USING lantern_hnsw (v) WITH (dim=128, M=6); | async_task_4     | Indexing Job     | t       | succeeded | 
+(4 rows)
+
+-- NOTE: the test finishes but the async index creation may still be in progress
