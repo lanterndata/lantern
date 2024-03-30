@@ -18,19 +18,7 @@ If you don’t have PostgreSQL already, use Lantern with [Docker](https://hub.do
 ```bash
 docker run --pull=always --rm -p 5432:5432 -e "POSTGRES_USER=$USER" -e "POSTGRES_PASSWORD=postgres" -v ./lantern_data:/var/lib/postgresql/data lanterndata/lantern:latest-pg15
 ```
-
 Then, you can connect to the database via `postgresql://$USER:postgres@localhost/postgres`.
-
-To install Lantern from source on top of your existing PostgreSQL:
-
-```
-git clone --recursive https://github.com/lanterndata/lantern.git
-cd lantern
-mkdir build
-cd build
-cmake ..
-make install
-```
 
 To install Lantern using `homebrew`:
 
@@ -42,6 +30,36 @@ brew install lantern && lantern_install
 You can also install Lantern on top of PostgreSQL from our [precompiled binaries](https://github.com/lanterndata/lantern/releases) via a single `make install`.
 
 Alternatively, you can use Lantern in one click using [Replit](https://replit.com/@lanterndata/lantern-playground#.replit).
+
+
+## 🔧 Build Lantern from source code on top of your existing PostgreSQL
+Prerequisites:
+```
+cmake version: >=3.3
+gcc && g++ version: >=11 when building portable binaries, >= 12 when building on new hardware or with CPU-specific vectorization
+PostgreSQL 11, 12, 13, 14, 15 or 16
+Corresponding development package for PostgreSQL (postgresql-server-dev-$version)
+
+```
+To build Lantern on new hardware or with CPU-specific vectorization:
+```
+git clone --recursive https://github.com/lanterndata/lantern.git
+cd lantern
+mkdir build
+cd build
+cmake ..
+make install
+```
+
+To build portable Lantern binaries:
+``` 
+git clone --recursive https://github.com/lanterndata/lantern.git
+cd lantern
+mkdir build
+cd build
+cmake -DMARCH_NATIVE=OFF ..
+make install
+```
 
 ## 📖 How to use Lantern
 
