@@ -74,8 +74,9 @@ then
     echo "Successfully downloaded all necessary test files"
 fi
 
-# Check if pgvector is available
+# Check if optional extensions are available
 pgvector_installed=$($PSQL -U $DB_USER -p $DB_PORT -d postgres -c "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'" -tA | tail -n 1 | tr -d '\n')
+pg_cron_installed=$($PSQL -U $DB_USER -p $DB_PORT -d postgres -c "SELECT 1 FROM pg_available_extensions WHERE name = 'pg_cron'" -tA | tail -n 1 | tr -d '\n')
 lantern_extras_installed=$($PSQL -U $DB_USER -p $DB_PORT -d postgres -c "SELECT 1 FROM pg_available_extensions WHERE name = 'lantern_extras'" -tA | tail -n 1 | tr -d '\n')
 
 # Settings
@@ -148,6 +149,10 @@ if [[ -n "$FILTER" || -n "$EXCLUDE" ]]; then
             TEST_FILES="${TEST_FILES}${NEWLINE}$(cat $SCHEDULE | grep -E '^(test_pgvector:)' | sed -e 's/^test_pgvector:/test:/' | tr " " "\n" | sed -e '/^$/d')"
         fi
 
+        if [[ "$pg_cron_installed" == "1" ]]; then
+            TEST_FILES="${TEST_FILES}${NEWLINE}$(cat $SCHEDULE | grep -E '^(test_pg_cron:)' | sed -e 's/^test_pg_cron:/test:/' | tr " " "\n" | sed -e '/^$/d')"
+        fi
+
         if [[ "$lantern_extras_installed" ]]; then
             TEST_FILES="${TEST_FILES}${NEWLINE}$(cat $SCHEDULE | grep -E '^(test_extras:)' | sed -e 's/^test_extras:/test:/' | tr " " "\n" | sed -e '/^$/d')"
         fi
@@ -185,6 +190,11 @@ else
         if [[ "$line" =~ ^test_pgvector: ]]; then
             test_name=$(echo "$line" | sed -e 's/test_pgvector://')
             if [ "$pgvector_installed" == "1" ]; then
+                echo "test: $test_name" >> $TMP_OUTDIR/schedule.txt
+            fi
+        elif [[ "$line" =~ ^test_pg_cron: ]]; then
+            test_name=$(echo "$line" | sed -e 's/test_pg_cron://')
+            if [ "$pg_cron_installed" == "1" ]; then
                 echo "test: $test_name" >> $TMP_OUTDIR/schedule.txt
             fi
         elif [[ "$line" =~ ^test_extras: ]]; then

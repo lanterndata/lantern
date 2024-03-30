@@ -21,6 +21,8 @@ function setup_postgres() {
   apt install -y postgresql-$PG_VERSION postgresql-server-dev-$PG_VERSION
   # Fix pg_config (sometimes it points to wrong version)
   rm -f /usr/bin/pg_config && ln -s /usr/lib/postgresql/$PG_VERSION/bin/pg_config /usr/bin/pg_config
+  # preload pg_cron, necessary for async tasks test
+  echo "shared_preload_libraries = 'pg_cron' " >> /etc/postgresql/$PG_VERSION/main/postgresql.conf
 }
 
 function install_platform_specific_dependencies() {
@@ -34,6 +36,18 @@ function install_platform_specific_dependencies() {
       make install
     popd
     rm -rf lantern-extras*
+
+    # check needed to make sure double-cloning does not happen on the benchmarking CI/CD instance
+    if [ ! -d "pg_cron" ]
+    then
+      git clone https://github.com/citusdata/pg_cron.git
+    fi
+
+    pushd pg_cron
+      git checkout ${PG_CRON_COMMIT_SHA}
+      make && make install
+    popd
+
   popd
 }
 

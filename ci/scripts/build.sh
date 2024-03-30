@@ -19,6 +19,9 @@ function setup_environment() {
   export DEBIAN_FRONTEND=noninteractive
   export PG_VERSION=${PG_VERSION:-15}
   export GITHUB_OUTPUT=${GITHUB_OUTPUT:-/dev/null}
+  export PGVECTOR_VERSION=0.6.1
+  #fix pg_cron at the latest commit of the time
+  export PG_CRON_COMMIT_SHA=7e91e72b1bebc5869bb900d9253cc9e92518b33f
 }
 
 function clone_or_use_source() {
@@ -38,7 +41,6 @@ function clone_or_use_source() {
 function install_external_dependencies() {
   # Install pgvector
   pushd /tmp
-    PGVECTOR_VERSION=0.5.0
     wget -O pgvector.tar.gz https://github.com/pgvector/pgvector/archive/refs/tags/v${PGVECTOR_VERSION}.tar.gz
     tar xzf pgvector.tar.gz
     rm -rf pgvector || true
@@ -46,6 +48,7 @@ function install_external_dependencies() {
     pushd pgvector
       make && make install
     popd
+
   popd
 }
 
@@ -72,10 +75,11 @@ function build_and_install() {
   make install
 }
 
+setup_environment
+
 # Source platform specific build script
 source "$(dirname "$0")/${BUILD_SCRIPT}"
 
-setup_environment
 setup_locale_and_install_packages
 setup_postgres
 install_external_dependencies
