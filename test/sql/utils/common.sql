@@ -13,41 +13,38 @@ CREATE EXTENSION IF NOT EXISTS pageinspect;
 -- retrieves details for all indices associated with a given table, similar to \di+
 -- the output of \di+ is not consistent across postgres versions
 -- todo:: add a columns to this function which returning number of used DB pages
+DROP FUNCTION IF EXISTS ldb_get_indexes;
 CREATE OR REPLACE FUNCTION ldb_get_indexes(tblname text)
 RETURNS TABLE(
     indexname name,
     size text,
     indexdef text,
-    total_index_size text
+    indisvalid boolean
 ) AS
 $BODY$
 BEGIN
     RETURN QUERY
-    WITH total_size_data AS (
-        SELECT
-            SUM(pg_relation_size(indexrelid)) as total_size
-        FROM
-            pg_index 
-        WHERE
-            indisvalid
-            AND indrelid = tblname::regclass
-    )
     SELECT
-        idx.indexname,
-        pg_size_pretty(pg_relation_size(idx.indexname::REGCLASS)) as size,
-        idx.indexdef,
-        pg_size_pretty(total_size_data.total_size) as total_index_size
+      c2.relname,
+      pg_size_pretty(pg_relation_size(c2.oid)),
+      pg_catalog.pg_get_indexdef(i.indexrelid, 0, true),
+      i.indisvalid
     FROM
-        pg_indexes idx,
-        total_size_data
+      pg_catalog.pg_class c,
+      pg_catalog.pg_class c2,
+      pg_catalog.pg_index i
     WHERE
-        idx.tablename = tblname;
+      c.oid = quote_ident(tblname)::regclass
+      AND c.oid = i.indrelid
+      AND i.indexrelid = c2.oid
+    ORDER BY
+      c2.relname;
 END;
 $BODY$
 LANGUAGE plpgsql;
 
--- Determines if the provided SQL query (with an EXPLAIN prefix) uses an "Index Scan" 
--- by examining its execution plan. This function helps ensure consistent analysis 
+-- Determines if the provided SQL query (with an EXPLAIN prefix) uses an "Index Scan"
+-- by examining its execution plan. This function helps ensure consistent analysis
 -- across varying Postgres versions where EXPLAIN output may differ.
 CREATE OR REPLACE FUNCTION has_index_scan(explain_query text) RETURNS boolean AS $$
 DECLARE

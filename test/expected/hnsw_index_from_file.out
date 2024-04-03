@@ -43,9 +43,9 @@ INFO:  validate_index() done, no issues found.
 (1 row)
 
 SELECT * FROM ldb_get_indexes('sift_base1k');
-   indexname   |  size  |                                                                           indexdef                                                                            | total_index_size 
----------------+--------+---------------------------------------------------------------------------------------------------------------------------------------------------------------+------------------
- hnsw_l2_index | 720 kB | CREATE INDEX hnsw_l2_index ON public.sift_base1k USING lantern_hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2sq-0.0.13.usearch') | 720 kB
+   indexname   |  size  |                                                                        indexdef                                                                        | indisvalid 
+---------------+--------+--------------------------------------------------------------------------------------------------------------------------------------------------------+------------
+ hnsw_l2_index | 720 kB | CREATE INDEX hnsw_l2_index ON sift_base1k USING lantern_hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2sq-0.0.13.usearch') | t
 (1 row)
 
 SET enable_seqscan=FALSE;
@@ -116,9 +116,9 @@ INFO:  validate_index() done, no issues found.
 (1 row)
 
 SELECT * FROM ldb_get_indexes('sift_base1k');
-   indexname    |  size  |                                                                           indexdef                                                                            | total_index_size 
-----------------+--------+---------------------------------------------------------------------------------------------------------------------------------------------------------------+------------------
- hnsw_cos_index | 720 kB | CREATE INDEX hnsw_cos_index ON public.sift_base1k USING lantern_hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-cos-0.0.13.usearch') | 720 kB
+   indexname    |  size  |                                                                        indexdef                                                                        | indisvalid 
+----------------+--------+--------------------------------------------------------------------------------------------------------------------------------------------------------+------------
+ hnsw_cos_index | 720 kB | CREATE INDEX hnsw_cos_index ON sift_base1k USING lantern_hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-cos-0.0.13.usearch') | t
 (1 row)
 
 SELECT v AS v777 FROM sift_base1k WHERE id = 777 \gset
