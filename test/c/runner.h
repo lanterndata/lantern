@@ -2,10 +2,11 @@
 #define RUNNER_H
 
 #include <libpq-fe.h>
+#include <stdlib.h>
 typedef struct TestCaseState
 {
-    PGconn     *conn;
-    PGconn     *replica_conn;
+    PGconn *    conn;
+    PGconn *    replica_conn;
     const char *DB_HOST;
     const char *DB_PORT;
     const char *DB_USER;
@@ -18,11 +19,19 @@ typedef int (*TestCaseFunction)(TestCaseState *);
 
 struct TestCase
 {
-    char            *name;
+    char *           name;
     TestCaseFunction func;
 };
 
 PGconn *connect_database(
     const char *db_host, const char *db_port, const char *db_user, const char *db_password, const char *db_name);
+
+static void expect(int cond, const char *message)
+{
+    if(!cond) {
+        fprintf(stderr, "Error: %s\n", message);
+        exit(1);
+    }
+}
 
 #endif

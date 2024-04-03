@@ -7,6 +7,7 @@
 int replica_test_index(TestCaseState* state)
 {
     // Create table and index
+    int       status;
     PGresult* res
         = PQexec(state->conn,
                  "CREATE FUNCTION prepare(create_index BOOL) RETURNS VOID AS $$\n"
@@ -90,7 +91,8 @@ int replica_test_index(TestCaseState* state)
     }
 
     // Restart replica with crash and verify it start correctly after WAL recovery
-    system("bash -c '. ../ci/scripts/bitnami-utils.sh && crash_and_restart_postgres_replica'");
+    status = system("bash -c '. ../ci/scripts/bitnami-utils.sh && crash_and_restart_postgres_replica'");
+    expect(0 == status, "Failed to crash and restart replica");
     state->replica_conn = connect_database(
         state->DB_HOST, state->REPLICA_PORT, state->DB_USER, state->DB_PASSWORD, state->TEST_DB_NAME);
 
@@ -99,7 +101,8 @@ int replica_test_index(TestCaseState* state)
     if(PQresultStatus(res) != PGRES_TUPLES_OK) {
         fprintf(stderr, "Failed to validate index on replica after restart: %s\n", PQerrorMessage(state->replica_conn));
         // Tail the log file to see crash error if any
-        system("tail /tmp/postgres-slave-conf/pg.log 2>/dev/null || true");
+        status = system("tail /tmp/postgres-slave-conf/pg.log 2>/dev/null || true");
+        expect(0 == status, "Failed to validate index on replica after restart");
         PQclear(res);
         return 1;
     }
@@ -107,7 +110,8 @@ int replica_test_index(TestCaseState* state)
     PQclear(res);
 
     // Restart master with crash and verify it start correctly after WAL recovery
-    system("bash -c '. ../ci/scripts/bitnami-utils.sh && crash_and_restart_postgres_master'");
+    status = system("bash -c '. ../ci/scripts/bitnami-utils.sh && crash_and_restart_postgres_master'");
+    expect(0 == status, "Failed to crash and restart master");
     state->conn
         = connect_database(state->DB_HOST, state->DB_PORT, state->DB_USER, state->DB_PASSWORD, state->TEST_DB_NAME);
 
@@ -116,7 +120,8 @@ int replica_test_index(TestCaseState* state)
     if(PQresultStatus(res) != PGRES_TUPLES_OK) {
         fprintf(stderr, "Failed to validate index on master after restart: %s\n", PQerrorMessage(state->conn));
         // Tail the log file to see crash error if any
-        system("tail /tmp/postgres-master-conf/pg.log 2>/dev/null || true");
+        status = system("tail /tmp/postgres-master-conf/pg.log 2>/dev/null || true");
+        expect(0 == status, "Failed to validate index on master after restart");
         PQclear(res);
         return 1;
     }

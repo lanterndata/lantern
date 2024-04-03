@@ -16,6 +16,7 @@ int replica_test_unlogged(TestCaseState* state)
     */
 
     PGresult* res;
+    int       status;
 
     // Create unlogged table, index, and insert data
     res = PQexec(state->conn,
@@ -104,7 +105,8 @@ int replica_test_unlogged(TestCaseState* state)
     PQclear(res);
 
     // Crash replica:
-    system("bash -c '. ../ci/scripts/bitnami-utils.sh && crash_and_restart_postgres_replica'");
+    status = system("bash -c '. ../ci/scripts/bitnami-utils.sh && crash_and_restart_postgres_replica'");
+    expect(0 == status, "Failed to crash and restart replica");
     state->replica_conn = connect_database(
         state->DB_HOST, state->REPLICA_PORT, state->DB_USER, state->DB_PASSWORD, state->TEST_DB_NAME);
 
@@ -114,7 +116,8 @@ int replica_test_unlogged(TestCaseState* state)
     if(PQresultStatus(res) != PGRES_TUPLES_OK) {
         fprintf(stderr, "Failed to validate index on replica after restart: %s\n", PQerrorMessage(state->replica_conn));
         // Tail the log file to see crash error if any
-        system("tail /tmp/postgres-slave-conf/pg.log 2>/dev/null || true");
+        status = system("tail /tmp/postgres-slave-conf/pg.log 2>/dev/null || true");
+        expect(0 == status, "Failed to tail log file");
         PQclear(res);
         return 1;
     }
