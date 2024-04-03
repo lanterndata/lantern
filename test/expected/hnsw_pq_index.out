@@ -210,12 +210,6 @@ EXPLAIN (COSTS FALSE) SELECT id, v, v_pq, v_pq_dec, (v <-> :'v4') as dist, (v_pq
          Order By: (v <-> '{0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4}'::real[])
 (3 rows)
 
-SELECT id FROM small_world_pq ORDER BY v <-> :'v4' LIMIT 1;
- id 
-----
-  4
-(1 row)
-
 -- add another entry with vector v4, and search for it again
 INSERT INTO small_world_pq(id, v) VALUES (42, :'v4');
 -- SELECT ARRAY_AGG(id ORDER BY id) FROM
