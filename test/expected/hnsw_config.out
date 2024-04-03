@@ -24,9 +24,9 @@ INFO:  done init usearch index
 INFO:  inserted 8 elements
 INFO:  done saving 8 vectors
 SELECT * FROM ldb_get_indexes('small_world');
-     indexname     | size  |                                          indexdef                                          | total_index_size 
--------------------+-------+--------------------------------------------------------------------------------------------+------------------
- small_world_v_idx | 24 kB | CREATE INDEX small_world_v_idx ON public.small_world USING lantern_hnsw (v) WITH (dim='3') | 24 kB
+     indexname     | size  |                                      indexdef                                       | indisvalid 
+-------------------+-------+-------------------------------------------------------------------------------------+------------
+ small_world_v_idx | 24 kB | CREATE INDEX small_world_v_idx ON small_world USING lantern_hnsw (v) WITH (dim='3') | t
 (1 row)
 
 -- Verify that lantern_hnsw.init_k exists after index creation
