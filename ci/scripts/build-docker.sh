@@ -19,7 +19,7 @@ apt install -y --no-install-recommends build-essential cmake clang llvm postgres
 cd /tmp/lantern && mkdir build && cd build && \
 # Run cmake
 sh -c "cmake $(get_cmake_flags) .." && \
-make install && \
+make install -j && \
 # Remove dev files
 rm -rf /tmp/lantern && \
 apt-get remove -y build-essential postgresql-server-dev-$PG_VERSION cmake clang llvm && \

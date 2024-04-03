@@ -31,10 +31,11 @@ jobs:
           submodules: "recursive"
       - name: Build
         id: build
-        run: sudo sh -c "PG_VERSION=$PG_VERSION USE_SOURCE=1 GITHUB_OUTPUT=$GITHUB_OUTPUT ENABLE_COVERAGE=1 ./ci/scripts/build.sh"
+        run: sudo sh -c "PG_VERSION=$PG_VERSION USE_SOURCE=1 GITHUB_OUTPUT=$GITHUB_OUTPUT ENABLE_COVERAGE=$ENABLE_COVERAGE ./ci/scripts/build.sh"
         env:
           PG_VERSION: ${{ matrix.postgres }}
           BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+          ENABLE_COVERAGE: ${{ (startsWith(matrix.os, 'ubuntu') && matrix.postgres == 15) && '1' || '0' }}
       # Enable tmate debugging of manually-triggered workflows if the input option was provided
       - name: Setup tmate session
         uses: mxschmitt/action-tmate@v3
@@ -45,6 +46,7 @@ jobs:
         env:
           RUN_REPLICA_TESTS: "${{ matrix.postgres == 15 && '1' || '0' }}"
           PG_VERSION: ${{ matrix.postgres }}
+          ENABLE_COVERAGE: ${{ (startsWith(matrix.os, 'ubuntu') && matrix.postgres == 15) && '1' || '0' }}
         if: ${{ !startsWith(matrix.os, 'mac') }}
       - name: Run update tests linux
         id: update-test-linux
