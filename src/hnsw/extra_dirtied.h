@@ -12,8 +12,12 @@
 // this now includes buffers dirtied by the usearch
 // hnsw updates (= buffers of new neighbors of the inserted vector)
 #define LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS 100
+
+// on linux and on mac clang-format format spacaing around ')-1)' differently
+// clang-format off
 #define LDB_HNSW_EXTRA_DIRTIED_MAX_WAL_RECORDS \
-    (((LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS) + (MAX_GENERIC_XLOG_PAGES) - 1) / (MAX_GENERIC_XLOG_PAGES))
+    (((LDB_HNSW_INSERT_MAX_EXTRA_DIRTIED_BUFS) + (MAX_GENERIC_XLOG_PAGES)-1) / (MAX_GENERIC_XLOG_PAGES))
+// clang-format on
 
 typedef struct
 {
