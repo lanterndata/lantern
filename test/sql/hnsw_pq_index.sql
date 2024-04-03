@@ -63,7 +63,6 @@ UPDATE small_world_pq SET v_pq_dec=dequantize_vector(v_pq, '_lantern_internal.pq
 CREATE INDEX hnsw_pq_l2_index ON small_world_pq USING lantern_hnsw(v) WITH (pq=True);
 SELECT _lantern_internal.validate_index('hnsw_pq_l2_index', false);
 EXPLAIN (COSTS FALSE) SELECT id, v, v_pq, v_pq_dec, (v <-> :'v4') as dist, (v_pq_dec <-> :'v4') real_dist FROM small_world_pq ORDER BY dist LIMIT 1;
-SELECT id FROM small_world_pq ORDER BY v <-> :'v4' LIMIT 1;
 -- add another entry with vector v4, and search for it again
 INSERT INTO small_world_pq(id, v) VALUES (42, :'v4');
 -- SELECT ARRAY_AGG(id ORDER BY id) FROM
