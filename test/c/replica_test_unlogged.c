@@ -8,16 +8,16 @@ int replica_test_unlogged(TestCaseState* state)
 {
     /*
     Test Outline
-    ============= 
+    =============
     1. Create unlogged table and index on it (and insert data)
     2. Make table logged
     3. Insert data on master
     4. Crash and restart slave and call validate_index on it
     */
 
-   PGresult* res;
+    PGresult* res;
 
-    // Create unlogged table, index, and insert data 
+    // Create unlogged table, index, and insert data
     res = PQexec(state->conn,
                  "DROP TABLE IF EXISTS small_world;"
                  "CREATE UNLOGGED TABLE small_world (id SERIAL PRIMARY KEY, v real[]);"
@@ -26,7 +26,9 @@ int replica_test_unlogged(TestCaseState* state)
                  "CHECKPOINT;");
 
     if(PQresultStatus(res) != PGRES_COMMAND_OK) {
-        fprintf(stderr, "Failed to prepare unlogged table, create index, and insert data on it: %s\n", PQerrorMessage(state->conn));
+        fprintf(stderr,
+                "Failed to prepare unlogged table, create index, and insert data on it: %s\n",
+                PQerrorMessage(state->conn));
         PQclear(res);
         return 1;
     }
@@ -45,8 +47,7 @@ int replica_test_unlogged(TestCaseState* state)
     PQclear(res);
 
     // Alter table to be logged
-    res = PQexec(state->conn,
-                 "ALTER TABLE small_world SET LOGGED;");
+    res = PQexec(state->conn, "ALTER TABLE small_world SET LOGGED;");
 
     if(PQresultStatus(res) != PGRES_COMMAND_OK) {
         fprintf(stderr, "Failed to alter unlogged table to logged: %s\n", PQerrorMessage(state->conn));
@@ -57,8 +58,7 @@ int replica_test_unlogged(TestCaseState* state)
     PQclear(res);
 
     // Insert some more data
-    res = PQexec(state->conn,
-                 "INSERT INTO small_world (v) VALUES (ARRAY[1,2,3])");
+    res = PQexec(state->conn, "INSERT INTO small_world (v) VALUES (ARRAY[1,2,3])");
 
     if(PQresultStatus(res) != PGRES_COMMAND_OK) {
         fprintf(stderr, "Failed to insert more data into the now logged table: %s\n", PQerrorMessage(state->conn));
