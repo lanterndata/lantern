@@ -20,7 +20,7 @@ function wait_for_pg(){
      echo "Can not connect to postgres"
      exit 1
    fi
-   
+
    sleep 1
    tries=$((tries+1))
  done
@@ -55,7 +55,10 @@ function run_db_tests(){
     make test-client && \
     run_pgvector_tests && \
     stop_current_postgres && \
-    make cover
+    if [[ "$ENABLE_COVERAGE" == "1" ]]
+    then
+      make cover
+    fi
   fi
 }
 

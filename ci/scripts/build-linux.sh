@@ -3,9 +3,12 @@ set -e
 
 function setup_locale_and_install_packages() {
   echo "LC_ALL=en_US.UTF-8" > /etc/environment
+  echo "CC=/usr/bin/gcc-13" >> /etc/environment
+  echo "CXX=/usr/bin/g++-13" >> /etc/environment
   echo "en_US.UTF-8 UTF-8" > /etc/locale.gen
   echo "LANG=en_US.UTF-8" > /etc/locale.conf
 
+  source /etc/environment
   apt update -y
   apt install -y locales lsb-core build-essential automake cmake wget git dpkg-dev lcov clang-format clang llvm
 
@@ -45,7 +48,7 @@ function install_platform_specific_dependencies() {
 
     pushd pg_cron
       git checkout ${PG_CRON_COMMIT_SHA}
-      make && make install
+      make -j && make install
     popd
 
   popd
@@ -66,7 +69,7 @@ function package_if_necessary() {
 
 function cleanup_environment() {
   # Check for undefined symbols
-  if [ ! -n "$ENABLE_COVERAGE" ]
+  if [[ "$ENABLE_COVERAGE" != "1" ]]
   then
     /tmp/lantern/scripts/check_symbols.sh ./lantern.so
   fi

@@ -5,6 +5,9 @@ function setup_locale_and_install_packages() {
   export PATH="/usr/local/opt/postgresql@${PG_VERSION}/bin:$PATH"
   export C_INCLUDE_PATH=/usr/local/include
   export CPLUS_INCLUDE_PATH=/usr/local/include
+
+  export CC=/usr/bin/clang
+  export CXX=/usr/bin/clang++
 }
 
 function setup_postgres() {

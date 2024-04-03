@@ -29,7 +29,7 @@ function clone_or_use_source() {
     # Clone from git
     cd /tmp
     git clone --recursive https://github.com/lanterndata/lantern.git -b $BRANCH
-  else 
+  else
     # Use already checkouted code
     shopt -s dotglob
     rm -rf /tmp/lantern
@@ -46,7 +46,7 @@ function install_external_dependencies() {
     rm -rf pgvector || true
     mv pgvector-${PGVECTOR_VERSION} pgvector
     pushd pgvector
-      make && make install
+      make -j && make install
     popd
 
   popd
@@ -57,22 +57,19 @@ function build_and_install() {
   mkdir build
   cd build
 
-  flags="-DBUILD_FOR_DISTRIBUTING=YES -DMARCH_NATIVE=OFF"
-  
-  # Treat warnings as errors in CI/CD
-  flags+=" -DCMAKE_COMPILE_WARNING_AS_ERROR=ON"
-  
-  if [ -n "$ENABLE_COVERAGE" ]
+  flags="-DBUILD_FOR_DISTRIBUTING=YES -DMARCH_NATIVE=OFF -DCMAKE_COMPILE_WARNING_AS_ERROR=ON \
+  -DCMAKE_C_COMPILER=$CC -DCMAKE_CXX_COMPILER=$CXX \
+  -DBUILD_C_TESTS=ON"
+
+  if [[ "$ENABLE_COVERAGE" == "1" ]]
   then
-    flags="$flags -DCMAKE_C_COMPILER=/usr/bin/gcc-13 -DCMAKE_CXX_COMPILER=/usr/bin/g++-13 -DCODECOVERAGE=ON -DBUILD_C_TESTS=ON"
+    flags="$flags -DCODECOVERAGE=ON"
     mv /usr/bin/gcov-13 /usr/bin/gcov
-  else
-    flags+=" -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang"
   fi
 
   # Run cmake
   cmake $flags ..
-  make install
+  make install -j
 }
 
 setup_environment
