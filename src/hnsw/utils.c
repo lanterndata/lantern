@@ -78,8 +78,13 @@ void CheckMem(int limit, Relation index, usearch_index_t uidx, uint32 n_nodes, c
         double          M = ldb_HnswGetM(index);
         double          mL = 1 / log(M);
         metadata_t      meta = usearch_index_metadata(uidx, &error);
-        // todo:: update sizeof(float) to correct vector size once #19 is merged
-        node_size = UsearchNodeBytes(&meta, meta.dimensions * sizeof(float), (int)round(mL + 1));
+        int vector_bytes_num = divide_round_up(meta.dimensions * GetUsearchBitsPerScalar(GetUsearchScalarKindFromIndexMeta(meta)), 8);
+
+        // use the node size at level `(int)rount(mL + 1)` as the average node size,
+        // the sizes of nodes in different levels is actually not linearly related, but 
+        // since nodes are exponentially distributed between levels, dominated by bottom level,
+        // this is a reasonably good approximation.
+        node_size = UsearchNodeBytes(&meta, vector_bytes_num, (int)round(mL + 1));
     }
     // todo:: there's figure out a way to check this in pg <= 12
 #if PG_VERSION_NUM >= 130000

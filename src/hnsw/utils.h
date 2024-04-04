@@ -17,6 +17,25 @@ uint32                EstimateRowCount(Relation heap);
 int32                 GetColumnAttributeNumber(Relation rel, const char *columnName);
 usearch_metric_kind_t GetMetricKindFromStr(char *metric_kind_str);
 
+inline size_t divide_round_up(size_t num, size_t denominator) {
+    return (num + denominator - 1) / denominator;
+}
+
+inline size_t GetUsearchBitsPerScalar(usearch_scalar_kind_t scalar_kind) {
+    switch (scalar_kind) {
+    case usearch_scalar_f64_k: return 64;
+    case usearch_scalar_f32_k: return 32;
+    case usearch_scalar_f16_k: return 16;
+    case usearch_scalar_i8_k: return 8;
+    case usearch_scalar_b1_k: return 1;
+    default: return 0;
+    }
+}
+
+inline usearch_scalar_kind_t GetUsearchScalarKindFromIndexMeta(metadata_t meta) {
+    return meta.init_options.quantization;
+}
+
 // hoping to throw the error via an assertion, if those are on, before elog(ERROR)-ing as a last resort
 // We prefer Assert() because this function is used in contexts where the stack contains non-POD types
 // in which case elog-s long jumps cause undefined behaviour.
