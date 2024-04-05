@@ -42,7 +42,7 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
       - name: Run tests linux
         id: test-linux
-        run: sudo su postgres -c "PG_VERSION=$PG_VERSION RUN_REPLICA_TESTS=$RUN_REPLICA_TESTS ./ci/scripts/run-tests-linux.sh"
+        run: sudo su postgres -c "PG_VERSION=$PG_VERSION RUN_REPLICA_TESTS=$RUN_REPLICA_TESTS ENABLE_COVERAGE=$ENABLE_COVERAGE ./ci/scripts/run-tests-linux.sh"
         env:
           RUN_REPLICA_TESTS: "${{ matrix.postgres == 15 && '1' || '0' }}"
           PG_VERSION: ${{ matrix.postgres }}
@@ -83,7 +83,8 @@ jobs:
         run: ./ci/scripts/run-tests-mac.sh
         env:
           PG_VERSION: ${{ matrix.postgres }}
-        if: ${{ startsWith(matrix.os, 'mac') }}
+        # postgresql@11 seems broken on brew on Ventura used in the runner https://github.com/orgs/Homebrew/discussions/5263
+        if: ${{ startsWith(matrix.os, 'mac') && matrix.postgres != 11 }}
       - name: Upload Postgres logs
         if: failure()
         uses: actions/upload-artifact@v4
