@@ -485,7 +485,7 @@ BEGIN
     RETURN;
   END IF;
 
-  -- Asynchronous task scheduling
+  -- Asynchronous task scheduling BEGIN
   CREATE TABLE lantern.tasks (
 	  jobid bigserial primary key,
 	  query text not null,
@@ -592,3 +592,5 @@ $async_tasks_related$ LANGUAGE plpgsql;
 
 SELECT _lantern_internal.maybe_setup_lantern_tasks();
 DROP FUNCTION _lantern_internal.maybe_setup_lantern_tasks();
+
+-- Asynchronous task scheduling BEGIN
