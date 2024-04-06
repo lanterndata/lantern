@@ -47,6 +47,7 @@ function install_platform_specific_dependencies() {
     fi
 
     pushd pg_cron
+      git fetch
       git checkout ${PG_CRON_COMMIT_SHA}
       make -j && make install
     popd
