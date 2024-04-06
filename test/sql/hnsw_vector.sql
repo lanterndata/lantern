@@ -6,9 +6,6 @@
 -- pgvector if it is present on initialization
 DROP EXTENSION IF EXISTS lantern;
 CREATE EXTENSION IF NOT EXISTS vector;
--- Setting min messages to ERROR so the WARNING about existing hnsw access method is NOT printed
--- in tests. This makes sure that regression tests pass on pgvector <=0.4.4 as well as >=0.5.0
-SET client_min_messages=ERROR;
 CREATE EXTENSION lantern;
 RESET client_min_messages;
 SET lantern.pgvector_compat=FALSE;

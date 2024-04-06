@@ -48,6 +48,10 @@ function run_regression_test {
                grep -v 'DEBUG:  rehashing catalog cache id' | \
                grep -Gv '^ Planning Time:' | \
                grep -Gv '^ Execution Time:' | \
+               # ignore lines in explain(format json) output that differ among pg12-pg16
+               grep -Gv '"Scan Direction": "Forward",' | \
+               grep -Gv '"Scan Direction": "NoMovement",' | \
+               grep -Gv '"Async Capable": false,' | \
                # Only print debug messages followed by LANTERN
                perl -nle'print if !m{DEBUG:(?!.*LANTERN)}'
 }
