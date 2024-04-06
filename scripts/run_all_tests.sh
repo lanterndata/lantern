@@ -37,8 +37,8 @@ mkdir -p $TMP_OUTDIR
 if [ ! -d "$TMP_ROOT/vector_datasets" ]
 then
     if ! command -v curl &> /dev/null; then
-    echo "ERROR: The binary curl is required for running tests to download necessary vector test files"
-    exit 1
+        echo "ERROR: curl utility is required for running tests to download necessary vector test files"
+        exit 1
     fi
     mkdir -p $TMP_ROOT/vector_datasets
     echo "Downloading necessary vector files..."

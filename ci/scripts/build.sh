@@ -46,6 +46,10 @@ function install_external_dependencies() {
     rm -rf pgvector || true
     mv pgvector-${PGVECTOR_VERSION} pgvector
     pushd pgvector
+      # Set max ef_search to 50000
+      # .bak trick is needed to make this work on both mac and linux
+      # https://stackoverflow.com/questions/5694228/sed-in-place-flag-that-works-both-on-mac-bsd-and-linux
+      sed -i.bak "s/#define HNSW_MAX_EF_SEARCH.*/#define HNSW_MAX_EF_SEARCH 50000/g" src/hnsw.h
       make -j && make install
     popd
 
