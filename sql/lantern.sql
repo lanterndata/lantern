@@ -475,6 +475,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+  -- Asynchronous task scheduling BEGIN
 CREATE OR REPLACE FUNCTION _lantern_internal.maybe_setup_lantern_tasks() RETURNS VOID AS
 $async_tasks_related$
 BEGIN
@@ -484,7 +485,6 @@ BEGIN
     RETURN;
   END IF;
 
-  -- Asynchronous task scheduling BEGIN
   CREATE TABLE lantern.tasks (
 	  jobid bigserial primary key,
 	  query text not null,
