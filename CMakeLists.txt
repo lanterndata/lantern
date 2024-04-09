@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.3)
 
-set(LANTERN_VERSION 0.2.2)
+set(LANTERN_VERSION 0.2.3)
 
 project(
   LanternDB
@@ -110,7 +110,7 @@ if (BUILD_C_TESTS)
   target_link_directories(lantern_c_tests PRIVATE ${PostgreSQL_LIBRARY_DIRS})
   # Link libpq
   target_link_libraries(lantern_c_tests "-lpq")
-  
+
   add_custom_target(
     test-client
     COMMAND ${CMAKE_SOURCE_DIR}/scripts/run_all_tests.sh --client
@@ -251,9 +251,9 @@ set(_script_file "lantern--${RELEASE_ID}.sql")
 # ============== Use clang compiler to emit llvm bytecode =================
 find_program(LLVM_LTO NAMES llvm-lto)
 if(
-  NOT LLVM_LTO STREQUAL "LLVM_LTO-NOTFOUND" 
-  AND PostgreSQL_WITH_LLVM 
-  AND CMAKE_C_COMPILER_ID MATCHES "Clang" 
+  NOT LLVM_LTO STREQUAL "LLVM_LTO-NOTFOUND"
+  AND PostgreSQL_WITH_LLVM
+  AND CMAKE_C_COMPILER_ID MATCHES "Clang"
   AND CMAKE_CXX_COMPILER_ID MATCHES "Clang"
 )
   target_link_options(lantern PRIVATE -flto)
@@ -270,6 +270,7 @@ endif()
 set (_update_files
   sql/updates/0.2.0--0.2.1.sql
   sql/updates/0.2.1--0.2.2.sql
+  sql/updates/0.2.2--0.2.3.sql
 )
 
 # Generate version information for the binary
@@ -400,7 +401,7 @@ if (CLANG_FORMAT)
   # Add format check target
   add_custom_target(
     format_check
-    COMMAND ${CLANG_FORMAT} --dry-run -Werror ${CLANG_FORMATTABLE_FILES} 
+    COMMAND ${CLANG_FORMAT} --dry-run -Werror ${CLANG_FORMATTABLE_FILES}
     COMMENT "Checking code formatting with clang-format"
     VERBATIM
   )
