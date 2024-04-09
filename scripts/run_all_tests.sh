@@ -37,15 +37,15 @@ mkdir -p $TMP_OUTDIR
 if [ ! -d "$TMP_ROOT/vector_datasets" ]
 then
     if ! command -v curl &> /dev/null; then
-	echo "ERROR: The binary curl is required for running tests to download necessary vector test files"
-	exit 1
+    echo "ERROR: The binary curl is required for running tests to download necessary vector test files"
+    exit 1
     fi
     mkdir -p $TMP_ROOT/vector_datasets
     echo "Downloading necessary vector files..."
     pushd $TMP_ROOT/vector_datasets
-        curl -sSo sift_base1k.csv https://storage.googleapis.com/lanterndb/sift_base1k.csv
+        curl -sSo sift_base1k.csv https://storage.googleapis.com/lanterndata/siftsmall/sift_base1k.csv
         curl -sSo siftsmall_base.csv https://storage.googleapis.com/lanterndata/siftsmall/siftsmall_base.csv
-        curl -sSo tsv_wiki_sample.csv https://storage.googleapis.com/lanterndb/tsv_wiki_sample.csv
+        curl -sSo tsv_wiki_sample.csv https://storage.googleapis.com/lanterndata/wiki/tsv_wiki_sample.csv
         curl -sSo views_vec10k.csv https://storage.googleapis.com/lanterndata/random_multicolumn/views_vec10k.csv
         # Convert vector to arrays to be used with real[] type
         cat sift_base1k.csv | sed -e 's/\[/{/g' | sed -e 's/\]/}/g' > sift_base1k_arrays.csv
@@ -121,7 +121,7 @@ fi
 
 if [[ -n "$FILTER" || -n "$EXCLUDE" ]]; then
     if [ "$PARALLEL" -eq 1 ]; then
-    	TEST_FILES=$(cat $SCHEDULE | grep -E '^(test:|test_begin:|test_end:)' | sed -E -e 's/^test_begin:|test_end:/test:/' | tr " " "\n" | sed -e '/^$/d')
+        TEST_FILES=$(cat $SCHEDULE | grep -E '^(test:|test_begin:|test_end:)' | sed -E -e 's/^test_begin:|test_end:/test:/' | tr " " "\n" | sed -e '/^$/d')
 
         # begin.sql isn't really optional. There may be cases where we want to drop it, but users should probably have to be very explicit about this
         INCLUDE_BEGIN=1
