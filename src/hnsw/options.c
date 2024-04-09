@@ -271,6 +271,12 @@ void _PG_init(void)
                              NULL,
                              NULL);
 
+#if PG_VERSION_NUM >= 150000
+    MarkGUCPrefixReserved("lantern");
+    MarkGUCPrefixReserved("lantern_hnsw");
+    MarkGUCPrefixReserved("_lantern_internal");
+#endif
+
     // Print a warning with helpful info
     (void)VersionsMatch();
 
