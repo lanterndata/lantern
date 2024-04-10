@@ -522,3 +522,23 @@ SELECT count(*)
     15
 (1 row)
 
+-- create non superuser and test the function
+SET client_min_messages = WARNING;
+-- suppress NOTICE:  role "test_user" does not exist, skipping
+DROP USER IF EXISTS test_user;
+SET client_min_messages = NOTICE;
+CREATE USER test_user WITH PASSWORD 'test_password';
+GRANT SELECT ON sift_base1k TO test_user;
+GRANT SELECT ON sift_base1k_id_seq TO test_user;
+SET ROLE test_user;
+SELECT count(*)
+  FROM lantern.weighted_vector_search_cos(CAST(NULL as "sift_base1k"), exact => false, ef => 5,
+  w1=> 0.03, col1=>'v_real'::text, vec1=>:'v4'::vector,
+  w2=> 0.45, col2=>'v_real'::text, vec2=>:'v44'::vector,
+  w3=> 0.52, col3=>'v_real'::text, vec3=>:'v444'::vector
+);
+ count 
+-------
+    15
+(1 row)
+
