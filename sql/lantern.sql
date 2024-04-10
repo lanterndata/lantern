@@ -725,7 +725,7 @@ BEGIN
     --   4. check that id_col column exists before proceeding
 
     IF analyze_output THEN
-      maybe_analyze := 'ANALYZE,';
+      maybe_analyze := 'ANALYZE, BUFFERS,';
     END IF;
     -- Joint similarity metric condition
     wc1 := format('(%s * (%I %s %L))', w1, col1, distance_operator, vec1);
@@ -833,7 +833,8 @@ BEGIN
     max_dist numeric = NULL,
     id_col text = 'id',
     exact boolean = false,
-    debug_output boolean = false
+    debug_output boolean = false,
+    analyze_output boolean = false
     )
     -- N.B. Something seems strange about PL/pgSQL functions that return table with anyelement
     -- when there is single "anylement column" being returned (e.g. returns table ("row" anylement))
@@ -843,7 +844,7 @@ BEGIN
     RETURNS TABLE ("row" anyelement) AS $$
 
 BEGIN
-  RETURN QUERY SELECT * FROM lantern.weighted_vector_search(relation_type, w1, col1, vec1, w2, col2, vec2, w3, col3, vec3, ef, max_dist, '<=>', id_col, exact, debug_output);
+  RETURN QUERY SELECT * FROM lantern.weighted_vector_search(relation_type, w1, col1, vec1, w2, col2, vec2, w3, col3, vec3, ef, max_dist, '<=>', id_col, exact, debug_output, analyze_output);
 END $$ LANGUAGE plpgsql;
 
  CREATE OR REPLACE FUNCTION lantern.weighted_vector_search_l2sq(
@@ -861,7 +862,8 @@ END $$ LANGUAGE plpgsql;
     max_dist numeric = NULL,
     id_col text = 'id',
     exact boolean = false,
-    debug_output boolean = false
+    debug_output boolean = false,
+    analyze_output boolean = false
     )
     -- N.B. Something seems strange about PL/pgSQL functions that return table with anyelement
     -- when there is single "anylement column" being returned (e.g. returns table ("row" anylement))
@@ -871,7 +873,7 @@ END $$ LANGUAGE plpgsql;
     RETURNS TABLE ("row" anyelement) AS $$
 
 BEGIN
-  RETURN QUERY SELECT * FROM lantern.weighted_vector_search(relation_type, w1, col1, vec1, w2, col2, vec2, w3, col3, vec3, ef, max_dist, '<->', id_col, exact, debug_output);
+  RETURN QUERY SELECT * FROM lantern.weighted_vector_search(relation_type, w1, col1, vec1, w2, col2, vec2, w3, col3, vec3, ef, max_dist, '<->', id_col, exact, debug_output, analyze_output);
 END $$ LANGUAGE plpgsql;
 
 
