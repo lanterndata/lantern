@@ -60,13 +60,13 @@ FROM lantern.weighted_vector_search(CAST(NULL as "sift_base1k"), max_dist => 750
 LIMIT 100;
 WARNING:  col1 yielded 3 rows
 WARNING:  col2 yielded 1 rows
-WARNING:  Query: WITH query1 AS (SELECT * FROM sift_base1k  WHERE (1 * (v <-> '[MASKED_VECTOR]'))+ (1 * (v <-> '[MASKED_VECTOR]')) < '750' ORDER BY v <-> '[MASKED_VECTOR]' LIMIT '100') , query2 AS (SELECT * FROM sift_base1k  WHERE (1 * (v <-> '[MASKED_VECTOR]'))+ (1 * (v <-> '[MASKED_VECTOR]')) < '750' ORDER BY v <-> '[MASKED_VECTOR]' LIMIT '100')SELECT * FROM (
+WARNING:  Query: WITH query1 AS (SELECT * FROM sift_base1k  WHERE (1 * (v <-> '[MASKED_VECTOR]'::vector))+ (1 * (v <-> '[MASKED_VECTOR]'::vector)) < '750' ORDER BY v <-> '[MASKED_VECTOR]'::vector LIMIT '100') , query2 AS (SELECT * FROM sift_base1k  WHERE (1 * (v <-> '[MASKED_VECTOR]'::vector))+ (1 * (v <-> '[MASKED_VECTOR]'::vector)) < '750' ORDER BY v <-> '[MASKED_VECTOR]'::vector LIMIT '100')SELECT * FROM (
       SELECT DISTINCT ON (id) * FROM (
           (SELECT * FROM query1)
            UNION ALL (SELECT * FROM query2) 
       ) t
     )
-    tt  WHERE (1 * (v <-> '[MASKED_VECTOR]'))+ (1 * (v <-> '[MASKED_VECTOR]')) < '750' ORDER BY (1 * (v <-> '[MASKED_VECTOR]'))+ (1 * (v <-> '[MASKED_VECTOR]'))
+    tt  WHERE (1 * (v <-> '[MASKED_VECTOR]'::vector))+ (1 * (v <-> '[MASKED_VECTOR]'::vector)) < '750' ORDER BY (1 * (v <-> '[MASKED_VECTOR]'::vector))+ (1 * (v <-> '[MASKED_VECTOR]'::vector))
 WARNING:   weighted vector search explain: [
     {
         "Plan": {
@@ -177,7 +177,7 @@ FROM lantern.weighted_vector_search(CAST(NULL as "sift_base1k"), max_dist => 750
   w1=> 1., col1=>'v'::text, vec1=>:'v4'::vector,
   w2=> 1., col2=>'v'::text, vec2=>:'v44'::vector) as v4_weighted_search
 LIMIT 100;
-WARNING:  Query: SELECT * FROM sift_base1k  WHERE (1 * (v <-> '[MASKED_VECTOR]'))+ (1 * (v <-> '[MASKED_VECTOR]')) < '750' ORDER BY (1 * (v <-> '[MASKED_VECTOR]'))+ (1 * (v <-> '[MASKED_VECTOR]'))
+WARNING:  Query: SELECT * FROM sift_base1k  WHERE (1 * (v <-> '[MASKED_VECTOR]'::vector))+ (1 * (v <-> '[MASKED_VECTOR]'::vector)) < '750' ORDER BY (1 * (v <-> '[MASKED_VECTOR]'::vector))+ (1 * (v <-> '[MASKED_VECTOR]'::vector))
 WARNING:  weighted vector search explain(exact=true): [
     {
         "Plan": {
@@ -225,13 +225,13 @@ LIMIT 100) t;
 WARNING:  col1 yielded 1 rows
 WARNING:  col2 yielded 2 rows
 WARNING:  col3 yielded 3 rows
-WARNING:  Query: WITH query1 AS (SELECT * FROM sift_base1k  WHERE (0.03 * (v <-> '[MASKED_VECTOR]'))+ (0.45 * (v <-> '[MASKED_VECTOR]'))+ (0.52 * (v <-> '[MASKED_VECTOR]')) < '440' ORDER BY v <-> '[MASKED_VECTOR]' LIMIT '100') , query2 AS (SELECT * FROM sift_base1k  WHERE (0.03 * (v <-> '[MASKED_VECTOR]'))+ (0.45 * (v <-> '[MASKED_VECTOR]'))+ (0.52 * (v <-> '[MASKED_VECTOR]')) < '440' ORDER BY v <-> '[MASKED_VECTOR]' LIMIT '100'), query3 AS (SELECT * FROM sift_base1k  WHERE (0.03 * (v <-> '[MASKED_VECTOR]'))+ (0.45 * (v <-> '[MASKED_VECTOR]'))+ (0.52 * (v <-> '[MASKED_VECTOR]')) < '440' ORDER BY v <-> '[MASKED_VECTOR]' LIMIT '100')SELECT * FROM (
+WARNING:  Query: WITH query1 AS (SELECT * FROM sift_base1k  WHERE (0.03 * (v <-> '[MASKED_VECTOR]'::vector))+ (0.45 * (v <-> '[MASKED_VECTOR]'::vector))+ (0.52 * (v <-> '[MASKED_VECTOR]'::vector)) < '440' ORDER BY v <-> '[MASKED_VECTOR]'::vector LIMIT '100') , query2 AS (SELECT * FROM sift_base1k  WHERE (0.03 * (v <-> '[MASKED_VECTOR]'::vector))+ (0.45 * (v <-> '[MASKED_VECTOR]'::vector))+ (0.52 * (v <-> '[MASKED_VECTOR]'::vector)) < '440' ORDER BY v <-> '[MASKED_VECTOR]'::vector LIMIT '100'), query3 AS (SELECT * FROM sift_base1k  WHERE (0.03 * (v <-> '[MASKED_VECTOR]'::vector))+ (0.45 * (v <-> '[MASKED_VECTOR]'::vector))+ (0.52 * (v <-> '[MASKED_VECTOR]'::vector)) < '440' ORDER BY v <-> '[MASKED_VECTOR]'::vector LIMIT '100')SELECT * FROM (
       SELECT DISTINCT ON (id) * FROM (
           (SELECT * FROM query1)
            UNION ALL (SELECT * FROM query2)  UNION ALL (SELECT * FROM query3) 
       ) t
     )
-    tt  WHERE (0.03 * (v <-> '[MASKED_VECTOR]'))+ (0.45 * (v <-> '[MASKED_VECTOR]'))+ (0.52 * (v <-> '[MASKED_VECTOR]')) < '440' ORDER BY (0.03 * (v <-> '[MASKED_VECTOR]'))+ (0.45 * (v <-> '[MASKED_VECTOR]'))+ (0.52 * (v <-> '[MASKED_VECTOR]'))
+    tt  WHERE (0.03 * (v <-> '[MASKED_VECTOR]'::vector))+ (0.45 * (v <-> '[MASKED_VECTOR]'::vector))+ (0.52 * (v <-> '[MASKED_VECTOR]'::vector)) < '440' ORDER BY (0.03 * (v <-> '[MASKED_VECTOR]'::vector))+ (0.45 * (v <-> '[MASKED_VECTOR]'::vector))+ (0.52 * (v <-> '[MASKED_VECTOR]'::vector))
 WARNING:   weighted vector search explain: [
     {
         "Plan": {
@@ -371,7 +371,7 @@ SELECT *, 0.03 * v4_dist + 0.45 * v44_dist + 0.52 * v444_dist as weighted_dist
   w3=> 0.52, col3=>'v'::text, vec3=>:'v444'::vector
 ) as v4_weighted_search
 LIMIT 100) t;
-WARNING:  Query: SELECT * FROM sift_base1k  WHERE (0.03 * (v <-> '[MASKED_VECTOR]'))+ (0.45 * (v <-> '[MASKED_VECTOR]'))+ (0.52 * (v <-> '[MASKED_VECTOR]')) < '440' ORDER BY (0.03 * (v <-> '[MASKED_VECTOR]'))+ (0.45 * (v <-> '[MASKED_VECTOR]'))+ (0.52 * (v <-> '[MASKED_VECTOR]'))
+WARNING:  Query: SELECT * FROM sift_base1k  WHERE (0.03 * (v <-> '[MASKED_VECTOR]'::vector))+ (0.45 * (v <-> '[MASKED_VECTOR]'::vector))+ (0.52 * (v <-> '[MASKED_VECTOR]'::vector)) < '440' ORDER BY (0.03 * (v <-> '[MASKED_VECTOR]'::vector))+ (0.45 * (v <-> '[MASKED_VECTOR]'::vector))+ (0.52 * (v <-> '[MASKED_VECTOR]'::vector))
 WARNING:  weighted vector search explain(exact=true): [
     {
         "Plan": {
@@ -409,7 +409,7 @@ SELECT count(*)
   w2=> 0.45, col2=>'v'::text, vec2=>:'v44'::vector,
   w3=> 0.52, col3=>'v'::text, vec3=>:'v444'::vector
 );
-WARNING:  Query: SELECT * FROM sift_base1k  ORDER BY (0.03 * (v <-> '[MASKED_VECTOR]'))+ (0.45 * (v <-> '[MASKED_VECTOR]'))+ (0.52 * (v <-> '[MASKED_VECTOR]'))
+WARNING:  Query: SELECT * FROM sift_base1k  ORDER BY (0.03 * (v <-> '[MASKED_VECTOR]'::vector))+ (0.45 * (v <-> '[MASKED_VECTOR]'::vector))+ (0.52 * (v <-> '[MASKED_VECTOR]'::vector))
 WARNING:  weighted vector search explain(exact=true): [
     {
         "Plan": {
@@ -486,6 +486,36 @@ SELECT count(*)
   w1=> 0.03, col1=>'v'::text, vec1=>:'v4'::vector,
   w2=> 0.45, col2=>'v'::text, vec2=>:'v44'::vector,
   w3=> 0.52, col3=>'v'::text, vec3=>:'v444'::vector
+);
+ count 
+-------
+    15
+(1 row)
+
+-- Make sure API still works when the table stores real[] for vectors
+ALTER TABLE sift_base1k ADD COLUMN v_real real[];
+UPDATE sift_base1k SET v_real = v;
+-- The next two lines are a workaround of the upstream postgres issue with table-polymorphic (anyelement) functions
+CREATE SCHEMA dummy;
+DROP SCHEMA dummy;
+-- CREATE INDEX ON sift_base1k USING hnsw (v vector_l2_ops) WITH (M=5, ef_construction=128);
+CREATE TABLE sift_base1k_2 AS SELECT * FROM sift_base1k;
+SELECT count(*)
+  FROM lantern.weighted_vector_search_cos(CAST(NULL as "sift_base1k_2"), exact => false, ef => 5,
+  w1=> 0.03, col1=>'v_real'::text, vec1=>:'v4'::vector,
+  w2=> 0.45, col2=>'v_real'::text, vec2=>:'v44'::vector,
+  w3=> 0.52, col3=>'v_real'::text, vec3=>:'v444'::vector
+);
+ count 
+-------
+    15
+(1 row)
+
+SELECT count(*)
+  FROM lantern.weighted_vector_search_cos(CAST(NULL as "sift_base1k"), exact => false, ef => 5,
+  w1=> 0.03, col1=>'v_real'::text, vec1=>:'v4'::vector,
+  w2=> 0.45, col2=>'v_real'::text, vec2=>:'v44'::vector,
+  w3=> 0.52, col3=>'v_real'::text, vec3=>:'v444'::vector
 );
  count 
 -------

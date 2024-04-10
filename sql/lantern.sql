@@ -728,12 +728,14 @@ BEGIN
       maybe_analyze := 'ANALYZE, BUFFERS,';
     END IF;
     -- Joint similarity metric condition
-    wc1 := format('(%s * (%I %s %L))', w1, col1, distance_operator, vec1);
+    -- the cast ::vector is necessary for cases when the column is not of type vector
+    -- and for some reason in those cases cast does not happen automatically
+    wc1 := format('(%s * (%I %s %L::vector))', w1, col1, distance_operator, vec1);
     IF w2 > 0 AND col2 IS NOT NULL AND vec2 IS NOT NULL THEN
-      wc2 := format(' (%s * (%I %s %L))', w2, col2, distance_operator, vec2);
+      wc2 := format(' (%s * (%I %s %L::vector))', w2, col2, distance_operator, vec2);
     END IF;
     IF w3 > 0 AND col3 IS NOT NULL AND vec3 IS NOT NULL THEN
-      wc3 := format(' (%s * (%I %s %L))', w3, col3, distance_operator, vec3);
+      wc3 := format(' (%s * (%I %s %L::vector))', w3, col3, distance_operator, vec3);
     END IF;
 
     joint_condition := wc1 || COALESCE('+' || wc2, '') || COALESCE('+' || wc3, '');
@@ -765,7 +767,7 @@ BEGIN
     maybe_unions_query := '';
 
     -- Query 1: Order by first condition's weighted similarity
-    query1 := format('%s ORDER BY %I %s %L LIMIT %L', query_base || query_final_where, col1, distance_operator, vec1, ef);
+    query1 := format('%s ORDER BY %I %s %L::vector LIMIT %L', query_base || query_final_where, col1, distance_operator, vec1, ef);
 
     IF debug_output THEN
       EXECUTE format('SELECT count(*) FROM (%s) t', query1) INTO debug_count;
@@ -776,7 +778,7 @@ BEGIN
 
     -- Query 2: Order by other conditions' weighted similarity, if applicable
     IF w2 > 0 AND col2 IS NOT NULL AND vec2 IS NOT NULL THEN
-      query2 := format('%s ORDER BY %I %s %L LIMIT %L', query_base || query_final_where, col2, distance_operator, vec2, ef);
+      query2 := format('%s ORDER BY %I %s %L::vector LIMIT %L', query_base || query_final_where, col2, distance_operator, vec2, ef);
       cte_query := cte_query || format(', query2 AS (%s)', query2);
       maybe_unions_query := maybe_unions_query || format(' UNION ALL (SELECT * FROM query2) ');
       IF debug_output THEN
@@ -786,7 +788,7 @@ BEGIN
     END IF;
 
     IF w3 > 0 AND col3 IS NOT NULL AND vec3 IS NOT NULL THEN
-      query3 := format('%s ORDER BY %I %s %L LIMIT %L', query_base || query_final_where, col3, distance_operator, vec3, ef);
+      query3 := format('%s ORDER BY %I %s %L::vector LIMIT %L', query_base || query_final_where, col3, distance_operator, vec3, ef);
       cte_query := cte_query || format(', query3 AS (%s)', query3);
       maybe_unions_query := maybe_unions_query || format(' UNION ALL (SELECT * FROM query3) ');
       IF debug_output THEN

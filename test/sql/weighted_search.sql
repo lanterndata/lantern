@@ -97,3 +97,26 @@ SELECT count(*)
   w2=> 0.45, col2=>'v'::text, vec2=>:'v44'::vector,
   w3=> 0.52, col3=>'v'::text, vec3=>:'v444'::vector
 );
+
+-- Make sure API still works when the table stores real[] for vectors
+ALTER TABLE sift_base1k ADD COLUMN v_real real[];
+UPDATE sift_base1k SET v_real = v;
+-- The next two lines are a workaround of the upstream postgres issue with table-polymorphic (anyelement) functions
+CREATE SCHEMA dummy;
+DROP SCHEMA dummy;
+-- CREATE INDEX ON sift_base1k USING hnsw (v vector_l2_ops) WITH (M=5, ef_construction=128);
+CREATE TABLE sift_base1k_2 AS SELECT * FROM sift_base1k;
+
+SELECT count(*)
+  FROM lantern.weighted_vector_search_cos(CAST(NULL as "sift_base1k_2"), exact => false, ef => 5,
+  w1=> 0.03, col1=>'v_real'::text, vec1=>:'v4'::vector,
+  w2=> 0.45, col2=>'v_real'::text, vec2=>:'v44'::vector,
+  w3=> 0.52, col3=>'v_real'::text, vec3=>:'v444'::vector
+);
+
+SELECT count(*)
+  FROM lantern.weighted_vector_search_cos(CAST(NULL as "sift_base1k"), exact => false, ef => 5,
+  w1=> 0.03, col1=>'v_real'::text, vec1=>:'v4'::vector,
+  w2=> 0.45, col2=>'v_real'::text, vec2=>:'v44'::vector,
+  w3=> 0.52, col3=>'v_real'::text, vec3=>:'v444'::vector
+);
