@@ -92,6 +92,10 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
              opts.expansion_add,
              opts.expansion_search);
 
+    // use palloc and pfree
+    opts.alloc_func = palloc;
+    opts.free_func = pfree;
+
     scanstate->usearch_index = usearch_init(&opts, scanstate->pq_codebook, &error);
     if(error != NULL) elog(ERROR, "error loading index: %s", error);
     assert(error == NULL);

@@ -467,6 +467,10 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
     opts.retriever = ldb_wal_index_node_retriever;
     opts.retriever_mut = ldb_wal_index_node_retriever_mut;
 
+    // use palloc and pfree
+    opts.alloc_func = palloc;
+    opts.free_func = pfree;
+
     buildstate->usearch_index = usearch_init(&opts, buildstate->pq_codebook, &error);
     elog(INFO, "done init usearch index");
     assert(error == NULL);
@@ -589,6 +593,10 @@ static void BuildEmptyIndex(Relation index, IndexInfo *indexInfo, ldb_HnswBuildS
         buildstate->pq_codebook = load_pq_codebook(index, opts.dimensions, &opts.num_centroids, &opts.num_subvectors);
         assert(0 < opts.num_centroids && opts.num_centroids <= 256);
     }
+
+    // use palloc and pfree
+    opts.alloc_func = palloc;
+    opts.free_func = pfree;
 
     buildstate->usearch_index = usearch_init(&opts, buildstate->pq_codebook, &error);
     assert(error == NULL);
