@@ -1,4 +1,9 @@
-  -- Asynchronous task scheduling BEGIN
+-- Create Lantern schema
+CREATE SCHEMA lantern;
+GRANT USAGE ON SCHEMA lantern TO PUBLIC;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA lantern TO PUBLIC;
+
+-- Asynchronous task scheduling BEGIN
 CREATE OR REPLACE FUNCTION _lantern_internal.maybe_setup_lantern_tasks() RETURNS VOID AS
 $async_tasks_related$
 BEGIN
