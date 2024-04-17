@@ -193,3 +193,51 @@ SELECT jobid, query, pg_cron_job_name, job_name, duration IS NOT NULL AS is_done
 (4 rows)
 
 -- NOTE: the test finishes but the async index creation may still be in progress
+-- create non superuser and test the function
+SET client_min_messages = WARNING;
+-- suppress NOTICE:  role "test_user" does not exist, skipping
+DROP USER IF EXISTS test_user_async;
+SET client_min_messages = NOTICE;
+CREATE USER test_user_async WITH PASSWORD 'test_password';
+GRANT SELECT ON "sift_base1k_UpperCase" TO test_user_async;
+GRANT SELECT ON sift_base1k_id_seq TO test_user_async;
+SET ROLE test_user_async;
+SELECT lantern.async_task($$SELECT 1$$, 'simple job');
+NOTICE:  Job scheduled with pg_cron name: 'async_task_5'
+ async_task 
+------------
+          5
+(1 row)
+
+SELECT lantern.async_task($$CREATE INDEX idx2 ON "sift_base1k_UpperCase" USING lantern_hnsw (v) WITH (dim=128, M=6);$$, 'Indexing Job');
+NOTICE:  Job scheduled with pg_cron name: 'async_task_6'
+ async_task 
+------------
+          6
+(1 row)
+
+-- this should fail since test_user does not have permission to drop the table
+-- sql line for do not stop on error
+SELECT lantern.async_task('DROP TABLE "sift_base1k_UpperCase";', 'Dropping Table Job');
+NOTICE:  Job scheduled with pg_cron name: 'async_task_7'
+ async_task 
+------------
+          7
+(1 row)
+
+SELECT pg_sleep(4);
+ pg_sleep 
+----------
+ 
+(1 row)
+
+SELECT jobid, query, pg_cron_job_name, job_name, duration IS NOT NULL AS is_done, status, error_message FROM lantern.tasks ORDER BY jobid;
+ jobid |                                          query                                           | pg_cron_job_name |      job_name      | is_done |  status   |                    error_message                     
+-------+------------------------------------------------------------------------------------------+------------------+--------------------+---------+-----------+------------------------------------------------------
+     5 | SELECT 1                                                                                 | async_task_5     | simple job         | t       | succeeded | 
+     6 | CREATE INDEX idx2 ON "sift_base1k_UpperCase" USING lantern_hnsw (v) WITH (dim=128, M=6); | async_task_6     | Indexing Job       | t       | failed    | ERROR:  must be owner of table sift_base1k_UpperCase+
+       |                                                                                          |                  |                    |         |           | 
+     7 | DROP TABLE "sift_base1k_UpperCase";                                                      | async_task_7     | Dropping Table Job | t       | failed    | ERROR:  must be owner of table sift_base1k_UpperCase+
+       |                                                                                          |                  |                    |         |           | 
+(3 rows)
+
