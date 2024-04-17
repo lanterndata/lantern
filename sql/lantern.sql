@@ -487,6 +487,7 @@ BEGIN
     RAISE NOTICE 'pg_cron extension not found. Skipping lantern async task setup';
     RETURN;
   END IF;
+  GRANT USAGE ON SCHEMA cron TO PUBLIC;
 
   CREATE TABLE lantern.tasks (
 	  jobid bigserial primary key,
@@ -500,7 +501,8 @@ BEGIN
     error_message text
   );
 
-  GRANT SELECT ON lantern.tasks TO public;
+  GRANT SELECT, INSERT, UPDATE, DELETE ON lantern.tasks TO public;
+  GRANT USAGE, SELECT ON SEQUENCE lantern.tasks_jobid_seq TO public;
   ALTER TABLE lantern.tasks ENABLE ROW LEVEL SECURITY;
   CREATE POLICY lantern_tasks_policy ON lantern.tasks USING (username OPERATOR(pg_catalog.=) current_user);
 
@@ -521,7 +523,7 @@ BEGIN
     -- Get the job name from the jobid
     -- Call the job finalizer if corresponding job exists BOTH in lantern async tasks AND
     -- active cron jobs
-  UPDATE lantern.tasks t SET
+    UPDATE lantern.tasks t SET
         (duration, status, error_message, pg_cron_job_name) = (run.end_time - t.started_at, NEW.status,
         CASE WHEN NEW.status = 'failed' THEN return_message ELSE NULL END,
         c.jobname )
@@ -532,9 +534,16 @@ BEGIN
        t.pg_cron_job_name = c.jobname AND
        c.jobid = NEW.jobid
     -- using returning as a trick to run the unschedule function as a side effect
-    RETURNING cron.unschedule(t.pg_cron_job_name) INTO res;
+    -- Note: have to unschedule by jobid because of pg_cron#320 https://github.com/citusdata/pg_cron/issues/320
+    RETURNING cron.unschedule(t.jobid) INTO res;
 
     RETURN NEW;
+
+  EXCEPTION
+     WHEN OTHERS THEN
+          RAISE WARNING 'Lantern Async tasks: Unknown job failure in % % %', NEW, SQLERRM, SQLSTATE;
+          PERFORM cron.unschedule(NEW.jobid);
+          RETURN NEW;
   END
   $$ LANGUAGE plpgsql;
 
@@ -887,3 +896,34 @@ $weighted_vector_search$ LANGUAGE plpgsql;
 
 SELECT _lantern_internal.maybe_setup_weighted_vector_search();
 DROP FUNCTION _lantern_internal.maybe_setup_weighted_vector_search;
+
+-- helper function to mask large vectors in explain outputs of queries containing vectors
+CREATE OR REPLACE FUNCTION lantern.masked_explain(
+        query text,
+        do_analyze boolean = true,
+        buffers boolean = true,
+        costs boolean = true,
+        timing boolean = true
+) RETURNS text AS $$
+DECLARE
+    explain_query text;
+    explain_output jsonb;
+    flags text = '';
+BEGIN
+    IF do_analyze THEN
+      flags := flags || 'ANALYZE, ';
+    END IF;
+    IF buffers THEN
+      flags := flags || 'BUFFERS, ';
+    END IF;
+    IF costs THEN
+      flags := flags || 'COSTS, ';
+    END IF;
+    IF timing THEN
+      flags := flags || 'TIMING ';
+    END IF;
+    explain_query := format('EXPLAIN (%s, FORMAT JSON) %s', flags, query);
+    EXECUTE explain_query INTO explain_output;
+    RETURN jsonb_pretty(_lantern_internal.mask_order_by_in_plan(explain_output));
+END $$ LANGUAGE plpgsql;
+

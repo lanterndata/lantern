@@ -40,3 +40,23 @@ SELECT _lantern_internal.validate_index('idx', false);
 
 SELECT jobid, query, pg_cron_job_name, job_name, duration IS NOT NULL AS is_done, status, error_message FROM lantern.tasks;
 -- NOTE: the test finishes but the async index creation may still be in progress
+
+-- create non superuser and test the function
+SET client_min_messages = WARNING;
+-- suppress NOTICE:  role "test_user" does not exist, skipping
+DROP USER IF EXISTS test_user_async;
+SET client_min_messages = NOTICE;
+CREATE USER test_user_async WITH PASSWORD 'test_password';
+GRANT SELECT ON "sift_base1k_UpperCase" TO test_user_async;
+GRANT SELECT ON sift_base1k_id_seq TO test_user_async;
+
+SET ROLE test_user_async;
+
+SELECT lantern.async_task($$SELECT 1$$, 'simple job');
+
+SELECT lantern.async_task($$CREATE INDEX idx2 ON "sift_base1k_UpperCase" USING lantern_hnsw (v) WITH (dim=128, M=6);$$, 'Indexing Job');
+-- this should fail since test_user does not have permission to drop the table
+-- sql line for do not stop on error
+SELECT lantern.async_task('DROP TABLE "sift_base1k_UpperCase";', 'Dropping Table Job');
+SELECT pg_sleep(4);
+SELECT jobid, query, pg_cron_job_name, job_name, duration IS NOT NULL AS is_done, status, error_message FROM lantern.tasks ORDER BY jobid;
