@@ -2,8 +2,37 @@
 DROP TRIGGER IF EXISTS status_change_trigger ON cron.job_run_details;
 DROP FUNCTION IF EXISTS _lantern_internal.async_task_finalizer_trigger();
 
-DO $async_update$
+-- helper function to mask large vectors in explain outputs of queries containing vectors
+CREATE OR REPLACE FUNCTION lantern.masked_explain(
+        query text,
+        do_analyze boolean = true,
+        buffers boolean = true,
+        costs boolean = true,
+        timing boolean = true
+) RETURNS text AS $$
+DECLARE
+    explain_query text;
+    explain_output jsonb;
+    flags text = '';
+BEGIN
+    IF do_analyze THEN
+      flags := flags || 'ANALYZE, ';
+    END IF;
+    IF buffers THEN
+      flags := flags || 'BUFFERS, ';
+    END IF;
+    IF costs THEN
+      flags := flags || 'COSTS, ';
+    END IF;
+    IF timing THEN
+      flags := flags || 'TIMING ';
+    END IF;
+    explain_query := format('EXPLAIN (%s, FORMAT JSON) %s', flags, query);
+    EXECUTE explain_query INTO explain_output;
+    RETURN jsonb_pretty(_lantern_internal.mask_order_by_in_plan(explain_output));
+END $$ LANGUAGE plpgsql;
 
+DO $async_update$
 BEGIN
   IF NOT (SELECT EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = 'cron'))
   THEN
@@ -63,35 +92,6 @@ BEGIN
   WHEN (OLD.status IS DISTINCT FROM NEW.status)
   EXECUTE FUNCTION _lantern_internal.async_task_finalizer_trigger();
 
-$async_update$
-LANGUAGE plpgsql;
-
--- helper function to mask large vectors in explain outputs of queries containing vectors
-CREATE OR REPLACE FUNCTION lantern.masked_explain(
-        query text,
-        do_analyze boolean = true,
-        buffers boolean = true,
-        costs boolean = true,
-        timing boolean = true
-) RETURNS text AS $$
-DECLARE
-    explain_query text;
-    explain_output jsonb;
-    flags text = '';
-BEGIN
-    IF do_analyze THEN
-      flags := flags || 'ANALYZE, ';
-    END IF;
-    IF buffers THEN
-      flags := flags || 'BUFFERS, ';
-    END IF;
-    IF costs THEN
-      flags := flags || 'COSTS, ';
-    END IF;
-    IF timing THEN
-      flags := flags || 'TIMING ';
-    END IF;
-    explain_query := format('EXPLAIN (%s, FORMAT JSON) %s', flags, query);
-    EXECUTE explain_query INTO explain_output;
-    RETURN jsonb_pretty(_lantern_internal.mask_order_by_in_plan(explain_output));
-END $$ LANGUAGE plpgsql;
+END;
+$async_update$ LANGUAGE plpgsql;
+-- N.B.: the block above may return early. DO NOT put anything down here
