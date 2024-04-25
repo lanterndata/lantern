@@ -58,6 +58,11 @@ function install_external_dependencies() {
 
 function build_and_install() {
   cd /tmp/lantern
+  # install ruby dependencies for test_updates
+  pushd /tmp/lantern/scripts/test_updates
+    bundler
+  popd
+
   mkdir build
   cd build
 

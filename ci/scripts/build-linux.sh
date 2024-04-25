@@ -52,6 +52,11 @@ function install_platform_specific_dependencies() {
       make -j && make install
     popd
 
+    # dependencies of update tests
+    sudo pip install GitPython
+    apt install -y ruby-full
+    gem install bundler
+
   popd
 }
 
