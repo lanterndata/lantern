@@ -1,5 +1,7 @@
 ARG VERSION=15
 ARG PGVECTOR_VERSION=0.5.1
+  #fix pg_cron at the latest commit of the time
+ARG PG_CRON_COMMIT_SHA=7e91e72b1bebc5869bb900d9253cc9e92518b33f
 
 # If you want to build the base image for different versions use Dockerfile.pg
 # To use GDB inside container run docker like this:
@@ -10,6 +12,7 @@ ARG PGVECTOR_VERSION=0.5.1
 
 FROM varik77/postgres:$VERSION-debug
 ARG PGVECTOR_VERSION
+ARG PG_CRON_COMMIT_SHA
 
 WORKDIR /lantern
 
@@ -17,13 +20,21 @@ USER root
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt install -y curl lcov libpq5
 RUN apt update && apt install -y clang-15 gcc-12 g++-12
-# for building packages that depend on postgres headers and for building extensions
-RUN apt update && apt install postgresql-server-dev-14
 
-# allow non-root users to install in the container to make it easier to run update-tests
-RUN chmod 777 /usr/local/pgsql/lib/ /usr/local/pgsql/share/extension/ /usr/local/pgsql/include/server/
+# install ruby
+RUN apt update && apt install -y ruby-full
+RUN gem install bundler
+# need to install pg here to specify libpq location
+# it cannot be found by default since we installed pg from source
+RUN gem install pg -- --with-pg-include=/usr/local/pgsql/include/ --with-pg-lib=/usr/local/pgsql/lib/
+
+# hack to make sure postgres user has write access to externally mounted volumes
+RUN mkdir /lantern_shared && chown postgres:postgres /lantern_shared
+
 RUN cd /root/postgresql-15.5/contrib && make install -j
 
+# allow non-root users to install in the container to make it easier to run update-tests
+RUN chmod -R 777 /usr/local/pgsql/lib/ /usr/local/pgsql/share/extension/ /usr/local/pgsql/include/server/
 RUN mkdir -p /var/lib/postgresql/data && chown postgres:postgres /var/lib/postgresql/data
 USER postgres
 
@@ -32,8 +43,11 @@ RUN pip install GitPython libtmux
 # Build & Install pgvector
 RUN wget -O pgvector.tar.gz https://github.com/pgvector/pgvector/archive/refs/tags/v${PGVECTOR_VERSION}.tar.gz && \
     tar xzf pgvector.tar.gz && \
-    cd pgvector-${PGVECTOR_VERSION} && \
-    make -j && make install
+    (cd pgvector-${PGVECTOR_VERSION} && make -j && make install)
+
+# build & Install pg_cron
+RUN  git clone https://github.com/citusdata/pg_cron.git && \
+    (cd pg_cron && git checkout ${PG_CRON_COMMIT_SHA} && make -j && make install)
 
 COPY . .
 
@@ -53,16 +67,11 @@ RUN git clone https://github.com/lanterndata/benchmark build/benchmark \
 ENV DATABASE_URL=postgres://postgres@localhost:5432/postgres
 ENV LANTERN_DATABASE_URL=postgres://postgres@localhost:5432/postgres
 
-# install ruby
-RUN apt update && apt install -y ruby-full && sudo apt-get install libpq-dev && gem install bundler
-
-
-
 # Uncomment the following to change the data directory of the running postgres
 # RUN /usr/local/pgsql/bin/initdb -D /var/lib/postgresql/data
 # RUN echo "listen_addresses '*' " >> /var/lib/postgresql/data/postgresql.conf
 RUN /usr/local/pgsql/bin/initdb -D /var/lib/postgresql/data
-RUN echo "shared_preload_libraries = 'pg_stat_statements' " >> /var/lib/postgresql/data/postgresql.conf
+RUN echo "shared_preload_libraries = 'pg_cron,pg_stat_statements' " >> /var/lib/postgresql/data/postgresql.conf
 # RUN echo "host    all             all             0.0.0.0/0               trust" >> /var/lib/postgresql/data/pg_hba.conf
 # CMD ["/usr/local/pgsql/bin/postgres", "-D", "/var/lib/postgresql/data"]
 CMD ["/usr/local/pgsql/bin/postgres", "-D", "/var/lib/postgresql/data"]
