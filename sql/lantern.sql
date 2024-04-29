@@ -535,7 +535,7 @@ BEGIN
        c.jobid = NEW.jobid
     -- using returning as a trick to run the unschedule function as a side effect
     -- Note: have to unschedule by jobid because of pg_cron#320 https://github.com/citusdata/pg_cron/issues/320
-    RETURNING cron.unschedule(t.jobid) INTO res;
+    RETURNING cron.unschedule(NEW.jobid) INTO res;
 
     RETURN NEW;
 
