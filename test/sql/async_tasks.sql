@@ -20,6 +20,7 @@ SELECT pg_sleep(3);
 SELECT jobid, query, pg_cron_job_name, job_name, duration IS NOT NULL AS is_done, status, error_message FROM lantern.tasks;
 SELECT lantern.cancel_all_async_tasks();
 
+
 -- test async tasks on index creation
 
 DROP TABLE IF EXISTS small_world;
@@ -58,5 +59,11 @@ SELECT lantern.async_task($$CREATE INDEX idx2 ON "sift_base1k_UpperCase" USING l
 -- this should fail since test_user does not have permission to drop the table
 -- sql line for do not stop on error
 SELECT lantern.async_task('DROP TABLE "sift_base1k_UpperCase";', 'Dropping Table Job');
+
+-- lantern.tasks jobid is disitinct and independent from cron.jobid, even though they may often overlap
+-- make sure everything works even when they are out of sync
+SELECT nextval('lantern.tasks_jobid_seq');
+SELECT lantern.async_task($$SELECT 42$$, 'Life');
+
 SELECT pg_sleep(4);
 SELECT jobid, query, pg_cron_job_name, job_name, duration IS NOT NULL AS is_done, status, error_message FROM lantern.tasks ORDER BY jobid;

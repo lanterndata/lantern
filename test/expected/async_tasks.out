@@ -225,6 +225,21 @@ NOTICE:  Job scheduled with pg_cron name: 'async_task_7'
           7
 (1 row)
 
+-- lantern.tasks jobid is disitinct and independent from cron.jobid, even though they may often overlap
+-- make sure everything works even when they are out of sync
+SELECT nextval('lantern.tasks_jobid_seq');
+ nextval 
+---------
+       8
+(1 row)
+
+SELECT lantern.async_task($$SELECT 42$$, 'Life');
+NOTICE:  Job scheduled with pg_cron name: 'async_task_9'
+ async_task 
+------------
+          9
+(1 row)
+
 SELECT pg_sleep(4);
  pg_sleep 
 ----------
@@ -239,5 +254,6 @@ SELECT jobid, query, pg_cron_job_name, job_name, duration IS NOT NULL AS is_done
        |                                                                                          |                  |                    |         |           | 
      7 | DROP TABLE "sift_base1k_UpperCase";                                                      | async_task_7     | Dropping Table Job | t       | failed    | ERROR:  must be owner of table sift_base1k_UpperCase+
        |                                                                                          |                  |                    |         |           | 
-(3 rows)
+     9 | SELECT 42                                                                                | async_task_9     | Life               | f       |           | 
+(4 rows)
 
