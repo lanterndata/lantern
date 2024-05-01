@@ -58,12 +58,13 @@ void PopulateUsearchOpts(Relation index, usearch_init_options_t *opts)
     opts->num_threads = 1;
 }
 
-usearch_label_t GetUsearchLabel(ItemPointer itemPtr)
+usearch_label_t ItemPointer2Label(ItemPointer itemPtr)
 {
     usearch_label_t label = 0;
     memcpy((unsigned long *)&label, itemPtr, 6);
     return label;
 }
+void label2ItemPointer(usearch_label_t label, ItemPointer itemPtr) { memcpy(itemPtr, (unsigned long *)&label, 6); }
 
 void CheckMem(int limit, Relation index, usearch_index_t uidx, uint32 n_nodes, char *msg)
 {
