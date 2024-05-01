@@ -104,7 +104,7 @@ static void AddTupleToUsearchIndex(ItemPointer         tid,
 
     // casting tid structure to a number to be used as value in vector search
     // tid has info about disk location of this item and is 6 bytes long
-    usearch_label_t label = GetUsearchLabel(tid);
+    usearch_label_t label = ItemPointer2Label(tid);
     if(buildstate->usearch_index != NULL) {
         size_t capacity = usearch_capacity(buildstate->usearch_index, &error);
         if(capacity == usearch_size(buildstate->usearch_index, &error)) {

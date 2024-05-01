@@ -161,5 +161,6 @@ BlockNumber NumberOfBlockMapsInGroup(unsigned groupno);
  * @see ContinueBlockMapGroupInitialization
  */
 void ldb_continue_blockmap_group_initialization(Oid indrelid);
+bool isBlockMapBlock(const HnswBlockMapGroupDesc *blockmap_groups, const int blockmap_group_nr, BlockNumber blockno);
 
 #endif  // LDB_HNSW_EXTERNAL_INDEX_H

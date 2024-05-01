@@ -50,3 +50,11 @@ char *extract_node(char              *data,
     *node_size = UsearchNodeBytes(metadata, VECTOR_BYTES, *level);
     return tape;
 }
+
+unsigned long label_from_node(char *node)
+{
+    using namespace unum::usearch;
+    using node_t = unum::usearch::node_at<default_key_t, default_slot_t>;
+    node_t n = node_t{node};
+    return n.key();
+}

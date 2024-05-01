@@ -9,8 +9,9 @@
 #include <common/relpath.h>
 #include <hnsw/fa_cache.h>
 #include <math.h>
-#include <miscadmin.h>       // START_CRIT_SECTION, END_CRIT_SECTION
-#include <pg_config.h>       // BLCKSZ
+#include <miscadmin.h>  // START_CRIT_SECTION, END_CRIT_SECTION
+#include <pg_config.h>  // BLCKSZ
+#include <storage/block.h>
 #include <storage/bufmgr.h>  // Buffer
 #include <utils/hsearch.h>
 #include <utils/relcache.h>
@@ -854,6 +855,19 @@ static BlockNumber getBlockMapPageBlockNumber(const HnswBlockMapGroupDesc *block
     }
     assert(blockmap_groups[ k - 1 ].first_block != InvalidBlockNumber);
     return blockmap_groups[ k - 1 ].first_block + (id - (1 << (k - 1)));
+}
+
+bool isBlockMapBlock(const HnswBlockMapGroupDesc *blockmap_groups, const int blockmap_group_nr, BlockNumber blockno)
+{
+    if(!BlockNumberIsValid(blockno)) {
+        return false;
+    }
+    for(int i = 0; i < blockmap_group_nr; i++) {
+        if(blockmap_groups[ i ].first_block <= blockno && blockno < blockmap_groups[ i ].first_block + (1 << i)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 BlockNumber getDataBlockNumber(RetrieverCtx *ctx, int id, bool add_to_extra_dirtied)
