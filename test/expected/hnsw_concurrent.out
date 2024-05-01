@@ -1,0 +1,69 @@
+\ir utils/sift1k_array.sql
+CREATE TABLE IF NOT EXISTS sift_base1k (
+    id SERIAL,
+    v REAL[]
+);
+COPY sift_base1k (v) FROM '/tmp/lantern/vector_datasets/sift_base1k_arrays.csv' WITH csv;
+-- 6 closest vectors to the vector with ID 444
+SELECT v as v444 from sift_base1k wHERE id = 444 LIMIT 1 \gset
+SELECT id, ROUND((v <-> :'v444')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v444' LIMIT 6;
+ id  |  round   
+-----+----------
+ 444 |     0.00
+ 830 | 45864.00
+ 854 | 89054.00
+ 557 | 91664.00
+  62 | 93497.00
+  58 | 93637.00
+(6 rows)
+
+CREATE INDEX to_be_reindexed ON sift_base1k USING lantern_hnsw (v) WITH (dim=128, M=6);
+INFO:  done init usearch index
+INFO:  inserted 1000 elements
+INFO:  done saving 1000 vectors
+SELECT * FROM ldb_get_indexes('sift_base1k');
+    indexname    |  size  |                                          indexdef                                          | indisvalid 
+-----------------+--------+--------------------------------------------------------------------------------------------+------------
+ to_be_reindexed | 632 kB | CREATE INDEX to_be_reindexed ON sift_base1k USING lantern_hnsw (v) WITH (dim='128', m='6') | t
+(1 row)
+
+SELECT _lantern_internal.validate_index('to_be_reindexed', false);
+INFO:  validate_index() start for to_be_reindexed
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
+REINDEX INDEX CONCURRENTLY to_be_reindexed;
+INFO:  done init usearch index
+INFO:  inserted 1000 elements
+INFO:  done saving 1000 vectors
+WARNING:  LanternDB: hnsw index deletes are currently not implemented. This is a no-op. No memory will be reclaimed
+SELECT _lantern_internal.validate_index('to_be_reindexed', false);
+INFO:  validate_index() start for to_be_reindexed
+INFO:  validate_index() done, no issues found.
+ validate_index 
+----------------
+ 
+(1 row)
+
+SELECT * FROM ldb_get_indexes('sift_base1k');
+    indexname    |  size   |                                          indexdef                                          | indisvalid 
+-----------------+---------+--------------------------------------------------------------------------------------------+------------
+ to_be_reindexed | 1248 kB | CREATE INDEX to_be_reindexed ON sift_base1k USING lantern_hnsw (v) WITH (dim='128', m='6') | t
+(1 row)
+
+set enable_seqscan=FALSE;
+-- 6 closest vectors to the vector with ID 444. note all the duplicate results because of bad handling of REINDEX
+SELECT id, ROUND((v <-> :'v444')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'v444' LIMIT 6;
+ id  |  round   
+-----+----------
+ 444 |     0.00
+ 444 |     0.00
+ 830 | 45864.00
+ 830 | 45864.00
+ 854 | 89054.00
+ 854 | 89054.00
+(6 rows)
+
