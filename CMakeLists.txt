@@ -141,6 +141,7 @@ target_include_directories(
 )
 
 target_compile_options(lantern PRIVATE
+    -g
     -fstack-protector-strong
     -Wformat
     -Werror=format-security
