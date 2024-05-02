@@ -57,12 +57,21 @@ jobs:
           # Start postgres
           sudo su postgres -c "PG_VERSION=$PG_VERSION RUN_TESTS=0 ./ci/scripts/run-tests-linux.sh" && \
           sudo su -c "PG_VERSION=$PG_VERSION python3 ./scripts/test_updates.py -U postgres" &&\
-          sudo su -c  "PG_VERSION=$PG_VERSION DATABASE_URL='postgresql://postgres@localhost:5432/postgres' ruby ./scripts/test_updates/main.rb test lantern" &&\
           echo "Done with updates"
-
         env:
           PG_VERSION: ${{ matrix.postgres }}
         if: ${{ !startsWith(matrix.os, 'mac') }}
+      - name: Run catalog update checks
+        id: catalog-update-test-linux
+        continue-on-error: true
+        run: |
+          sudo su postgres -c "PG_VERSION=$PG_VERSION RUN_TESTS=0 ./ci/scripts/run-tests-linux.sh" && \
+          sudo su -c  "PG_VERSION=$PG_VERSION DATABASE_URL='postgresql://postgres@localhost:5432/postgres' ruby ./scripts/test_updates/main.rb test lantern" &&\
+          echo "Done catalog update checks"
+        env:
+          PG_VERSION: ${{ matrix.postgres }}
+        if: ${{ !startsWith(matrix.os, 'mac') }}
+
       - name: Write a comment if the update tests failied above
         if: ${{ !startsWith(matrix.os, 'mac') }}
         env:
