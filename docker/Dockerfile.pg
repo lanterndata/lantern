@@ -11,7 +11,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt-mark hold locales && apt install --no-install-recommends -y wget git-all make build-essential libreadline8 libreadline-dev zlib1g zlib1g-dev cmake gdb tmux vim sudo pkg-config libicu-dev clang-format python3-pip python3-dev
 
 # Build and install postgres
-RUN cd /root && wget https://ftp.postgresql.org/pub/source/v${PG_VERSION}/postgresql-${VERSION}.tar.bz2 && \
+RUN cd /root && wget --quiet https://ftp.postgresql.org/pub/source/v${PG_VERSION}/postgresql-${VERSION}.tar.bz2 && \
     tar xf postgresql-${PG_VERSION}.tar.bz2 && \
     rm -rf postgresql-${PG_VERSION}.tar.bz2 
 
