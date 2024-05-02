@@ -41,7 +41,7 @@ function clone_or_use_source() {
 function install_external_dependencies() {
   # Install pgvector
   pushd /tmp
-    wget -O pgvector.tar.gz https://github.com/pgvector/pgvector/archive/refs/tags/v${PGVECTOR_VERSION}.tar.gz
+    wget --quiet -O pgvector.tar.gz https://github.com/pgvector/pgvector/archive/refs/tags/v${PGVECTOR_VERSION}.tar.gz
     tar xzf pgvector.tar.gz
     rm -rf pgvector || true
     mv pgvector-${PGVECTOR_VERSION} pgvector

@@ -77,7 +77,7 @@ ENV UBSAN_OPTIONS suppressions=/lantern/scripts/sanitizers/suppressions/suppr_ub
   print_stacktrace=1 halt_on_error=1 log_path=/lantern/sanitizer/ \
   log_exe_name=true print_suppressions=false exitcode=27
 
-RUN wget -O pgvector.tar.gz https://github.com/pgvector/pgvector/archive/refs/tags/v${PGVECTOR_VERSION}.tar.gz && \
+RUN wget --quiet -O pgvector.tar.gz https://github.com/pgvector/pgvector/archive/refs/tags/v${PGVECTOR_VERSION}.tar.gz && \
     tar xf pgvector.tar.gz && \
     cd pgvector-${PGVECTOR_VERSION} && \
     make && make install
