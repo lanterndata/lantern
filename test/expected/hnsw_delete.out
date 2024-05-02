@@ -1,0 +1,62 @@
+\ir utils/small_world_array.sql
+CREATE TABLE small_world (
+    id VARCHAR(3),
+    b BOOLEAN,
+    v REAL[3]
+);
+INSERT INTO small_world (id, b, v) VALUES
+    ('000', TRUE,  '{0,0,0}'),
+    ('001', TRUE,  '{0,0,1}'),
+    ('010', FALSE, '{0,1,0}'),
+    ('011', TRUE,  '{0,1,1}'),
+    ('100', FALSE, '{1,0,0}'),
+    ('101', FALSE, '{1,0,1}'),
+    ('110', FALSE, '{1,1,0}'),
+    ('111', TRUE,  '{1,1,1}');
+SELECT * FROM small_world;
+ id  | b |    v    
+-----+---+---------
+ 000 | t | {0,0,0}
+ 001 | t | {0,0,1}
+ 010 | f | {0,1,0}
+ 011 | t | {0,1,1}
+ 100 | f | {1,0,0}
+ 101 | f | {1,0,1}
+ 110 | f | {1,1,0}
+ 111 | t | {1,1,1}
+(8 rows)
+
+CREATE INDEX ON small_world USING lantern_hnsw (v) WITH (M=128) WHERE b = FALSE;
+INFO:  done init usearch index
+INFO:  inserted 4 elements
+INFO:  done saving 4 vectors
+set enable_seqscan=FALSE;
+SELECT * FROM small_world WHERE b = FALSE order by v <-> '{1,0,0}' LIMIT 3;
+ id  | b |    v    
+-----+---+---------
+ 100 | f | {1,0,0}
+ 110 | f | {1,1,0}
+ 101 | f | {1,0,1}
+(3 rows)
+
+DELETE FROM small_world WHERE v <> '{1,0,0}';
+SELECT * FROM small_world WHERE b = FALSE order by v <-> '{1,0,0}' LIMIT 3;
+ id  | b |    v    
+-----+---+---------
+ 100 | f | {1,0,0}
+(1 row)
+
+VACUUM small_world;
+WARNING:  LanternDB: hnsw index deletes are currently not implemented. This is a no-op. No memory will be reclaimed
+INSERT INTO small_world (id, b, v) VALUES (3, TRUE, '{4,4,4}'), (3, TRUE, '{4,4,4}'), (4, TRUE, '{4,4,4}'),
+                                          (5, TRUE, '{5,5,5}'),
+                                          (6, TRUE, '{6,6,6}'),
+                                          (7, TRUE, '{7,7,7}');
+SELECT * FROM small_world WHERE b = FALSE order by v <-> '{1,0,0}' LIMIT 3;
+ id  | b |    v    
+-----+---+---------
+ 100 | f | {1,0,0}
+ 7   | t | {7,7,7}
+ 6   | t | {6,6,6}
+(3 rows)
+
