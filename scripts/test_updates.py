@@ -69,11 +69,12 @@ def shell(cmd, exit_on_error=True):
 # and runs the test suit on the resulting DB
 # Note: from_version must be a valid tag on the repo that has a corresponding release and SQL migration script
 # to_version must be the value LATEST or follow the requirements above
-def update_from_tag(from_version: str, to_version: str):
+def update_from_tag(from_version: str, to_version: str, starting_point  = None):
     from_tag = "v" + from_version
     repo = git.Repo(search_parent_directories=True)
     print(repo.remotes)
-    to_sha = repo.head.object.hexsha
+    starting_sha = starting_point if starting_point else repo.head.object.hexsha
+    to_sha = starting_sha
 
     if to_version != LATEST:
         to_tag = "v" + to_version
@@ -92,12 +93,16 @@ def update_from_tag(from_version: str, to_version: str):
             raise Exception(f"unknown fetch error: {e}")
 
 
-    repo.git.checkout(from_tag)
     sha_after = repo.head.object.hexsha
     print(f"Updating from tag {from_tag}(sha: {sha_after}) to {to_version}")
 
+    # check out to the old version only for binary and catalog update script installation.
+    # checkout to latest to make sure we always run the latest version of all scripts
+    repo.git.checkout(from_tag)
     # run "mkdir build && cd build && cmake .. && make -j4 && make install"
     res = shell(f"mkdir -p {args.builddir} ; cd {args.builddir} && git submodule update --init --recursive && cmake -DRELEASE_ID={from_version} .. && make -j install")
+    repo.git.checkout(starting_sha)
+
 
     res = shell(f"psql postgres -U {args.user} -c 'DROP DATABASE IF EXISTS {args.db};'")
     res = shell(f"psql postgres -U {args.user} -c 'CREATE DATABASE {args.db};'")
@@ -120,6 +125,7 @@ def update_from_tag(from_version: str, to_version: str):
 
     repo.git.checkout(to_sha)
     res = shell(f"cd {args.builddir} ; git submodule update --init --recursive && cmake -DRELEASE_ID={to_version} .. && make -j install")
+    repo.git.checkout(starting_sha)
 
     # todo:: currently version mismatch logic only prints a warning and not an error
     # we need to teach the version matching function when an update script vs client script is running for proper error enforcement
@@ -134,6 +140,20 @@ def update_from_tag(from_version: str, to_version: str):
 
     print(f"Update {from_version}->{to_version} Success!")
 
+def try_update_from_tag(from_version, to_version):
+    repo = git.Repo(search_parent_directories=True)
+    starting_sha = None
+    try:
+        starting_sha = repo.active_branch.name
+    except Exception as e:
+        print(f"Did not detect active branch: {e}. Using HEAD as starting point")
+        starting_sha = repo.head.object.hexsha
+
+    try:
+        update_from_tag(from_version, to_version, starting_sha)
+    except Exception as e:
+        repo.git.checkout(starting_sha)
+        print(f"Error updating from {from_version} to {to_version}: {e}")
 
 def incompatible_version(pg_version, version_tag):
     if not pg_version or pg_version not in INCOMPATIBLE_VERSIONS:
@@ -161,7 +181,7 @@ if __name__ == "__main__":
     from_tag = args.from_tag
     to_tag = args.to_tag
     if from_tag and to_tag:
-        update_from_tag(from_tag, to_tag)
+        try_update_from_tag(from_tag, to_tag)
         exit(0)
 
     if from_tag or to_tag:
@@ -199,7 +219,7 @@ if __name__ == "__main__":
         for from_tag in from_versions:
             if incompatible_version(pg_version, from_tag):
                 continue
-            update_from_tag(str(from_tag), str(latest_version))
+            try_update_from_tag(str(from_tag), str(latest_version))
 
 
 
