@@ -277,8 +277,14 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         if(value != scan->orderByData->sk_argument) pfree(DatumGetPointer(value));
     }
 
-    if(scanstate->current < scanstate->count) {
+    while(scanstate->current < scanstate->count) {
         unsigned long int label = scanstate->labels[ scanstate->current ];
+        if(INVALID_ELEMENT_LABEL == label) {
+            // the element was deleted, do not return it
+            scanstate->current++;
+            continue;
+        }
+
         scanstate->iptr = (ItemPointer)&label;
 
         tid = scanstate->iptr;
@@ -311,6 +317,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         //  */
         // scanstate->buf = ReadBuffer(scan->indexRelation, indexblkno);
         scanstate->current++;
+        scan->xs_recheck = false;
         scan->xs_recheckorderby = false;
         return true;
     }

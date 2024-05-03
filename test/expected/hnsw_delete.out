@@ -56,7 +56,5 @@ SELECT * FROM small_world WHERE b = FALSE order by v <-> '{1,0,0}' LIMIT 3;
  id  | b |    v    
 -----+---+---------
  100 | f | {1,0,0}
- 7   | t | {7,7,7}
- 6   | t | {6,6,6}
-(3 rows)
+(1 row)
 
