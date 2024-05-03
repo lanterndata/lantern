@@ -615,8 +615,6 @@ IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInf
     ldb_HnswBuildState buildstate;
     memset(&buildstate, 0, sizeof(ldb_HnswBuildState));
 
-    // todo:: change the warning to error once VersionsMismatch learns how to differntiate when an update script is
-    // running - it is fine to temporarily have version mismatch when we are running an update script
     if(!VersionsMatch()) {
         elog(WARNING,
              "Attempting to build lantern index, but the SQL version and binary version do not match. This can cause "
