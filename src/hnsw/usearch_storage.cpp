@@ -1,6 +1,7 @@
 #include <usearch.h>
 #include <usearch/index.hpp>
 extern "C" {
+#include "hnsw.h"
 #include "usearch_storage.hpp"
 }
 
@@ -57,4 +58,12 @@ unsigned long label_from_node(char *node)
     using node_t = unum::usearch::node_at<default_key_t, default_slot_t>;
     node_t n = node_t{node};
     return n.key();
+}
+
+void reset_node_label(char *node)
+{
+    using namespace unum::usearch;
+    using node_t = unum::usearch::node_at<default_key_t, default_slot_t>;
+    node_t n = node_t{node};
+    n.key(INVALID_ELEMENT_LABEL);
 }

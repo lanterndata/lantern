@@ -8,6 +8,8 @@
 
 #define LANTERN_INTERNAL_SCHEMA_NAME "_lantern_internal"
 
+static const int INVALID_ELEMENT_LABEL = 0;
+
 #if PG_VERSION_NUM < 110000
 #error "Requires PostgreSQL 11+"
 #endif

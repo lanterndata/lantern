@@ -16,6 +16,8 @@ char *extract_node(char             *data,
                    int              *level);
 
 unsigned long label_from_node(char *node);
+void          reset_node_label(char *node);
+
 #ifdef __cplusplus
 }
 #endif
