@@ -118,19 +118,13 @@ def update_from_tag(from_version: str, to_version: str, starting_point  = None):
     res = shell('rm -f /tmp/ldb_update_finished')
     res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-parallel FILTER=begin")
 
-    if Version(from_version) > Version('0.0.11'):
-        # misc tests added at v0.0.10, won't work before that
-        # initialize misc tests to ensure that version mismatch results in an error
-        res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-misc FILTER=begin")
+    res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-misc FILTER=begin")
 
     repo.git.checkout(to_sha)
     res = shell(f"cd {args.builddir} ; git submodule update --init --recursive && cmake -DRELEASE_ID={to_version} .. && make -j install")
     repo.git.checkout(starting_sha)
 
-    # todo:: currently version mismatch logic only prints a warning and not an error
-    # we need to teach the version matching function when an update script vs client script is running for proper error enforcement
-    if Version(from_version) > Version('0.1.1'):
-        res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-misc FILTER=version_mismatch")
+    res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-misc FILTER=version_mismatch")
 
     res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={to_version} make test")
     # run the actual parallel tests after the upgrade

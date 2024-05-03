@@ -29,7 +29,7 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     usearch_init_options_t opts;
 
     if(!VersionsMatch()) {
-        elog(ERROR,
+        elog(WARNING,
              "Attempting to scan lantern index, but the SQL version and binary version do not match. This can cause "
              "errors. Please run `ALTER EXTENSION lantern UPDATE and reconnect");
     }
