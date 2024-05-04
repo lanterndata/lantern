@@ -63,6 +63,9 @@ function build_and_install() {
     bundler
   popd
 
+  # install update and WAL test dependencies
+  sudo pip install -r /tmp/lantern/scripts/requirements.txt
+
   mkdir build
   cd build
 

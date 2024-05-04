@@ -1,0 +1,2 @@
+GitPython==3.1.43
+testgres==1.10.0
