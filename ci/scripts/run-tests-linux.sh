@@ -53,6 +53,7 @@ function run_db_tests(){
     make test && \
     make test-parallel && \
     make test-client && \
+    python3 ../scripts/test_wal.py && \
     run_pgvector_tests && \
     stop_current_postgres && \
     if [[ "$ENABLE_COVERAGE" == "1" ]]
