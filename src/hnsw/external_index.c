@@ -575,7 +575,53 @@ void StoreExternalIndex(Relation                index,
         batch_size = batch_size * 2;
         blockmap_groupno++;
     }
-
+    //
+    // BlockNumber         blockno;
+    // Buffer              buf;
+    // HnswIndexHeaderPage header;
+    // Page                page;
+    // OffsetNumber        offset, maxoffset;
+    // ItemPointerData     tid_data;
+    // GenericXLogState   *gxlogState;
+    // buf = ReadBufferExtended(index, MAIN_FORKNUM, 0, RBM_NORMAL, GetAccessStrategy(BAS_BULKREAD));
+    // // todo:: consider making this a shared lock if it would matter
+    // LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
+    // page = BufferGetPage(buf);
+    // header = *(HnswIndexHeaderPage *)PageGetContents(page);
+    // UnlockReleaseBuffer(buf);
+    // // rewrite neighbor lists in terms of block numbers
+    // for(BlockNumber blockno = 1; blockno <= header.last_data_block; blockno++) {
+    //     bool block_modified = false;
+    //     buf = ReadBufferExtended(index, MAIN_FORKNUM, blockno, RBM_NORMAL, GetAccessStrategy(BAS_BULKREAD));
+    //     LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
+    //     gxlogState = GenericXLogStart(index);
+    //     page = GenericXLogRegisterBuffer(gxlogState, buf, LDB_GENERIC_XLOG_DELTA_IMAGE);
+    //     maxoffset = PageGetMaxOffsetNumber(page);
+    //
+    //     if(isBlockMapBlock(header.blockmap_groups, header.blockmap_groups_nr, blockno)) {
+    //         ldb_invariant(1 == maxoffset, "expected blockmap page with single item");
+    //         HnswBlockmapPage *blockmap_page
+    //             = (HnswBlockmapPage *)PageGetItem(page, PageGetItemId(page, FirstOffsetNumber));
+    //     } else {
+    //         block_modified = true;
+    //         // todo:: this could also be a pq page(see external_index.c, opts->pq handling)
+    //         for(offset = FirstOffsetNumber; offset <= maxoffset; offset = OffsetNumberNext(offset)) {
+    //             HnswIndexTuple *nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
+    //             unsigned long   label = label_from_node(nodepage->node);
+    //             label2ItemPointer(label, &tid_data);
+    //                 reset_node_label(nodepage->node);
+    //         }
+    //     }
+    //
+    //     if(block_modified) {
+    //         GenericXLogFinish(gxlogState);
+    //     } else {
+    //         GenericXLogAbort(gxlogState);
+    //     }
+    //
+    //     UnlockReleaseBuffer(buf);
+    // }
+    //
     MarkBufferDirty(header_buf);
     GenericXLogFinish(state);
     UnlockReleaseBuffer(header_buf);

@@ -7,6 +7,12 @@ extern "C" {
 
 #include <cassert>
 
+namespace
+{
+using namespace unum::usearch;
+using node_t = unum::usearch::node_at<default_key_t, default_slot_t>;
+}  // namespace
+
 uint32_t UsearchNodeBytes(const metadata_t *metadata, int vector_bytes, int level)
 {
     const int NODE_HEAD_BYTES = sizeof(usearch_label_t) + sizeof(unum::usearch::level_t) /*sizeof level*/;
@@ -67,3 +73,12 @@ void reset_node_label(char *node)
     node_t n = node_t{node};
     n.key(INVALID_ELEMENT_LABEL);
 }
+
+void *get_node_neighbors(char *node)
+{
+    node_t n = node_t{node};
+    // n.neighbors
+    // n.neighbors();
+}
+
+

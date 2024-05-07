@@ -52,6 +52,7 @@ IndexBulkDeleteResult *ldb_ambulkdelete(IndexVacuumInfo        *info,
             HnswBlockmapPage *blockmap_page
                 = (HnswBlockmapPage *)PageGetItem(page, PageGetItemId(page, FirstOffsetNumber));
         } else {
+            // todo:: this could also be a pq page(see external_index.c, opts->pq handling)
             for(offset = FirstOffsetNumber; offset <= maxoffset; offset = OffsetNumberNext(offset)) {
                 HnswIndexTuple *nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
                 unsigned long   label = label_from_node(nodepage->node);
