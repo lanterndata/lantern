@@ -1000,7 +1000,7 @@ BlockNumber getDataBlockNumber(RetrieverCtx *ctx, int id, bool add_to_extra_dirt
     return blockno;
 }
 
-void *ldb_wal_index_node_retriever(void *ctxp, int id)
+void *ldb_wal_index_node_retriever(void *ctxp, uint64 id)
 {
     RetrieverCtx   *ctx = (RetrieverCtx *)ctxp;
     BlockNumber     data_block_no;
@@ -1009,12 +1009,14 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
     OffsetNumber    offset, max_offset;
     Buffer          buf = InvalidBuffer;
     bool            idx_page_prelocked = false;
-    void           *cached_node = fa_cache_get(&ctx->fa_cache, id);
+    if(ctx->header_page_under_wal->version == LDB_WAL_VERSION_NUMBER) {
+    }
+    void *cached_node = fa_cache_get(&ctx->fa_cache, (uint32)id);
     if(cached_node != NULL) {
         return cached_node;
     }
 
-    data_block_no = getDataBlockNumber(ctx, id, false);
+    data_block_no = getDataBlockNumber(ctx, (uint32)id, false);
 
     page = extra_dirtied_get(ctx->extra_dirted, data_block_no, NULL);
     if(page == NULL) {
@@ -1061,7 +1063,7 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
                      0,
                      "pinned more tuples during node retrieval than will fit in work_mem, cosider increasing work_mem");
 #endif
-            fa_cache_insert(&ctx->fa_cache, id, nodepage->node);
+            fa_cache_insert(&ctx->fa_cache, (uint32)id, nodepage->node);
 
             return nodepage->node;
 #endif
@@ -1071,19 +1073,23 @@ void *ldb_wal_index_node_retriever(void *ctxp, int id)
         assert(BufferIsValid(buf));
         UnlockReleaseBuffer(buf);
     }
-    ldb_invariant(false, "node with id %d not found", id);
+    ldb_invariant(false, "node with id %ld not found", id);
     pg_unreachable();
 }
 
-void *ldb_wal_index_node_retriever_mut(void *ctxp, int id)
+void *ldb_wal_index_node_retriever_mut(void *ctxp, uint64 id)
 {
     RetrieverCtx   *ctx = (RetrieverCtx *)ctxp;
-    BlockNumber     data_block_no = getDataBlockNumber(ctx, id, true);
     HnswIndexTuple *nodepage;
     Page            page;
     OffsetNumber    offset, max_offset;
     Buffer          buf = InvalidBuffer;
     bool            idx_page_prelocked = false;
+
+    if(ctx->header_page_under_wal->version == LDB_WAL_VERSION_NUMBER) {
+    }
+
+    BlockNumber data_block_no = getDataBlockNumber(ctx, (uint32)id, true);
 
     // here, we don't bother looking up the fully associative cache because
     // given the current usage of _mut, it is never going to be in the chache
@@ -1099,7 +1105,7 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, int id)
     for(offset = FirstOffsetNumber; offset <= max_offset; offset = OffsetNumberNext(offset)) {
         nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
         if(nodepage->id == (uint32)id) {
-            fa_cache_insert(&ctx->fa_cache, id, nodepage->node);
+            fa_cache_insert(&ctx->fa_cache, (uint32)id, nodepage->node);
 
             return nodepage->node;
         }
@@ -1109,6 +1115,6 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, int id)
         assert(BufferIsValid(buf));
         UnlockReleaseBuffer(buf);
     }
-    ldb_invariant(false, "node with id %d not found", id);
+    ldb_invariant(false, "node with id %ld not found", id);
     pg_unreachable();
 }
