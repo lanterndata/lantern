@@ -14,6 +14,7 @@
 #include "hnsw/external_index.h" /* HnswIndexHeaderPage */
 #include "hnsw/options.h"        /* ldb_HnswGetM */
 #include "hnsw/utils.h"          /* ldb_invariant */
+#include "usearch.h"
 
 /* vi infix here is for Validate Index */
 
@@ -34,6 +35,15 @@ struct ldb_vi_block
     uint32_t               vp_nodes_nr;
 };
 
+// C version of uint48_t in c++/usearch
+typedef struct __attribute__((__packed__))
+{
+    unsigned char a[ 6 ];
+} lantern_slot_t;
+
+static_assert(sizeof(lantern_slot_t) == 6, "index validation assumes neighbor id is 6 bytes");
+static_assert(sizeof(lantern_slot_t) == LANTERN_SLOT_SIZE, "index validation assumes neighbor id is 6 bytes");
+
 /*
  * Represents a stored usearch node.
  * Assumes that usearch node has label, dim (size in bytes of the vector
@@ -47,9 +57,11 @@ struct ldb_vi_node
     OffsetNumber    vn_offset; /* within vn_block */
     uint32          vn_id;     /* HnswIndexTuple.id */
     usearch_label_t vn_label;
-    uint32          vn_level;        /* HnswIndexTuple.level, usearch index_gt::level_t */
-    uint32         *vn_neighbors_nr; /* number of neighbors for each level */
-    uint32        **vn_neighbors;    /* array of arrays of neighbors for each level */
+    uint32          vn_level;         /* HnswIndexTuple.level, usearch index_gt::level_t */
+    uint32         *vn_neighbors_nr;  /* number of neighbors for each level */
+    uint32        **vn_neighbors_old; /* array of arrays of *4byte* neighbor IDs for each level */
+
+    lantern_slot_t **vn_neighbors; /* array of arrays of neighbors for each level */
 };
 
 /*
@@ -304,6 +316,7 @@ static void ldb_vi_read_node_carefully(void               *node_tape,
                                        unsigned            node_tape_size,
                                        uint32              vector_size_bytes,
                                        const uint32        M,
+                                       const uint32        index_storage_version,
                                        struct ldb_vi_node *vi_node,
                                        uint32              nodes_nr)
 {
@@ -311,8 +324,11 @@ static void ldb_vi_read_node_carefully(void               *node_tape,
     uint16   level_on_tape;
     uint32   neighbors_nr;
     uint32   neighbors_max;
-    uint32  *neighbors;
-    uint32   unused;
+    uint32  *neighbors_old;
+    uint32   unused_neighbor_slot_old;
+
+    lantern_slot_t *neighbors;
+    lantern_slot_t  unused_neighbor_slot;
 
     LDB_VI_READ_NODE_CHUNK(vi_node, vi_node->vn_label, node_tape, &tape_pos, node_tape_size);
     LDB_VI_READ_NODE_CHUNK(vi_node, level_on_tape, node_tape, &tape_pos, node_tape_size);
@@ -341,6 +357,7 @@ static void ldb_vi_read_node_carefully(void               *node_tape,
      */
     vi_node->vn_neighbors_nr = palloc_array(typeof(*(vi_node->vn_neighbors_nr)), vi_node->vn_level + 1);
     vi_node->vn_neighbors = palloc_array(typeof(*(vi_node->vn_neighbors)), vi_node->vn_level + 1);
+    vi_node->vn_neighbors_old = palloc_array(typeof(*(vi_node->vn_neighbors_old)), vi_node->vn_level + 1);
     for(uint32 level = 0; level <= vi_node->vn_level; ++level) {
         neighbors_max = level == 0 ? M * 2 : M;
         LDB_VI_READ_NODE_CHUNK(vi_node, neighbors_nr, node_tape, &tape_pos, node_tape_size);
@@ -361,10 +378,21 @@ static void ldb_vi_read_node_carefully(void               *node_tape,
                  vi_node->vn_block,
                  vi_node->vn_offset);
         }
+        neighbors_old = palloc_array(typeof(*neighbors_old), neighbors_nr);
         neighbors = palloc_array(typeof(*neighbors), neighbors_nr);
         for(uint32 i = 0; i < neighbors_nr; ++i) {
-            LDB_VI_READ_NODE_CHUNK(vi_node, neighbors[ i ], node_tape, &tape_pos, node_tape_size);
-            if(neighbors[ i ] >= nodes_nr) {
+            bool is_error = true;
+            if(index_storage_version == LDB_WAL_VERSION_NUMBER) {
+                LDB_VI_READ_NODE_CHUNK(vi_node, neighbors[ i ], node_tape, &tape_pos, node_tape_size);
+                is_error = *(uint32 *)&neighbors[ i ] >= nodes_nr;
+            } else if(index_storage_version == LDB_WAL_VERSION_NUMBER_0_2_7) {
+                LDB_VI_READ_NODE_CHUNK(vi_node, neighbors_old[ i ], node_tape, &tape_pos, node_tape_size);
+                is_error = neighbors_old[ i ] >= nodes_nr;
+            } else {
+                elog(ERROR, "Unknown index_storage_version=%x", index_storage_version);
+            }
+
+            if(is_error) {
                 elog(ERROR,
                      "neighbors[%" PRIu32 "]=%" PRIu32 " >= nodes_nr=%" PRIu32
                      " for "
@@ -372,7 +400,7 @@ static void ldb_vi_read_node_carefully(void               *node_tape,
                      " tape_pos=%u node_tape_size=%u "
                      "node_id=%" PRIu32 " block=%" PRIu32 " offset=%" PRIu16,
                      i,
-                     neighbors[ i ],
+                     *(uint32 *)&neighbors[ i ],
                      nodes_nr,
                      neighbors_nr,
                      neighbors_max,
@@ -384,10 +412,22 @@ static void ldb_vi_read_node_carefully(void               *node_tape,
                      vi_node->vn_offset);
             }
         }
-        for(uint32 i = neighbors_nr; i < neighbors_max; ++i)
-            LDB_VI_READ_NODE_CHUNK(vi_node, unused, node_tape, &tape_pos, node_tape_size);
+
+        if(index_storage_version == LDB_WAL_VERSION_NUMBER) {
+            for(uint32 i = neighbors_nr; i < neighbors_max; ++i) {
+                LDB_VI_READ_NODE_CHUNK(vi_node, unused_neighbor_slot, node_tape, &tape_pos, node_tape_size);
+            }
+            vi_node->vn_neighbors[ level ] = neighbors;
+        } else if(index_storage_version == LDB_WAL_VERSION_NUMBER_0_2_7) {
+            for(uint32 i = neighbors_nr; i < neighbors_max; ++i) {
+                LDB_VI_READ_NODE_CHUNK(vi_node, unused_neighbor_slot_old, node_tape, &tape_pos, node_tape_size);
+            }
+            vi_node->vn_neighbors_old[ level ] = neighbors_old;
+        } else {
+            // condition has been chacked above already, sowe would have thrown by now
+            assert(false);
+        }
         vi_node->vn_neighbors_nr[ level ] = neighbors_nr;
-        vi_node->vn_neighbors[ level ] = neighbors;
     }
     /* the vector of floats is at the end */
     tape_pos += vector_size_bytes;
@@ -502,6 +542,7 @@ static void ldb_vi_read_nodes(Relation                   index,
                                        index_tuple->size,
                                        vector_size_bytes,
                                        index_header->m,
+                                       index_header->version,
                                        &vi_nodes[ node_id ],
                                        nodes_nr);
         }
@@ -585,7 +626,7 @@ static void ldb_vi_print_statistics(struct ldb_vi_block *vi_blocks,
                          i,
                          level,
                          n,
-                         node->vn_neighbors[ level ][ n ]);
+                         *(uint32 *)&node->vn_neighbors[ level ][ n ]);
                 }
             }
         }
@@ -608,17 +649,6 @@ static void ldb_vi_print_statistics(struct ldb_vi_block *vi_blocks,
     pfree(min_neighbors_per_level);
     pfree(edges_per_level);
     pfree(nodes_per_level);
-}
-
-void ldb_vi_free_neighbors(struct ldb_vi_node *vi_nodes, uint32 nodes_nr)
-{
-    for(uint32 i = 0; i < nodes_nr; ++i) {
-        struct ldb_vi_node *node = &vi_nodes[ i ];
-
-        for(uint32 level = 0; level <= node->vn_level; ++level) pfree(node->vn_neighbors[ level ]);
-        pfree(node->vn_neighbors);
-        pfree(node->vn_neighbors_nr);
-    }
 }
 
 void ldb_validate_index(Oid indrelid, bool print_info)
@@ -711,7 +741,6 @@ void ldb_validate_index(Oid indrelid, bool print_info)
     ldb_vi_read_nodes(index, index_header, vi_blocks, blocks_nr, vi_nodes, nodes_nr);
     if(print_info) ldb_vi_print_statistics(vi_blocks, blocks_nr, vi_nodes, nodes_nr);
 
-    ldb_vi_free_neighbors(vi_nodes, nodes_nr);
     pfree(vi_nodes);
     pfree(vi_blocks);
 
