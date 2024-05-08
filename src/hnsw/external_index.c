@@ -7,7 +7,6 @@
 #include <access/heapam.h>        // relation_open
 #include <assert.h>
 #include <common/relpath.h>
-#include <hnsw/fa_cache.h>
 #include <math.h>
 #include <miscadmin.h>  // START_CRIT_SECTION, END_CRIT_SECTION
 #include <pg_config.h>  // BLCKSZ
@@ -18,6 +17,8 @@
 
 #include "extra_dirtied.h"
 #include "failure_point.h"
+#include "hnsw.h"
+#include "hnsw/fa_cache.h"
 #include "htab_cache.h"
 #include "insert.h"
 #include "options.h"
@@ -284,7 +285,8 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
                                      int                  dimension,
                                      uint32               first_node_index,
                                      uint32               num_added_vectors,
-                                     unsigned             blockmap_groupno)
+                                     unsigned             blockmap_groupno,
+                                     ItemPointerData     *item_pointers)
 {
     const uint32 number_of_blockmaps_in_group = NumberOfBlockMapsInGroup(blockmap_groupno);
 
@@ -311,7 +313,9 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
         //     3a. add node to page
 
         // 4. commit buffer
-        Buffer buf = ReadBufferExtended(index, forkNum, P_NEW, RBM_NORMAL, NULL);
+        Buffer       buf = ReadBufferExtended(index, forkNum, P_NEW, RBM_NORMAL, NULL);
+        BlockNumber  blockno = BufferGetBlockNumber(buf);
+        OffsetNumber offsetno;
         LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 
         GenericXLogState *state = GenericXLogStart(index);
@@ -359,17 +363,18 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
             // once quantization is enabled, we can allow larger overall dims
             assert(bufferpage + offsetof(HnswIndexTuple, node) + node_size < bufferpage + BLCKSZ);
             memcpy(bufferpage->node, node, node_size);
+            offsetno = PageAddItem(
+                page, (Item)bufferpage, sizeof(HnswIndexTuple) + node_size, InvalidOffsetNumber, false, false);
 
-            if(PageAddItem(
-                   page, (Item)bufferpage, sizeof(HnswIndexTuple) + node_size, InvalidOffsetNumber, false, false)
-               == InvalidOffsetNumber) {
+            if(offsetno == InvalidOffsetNumber) {
                 // break to get a fresh page
-                // todo:: properly test this case
                 break;
             }
 
             // we successfully recorded the node. move to the next one
-            l_wal_retriever_block_numbers[ node_id - first_node_index ] = BufferGetBlockNumber(buf);
+            l_wal_retriever_block_numbers[ node_id - first_node_index ] = blockno;
+            BlockIdSet(&item_pointers[ node_id ].ip_blkid, blockno);
+            item_pointers[ node_id ].ip_posid = offsetno;
             *progress += node_size;
             node_id++;
         }
@@ -559,6 +564,9 @@ void StoreExternalIndex(Relation                index,
     uint32   group_node_first_index = 0;
     uint32   num_added_vectors_remaining = num_added_vectors;
     uint32   batch_size = HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
+
+    ItemPointerData *item_pointers = palloc(num_added_vectors * sizeof(ItemPointerData));
+
     while(num_added_vectors_remaining > 0) {
         StoreExternalIndexBlockMapGroup(index,
                                         external_index_metadata,
@@ -569,7 +577,8 @@ void StoreExternalIndex(Relation                index,
                                         opts->dimensions,
                                         group_node_first_index,
                                         Min(num_added_vectors_remaining, batch_size),
-                                        blockmap_groupno);
+                                        blockmap_groupno,
+                                        item_pointers);
         num_added_vectors_remaining -= Min(num_added_vectors_remaining, batch_size);
         group_node_first_index += batch_size;
         batch_size = batch_size * 2;
