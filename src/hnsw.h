@@ -4,6 +4,7 @@
 #include <postgres.h>
 
 #include <fmgr.h>
+#include <storage/itemptr.h>
 #include <utils/relcache.h>
 
 #define LANTERN_INTERNAL_SCHEMA_NAME "_lantern_internal"
@@ -26,6 +27,15 @@ typedef enum
     VECTOR,
     UNKNOWN
 } HnswColumnType;
+
+// C version of uint48_t in c++/usearch
+typedef union __attribute__((__packed__))
+
+{
+    unsigned char   a[ 6 ];
+    ItemPointerData itemPointerData;
+    uint32          seqid;
+} ldb_lantern_slot_union_t;
 
 /* Exported functions */
 PGDLLEXPORT void _PG_init(void);
