@@ -31,7 +31,7 @@ INFO:  done saving 1000 vectors
 SELECT * FROM ldb_get_indexes('sift_base1k');
      indexname     |  size  |                                           indexdef                                           | indisvalid 
 -------------------+--------+----------------------------------------------------------------------------------------------+------------
- sift_base1k_v_idx | 632 kB | CREATE INDEX sift_base1k_v_idx ON sift_base1k USING lantern_hnsw (v) WITH (dim='128', m='6') | t
+ sift_base1k_v_idx | 664 kB | CREATE INDEX sift_base1k_v_idx ON sift_base1k USING lantern_hnsw (v) WITH (dim='128', m='6') | t
 (1 row)
 
 SELECT _lantern_internal.validate_index('sift_base1k_v_idx', false);

@@ -169,7 +169,7 @@ SELECT pg_sleep(5);
 SELECT * FROM ldb_get_indexes('sift_base1k_UpperCase');
  indexname |  size  |                                          indexdef                                          | indisvalid 
 -----------+--------+--------------------------------------------------------------------------------------------+------------
- idx       | 632 kB | CREATE INDEX idx ON "sift_base1k_UpperCase" USING lantern_hnsw (v) WITH (dim='128', m='6') | t
+ idx       | 664 kB | CREATE INDEX idx ON "sift_base1k_UpperCase" USING lantern_hnsw (v) WITH (dim='128', m='6') | t
 (1 row)
 
 SELECT _lantern_internal.validate_index('idx', false);
