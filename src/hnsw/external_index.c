@@ -623,7 +623,7 @@ void StoreExternalIndex(Relation                index,
                         OffsetNumber noff;
                         uint32       nid = slots[ j ].seqid;
                         // elog(INFO, "slot %d: %d", j, nid);
-                        // slots[ j ].itemPointerData = item_pointers[ nid ];
+                        slots[ j ].itemPointerData = item_pointers[ nid ];
                     }
                 }
             }
@@ -637,6 +637,13 @@ void StoreExternalIndex(Relation                index,
 
         UnlockReleaseBuffer(buf);
     }
+    // rewrote all neighbor list. Rewrite graph entry point as well
+    uint64 entry_slot = usearch_header_get_entry_slot(headerp->usearch_header);
+    ldb_lantern_slot_union_t updated_slot;
+    uint64                   ret_slot;
+    updated_slot.itemPointerData = item_pointers[ entry_slot ];
+    memcpy(&ret_slot, &updated_slot, sizeof(updated_slot));
+    usearch_header_set_entry_slot(headerp->usearch_header, ret_slot);
     MarkBufferDirty(header_buf);
     GenericXLogFinish(state);
     UnlockReleaseBuffer(header_buf);
