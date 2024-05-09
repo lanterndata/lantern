@@ -24,7 +24,6 @@ IndexBulkDeleteResult *ldb_ambulkdelete(IndexVacuumInfo        *info,
     elog(WARNING,
          "LanternDB: hnsw index deletes are currently not implemented. This is a no-op. No memory will be reclaimed");
     // traverse through the index and call the callback for all elements
-    BlockNumber         blockno;
     Buffer              buf;
     HnswIndexHeaderPage header;
     Page                page;
@@ -47,12 +46,9 @@ IndexBulkDeleteResult *ldb_ambulkdelete(IndexVacuumInfo        *info,
         page = GenericXLogRegisterBuffer(gxlogState, buf, LDB_GENERIC_XLOG_DELTA_IMAGE);
         maxoffset = PageGetMaxOffsetNumber(page);
 
-        if(isBlockMapBlock(header.blockmap_groups, header.blockmap_groups_nr, blockno)) {
-            ldb_invariant(1 == maxoffset, "expected blockmap page with single item");
-            HnswBlockmapPage *blockmap_page
-                = (HnswBlockmapPage *)PageGetItem(page, PageGetItemId(page, FirstOffsetNumber));
-        } else {
+        if(false /*pq header page*/) {
             // todo:: this could also be a pq page(see external_index.c, opts->pq handling)
+        } else {
             for(offset = FirstOffsetNumber; offset <= maxoffset; offset = OffsetNumberNext(offset)) {
                 HnswIndexTuple *nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
                 unsigned long   label = label_from_node(nodepage->node);

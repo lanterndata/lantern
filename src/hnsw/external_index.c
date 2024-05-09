@@ -41,58 +41,6 @@
  * HnswIndexHeaderPage in that header page, otherwise they would be overwritten
  * when that WAL record up the stack is written to the log.
  */
-static void UpdateHeaderBlockMapGroupDesc(
-    Relation index, ForkNumber forkNum, unsigned groupno, const HnswBlockMapGroupDesc *desc, bool flush_log)
-{
-    GenericXLogState    *state;
-    BlockNumber          HEADER_BLOCK = 0;
-    Page                 hdr_page;
-    Buffer               hdr_buf;
-    HnswIndexHeaderPage *hdr_copy;
-    XLogRecPtr           log_rec_ptr;
-
-    state = GenericXLogStart(index);
-    /* no need to look the buffer because it's the header (block 0) and it's locked already) */
-    hdr_buf = ReadBufferExtended(index, forkNum, HEADER_BLOCK, RBM_NORMAL, NULL);
-    hdr_page = GenericXLogRegisterBuffer(state, hdr_buf, LDB_GENERIC_XLOG_DELTA_IMAGE);
-
-    hdr_copy = (HnswIndexHeaderPage *)PageGetContents(hdr_page);
-    assert(groupno < lengthof(hdr_copy->blockmap_groups));
-
-    hdr_copy->blockmap_groups_nr = groupno + 1;
-
-    hdr_copy->blockmap_groups[ groupno ] = *desc;
-
-    log_rec_ptr = GenericXLogFinish(state);
-    if(RelationNeedsWAL(index)) {
-        assert(log_rec_ptr != InvalidXLogRecPtr);
-        if(flush_log) {
-            LDB_FAILURE_POINT_CRASH_IF_ENABLED("just_before_wal_flush");
-            XLogFlush(log_rec_ptr);
-            LDB_FAILURE_POINT_CRASH_IF_ENABLED("just_after_wal_flush");
-        }
-    }
-    ReleaseBuffer(hdr_buf);
-}
-
-static void ExtendIndexRelationTo(Relation index, ForkNumber forkNum, BlockNumber number_of_blocks)
-{
-    Buffer buf;
-
-    assert(RelationGetNumberOfBlocksInFork(index, forkNum) < number_of_blocks);
-
-#if PG_VERSION_NUM >= 160000
-    buf = ExtendBufferedRelTo(BMR_REL(index), forkNum, NULL, EB_CLEAR_SIZE_CACHE, number_of_blocks, RBM_NORMAL);
-    assert(BufferGetBlockNumber(buf) == number_of_blocks - 1);
-    ReleaseBuffer(buf);
-#else
-    for(BlockNumber block = RelationGetNumberOfBlocksInFork(index, forkNum); block < number_of_blocks; ++block) {
-        buf = ReadBufferExtended(index, forkNum, P_NEW, RBM_NORMAL, NULL);
-        assert(BufferGetBlockNumber(buf) == block);
-        ReleaseBuffer(buf);
-    }
-#endif
-}
 
 void StoreExternalIndexBlockMapGroup(Relation             index,
                                      const metadata_t    *metadata,
@@ -331,11 +279,10 @@ void StoreExternalIndex(Relation                index,
         }
     }
 
-    uint64   progress = USEARCH_HEADER_SIZE;
-    unsigned blockmap_groupno = 0;
-    uint32   group_node_first_index = 0;
-    uint32   num_added_vectors_remaining = num_added_vectors;
-    uint32   batch_size = HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
+    uint64 progress = USEARCH_HEADER_SIZE;
+    uint32 group_node_first_index = 0;
+    uint32 num_added_vectors_remaining = num_added_vectors;
+    uint32 batch_size = HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
 
     ItemPointerData *item_pointers = palloc(num_added_vectors * sizeof(ItemPointerData));
 
@@ -356,12 +303,10 @@ void StoreExternalIndex(Relation                index,
     }
 
     // this is where I rewrite all neighbors to use BlockNumber
-    BlockNumber         blockno;
     Buffer              buf;
     HnswIndexHeaderPage header_copy;
     Page                page;
     OffsetNumber        offset, maxoffset;
-    ItemPointerData     tid_data;
     GenericXLogState   *gxlogState;
     header_copy = *(HnswIndexHeaderPage *)PageGetContents(header_page);
     // rewrite neighbor lists in terms of block numbers
@@ -375,10 +320,6 @@ void StoreExternalIndex(Relation                index,
         page = GenericXLogRegisterBuffer(gxlogState, buf, LDB_GENERIC_XLOG_DELTA_IMAGE);
         maxoffset = PageGetMaxOffsetNumber(page);
 
-        if(isBlockMapBlock(header_copy.blockmap_groups, header_copy.blockmap_groups_nr, blockno)) {
-            ldb_invariant(1 == maxoffset, "expected blockmap page with single item");
-            HnswBlockmapPage *blockmap_page
-                = (HnswBlockmapPage *)PageGetItem(page, PageGetItemId(page, FirstOffsetNumber));
         } else {
             block_modified = true;
             // todo:: this could also be a pq page(see external_index.c, opts->pq handling)
@@ -390,9 +331,6 @@ void StoreExternalIndex(Relation                index,
                     ldb_lantern_slot_union_t *slots
                         = get_node_neighbors_mut(external_index_metadata, nodepage->node, i, &slot_count);
                     for(uint32 j = 0; j < slot_count; j++) {
-                        OffsetNumber noff;
-                        uint32       nid = slots[ j ].seqid;
-                        // elog(INFO, "slot %d: %d", j, nid);
                         slots[ j ].itemPointerData = item_pointers[ nid ];
                     }
                 }
@@ -613,20 +551,6 @@ bool isBlockMapBlock(const HnswBlockMapGroupDesc *blockmap_groups, const int blo
     return false;
 }
 
-#if LANTERNDB_USEARCH_LEVEL_DISTRIBUTION
-    static levels[ 20 ] = {0};
-    static cnt = 0;
-
-    // clang-format off
-    if (cnt % 100 == 0) {
-        elog(INFO, "levels0 %d %d %d %d %d %d %d %d %d %d", levels[0], levels[1], levels[2], levels[3], levels[4],
-        levels[5], levels[6], levels[7], levels[8], levels[9]);
-        elog(INFO, "levels1 %d %d %d %d %d %d %d %d %d %d",
-        levels[10], levels[11], levels[12], levels[13], levels[14], levels[15], levels[16], levels[17], levels[18],
-        levels[19]);
-    }
-    // clang-format on
-#endif
 void *ldb_wal_index_node_retriever(void *ctxp, uint64 id)
 {
     RetrieverCtx   *ctx = (RetrieverCtx *)ctxp;
@@ -728,11 +652,8 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, uint64 id)
     if(ctx->header_page_under_wal->version == LDB_WAL_VERSION_NUMBER) {
         memcpy(&tid_data, &id, sizeof(ItemPointerData));
         data_block_no = BlockIdGetBlockNumber(&tid_data.ip_blkid);
-        elog(INFO, "id: %ld", id);
-        elog(INFO, "blockno: %d", data_block_no);
-        elog(INFO, "offset: %d", tid_data.ip_posid);
     } else {
-        data_block_no = getDataBlockNumber(ctx, (uint32)id, true);
+        elog(ERROR, "unsupported or outdated wal version. Please reindex");
     }
 
     // here, we don't bother looking up the fully associative cache because
