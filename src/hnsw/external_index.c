@@ -348,7 +348,7 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
                                 metadata,
                                 /*->>output*/ &node_size,
                                 &node_level);
-            bufferpage->id = node_id;
+            bufferpage->seqid = node_id;
             bufferpage->level = node_level;
             bufferpage->size = node_size;
             ldb_invariant(node_level < 100,
@@ -665,12 +665,12 @@ static OffsetNumber HnswIndexPageAddVector(Page page, HnswIndexTuple *new_vector
         // we added the first element to the index page!
         // update firstId
         ldb_dlog("InsertBranching: we added first element to index page");
-        special_block->firstId = new_vector_data->id;
-        special_block->lastId = new_vector_data->id;
+        special_block->firstId = new_vector_data->seqid;
+        special_block->lastId = new_vector_data->seqid;
         special_block->nextblockno = InvalidBlockNumber;
     } else {
         ldb_dlog("InsertBranching: we added (NOT FIRST) element to index page");
-        assert(special_block->lastId == new_vector_data->id - 1);
+        assert(special_block->lastId == new_vector_data->seqid - 1);
         special_block->lastId += 1;
         // we always add to the last page so nextblockno
         // of the page we add to is always InvalidBlockNumber
@@ -719,7 +719,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
     // note that we allocate more than sizeof(HnswIndexTuple) since the struct has a flexible array member
     // which depends on parameters passed into UsearchNodeBytes above
     alloced_tuple = (HnswIndexTuple *)palloc0(sizeof(HnswIndexTuple) + new_tuple_size);
-    alloced_tuple->id = new_tuple_id;
+    alloced_tuple->seqid = new_tuple_id;
     alloced_tuple->level = new_tuple_level;
     alloced_tuple->size = new_tuple_size;
 
@@ -828,7 +828,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
 
     /*** extract the inserted tuple ref to return so usearch can do further work on it ***/
     new_tup_ref = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, new_tup_at));
-    assert(new_tup_ref->id == new_tuple_id);
+    assert(new_tup_ref->seqid == new_tuple_id);
     assert(new_tup_ref->level == new_tuple_level);
     assert(new_tup_ref->size == new_tuple_size);
     page = NULL;  // to avoid its accidental use
@@ -1048,7 +1048,7 @@ void *ldb_wal_index_node_retriever(void *ctxp, uint64 id)
         nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
         if((new_index_format
             && (data_block_no == BlockIdGetBlockNumber(&tid_data.ip_blkid) && offset == tid_data.ip_posid))
-           || (!new_index_format && nodepage->id == (uint32)id)) {
+           || (!new_index_format && nodepage->seqid == (uint32)id)) {
 #if LANTERNDB_USEARCH_LEVEL_DISTRIBUTION
             levels[ nodepage->level ]++;
 #endif
@@ -1130,7 +1130,7 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, uint64 id)
     max_offset = PageGetMaxOffsetNumber(page);
     for(offset = FirstOffsetNumber; offset <= max_offset; offset = OffsetNumberNext(offset)) {
         nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
-        if(nodepage->id == (uint32)id
+        if(nodepage->seqid == (uint32)id
            || (data_block_no == BlockIdGetBlockNumber(&tid_data.ip_blkid) && offset == tid_data.ip_posid)) {
             if(ctx->header_page_under_wal->version != LDB_WAL_VERSION_NUMBER) {
                 fa_cache_insert(&ctx->fa_cache, (uint32)id, nodepage->node);

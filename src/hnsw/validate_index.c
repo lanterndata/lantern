@@ -485,7 +485,7 @@ static void ldb_vi_read_nodes(Relation                   index,
                      block,
                      offset);
             }
-            node_id = index_tuple->id;
+            node_id = index_tuple->seqid;
             if(node_id >= nodes_nr) {
                 elog(ERROR,
                      "node_id=%" PRIu32 " >= nodes_nr=%" PRIu32

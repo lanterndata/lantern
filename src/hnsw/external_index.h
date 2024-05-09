@@ -89,7 +89,7 @@ typedef struct HnswIndexPageSpecialBlock
 
 typedef struct HnswIndexTuple
 {
-    uint32 id;
+    uint32 seqid;
     uint32 level;
     // stores size of the flexible array member
     uint32 size;
