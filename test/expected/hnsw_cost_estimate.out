@@ -116,9 +116,9 @@ INFO:  done saving 10000 vectors
 SELECT is_cost_estimate_within_error(format(:'explain_query_template', :'v4444'), 3.27);
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 317.724114
+DEBUG:  LANTERN - Total cost: 313.723173
 DEBUG:  LANTERN - Selectivity: 1.000000
-DEBUG:  LANTERN - Num pages: 78.000000
+DEBUG:  LANTERN - Num pages: 77.000000
 DEBUG:  LANTERN - Num tuples: 773.000000
 DEBUG:  LANTERN - ---------------------
  is_cost_estimate_within_error 
@@ -144,9 +144,9 @@ INFO:  done saving 10000 vectors
 SELECT is_cost_estimate_within_error(format(:'explain_query_template', :'v4444'), 3.91);
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 1010.339600
+DEBUG:  LANTERN - Total cost: 1006.412954
 DEBUG:  LANTERN - Selectivity: 1.000000
-DEBUG:  LANTERN - Num pages: 248.000000
+DEBUG:  LANTERN - Num pages: 247.000000
 DEBUG:  LANTERN - Num tuples: 2465.000000
 DEBUG:  LANTERN - ---------------------
  is_cost_estimate_within_error 
@@ -196,7 +196,7 @@ INFO:  done saving 58 vectors
 EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 100 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 4.071250
+DEBUG:  LANTERN - Total cost: 4.142500
 DEBUG:  LANTERN - Selectivity: 0.005326
 DEBUG:  LANTERN - Num pages: 1.000000
 DEBUG:  LANTERN - Num tuples: 19.000000
@@ -290,23 +290,23 @@ INFO:  validate_index() done, no issues found.
 EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 1000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 185.709333
+DEBUG:  LANTERN - Total cost: 181.704318
 DEBUG:  LANTERN - Selectivity: 0.397306
-DEBUG:  LANTERN - Num pages: 44.000000
+DEBUG:  LANTERN - Num pages: 43.000000
 DEBUG:  LANTERN - Num tuples: 1324.000000
 DEBUG:  LANTERN - ---------------------
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 143.492500
+DEBUG:  LANTERN - Total cost: 139.492500
 DEBUG:  LANTERN - Selectivity: 0.299812
-DEBUG:  LANTERN - Num pages: 34.000000
+DEBUG:  LANTERN - Num pages: 33.000000
 DEBUG:  LANTERN - Num tuples: 999.000000
 DEBUG:  LANTERN - ---------------------
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 96.837187
+DEBUG:  LANTERN - Total cost: 92.828043
 DEBUG:  LANTERN - Selectivity: 0.201732
-DEBUG:  LANTERN - Num pages: 23.000000
+DEBUG:  LANTERN - Num pages: 22.000000
 DEBUG:  LANTERN - Num tuples: 673.000000
 DEBUG:  LANTERN - ---------------------
 DEBUG:  LANTERN - Query cost estimator

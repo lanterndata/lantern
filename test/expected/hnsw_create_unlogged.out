@@ -31,7 +31,7 @@ INFO:  done saving 1000 vectors
 SELECT * FROM ldb_get_indexes('sift_base1k');
      indexname     |  size  |                                           indexdef                                           | indisvalid 
 -------------------+--------+----------------------------------------------------------------------------------------------+------------
- sift_base1k_v_idx | 664 kB | CREATE INDEX sift_base1k_v_idx ON sift_base1k USING lantern_hnsw (v) WITH (dim='128', m='6') | t
+ sift_base1k_v_idx | 656 kB | CREATE INDEX sift_base1k_v_idx ON sift_base1k USING lantern_hnsw (v) WITH (dim='128', m='6') | t
 (1 row)
 
 SELECT _lantern_internal.validate_index('sift_base1k_v_idx', false);
@@ -120,7 +120,7 @@ INFO:  done saving 8 vectors
 SELECT * FROM ldb_get_indexes('small_world4');
        indexname       | size  |                                                          indexdef                                                          | indisvalid 
 -----------------------+-------+----------------------------------------------------------------------------------------------------------------------------+------------
- small_world4_hnsw_idx | 24 kB | CREATE INDEX small_world4_hnsw_idx ON small_world4 USING lantern_hnsw (vector) WITH (m='14', ef='22', ef_construction='2') | t
+ small_world4_hnsw_idx | 16 kB | CREATE INDEX small_world4_hnsw_idx ON small_world4 USING lantern_hnsw (vector) WITH (m='14', ef='22', ef_construction='2') | t
 (1 row)
 
 -- the index will not allow changing the dimension of a vector element

@@ -24,7 +24,7 @@ INFO:  done saving 1000 vectors
 SELECT * FROM ldb_get_indexes('sift_base1k');
     indexname    |  size  |                                          indexdef                                          | indisvalid 
 -----------------+--------+--------------------------------------------------------------------------------------------+------------
- to_be_reindexed | 664 kB | CREATE INDEX to_be_reindexed ON sift_base1k USING lantern_hnsw (v) WITH (dim='128', m='6') | t
+ to_be_reindexed | 656 kB | CREATE INDEX to_be_reindexed ON sift_base1k USING lantern_hnsw (v) WITH (dim='128', m='6') | t
 (1 row)
 
 SELECT _lantern_internal.validate_index('to_be_reindexed', false);
@@ -51,7 +51,7 @@ INFO:  validate_index() done, no issues found.
 SELECT * FROM ldb_get_indexes('sift_base1k');
     indexname    |  size  |                                          indexdef                                          | indisvalid 
 -----------------+--------+--------------------------------------------------------------------------------------------+------------
- to_be_reindexed | 664 kB | CREATE INDEX to_be_reindexed ON sift_base1k USING lantern_hnsw (v) WITH (dim='128', m='6') | t
+ to_be_reindexed | 656 kB | CREATE INDEX to_be_reindexed ON sift_base1k USING lantern_hnsw (v) WITH (dim='128', m='6') | t
 (1 row)
 
 set enable_seqscan=FALSE;
