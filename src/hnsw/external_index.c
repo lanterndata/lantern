@@ -942,7 +942,10 @@ BlockNumber getDataBlockNumber(RetrieverCtx *ctx, int id, bool add_to_extra_dirt
 {
     HTABCache             *cache = &ctx->block_numbers_cache;
     HnswBlockMapGroupDesc *blockmap_groups
-        = ctx->header_page_under_wal != NULL ? ctx->header_page_under_wal->blockmap_groups : ctx->blockmap_groups_cache;
+        = (ctx->header_page_under_wal != NULL
+           && (size_t)ctx->header_page_under_wal != LDB_HNSW_MAGIC_NEW_WAL_NO_BLOCKMAP_VALUE)
+              ? ctx->header_page_under_wal->blockmap_groups
+              : ctx->blockmap_groups_cache;
     BlockNumber       blockmapno = getBlockMapPageBlockNumber(blockmap_groups, id);
     BlockNumber       blockno;
     HnswBlockmapPage *blockmap_page;
@@ -1017,7 +1020,10 @@ void *ldb_wal_index_node_retriever(void *ctxp, uint64 id)
     bool            idx_page_prelocked = false;
     ItemPointerData tid_data;
     BlockNumber     data_block_no;
+    bool            new_index_format = (size_t)ctx->header_page_under_wal == LDB_HNSW_MAGIC_NEW_WAL_NO_BLOCKMAP_VALUE;
 
+    // header under wal does not exist for reads
+    if(new_index_format) {
         memcpy(&tid_data, &id, sizeof(ItemPointerData));
         data_block_no = BlockIdGetBlockNumber(&tid_data.ip_blkid);
     } else {
@@ -1040,7 +1046,9 @@ void *ldb_wal_index_node_retriever(void *ctxp, uint64 id)
     max_offset = PageGetMaxOffsetNumber(page);
     for(offset = FirstOffsetNumber; offset <= max_offset; offset = OffsetNumberNext(offset)) {
         nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
-        if(nodepage->id == (uint32)id
+        if((new_index_format
+            && (data_block_no == BlockIdGetBlockNumber(&tid_data.ip_blkid) && offset == tid_data.ip_posid))
+           || (!new_index_format && nodepage->id == (uint32)id)) {
 #if LANTERNDB_USEARCH_LEVEL_DISTRIBUTION
             levels[ nodepage->level ]++;
 #endif
@@ -1073,8 +1081,9 @@ void *ldb_wal_index_node_retriever(void *ctxp, uint64 id)
                      0,
                      "pinned more tuples during node retrieval than will fit in work_mem, cosider increasing work_mem");
 #endif
-
+            if(!new_index_format) {
                 fa_cache_insert(&ctx->fa_cache, (uint32)id, nodepage->node);
+            }
             return nodepage->node;
 #endif
         }
@@ -1123,6 +1132,9 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, uint64 id)
         nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
         if(nodepage->id == (uint32)id
            || (data_block_no == BlockIdGetBlockNumber(&tid_data.ip_blkid) && offset == tid_data.ip_posid)) {
+            if(ctx->header_page_under_wal->version != LDB_WAL_VERSION_NUMBER) {
+                fa_cache_insert(&ctx->fa_cache, (uint32)id, nodepage->node);
+            }
             return nodepage->node;
         }
     }

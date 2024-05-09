@@ -98,7 +98,14 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
 
     memcpy(
         retriever_ctx->blockmap_groups_cache, headerp->blockmap_groups, sizeof(retriever_ctx->blockmap_groups_cache));
-    retriever_ctx->header_page_under_wal = NULL;
+    // read-only retrievers do not get a pointer to index header, so cannot know whether the current index was
+    // constructed with the new approach (no blockmap) or old. This is a hack to communicate to the retriever that the
+    // index does or does not have blockmaps
+    if(headerp->version == LDB_WAL_VERSION_NUMBER) {
+        retriever_ctx->header_page_under_wal = (HnswIndexHeaderPage *)LDB_HNSW_MAGIC_NEW_WAL_NO_BLOCKMAP_VALUE;
+    } else {
+        retriever_ctx->header_page_under_wal = NULL;
+    }
 
     usearch_mem = headerp->usearch_header;
     // this reserves memory for internal structures,
