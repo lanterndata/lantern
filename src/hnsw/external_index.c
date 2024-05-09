@@ -559,24 +559,13 @@ void *ldb_wal_index_node_retriever(void *ctxp, uint64 id)
     RetrieverCtx   *ctx = (RetrieverCtx *)ctxp;
     HnswIndexTuple *nodepage;
     Page            page;
-    OffsetNumber    offset, max_offset;
     Buffer          buf = InvalidBuffer;
     bool            idx_page_prelocked = false;
     ItemPointerData tid_data;
     BlockNumber     data_block_no;
-    bool            new_index_format = (size_t)ctx->header_page_under_wal == LDB_HNSW_MAGIC_NEW_WAL_NO_BLOCKMAP_VALUE;
-    new_index_format = true;
 
-    // header under wal does not exist for reads
-    if(new_index_format) {
-        memcpy(&tid_data, &id, sizeof(ItemPointerData));
-        data_block_no = BlockIdGetBlockNumber(&tid_data.ip_blkid);
-        // elog(INFO, "id: %ld", id);
-        // elog(INFO, "blockno: %d", data_block_no);
-        // elog(INFO, "offset: %d", tid_data.ip_posid);
-    } else {
-        elog(ERROR, "unsupported or outdated wal version. Rlease reindex");
-    }
+    memcpy(&tid_data, &id, sizeof(ItemPointerData));
+    data_block_no = BlockIdGetBlockNumber(&tid_data.ip_blkid);
 
     page = extra_dirtied_get(ctx->extra_dirted, data_block_no, NULL);
     if(page == NULL) {
@@ -587,57 +576,42 @@ void *ldb_wal_index_node_retriever(void *ctxp, uint64 id)
         idx_page_prelocked = true;
     }
 
-    max_offset = PageGetMaxOffsetNumber(page);
-    for(offset = FirstOffsetNumber; offset <= max_offset; offset = OffsetNumberNext(offset)) {
-        nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
-        if((new_index_format
-            && (data_block_no == BlockIdGetBlockNumber(&tid_data.ip_blkid) && offset == tid_data.ip_posid))
-           || (!new_index_format && nodepage->seqid == (uint32)id)) {
-#if LANTERNDB_USEARCH_LEVEL_DISTRIBUTION
-            levels[ nodepage->level ]++;
-#endif
+    nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, tid_data.ip_posid));
 #if LANTERNDB_COPYNODES
-            BufferNode *buffNode;
-            buffNode = (BufferNode *)palloc(sizeof(BufferNode));
-            buffNode->buf = (char *)palloc(nodepage->size);
-            memcpy(buffNode->buf, nodepage->node, nodepage->size);
-            if(!idx_page_prelocked) {
-                UnlockReleaseBuffer(buf);
-            }
-            dlist_push_tail(&ctx->takenbuffers, &buffNode->node);
-            return buffNode->buf;
-#else
-            if(!idx_page_prelocked) {
-                // Wrap buf in a linked list node
-                BufferNode *buffNode;
-                buffNode = (BufferNode *)palloc(sizeof(BufferNode));
-                buffNode->buf = buf;
-
-                // Add buffNode to list of pinned buffers
-                dlist_push_tail(&ctx->takenbuffers, &buffNode->node);
-                LockBuffer(buf, BUFFER_LOCK_UNLOCK);
-            }
-
-#if PG_VERSION_NUM >= 130000
-            CheckMem(work_mem,
-                     NULL,
-                     NULL,
-                     0,
-                     "pinned more tuples during node retrieval than will fit in work_mem, cosider increasing work_mem");
-#endif
-            if(!new_index_format) {
-                fa_cache_insert(&ctx->fa_cache, (uint32)id, nodepage->node);
-            }
-            return nodepage->node;
-#endif
-        }
-    }
+    BufferNode *buffNode;
+    buffNode = (BufferNode *)palloc(sizeof(BufferNode));
+    buffNode->buf = (char *)palloc(nodepage->size);
+    memcpy(buffNode->buf, nodepage->node, nodepage->size);
     if(!idx_page_prelocked) {
-        assert(BufferIsValid(buf));
         UnlockReleaseBuffer(buf);
     }
-    ldb_invariant(false, "node with id %ld not found", id);
-    pg_unreachable();
+    dlist_push_tail(&ctx->takenbuffers, &buffNode->node);
+    return buffNode->buf;
+#endif
+
+    // if we locked the page, unlock it and only leave a pin on it.
+    // otherwise, it must must have been locked because we are in the middle of an update and that node
+    // was affected, so we must leave it locked
+    if(!idx_page_prelocked) {
+        // Wrap buf in a linked list node
+        BufferNode *buffNode;
+        buffNode = (BufferNode *)palloc(sizeof(BufferNode));
+        buffNode->buf = buf;
+
+        // Add buffNode to list of pinned buffers
+        dlist_push_tail(&ctx->takenbuffers, &buffNode->node);
+        LockBuffer(buf, BUFFER_LOCK_UNLOCK);
+    }
+
+#if PG_VERSION_NUM >= 130000
+    CheckMem(work_mem,
+             NULL,
+             NULL,
+             0,
+             "pinned more tuples during node retrieval than will fit in work_mem, cosider increasing work_mem");
+#endif
+    // fa_cache_insert(&ctx->fa_cache, (uint32)id, nodepage->node);
+    return nodepage->node;
 }
 
 void *ldb_wal_index_node_retriever_mut(void *ctxp, uint64 id)
@@ -645,20 +619,13 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, uint64 id)
     RetrieverCtx   *ctx = (RetrieverCtx *)ctxp;
     HnswIndexTuple *nodepage;
     Page            page;
-    OffsetNumber    offset, max_offset;
     Buffer          buf = InvalidBuffer;
-    bool            idx_page_prelocked = false;
     ItemPointerData tid_data;
     BlockNumber     data_block_no;
-    assert(id > 10000);
-    assert(id != 2436923266);
+    assert(ctx->header_page_under_wal->version == LDB_WAL_VERSION_NUMBER);
 
-    if(ctx->header_page_under_wal->version == LDB_WAL_VERSION_NUMBER) {
-        memcpy(&tid_data, &id, sizeof(ItemPointerData));
-        data_block_no = BlockIdGetBlockNumber(&tid_data.ip_blkid);
-    } else {
-        elog(ERROR, "unsupported or outdated wal version. Please reindex");
-    }
+    memcpy(&tid_data, &id, sizeof(ItemPointerData));
+    data_block_no = BlockIdGetBlockNumber(&tid_data.ip_blkid);
 
     // here, we don't bother looking up the fully associative cache because
     // given the current usage of _mut, it is never going to be in the chache
@@ -666,26 +633,9 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, uint64 id)
     page = extra_dirtied_get(ctx->extra_dirted, data_block_no, NULL);
     if(page == NULL) {
         extra_dirtied_add_wal_read_buffer(ctx->extra_dirted, ctx->index_rel, MAIN_FORKNUM, data_block_no, &buf, &page);
-    } else {
-        idx_page_prelocked = true;
     }
 
-    max_offset = PageGetMaxOffsetNumber(page);
-    for(offset = FirstOffsetNumber; offset <= max_offset; offset = OffsetNumberNext(offset)) {
-        nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
-        if(nodepage->seqid == (uint32)id
-           || (data_block_no == BlockIdGetBlockNumber(&tid_data.ip_blkid) && offset == tid_data.ip_posid)) {
-            if(ctx->header_page_under_wal->version != LDB_WAL_VERSION_NUMBER) {
-                fa_cache_insert(&ctx->fa_cache, (uint32)id, nodepage->node);
-            }
-            return nodepage->node;
-        }
-    }
-
-    if(!idx_page_prelocked) {
-        assert(BufferIsValid(buf));
-        UnlockReleaseBuffer(buf);
-    }
-    ldb_invariant(false, "node with id %ld not found", id);
-    pg_unreachable();
+    nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, tid_data.ip_posid));
+    // fa_cache_insert(&ctx->fa_cache, (uint32)id, nodepage->node);
+    return nodepage->node;
 }
