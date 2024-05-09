@@ -188,6 +188,7 @@ void StoreExternalEmptyIndex(Relation index, ForkNumber forkNum, char *data, use
     headerp->num_subvectors = opts->num_subvectors;
 
     headerp->num_vectors = 0;
+    headerp->blockmap_groups_nr_unused = 0;
 
     headerp->last_data_block = InvalidBlockNumber;
 
@@ -320,6 +321,7 @@ void StoreExternalIndex(Relation                index,
         page = GenericXLogRegisterBuffer(gxlogState, buf, LDB_GENERIC_XLOG_DELTA_IMAGE);
         maxoffset = PageGetMaxOffsetNumber(page);
 
+        if(false /*pq header page*/) {
         } else {
             block_modified = true;
             // todo:: this could also be a pq page(see external_index.c, opts->pq handling)
@@ -331,6 +333,7 @@ void StoreExternalIndex(Relation                index,
                     ldb_lantern_slot_union_t *slots
                         = get_node_neighbors_mut(external_index_metadata, nodepage->node, i, &slot_count);
                     for(uint32 j = 0; j < slot_count; j++) {
+                        uint32 nid = slots[ j ].seqid;
                         slots[ j ].itemPointerData = item_pointers[ nid ];
                     }
                 }
@@ -346,7 +349,7 @@ void StoreExternalIndex(Relation                index,
         UnlockReleaseBuffer(buf);
     }
     // rewrote all neighbor list. Rewrite graph entry point as well
-    uint64 entry_slot = usearch_header_get_entry_slot(headerp->usearch_header);
+    uint64                   entry_slot = usearch_header_get_entry_slot(headerp->usearch_header);
     ldb_lantern_slot_union_t updated_slot;
     uint64                   ret_slot;
     updated_slot.itemPointerData = item_pointers[ entry_slot ];
@@ -562,6 +565,7 @@ void *ldb_wal_index_node_retriever(void *ctxp, uint64 id)
     ItemPointerData tid_data;
     BlockNumber     data_block_no;
     bool            new_index_format = (size_t)ctx->header_page_under_wal == LDB_HNSW_MAGIC_NEW_WAL_NO_BLOCKMAP_VALUE;
+    new_index_format = true;
 
     // header under wal does not exist for reads
     if(new_index_format) {

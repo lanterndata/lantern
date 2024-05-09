@@ -96,8 +96,6 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     if(error != NULL) elog(ERROR, "error loading index: %s", error);
     assert(error == NULL);
 
-    memcpy(
-        retriever_ctx->blockmap_groups_cache, headerp->blockmap_groups, sizeof(retriever_ctx->blockmap_groups_cache));
     // read-only retrievers do not get a pointer to index header, so cannot know whether the current index was
     // constructed with the new approach (no blockmap) or old. This is a hack to communicate to the retriever that the
     // index does or does not have blockmaps
