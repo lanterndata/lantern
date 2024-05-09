@@ -600,9 +600,6 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
     return new_tup_ref;
 }
 
-/* TODO refactor: the relation open/close/read the header code is very similar to ldb_validate_index() */
-void ldb_continue_blockmap_group_initialization(Oid indrelid) {}
-
 bool isBlockMapBlock(const HnswBlockMapGroupDesc *blockmap_groups, const int blockmap_group_nr, BlockNumber blockno)
 {
     if(!BlockNumberIsValid(blockno)) {

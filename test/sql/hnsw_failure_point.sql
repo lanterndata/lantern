@@ -34,6 +34,4 @@ INSERT INTO small_world (v) VALUES ('{2,2,2}');
 SELECT _lantern_internal.validate_index('small_world_v_idx', false);
 \set ON_ERROR_STOP on
 
--- now let's continue and finish the blockmap creation and then validate the index again
-SELECT _lantern_internal.continue_blockmap_group_initialization('small_world_v_idx');
 SELECT _lantern_internal.validate_index('small_world_v_idx', false);
