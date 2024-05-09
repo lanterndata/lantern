@@ -104,6 +104,7 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     if(headerp->version == LDB_WAL_VERSION_NUMBER) {
         retriever_ctx->header_page_under_wal = (HnswIndexHeaderPage *)LDB_HNSW_MAGIC_NEW_WAL_NO_BLOCKMAP_VALUE;
     } else {
+        elog(ERROR, "unsupported or outdated wal version. Please reindex");
         retriever_ctx->header_page_under_wal = NULL;
     }
 

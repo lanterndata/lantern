@@ -157,7 +157,9 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
                                   metadata_t          *metadata,
                                   uint32               new_tuple_id,
                                   uint32               new_tuple_level,
-                                  HnswInsertState     *insertstate);
+
+                                  ldb_lantern_slot_union_t *slot,
+                                  HnswInsertState          *insertstate);
 
 BlockNumber NumberOfBlockMapsInGroup(unsigned groupno);
 

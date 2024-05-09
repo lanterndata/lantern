@@ -690,7 +690,9 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
                                   metadata_t          *metadata,
                                   uint32               new_tuple_id,
                                   uint32               new_tuple_level,
-                                  HnswInsertState     *insertstate)
+
+                                  ldb_lantern_slot_union_t *slot,
+                                  HnswInsertState          *insertstate)
 {
     if(hdr->blockmap_groups_nr > 0) {
         unsigned last_blockmap_group = hdr->blockmap_groups_nr - 1;
@@ -710,7 +712,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
     Page                       page;
     OffsetNumber               new_tup_at;
     HnswIndexPageSpecialBlock *special_block;
-    BlockNumber                new_vector_blockno;
+    BlockNumber                new_vector_blockno = InvalidBlockNumber;
     uint32          new_tuple_size = UsearchNodeBytes(metadata, hdr->vector_dim * sizeof(float), new_tuple_level);
     HnswIndexTuple *alloced_tuple = NULL;
     HnswIndexTuple *new_tup_ref = NULL;
@@ -827,6 +829,11 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
     }
 
     /*** extract the inserted tuple ref to return so usearch can do further work on it ***/
+    assert(new_vector_blockno != InvalidBlockNumber);
+    ItemPointerData tmp;
+    BlockIdSet(&tmp.ip_blkid, new_vector_blockno);
+    tmp.ip_posid = new_tup_at;
+    memcpy(&slot->itemPointerData, &tmp, sizeof(ItemPointerData));
     new_tup_ref = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, new_tup_at));
     assert(new_tup_ref->seqid == new_tuple_id);
     assert(new_tup_ref->level == new_tuple_level);

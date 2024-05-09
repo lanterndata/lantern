@@ -29,7 +29,7 @@ uint32_t UsearchNodeBytes(const metadata_t *metadata, int vector_bytes, int leve
 }
 
 void usearch_init_node(
-    metadata_t *meta, char *tape, unsigned long key, uint32_t level, uint32_t slot_id, void *vector, size_t vector_len)
+    metadata_t *meta, char *tape, unsigned long key, uint32_t level, uint64_t slot_id, void *vector, size_t vector_len)
 {
     int node_size = UsearchNodeBytes(meta, vector_len, level);
     std::memset(tape, 0, node_size);
