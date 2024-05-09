@@ -40,13 +40,6 @@ BlockNumber NumberOfBlockMapsInGroup(unsigned groupno)
     return 1u << groupno;
 }
 
-static bool BlockMapGroupIsFullyInitialized(HnswIndexHeaderPage *hdr, unsigned groupno)
-{
-    assert(groupno < HNSW_MAX_BLOCKMAP_GROUPS);
-
-    return hdr->blockmap_groups[ groupno ].blockmaps_initialized == NumberOfBlockMapsInGroup(groupno);
-}
-
 static uint32 BlockMapGroupFirstNodeIndex(unsigned groupno)
 {
     uint32 first_node_index = 0;
@@ -54,13 +47,6 @@ static uint32 BlockMapGroupFirstNodeIndex(unsigned groupno)
     if(groupno == 0) return 0;
     for(unsigned i = 0; i < groupno; ++i) first_node_index += NumberOfBlockMapsInGroup(i);
     return first_node_index * HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
-}
-
-static bool AreEnoughBlockMapsForTupleId(uint32 blockmap_groups_nr, uint32 tuple_id)
-{
-    // new_tuple_id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE + 1 is kth blockmap
-    // we check if k is more than already created 2^groups
-    return tuple_id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE + 1 < ((uint32)1 << blockmap_groups_nr);
 }
 
 /*
@@ -126,156 +112,6 @@ static void ExtendIndexRelationTo(Relation index, ForkNumber forkNum, BlockNumbe
 #endif
 }
 
-/*
- * Continue and finish the initialization of a blockmap group.
- * If the initialization hasn't been started, then the initialization is started.
- * When this function is called a BUFFER_LOCK_EXCLUSIVE is supposed to be taken on the block 0 (header block).
- * When this function returns the block maps of the group are fully initialized.
- *
- *          HnswBlockMapGroupDesc
- * first_block          blockmaps_initialized       meaning
- * InvalidBlockNumber   0                           The blockmap group initialization hasn't started.
- * <block number>       0                           The blockmap group initialization has started, but
- *                                                  no blockmaps has been initialized. It's possible that
- *                                                  the block allocation for the group hasn't finished.
- * <block number>       >0                          Some blockmaps were initialized.
- * <block number>       NumberOfBlockMapsInGroup()  The blockmap group had been fully initialized.
- *
- * The process restarts during the blockmap creation are handled in the following way:
- * - there are only 2 cases to modify the index in the code right now: index
- *   creation and insert. If there are more cases the new code MUST do the
- *   BlockMapGroupIsFullyInitialized() check and then call
- *   ContinueBlockMapGroupInitialization if the blockmap group is not fully
- *   initialized (similar to how PrepareIndexTuple() currently does it);
- * - if the process restart happens during the index creation there is no code
- *   currently to continue an index creation after crash, so this function
- *   doesn't do anything special about it and just handles it as usual;
- * - if the process restart happens during the insert it might be possible that
- *   the blockmap group initialization hasn't been completed (and it could only
- *   happen to one group, which is the last one). We're considering the state
- *   of the blockmap group initialization after WAL replay after restart. The
- *   following cases are possible:
- *
- *   - the first header update WAL record (which sets HnswBlockMapGroupDesc.first_block
- *     for the group) hasn't been replayed. It means that
- *     ContinueBlockMapGroupInitialization() will start from the first header
- *     update and then continue as usual;
- *   - the first header update WAL record was replayed, but the block
- *     allocation for the index hasn't been finished. It will be detected by
- *     non-InvalidBlockNumber value in the first_block and a size check for the
- *     index relation. This case will be handled by finishing the block
- *     allocations and then continuing as usual;
- *   - blockmap pages initialization hasn't been complete. In this case the
- *     HnswBlockMapGroupDesc.blockmaps_initialized will be used as the first
- *     blockmap page to continue the initialization from. This value is updated
- *     in the header approximately every HNSW_BLOCKMAP_UPDATE_HEADER_EVERY
- *     initialized blockmap pages.
- *
- * - in case of failure during WAL replay we're relying on PostgreSQL to
- *   correctly recover the WAL on subsequent restart;
- * - in case of a failure in this function when it's continuing interrupted
- *   blockmap group initialization the subsequent run of this function after
- *   the restart will correctly continue from the nearest place it could
- *   continue from.
- *
- * Important note: This function creates a WAL record to update
- * HnswIndexHeaderPage.blockmap_groups and
- * HnswIndexHeaderPage.blockmap_groups_nr in the header page. Therefore it has
- * to update the same fields in the memory pointed to by hdr parameter, because
- * the header page is added to a WAL record somewhere on the higher level and
- * that WAL record would be GenericXLogFinish()ed after the header updates
- * here, so whatever is written to the header page here directly would be
- * overwritten.
- */
-static void ContinueBlockMapGroupInitialization(
-    HnswIndexHeaderPage *hdr, Relation index, ForkNumber forkNum, uint32 first_node_index, unsigned groupno)
-{
-    GenericXLogState            *state;
-    BlockNumber                  blockmaps_in_group = NumberOfBlockMapsInGroup(groupno);
-    const HnswBlockMapGroupDesc *group_desc;
-    HnswBlockmapPage            *blockmap_page;
-    unsigned                     pages_in_xlog_state;
-    Buffer                       bufs[ MAX_GENERIC_XLOG_PAGES ];
-    Buffer                       buf;
-    Page                         page;
-    HnswIndexPageSpecialBlock   *special;
-    OffsetNumber                 inserted_at;
-
-    assert(groupno < HNSW_MAX_BLOCKMAP_GROUPS);
-
-    if(hdr->blockmap_groups[ groupno ].first_block == InvalidBlockNumber) {
-        assert(hdr->blockmap_groups[ groupno ].blockmaps_initialized == 0);
-        hdr->blockmap_groups[ groupno ].first_block = RelationGetNumberOfBlocksInFork(index, forkNum);
-        assert(groupno == hdr->blockmap_groups_nr);
-        hdr->blockmap_groups_nr = groupno + 1;
-        LDB_FAILURE_POINT_CRASH_IF_ENABLED("just_before_writing_the_intent_to_init");
-        UpdateHeaderBlockMapGroupDesc(index, forkNum, groupno, &hdr->blockmap_groups[ groupno ], true);
-        LDB_FAILURE_POINT_CRASH_IF_ENABLED("just_after_writing_the_intent_to_init");
-    }
-    assert(hdr->blockmap_groups_nr == groupno + 1);
-
-    group_desc = &hdr->blockmap_groups[ groupno ];
-    if(group_desc->blockmaps_initialized == 0
-       && group_desc->first_block + blockmaps_in_group > RelationGetNumberOfBlocksInFork(index, forkNum)) {
-        ExtendIndexRelationTo(index, forkNum, group_desc->first_block + blockmaps_in_group);
-        LDB_FAILURE_POINT_CRASH_IF_ENABLED("just_after_extending_the_index_relation");
-    }
-    assert(group_desc->first_block + blockmaps_in_group <= RelationGetNumberOfBlocksInFork(index, forkNum));
-
-    blockmap_page = palloc0(sizeof(*blockmap_page));
-    pages_in_xlog_state = 0;
-    for(uint32 blockmap_id = group_desc->blockmaps_initialized; blockmap_id < blockmaps_in_group; ++blockmap_id) {
-        if(pages_in_xlog_state == 0) state = GenericXLogStart(index);
-
-        buf = ReadBufferExtended(index, forkNum, group_desc->first_block + blockmap_id, RBM_NORMAL, NULL);
-        LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
-
-        LDB_FAILURE_POINT_CRASH_IF_ENABLED("crash_after_buf_allocation");
-        page = GenericXLogRegisterBuffer(state, buf, GENERIC_XLOG_FULL_IMAGE);
-        PageInit(page, BufferGetPageSize(buf), sizeof(HnswIndexPageSpecialBlock));
-
-        special = (HnswIndexPageSpecialBlock *)PageGetSpecialPointer(page);
-        special->firstId = first_node_index + blockmap_id * HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
-        special->lastId = special->firstId + HNSW_BLOCKMAP_BLOCKS_PER_PAGE - 1;
-        /* TODO nextblockno is incorrect for the last blockmap in the group */
-        special->nextblockno = group_desc->first_block + blockmap_id + 1;
-
-        blockmap_page->first_id = first_node_index + blockmap_id * HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
-        // we always add a single Blockmap page per Index page which has a fixed size that
-        // always fits in postgres wal page. So this should never happen
-        // (Assumes 8k BLKSZ. we can make HnswBlockmapPage size configurable by BLCKSZ)
-        inserted_at = PageAddItem(page, (Item)blockmap_page, sizeof(*blockmap_page), InvalidOffsetNumber, false, false);
-        ldb_invariant(inserted_at != InvalidOffsetNumber, "could not add blockmap to page %d", inserted_at);
-
-        bufs[ pages_in_xlog_state++ ] = buf;
-
-        if(pages_in_xlog_state == MAX_GENERIC_XLOG_PAGES || blockmap_id == blockmaps_in_group - 1) {
-            bool update_header = false;
-
-            // GenericXLogFinish also calls MarkBufferDirty(buf)
-            GenericXLogFinish(state);
-            for(unsigned i = 0; i < pages_in_xlog_state; ++i) {
-                UnlockReleaseBuffer(bufs[ i ]);
-                if(((blockmap_id - pages_in_xlog_state + 1 + i) % HNSW_BLOCKMAP_UPDATE_HEADER_EVERY) == 0)
-                    update_header = true;
-            }
-            if(blockmap_id == blockmaps_in_group - 1)
-                LDB_FAILURE_POINT_CRASH_IF_ENABLED("just_before_updating_header_at_the_end");
-            if(update_header || blockmap_id == blockmaps_in_group - 1) {
-                hdr->blockmap_groups[ groupno ].blockmaps_initialized = blockmap_id + 1;
-                UpdateHeaderBlockMapGroupDesc(
-                    index, forkNum, groupno, &hdr->blockmap_groups[ groupno ], blockmap_id == blockmaps_in_group - 1);
-            }
-            if(blockmap_id == blockmaps_in_group - 1)
-                LDB_FAILURE_POINT_CRASH_IF_ENABLED("just_after_updating_header_at_the_end");
-            pages_in_xlog_state = 0;
-        }
-    }
-    pfree(blockmap_page);
-    // it is possible that usearch asks for a newly added node from this blockmap range
-    // we need to make sure the global header has this information
-}
-
 void StoreExternalIndexBlockMapGroup(Relation             index,
                                      const metadata_t    *metadata,
                                      HnswIndexHeaderPage *headerp,
@@ -289,17 +125,12 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
                                      ItemPointerData     *item_pointers)
 {
     const uint32 number_of_blockmaps_in_group = NumberOfBlockMapsInGroup(blockmap_groupno);
-
-    ContinueBlockMapGroupInitialization(headerp, index, forkNum, first_node_index, blockmap_groupno);
-
     // Now add nodes to data pages
-    char        *node = 0;
-    int          node_size = 0;
-    int          node_level = 0;
-    uint32       predicted_next_block = InvalidBlockNumber;
-    uint32       last_block = -1;
-    BlockNumber *l_wal_retriever_block_numbers
-        = palloc0(sizeof(BlockNumber) * number_of_blockmaps_in_group * HNSW_BLOCKMAP_BLOCKS_PER_PAGE);
+    char  *node = 0;
+    int    node_size = 0;
+    int    node_level = 0;
+    uint32 predicted_next_block = InvalidBlockNumber;
+    uint32 last_block = -1;
 
     HnswIndexTuple *bufferpage = palloc(BLCKSZ);
 
@@ -372,7 +203,6 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
             }
 
             // we successfully recorded the node. move to the next one
-            l_wal_retriever_block_numbers[ node_id - first_node_index ] = blockno;
             BlockIdSet(&item_pointers[ node_id ].ip_blkid, blockno);
             item_pointers[ node_id ].ip_posid = offsetno;
             *progress += node_size;
@@ -395,27 +225,6 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
     headerp->last_data_block = last_block;
 
     LDB_FAILURE_POINT_CRASH_IF_ENABLED("just_before_updating_blockmaps_after_inserting_nodes");
-    // Update blockmap pages with correct associations
-    for(uint32 blockmap_id = 0; blockmap_id < number_of_blockmaps_in_group; ++blockmap_id) {
-        // When the blockmap page group was created, header block was updated accordingly in
-        // ContinueBlockMapGroupInitialization call above.
-        const BlockNumber blockmapno = blockmap_id + headerp->blockmap_groups[ blockmap_groupno ].first_block;
-        // todo:: should MAIN_FORKNUM be hardcoded here or use the forkNum parameter, from a code readability standpoint
-        // (other places in this file as well)
-        Buffer buf = ReadBufferExtended(index, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
-        LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
-
-        GenericXLogState *state = GenericXLogStart(index);
-        Page              page = GenericXLogRegisterBuffer(state, buf, GENERIC_XLOG_FULL_IMAGE);
-
-        HnswBlockmapPage *blockmap = (HnswBlockmapPage *)PageGetItem(page, PageGetItemId(page, FirstOffsetNumber));
-        memcpy(blockmap->blocknos,
-               l_wal_retriever_block_numbers + blockmap_id * HNSW_BLOCKMAP_BLOCKS_PER_PAGE,
-               sizeof(BlockNumber) * HNSW_BLOCKMAP_BLOCKS_PER_PAGE);
-        MarkBufferDirty(buf);
-        GenericXLogFinish(state);
-        UnlockReleaseBuffer(buf);
-    }
 }
 
 void StoreExternalEmptyIndex(Relation index, ForkNumber forkNum, char *data, usearch_init_options_t *opts)
@@ -696,11 +505,6 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
 {
     if(hdr->blockmap_groups_nr > 0) {
         unsigned last_blockmap_group = hdr->blockmap_groups_nr - 1;
-
-        if(!BlockMapGroupIsFullyInitialized(hdr, last_blockmap_group)) {
-            ContinueBlockMapGroupInitialization(
-                hdr, index_rel, MAIN_FORKNUM, BlockMapGroupFirstNodeIndex(last_blockmap_group), last_blockmap_group);
-        }
     }
     // if any data blocks exist, the last one's buffer will be read into this
     Buffer last_dblock = InvalidBuffer;
@@ -729,7 +533,6 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
      *  (create new page if necessary) ***/
 
     if(hdr->last_data_block == InvalidBlockNumber) {
-        ContinueBlockMapGroupInitialization(hdr, index_rel, MAIN_FORKNUM, 0, 0);
         new_dblock = ReadBufferExtended(index_rel, MAIN_FORKNUM, P_NEW, RBM_NORMAL, NULL);
         LockBuffer(new_dblock, BUFFER_LOCK_EXCLUSIVE);
         new_vector_blockno = BufferGetBlockNumber(new_dblock);
@@ -771,8 +574,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
          *   }
          *
          **/
-        if(PageGetFreeSpace(page) > sizeof(ItemIdData) + sizeof(HnswIndexTuple) + alloced_tuple->size
-           && AreEnoughBlockMapsForTupleId(hdr->blockmap_groups_nr, new_tuple_id)) {
+        if(PageGetFreeSpace(page) > sizeof(ItemIdData) + sizeof(HnswIndexTuple) + alloced_tuple->size) {
             // there is enough space in the last page to fit the new vector
             // so we just append it to the page
             ldb_dlog("InsertBranching: we adding element to existing page");
@@ -796,10 +598,6 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
 
             // check the count of blockmaps, see if there's place to add the block id, if yes add, if no create a
             // new group check if already existing blockmaps are not enough
-            if(!AreEnoughBlockMapsForTupleId(hdr->blockmap_groups_nr, new_tuple_id)) {
-                ContinueBlockMapGroupInitialization(
-                    hdr, index_rel, MAIN_FORKNUM, new_tuple_id, hdr->blockmap_groups_nr);
-            }
 
             new_dblock = ReadBufferExtended(index_rel, MAIN_FORKNUM, P_NEW, RBM_NORMAL, NULL);
             LockBuffer(new_dblock, BUFFER_LOCK_EXCLUSIVE);
@@ -875,50 +673,7 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
 }
 
 /* TODO refactor: the relation open/close/read the header code is very similar to ldb_validate_index() */
-void ldb_continue_blockmap_group_initialization(Oid indrelid)
-{
-    Relation             index;
-    BlockNumber          header_blockno = 0;
-    Buffer               header_buf;
-    Page                 header_page;
-    HnswIndexHeaderPage *index_header;
-    bool                 update_header = false;
-    GenericXLogState    *state;
-    XLogRecPtr           ptr;
-
-    /* the code may modify the index, so at least ExclusiveLock should be taken */
-    index = relation_open(indrelid, ExclusiveLock);
-    state = GenericXLogStart(index);
-    header_buf = ReadBuffer(index, header_blockno);
-    LockBuffer(header_buf, BUFFER_LOCK_EXCLUSIVE);
-    header_page = GenericXLogRegisterBuffer(state, header_buf, LDB_GENERIC_XLOG_DELTA_IMAGE);
-    index_header = (HnswIndexHeaderPage *)PageGetContents(header_page);
-
-    if(index_header->blockmap_groups_nr == 0) {
-        elog(INFO, "There is no blockmap group to continue to initialize: blockmap_groups_nr=0");
-    } else if(BlockMapGroupIsFullyInitialized(index_header, index_header->blockmap_groups_nr - 1)) {
-        elog(INFO, "The last blockmap group is fully initialized.");
-    } else {
-        ContinueBlockMapGroupInitialization(index_header,
-                                            index,
-                                            MAIN_FORKNUM,
-                                            BlockMapGroupFirstNodeIndex(index_header->blockmap_groups_nr - 1),
-                                            index_header->blockmap_groups_nr - 1);
-        update_header = true;
-        elog(INFO, "The last blockmap group has been successfully initialized.");
-    }
-
-    if(update_header) {
-        ptr = GenericXLogFinish(state);
-        assert(ptr != InvalidXLogRecPtr);
-        LDB_UNUSED(ptr);
-    } else {
-        GenericXLogAbort(state);
-    }
-
-    UnlockReleaseBuffer(header_buf);
-    relation_close(index, ExclusiveLock);
-}
+void ldb_continue_blockmap_group_initialization(Oid indrelid) {}
 
 static BlockNumber getBlockMapPageBlockNumber(const HnswBlockMapGroupDesc *blockmap_groups, int id)
 {
@@ -1033,6 +788,9 @@ void *ldb_wal_index_node_retriever(void *ctxp, uint64 id)
     if(new_index_format) {
         memcpy(&tid_data, &id, sizeof(ItemPointerData));
         data_block_no = BlockIdGetBlockNumber(&tid_data.ip_blkid);
+        // elog(INFO, "id: %ld", id);
+        // elog(INFO, "blockno: %d", data_block_no);
+        // elog(INFO, "offset: %d", tid_data.ip_posid);
     } else {
         void *cached_node = fa_cache_get(&ctx->fa_cache, (uint32)id);
         if(cached_node != NULL) {
@@ -1113,6 +871,8 @@ void *ldb_wal_index_node_retriever_mut(void *ctxp, uint64 id)
     bool            idx_page_prelocked = false;
     ItemPointerData tid_data;
     BlockNumber     data_block_no;
+    assert(id > 10000);
+    assert(id != 2436923266);
 
     if(ctx->header_page_under_wal->version == LDB_WAL_VERSION_NUMBER) {
         memcpy(&tid_data, &id, sizeof(ItemPointerData));
