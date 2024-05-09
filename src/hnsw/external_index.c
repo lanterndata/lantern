@@ -31,24 +31,6 @@
 #include <miscadmin.h>
 #endif
 
-static BlockNumber getBlockMapPageBlockNumber(const HnswBlockMapGroupDesc *blockmap_groups, int id);
-
-BlockNumber NumberOfBlockMapsInGroup(unsigned groupno)
-{
-    assert(groupno < HNSW_MAX_BLOCKMAP_GROUPS);
-
-    return 1u << groupno;
-}
-
-static uint32 BlockMapGroupFirstNodeIndex(unsigned groupno)
-{
-    uint32 first_node_index = 0;
-
-    if(groupno == 0) return 0;
-    for(unsigned i = 0; i < groupno; ++i) first_node_index += NumberOfBlockMapsInGroup(i);
-    return first_node_index * HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
-}
-
 /*
  * Updates HnswBlockMapGroupDesc for groupno in the HnswIndexHeaderPage.
  * The header is fsynced to the WAL after this function returns if flush_log is true.
@@ -121,10 +103,8 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
                                      int                  dimension,
                                      uint32               first_node_index,
                                      uint32               num_added_vectors,
-                                     unsigned             blockmap_groupno,
                                      ItemPointerData     *item_pointers)
 {
-    const uint32 number_of_blockmaps_in_group = NumberOfBlockMapsInGroup(blockmap_groupno);
     // Now add nodes to data pages
     char  *node = 0;
     int    node_size = 0;
@@ -260,14 +240,6 @@ void StoreExternalEmptyIndex(Relation index, ForkNumber forkNum, char *data, use
     headerp->num_subvectors = opts->num_subvectors;
 
     headerp->num_vectors = 0;
-    headerp->blockmap_groups_nr = 0;
-
-    for(uint32 i = 0; i < lengthof(headerp->blockmap_groups); ++i) {
-        headerp->blockmap_groups[ i ] = (HnswBlockMapGroupDesc){
-            .first_block = InvalidBlockNumber,
-            .blockmaps_initialized = 0,
-        };
-    }
 
     headerp->last_data_block = InvalidBlockNumber;
 
@@ -321,19 +293,10 @@ void StoreExternalIndex(Relation                index,
     headerp->metric_kind = opts->metric_kind;
 
     headerp->num_vectors = num_added_vectors;
-    headerp->blockmap_groups_nr = 0;
     headerp->pq = opts->pq;
     headerp->num_centroids = opts->num_centroids;
     headerp->num_subvectors = opts->num_subvectors;
 
-    for(uint32 i = 0; i < lengthof(headerp->blockmap_groups); ++i) {
-        headerp->blockmap_groups[ i ] = (HnswBlockMapGroupDesc){
-            .first_block = InvalidBlockNumber,
-            .blockmaps_initialized = 0,
-        };
-    }
-    // headerp->blockmap_groups and blockmap_groups_nr are
-    // updated in a separate wal entry
     headerp->last_data_block = InvalidBlockNumber;
 
     memcpy(headerp->usearch_header, data, USEARCH_HEADER_SIZE);
@@ -386,12 +349,10 @@ void StoreExternalIndex(Relation                index,
                                         opts->dimensions,
                                         group_node_first_index,
                                         Min(num_added_vectors_remaining, batch_size),
-                                        blockmap_groupno,
                                         item_pointers);
         num_added_vectors_remaining -= Min(num_added_vectors_remaining, batch_size);
         group_node_first_index += batch_size;
         batch_size = batch_size * 2;
-        blockmap_groupno++;
     }
 
     // this is where I rewrite all neighbors to use BlockNumber
@@ -503,15 +464,10 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
                                   ldb_lantern_slot_union_t *slot,
                                   HnswInsertState          *insertstate)
 {
-    if(hdr->blockmap_groups_nr > 0) {
-        unsigned last_blockmap_group = hdr->blockmap_groups_nr - 1;
-    }
     // if any data blocks exist, the last one's buffer will be read into this
     Buffer last_dblock = InvalidBuffer;
     // if a new data buffer is created for the inserted vector, it will be stored here
     Buffer new_dblock = InvalidBuffer;
-    // blockmap block that points to the blockno of newly inserted node
-    Buffer blockmap_block = InvalidBuffer;
 
     Page                       page;
     OffsetNumber               new_tup_at;
@@ -637,34 +593,6 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
     assert(new_tup_ref->level == new_tuple_level);
     assert(new_tup_ref->size == new_tuple_size);
     page = NULL;  // to avoid its accidental use
-    /*** Update pagemap with the information of the added page ***/
-    {
-        BlockNumber       blockmapno = getBlockMapPageBlockNumber(&hdr->blockmap_groups[ 0 ], new_tuple_id);
-        Page              blockmap_page;
-        HnswBlockmapPage *blockmap;
-        int               max_offset;
-
-        // todo:: figure out how/from where /usr/include/strings.h is included at this point
-        // (noticed that index is a function defined there)
-
-        blockmap_block = ReadBufferExtended(index_rel, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
-        LockBuffer(blockmap_block, BUFFER_LOCK_EXCLUSIVE);
-        blockmap_page = GenericXLogRegisterBuffer(state, blockmap_block, LDB_GENERIC_XLOG_DELTA_IMAGE);
-        extra_dirtied_add(insertstate->retriever_ctx->extra_dirted, blockmapno, blockmap_block, blockmap_page);
-
-        /* sanity-check blockmap block offset number */
-        max_offset = PageGetMaxOffsetNumber(blockmap_page);
-        ldb_invariant(max_offset == FirstOffsetNumber,
-                      "ERROR: Blockmap max_offset is %d but was supposed to be %d",
-                      max_offset,
-                      FirstOffsetNumber);
-
-        // todo:: elsewhere this blockmap var is called blockmap_page
-        // be consistent with naming here and elsewhere
-        blockmap = (HnswBlockmapPage *)PageGetItem(blockmap_page, PageGetItemId(blockmap_page, FirstOffsetNumber));
-        // set the pointer to the newly added node block in the blockmap
-        blockmap->blocknos[ new_tuple_id % HNSW_BLOCKMAP_BLOCKS_PER_PAGE ] = new_vector_blockno;
-    }
     /*** Update header ***/
     hdr->num_vectors++;
 
@@ -674,18 +602,6 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
 
 /* TODO refactor: the relation open/close/read the header code is very similar to ldb_validate_index() */
 void ldb_continue_blockmap_group_initialization(Oid indrelid) {}
-
-static BlockNumber getBlockMapPageBlockNumber(const HnswBlockMapGroupDesc *blockmap_groups, int id)
-{
-    assert(id >= 0);
-    // Trust me, I'm an engineer!
-    id = id / HNSW_BLOCKMAP_BLOCKS_PER_PAGE + 1;
-    int k;
-    for(k = 0; id >= (1 << k); ++k) {
-    }
-    assert(blockmap_groups[ k - 1 ].first_block != InvalidBlockNumber);
-    return blockmap_groups[ k - 1 ].first_block + (id - (1 << (k - 1)));
-}
 
 bool isBlockMapBlock(const HnswBlockMapGroupDesc *blockmap_groups, const int blockmap_group_nr, BlockNumber blockno)
 {
@@ -699,22 +615,6 @@ bool isBlockMapBlock(const HnswBlockMapGroupDesc *blockmap_groups, const int blo
     }
     return false;
 }
-
-BlockNumber getDataBlockNumber(RetrieverCtx *ctx, int id, bool add_to_extra_dirtied)
-{
-    HTABCache             *cache = &ctx->block_numbers_cache;
-    HnswBlockMapGroupDesc *blockmap_groups
-        = (ctx->header_page_under_wal != NULL
-           && (size_t)ctx->header_page_under_wal != LDB_HNSW_MAGIC_NEW_WAL_NO_BLOCKMAP_VALUE)
-              ? ctx->header_page_under_wal->blockmap_groups
-              : ctx->blockmap_groups_cache;
-    BlockNumber       blockmapno = getBlockMapPageBlockNumber(blockmap_groups, id);
-    BlockNumber       blockno;
-    HnswBlockmapPage *blockmap_page;
-    Page              page;
-    Buffer            buf;
-    OffsetNumber      offset;
-    bool              idx_pagemap_prelocked = false;
 
 #if LANTERNDB_USEARCH_LEVEL_DISTRIBUTION
     static levels[ 20 ] = {0};
@@ -730,48 +630,6 @@ BlockNumber getDataBlockNumber(RetrieverCtx *ctx, int id, bool add_to_extra_dirt
     }
     // clang-format on
 #endif
-
-    union voidblockno
-    {
-        void       *ptr;
-        BlockNumber blockno;
-    } blockno_from_cache_p;
-    blockno_from_cache_p.ptr = cache_get_item(cache, &id);
-    if(blockno_from_cache_p.ptr != NULL) {
-        return blockno_from_cache_p.blockno;
-    }
-
-    // it is necessary to first check the extra dirtied pages for the blockmap page, in case we are in the
-    // middle of an insert and the insert operation has the block we need under a lock
-    page = extra_dirtied_get(ctx->extra_dirted, blockmapno, NULL);
-    if(page == NULL) {
-        if(add_to_extra_dirtied) {
-            extra_dirtied_add_wal_read_buffer(ctx->extra_dirted, ctx->index_rel, MAIN_FORKNUM, blockmapno, &buf, &page);
-        } else {
-            buf = ReadBufferExtended(ctx->index_rel, MAIN_FORKNUM, blockmapno, RBM_NORMAL, NULL);
-            LockBuffer(buf, BUFFER_LOCK_SHARE);
-            page = BufferGetPage(buf);
-        }
-    } else {
-        idx_pagemap_prelocked = true;
-    }
-
-    // Blockmap page is stored as a single large blob per page
-    assert(PageGetMaxOffsetNumber(page) == FirstOffsetNumber);
-
-    blockmap_page = (HnswBlockmapPage *)PageGetItem(page, PageGetItemId(page, FirstOffsetNumber));
-
-    offset = id % HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
-    blockno = blockmap_page->blocknos[ offset ];
-    size_t cache_value = (size_t)blockno;
-    cache_set_item(cache, &id, (void *)cache_value);
-    if(!idx_pagemap_prelocked) {
-        UnlockReleaseBuffer(buf);
-    }
-
-    return blockno;
-}
-
 void *ldb_wal_index_node_retriever(void *ctxp, uint64 id)
 {
     RetrieverCtx   *ctx = (RetrieverCtx *)ctxp;
@@ -792,11 +650,7 @@ void *ldb_wal_index_node_retriever(void *ctxp, uint64 id)
         // elog(INFO, "blockno: %d", data_block_no);
         // elog(INFO, "offset: %d", tid_data.ip_posid);
     } else {
-        void *cached_node = fa_cache_get(&ctx->fa_cache, (uint32)id);
-        if(cached_node != NULL) {
-            return cached_node;
-        }
-        data_block_no = getDataBlockNumber(ctx, (uint32)id, false);
+        elog(ERROR, "unsupported or outdated wal version. Rlease reindex");
     }
 
     page = extra_dirtied_get(ctx->extra_dirted, data_block_no, NULL);

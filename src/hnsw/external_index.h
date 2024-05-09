@@ -62,8 +62,8 @@ typedef struct HnswIndexHeaderPage
     BlockNumber           last_data_block;
     char                  usearch_header[ USEARCH_HEADER_SIZE ];
 
-    uint32                blockmap_groups_nr;
-    HnswBlockMapGroupDesc blockmap_groups[ HNSW_MAX_BLOCKMAP_GROUPS ];
+    uint32                blockmap_groups_nr_unused;
+    HnswBlockMapGroupDesc blockmap_groups_unused[ HNSW_MAX_BLOCKMAP_GROUPS ];
     bool                  pq;
     size_t                num_centroids;
     size_t                num_subvectors;
@@ -160,8 +160,6 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
 
                                   ldb_lantern_slot_union_t *slot,
                                   HnswInsertState          *insertstate);
-
-BlockNumber NumberOfBlockMapsInGroup(unsigned groupno);
 
 /*
  * Continue and finish the last blockmap group initialization if needed.
