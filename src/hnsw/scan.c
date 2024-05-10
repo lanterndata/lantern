@@ -96,14 +96,8 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     if(error != NULL) elog(ERROR, "error loading index: %s", error);
     assert(error == NULL);
 
-    // read-only retrievers do not get a pointer to index header, so cannot know whether the current index was
-    // constructed with the new approach (no blockmap) or old. This is a hack to communicate to the retriever that the
-    // index does or does not have blockmaps
-    if(headerp->version == LDB_WAL_VERSION_NUMBER) {
-        retriever_ctx->header_page_under_wal = (HnswIndexHeaderPage *)LDB_HNSW_MAGIC_NEW_WAL_NO_BLOCKMAP_VALUE;
-    } else {
+    if(headerp->version != LDB_WAL_VERSION_NUMBER) {
         elog(ERROR, "unsupported or outdated wal version. Please reindex");
-        retriever_ctx->header_page_under_wal = NULL;
     }
 
     usearch_mem = headerp->usearch_header;
