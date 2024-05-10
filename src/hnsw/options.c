@@ -21,6 +21,7 @@
 // We import this header file
 // to access the op class support function pointers
 #include "../hnsw.h"
+#include "scanstate_cache.h"
 #include "utils.h"
 
 // reloption for lantern hnsw index creation paramters in
@@ -285,6 +286,9 @@ void _PG_init(void)
 
     post_parse_analyze_hook = post_parse_analyze_hook_with_operator_check;
     ExecutorStart_hook = ExecutorStart_hook_with_operator_check;
+
+    // the rest of Lantern initialization goes here
+    ldb_scanstate_cache_init();
 }
 
 // Called with extension unload.

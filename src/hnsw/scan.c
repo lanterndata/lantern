@@ -14,6 +14,8 @@
 #include "options.h"
 #include "pqtable.h"
 #include "retriever.h"
+#include "scanstate_cache.h"
+#include "usearch.h"
 #include "utils.h"
 #include "vector.h"
 
@@ -54,6 +56,9 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     page = BufferGetPage(buf);
     headerp = (HnswIndexHeaderPage *)PageGetContents(page);
     assert(headerp->magicNumber == LDB_WAL_MAGIC_NUMBER);
+    if(headerp->version != LDB_WAL_VERSION_NUMBER) {
+        elog(ERROR, "unsupported or outdated wal version. Please reindex");
+    }
 
     // Initialize usearch index options based on params stored in our index header
     dimensions = headerp->vector_dim;
@@ -92,19 +97,27 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
              opts.expansion_add,
              opts.expansion_search);
 
-    scanstate->usearch_index = usearch_init(&opts, scanstate->pq_codebook, &error);
-    if(error != NULL) elog(ERROR, "error loading index: %s", error);
-    assert(error == NULL);
+    void *cached_index = ldb_index_cache_get(index->rd_node.relNode);
+    if(cached_index != NULL) {
+        elog(INFO, "Reusing connection %p", cached_index);
+        scanstate->usearch_index = cached_index;
+        usearch_set_node_retriever(scanstate->usearch_index,
+                                   retriever_ctx,
+                                   ldb_wal_index_node_retriever,
+                                   ldb_wal_index_node_retriever_mut,
+                                   &error);
+        if(error != NULL) elog(ERROR, "error loading index: %s", error);
+    } else {
+        scanstate->usearch_index = usearch_init(&opts, scanstate->pq_codebook, &error);
+        if(error != NULL) elog(ERROR, "error loading index: %s", error);
+        usearch_mem = headerp->usearch_header;
+        // this reserves memory for internal structures,
+        // including for locks according to size indicated in usearch_mem
+        usearch_view_mem_lazy(scanstate->usearch_index, usearch_mem, &error);
+        assert(error == NULL);
+        ldb_index_cache_add(index->rd_node.relNode, scanstate->usearch_index);
+    }
 
-    memcpy(
-        retriever_ctx->blockmap_groups_cache, headerp->blockmap_groups, sizeof(retriever_ctx->blockmap_groups_cache));
-    retriever_ctx->header_page_under_wal = NULL;
-
-    usearch_mem = headerp->usearch_header;
-    // this reserves memory for internal structures,
-    // including for locks according to size indicated in usearch_mem
-    usearch_view_mem_lazy(scanstate->usearch_index, usearch_mem, &error);
-    assert(error == NULL);
     UnlockReleaseBuffer(buf);
 
     scan->opaque = scanstate;
@@ -122,12 +135,15 @@ void ldb_amendscan(IndexScanDesc scan)
     // todo:: once VACUUM/DELETE are implemented, during scan we need to hold a pin
     //  on the buffer we have last returned.
     //  make sure to release that pin here
-    if(scanstate->usearch_index) {
+
+    void *cached_index = ldb_index_cache_get(scan->indexRelation->rd_node.relNode);
+    if(cached_index == NULL && scanstate->usearch_index) {
         usearch_error_t error = NULL;
         usearch_free(scanstate->usearch_index, &error);
-        ldb_wal_retriever_area_fini(scanstate->retriever_ctx);
         assert(error == NULL);
     }
+
+    ldb_wal_retriever_area_fini(scanstate->retriever_ctx);
 
     if(scanstate->distances) pfree(scanstate->distances);
 
@@ -142,6 +158,40 @@ void ldb_amendscan(IndexScanDesc scan)
  * from docs: In practice the restart feature is used when a new outer tuple is
  * selected by a nested-loop join and so a new key comparison value is needed,
  * but the scan key structure remains the same.
+ * Example query on the SIFT dataset that would trigger a rescan after openning the
+ * index once:
+            SELECT
+              forall.id,
+              nearest_per_id.near_ids,
+              nearest_per_id.embed_dists
+            FROM
+              (
+                SELECT
+                  id,
+                  embedding
+                FROM
+                  "LanternCollection"
+                LIMIT 25000
+              ) AS forall
+            JOIN LATERAL
+              (
+                SELECT
+                  ARRAY_AGG(id) AS near_ids,
+                  ARRAY_AGG(embed_dist) AS embed_dists
+                FROM
+                  (
+                    SELECT
+                      t2.id,
+                      forall.embedding <-> t2.embedding AS embed_dist
+                    FROM
+                      "LanternCollection" t2
+                    ORDER BY
+                      embed_dist
+                    LIMIT 5
+                  ) AS nearest_neighbors
+              ) nearest_per_id ON TRUE
+            ORDER BY
+              forall.id;
  */
 void ldb_amrescan(IndexScanDesc scan, ScanKey keys, int nkeys, ScanKey orderbys, int norderbys)
 {

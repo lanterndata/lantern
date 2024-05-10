@@ -20,9 +20,8 @@
 #define HNSW_DEFAULT_EF_CONSTRUCTION 128
 #define HNSW_MAX_EF_CONSTRUCTION     400
 /* 10 in faiss*/
-#define HNSW_DEFAULT_EF        64
-#define HNSW_MAX_EF            400
-#define HNSW_MAX_ELEMENT_LIMIT 200000000
+#define HNSW_DEFAULT_EF 64
+#define HNSW_MAX_EF     400
 
 #define LDB_HNSW_DEFAULT_K 10
 #define LDB_HNSW_MAX_K     1000
