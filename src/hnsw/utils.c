@@ -257,3 +257,21 @@ usearch_metric_kind_t GetMetricKindFromStr(char *metric_kind_str)
 
     elog(ERROR, "Unsupported metric kind: %s . Should be one of (l2sq, cos, hamming)", metric_kind_str);
 }
+
+#if LANTERNDB_USEARCH_LEVEL_DISTRIBUTION
+levels[ nodepage->level ]++;
+#endif
+#if LANTERNDB_USEARCH_LEVEL_DISTRIBUTION
+static levels[ 20 ] = {0};
+static cnt = 0;
+
+// clang-format off
+    if (cnt % 100 == 0) {
+        elog(INFO, "levels0 %d %d %d %d %d %d %d %d %d %d", levels[0], levels[1], levels[2], levels[3], levels[4],
+        levels[5], levels[6], levels[7], levels[8], levels[9]);
+        elog(INFO, "levels1 %d %d %d %d %d %d %d %d %d %d",
+        levels[10], levels[11], levels[12], levels[13], levels[14], levels[15], levels[16], levels[17], levels[18],
+        levels[19]);
+    }
+// clang-format on
+#endif
