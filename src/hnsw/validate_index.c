@@ -270,9 +270,6 @@ static void ldb_vi_read_node_carefully(void               *node_tape,
                 LDB_VI_READ_NODE_CHUNK(vi_node, neighbors[ i ], node_tape, &tape_pos, node_tape_size);
                 // is_error = *(uint32 *)&neighbors[ i ] >= nodes_nr;
                 is_error = false;
-            } else if(index_storage_version == LDB_WAL_VERSION_NUMBER_0_2_7) {
-                LDB_VI_READ_NODE_CHUNK(vi_node, neighbors_old[ i ], node_tape, &tape_pos, node_tape_size);
-                is_error = neighbors_old[ i ] >= nodes_nr;
             } else {
                 elog(ERROR, "Unknown index_storage_version=%x", index_storage_version);
             }
@@ -303,11 +300,6 @@ static void ldb_vi_read_node_carefully(void               *node_tape,
                 LDB_VI_READ_NODE_CHUNK(vi_node, unused_neighbor_slot, node_tape, &tape_pos, node_tape_size);
             }
             vi_node->vn_neighbors[ level ] = neighbors;
-        } else if(index_storage_version == LDB_WAL_VERSION_NUMBER_0_2_7) {
-            for(uint32 i = neighbors_nr; i < neighbors_max; ++i) {
-                LDB_VI_READ_NODE_CHUNK(vi_node, unused_neighbor_slot_old, node_tape, &tape_pos, node_tape_size);
-            }
-            vi_node->vn_neighbors_old[ level ] = neighbors_old;
         } else {
             // condition has been chacked above already, sowe would have thrown by now
             assert(false);

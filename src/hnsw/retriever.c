@@ -50,8 +50,7 @@ void ldb_wal_retriever_area_reset(RetrieverCtx *ctx, HnswIndexHeaderPage *header
 
     fa_cache_init(&ctx->fa_cache);
 
-    assert(ctx->header_page_under_wal == header_page_under_wal
-           || (size_t)ctx->header_page_under_wal == LDB_HNSW_MAGIC_NEW_WAL_NO_BLOCKMAP_VALUE);
+    assert(ctx->header_page_under_wal == header_page_under_wal);
 }
 
 void ldb_wal_retriever_area_fini(RetrieverCtx *ctx)

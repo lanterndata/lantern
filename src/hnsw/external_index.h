@@ -19,10 +19,8 @@
 #define LDB_WAL_MAGIC_NUMBER   0xa47e60db
 #define LDB_WAL_VERSION_NUMBER 0x00000003
 
-#define LDB_HNSW_MAGIC_NEW_WAL_NO_BLOCKMAP_VALUE 0x003892
-
 // old version numbers. Suffix is the last version that used this format
-#define LDB_WAL_VERSION_NUMBER_0_2_7 0x00000002
+// #define LDB_WAL_VERSION_NUMBER_0_2_7 0x00000002
 
 // used for code clarity when modifying WAL entries
 #define LDB_GENERIC_XLOG_DELTA_IMAGE 0
