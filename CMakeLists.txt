@@ -137,7 +137,6 @@ target_include_directories(
   PRIVATE "./third_party/usearch/c"
   PRIVATE "./third_party/usearch/include/"
   PRIVATE "./third_party/usearch/fp16/include/"
-  PRIVATE "./third_party/usearch/robin-map/include/"
 )
 
 target_compile_options(lantern PRIVATE
@@ -149,6 +148,7 @@ target_compile_options(lantern PRIVATE
     -fassociative-math
     -fno-signed-zeros
     -fno-trapping-math
+    # -fno-omit-frame-pointer
     -fPIC
 )
 if(${MARCH_NATIVE})
