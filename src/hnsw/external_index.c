@@ -321,21 +321,20 @@ void StoreExternalIndex(Relation                index,
         page = GenericXLogRegisterBuffer(gxlogState, buf, LDB_GENERIC_XLOG_DELTA_IMAGE);
         maxoffset = PageGetMaxOffsetNumber(page);
 
-        if(false /*pq header page*/) {
-        } else {
-            block_modified = true;
-            // todo:: this could also be a pq page(see external_index.c, opts->pq handling)
-            for(offset = FirstOffsetNumber; offset <= maxoffset; offset = OffsetNumberNext(offset)) {
-                HnswIndexTuple *nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
-                uint32          level = level_from_node(nodepage->node);
-                for(uint32 i = 0; i <= level; i++) {
-                    uint32                    slot_count;
-                    ldb_lantern_slot_union_t *slots
-                        = get_node_neighbors_mut(external_index_metadata, nodepage->node, i, &slot_count);
-                    for(uint32 j = 0; j < slot_count; j++) {
-                        uint32 nid = slots[ j ].seqid;
-                        slots[ j ].itemPointerData = item_pointers[ nid ];
-                    }
+        // when index is a pq-index, there will be pq header pages that are currently empty
+        // the loop below will skip those. in the future, when those pages are filled up,
+        // we need to add a branch here and skip those pages
+        block_modified = true;
+        for(offset = FirstOffsetNumber; offset <= maxoffset; offset = OffsetNumberNext(offset)) {
+            HnswIndexTuple *nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
+            uint32          level = level_from_node(nodepage->node);
+            for(uint32 i = 0; i <= level; i++) {
+                uint32                    slot_count;
+                ldb_lantern_slot_union_t *slots
+                    = get_node_neighbors_mut(external_index_metadata, nodepage->node, i, &slot_count);
+                for(uint32 j = 0; j < slot_count; j++) {
+                    uint32 nid = slots[ j ].seqid;
+                    slots[ j ].itemPointerData = item_pointers[ nid ];
                 }
             }
         }

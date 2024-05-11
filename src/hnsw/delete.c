@@ -45,19 +45,18 @@ IndexBulkDeleteResult *ldb_ambulkdelete(IndexVacuumInfo        *info,
         gxlogState = GenericXLogStart(info->index);
         page = GenericXLogRegisterBuffer(gxlogState, buf, LDB_GENERIC_XLOG_DELTA_IMAGE);
         maxoffset = PageGetMaxOffsetNumber(page);
+        // when index is a pq-index, there will be pq header pages that are currently empty
+        // the loop below will skip those. in the future, when those pages are filled up,
+        // we need to add a branch here and skip those pages
 
-        if(false /*pq header page*/) {
-            // todo:: this could also be a pq page(see external_index.c, opts->pq handling)
-        } else {
-            for(offset = FirstOffsetNumber; offset <= maxoffset; offset = OffsetNumberNext(offset)) {
-                HnswIndexTuple *nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
-                unsigned long   label = label_from_node(nodepage->node);
-                label2ItemPointer(label, &tid_data);
-                if(callback(&tid_data, callback_state)) {
-                    block_modified = true;
-                    reset_node_label(nodepage->node);
-                    stats->tuples_removed += 1;
-                }
+        for(offset = FirstOffsetNumber; offset <= maxoffset; offset = OffsetNumberNext(offset)) {
+            HnswIndexTuple *nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
+            unsigned long   label = label_from_node(nodepage->node);
+            label2ItemPointer(label, &tid_data);
+            if(callback(&tid_data, callback_state)) {
+                block_modified = true;
+                reset_node_label(nodepage->node);
+                stats->tuples_removed += 1;
             }
         }
 
