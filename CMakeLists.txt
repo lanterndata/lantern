@@ -28,7 +28,7 @@ option(POSTGRES_UBSAN "Turn this on when building with a postgres that has UBSAN
 option(DEV "Developer mode: provide code formatting, get postgres source, etc." OFF)
 option(CODECOVERAGE "Enable code coverage for the build" OFF)
 option(BENCH "Enable benchmarking" OFF)
-option(FAILURE_POINTS "Enable failure points" ON)
+option(FAILURE_POINTS "Enable failure points" OFF)
 option(BUILD_C_TESTS "Build C client tests" OFF)
 
 if (${BUILD_FOR_DISTRIBUTING})
