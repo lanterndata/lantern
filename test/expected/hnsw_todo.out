@@ -67,7 +67,7 @@ INSERT INTO sift_base1k (id, v) VALUES
 (1001, array_fill(1, ARRAY[128])),
 (1102, array_fill(2, ARRAY[128]));
 SELECT v AS v1001 FROM sift_base1k WHERE id = 1001 \gset
-CREATE INDEX hnsw_l2_index ON sift_base1k USING lantern_hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2sq-0.0.13.usearch');
+CREATE INDEX hnsw_l2_index ON sift_base1k USING lantern_hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2sq-0.3.0.usearch');
 INFO:  done init usearch index
 INFO:  done loading usearch index
 INFO:  done saving 1000 vectors
@@ -83,7 +83,7 @@ INFO:  validate_index() done, no issues found.
 SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <?> :'v1001' LIMIT 1;
    round   
 -----------
- 249285.00
+ 249249.00
 (1 row)
 
 -- Case:
@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS sift_base1k (
 );
 COPY sift_base1k (v) FROM '/tmp/lantern/vector_datasets/sift_base1k_arrays.csv' WITH csv;
 UPDATE sift_base1k SET v=:'v1001' WHERE id=777;
-CREATE INDEX hnsw_l2_index ON sift_base1k USING lantern_hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2sq-0.0.13.usearch');
+CREATE INDEX hnsw_l2_index ON sift_base1k USING lantern_hnsw (v) WITH (_experimental_index_path='/tmp/lantern/files/index-sift1k-l2sq-0.3.0.usearch');
 INFO:  done init usearch index
 INFO:  done loading usearch index
 INFO:  done saving 1000 vectors
@@ -116,7 +116,7 @@ INFO:  validate_index() done, no issues found.
 SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <?> :'v1001' LIMIT 1;
    round   
 -----------
- 249285.00
+ 249249.00
 (1 row)
 
 ---- Query on expression based index is failing to check correct <?> operator usage --------
