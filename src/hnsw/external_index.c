@@ -553,7 +553,7 @@ bool isBlockMapBlock(const HnswBlockMapGroupDesc *blockmap_groups, const int blo
     return false;
 }
 
-void *ldb_wal_index_node_retriever(void *ctxp, uint64 id)
+void *ldb_wal_index_node_retriever(void *ctxp, unsigned long long id)
 {
     RetrieverCtx   *ctx = (RetrieverCtx *)ctxp;
     HnswIndexTuple *nodepage;
@@ -613,7 +613,7 @@ void *ldb_wal_index_node_retriever(void *ctxp, uint64 id)
     return nodepage->node;
 }
 
-void *ldb_wal_index_node_retriever_mut(void *ctxp, uint64 id)
+void *ldb_wal_index_node_retriever_mut(void *ctxp, unsigned long long id)
 {
     RetrieverCtx   *ctx = (RetrieverCtx *)ctxp;
     HnswIndexTuple *nodepage;

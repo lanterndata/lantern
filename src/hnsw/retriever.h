@@ -16,7 +16,10 @@ void ldb_wal_retriever_area_reset(RetrieverCtx* ctx, HnswIndexHeaderPage* header
 
 void ldb_wal_retriever_area_fini(RetrieverCtx* ctx);
 
-void* ldb_wal_index_node_retriever(void* ctx, uint64 id);
-void* ldb_wal_index_node_retriever_mut(void* ctx, uint64 id);
+// using unsigned long long here to avoid clang complaining on mac
+// postgres defines uint64 as unsigned long int, while C++ defines uint64_t as unsigned long, so pointer assignment
+// around this causes an implicit cast
+void* ldb_wal_index_node_retriever(void* ctx, unsigned long long id);
+void* ldb_wal_index_node_retriever_mut(void* ctx, unsigned long long id);
 
 #endif  // LDB_HNSW_RETRIEVER_H
