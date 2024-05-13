@@ -17,14 +17,14 @@ SELECT id, ROUND((v <-> :'v444')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'
   58 | 93637.00
 (6 rows)
 
-CREATE INDEX to_be_reindexed ON sift_base1k USING lantern_hnsw (v) WITH (dim=128, M=6);
+CREATE INDEX to_be_reindexed ON sift_base1k USING lantern_hnsw (v) WITH (dim=128, M=8);
 INFO:  done init usearch index
 INFO:  inserted 1000 elements
 INFO:  done saving 1000 vectors
 SELECT * FROM ldb_get_indexes('sift_base1k');
     indexname    |  size  |                                          indexdef                                          | indisvalid 
 -----------------+--------+--------------------------------------------------------------------------------------------+------------
- to_be_reindexed | 656 kB | CREATE INDEX to_be_reindexed ON sift_base1k USING lantern_hnsw (v) WITH (dim='128', m='6') | t
+ to_be_reindexed | 680 kB | CREATE INDEX to_be_reindexed ON sift_base1k USING lantern_hnsw (v) WITH (dim='128', m='8') | t
 (1 row)
 
 SELECT _lantern_internal.validate_index('to_be_reindexed', false);
@@ -51,7 +51,7 @@ INFO:  validate_index() done, no issues found.
 SELECT * FROM ldb_get_indexes('sift_base1k');
     indexname    |  size  |                                          indexdef                                          | indisvalid 
 -----------------+--------+--------------------------------------------------------------------------------------------+------------
- to_be_reindexed | 656 kB | CREATE INDEX to_be_reindexed ON sift_base1k USING lantern_hnsw (v) WITH (dim='128', m='6') | t
+ to_be_reindexed | 680 kB | CREATE INDEX to_be_reindexed ON sift_base1k USING lantern_hnsw (v) WITH (dim='128', m='8') | t
 (1 row)
 
 set enable_seqscan=FALSE;
