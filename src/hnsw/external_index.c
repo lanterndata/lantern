@@ -351,7 +351,7 @@ void StoreExternalIndex(Relation                index,
     uint64                   entry_slot = usearch_header_get_entry_slot(headerp->usearch_header);
     ldb_lantern_slot_union_t updated_slot = {0};
     uint64                   ret_slot = 0;
-    updated_slot.itemPointerData = item_pointers[ entry_slot ];
+    memcpy(&updated_slot, &item_pointers[ entry_slot ], sizeof(ItemPointerData));
     memcpy(&ret_slot, &updated_slot, sizeof(updated_slot));
     usearch_header_set_entry_slot(headerp->usearch_header, ret_slot);
     MarkBufferDirty(header_buf);
