@@ -348,9 +348,10 @@ void StoreExternalIndex(Relation                index,
         UnlockReleaseBuffer(buf);
     }
     // rewrote all neighbor list. Rewrite graph entry point as well
-    uint64                   entry_slot = usearch_header_get_entry_slot(headerp->usearch_header);
-    uint64                   ret_slot = 0;
-    memcpy(&ret_slot, &item_pointers[ entry_slot ], sizeof(ItemPointerData));
+    uint64 entry_slot = usearch_header_get_entry_slot(headerp->usearch_header);
+    uint64 ret_slot = 0;
+    assert(entry_slot < UINT32_MAX);
+    memcpy(&ret_slot, &item_pointers[ (uint32)entry_slot ], sizeof(ItemPointerData));
     usearch_header_set_entry_slot(headerp->usearch_header, ret_slot);
     MarkBufferDirty(header_buf);
     GenericXLogFinish(state);
