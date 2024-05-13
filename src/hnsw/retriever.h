@@ -12,7 +12,7 @@
 RetrieverCtx* ldb_wal_retriever_area_init(Relation index_rel, HnswIndexHeaderPage* header_page_under_wal);
 // can be used after each usearch_search to tell the retriever that the pointers given out
 // will no longer be used
-void ldb_wal_retriever_area_reset(RetrieverCtx* ctx, HnswIndexHeaderPage* header_page_under_wal);
+void ldb_wal_retriever_area_reset(RetrieverCtx* ctx);
 
 void ldb_wal_retriever_area_fini(RetrieverCtx* ctx);
 

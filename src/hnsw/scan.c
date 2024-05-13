@@ -222,7 +222,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
                                          scanstate->labels,
                                          scanstate->distances,
                                          &error);
-        ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);
+        ldb_wal_retriever_area_reset(scanstate->retriever_ctx);
 
         scanstate->count = num_returned;
         scanstate->current = 0;
@@ -269,7 +269,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
                                          scanstate->labels,
                                          scanstate->distances,
                                          &error);
-        ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);
+        ldb_wal_retriever_area_reset(scanstate->retriever_ctx);
 
         scanstate->count = num_returned;
 

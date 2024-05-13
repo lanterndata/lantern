@@ -30,27 +30,21 @@ RetrieverCtx *ldb_wal_retriever_area_init(Relation index_rel, HnswIndexHeaderPag
     return ctx;
 }
 
-void ldb_wal_retriever_area_reset(RetrieverCtx *ctx, HnswIndexHeaderPage *header_page_under_wal)
+void ldb_wal_retriever_area_reset(RetrieverCtx *ctx)
 {
     dlist_mutable_iter miter;
     dlist_foreach_modify(miter, &ctx->takenbuffers)
     {
         BufferNode *node = dlist_container(BufferNode, node, miter.cur);
-#if LANTERNDB_COPYNODES
-        pfree(node->buf);
-#else
         if(node->buf != InvalidBuffer) {
             ReleaseBuffer(node->buf);
         }
-#endif
         dlist_delete(miter.cur);
         pfree(node);
     }
     dlist_init(&ctx->takenbuffers);
 
     fa_cache_init(&ctx->fa_cache);
-
-    assert(ctx->header_page_under_wal == header_page_under_wal);
 }
 
 void ldb_wal_retriever_area_fini(RetrieverCtx *ctx)

@@ -203,7 +203,7 @@ bool ldb_aminsert(Relation         index,
     usearch_update_header(uidx, hdr->usearch_header, &error);
     // todo:: handle error
 
-    ldb_wal_retriever_area_reset(insertstate->retriever_ctx, hdr);
+    ldb_wal_retriever_area_reset(insertstate->retriever_ctx);
 
     int needs_wal = RelationNeedsWAL(index);
     // we only release the header buffer AFTER inserting is finished to make sure nobody else changes the block
