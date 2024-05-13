@@ -333,8 +333,9 @@ void StoreExternalIndex(Relation                index,
                 ldb_lantern_slot_union_t *slots
                     = get_node_neighbors_mut(external_index_metadata, nodepage->node, i, &slot_count);
                 for(uint32 j = 0; j < slot_count; j++) {
-                    uint32 nid = slots[ j ].seqid;
-                    slots[ j ].itemPointerData = item_pointers[ nid ];
+                    uint32 nid = 0;
+                    memcpy(&nid, &slots[ j ].seqid, sizeof(slots[ j ].seqid));
+                    memcpy(&slots[ j ].itemPointerData, &item_pointers[ nid ], sizeof(ItemPointerData));
                 }
             }
         }
@@ -349,8 +350,8 @@ void StoreExternalIndex(Relation                index,
     }
     // rewrote all neighbor list. Rewrite graph entry point as well
     uint64                   entry_slot = usearch_header_get_entry_slot(headerp->usearch_header);
-    ldb_lantern_slot_union_t updated_slot;
-    uint64                   ret_slot;
+    ldb_lantern_slot_union_t updated_slot = {0};
+    uint64                   ret_slot = 0;
     updated_slot.itemPointerData = item_pointers[ entry_slot ];
     memcpy(&ret_slot, &updated_slot, sizeof(updated_slot));
     usearch_header_set_entry_slot(headerp->usearch_header, ret_slot);

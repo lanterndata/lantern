@@ -32,7 +32,6 @@ typedef enum
 typedef union __attribute__((__packed__))
 
 {
-    unsigned char   a[ 6 ];
     ItemPointerData itemPointerData;
     uint32          seqid;
 } ldb_lantern_slot_union_t;
