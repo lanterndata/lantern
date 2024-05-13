@@ -1,3 +1,5 @@
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "link-args=-Wl,-rpath,/usr/local/lib/onnxruntime/lib"]
 [target.x86_64-apple-darwin]
 rustflags = ["-C", "link-args=-Wl,-rpath,/usr/local/lib/onnxruntime/lib"]
 [target.'cfg(target_os="macos")']
