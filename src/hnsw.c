@@ -1,6 +1,9 @@
 #include <postgres.h>
 
 #include "hnsw.h"
+#ifdef EMSCRIPTEN
+#include <emscripten.h>
+#endif
 
 #include <access/amapi.h>
 #include <access/heapam.h>
@@ -28,8 +31,6 @@
 #include "hnsw/validate_index.h"
 #include "hnsw/vector.h"
 #include "usearch.h"
-
-PG_MODULE_MAGIC;
 
 #if PG_VERSION_NUM >= 120000
 #include "commands/progress.h"
@@ -227,7 +228,8 @@ static bool hnswvalidate(Oid opclassoid)
  * See https://www.postgresql.org/docs/current/index-api.html
  */
 PGDLLEXPORT PG_FUNCTION_INFO_V1(hnsw_handler);
-Datum       hnsw_handler(PG_FUNCTION_ARGS __attribute__((unused)))
+
+extern Datum EMSCRIPTEN_KEEPALIVE hnsw_handler(PG_FUNCTION_ARGS __attribute__((unused)))
 {
     IndexAmRoutine *amroutine = makeNode(IndexAmRoutine);
 

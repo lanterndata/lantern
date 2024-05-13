@@ -50,7 +50,8 @@ endif(CODECOVERAGE)
 
 # general flags applicible to everything
 # details: https://lwn.net/Articles/584225/
-add_compile_options("-fstack-protector-strong")
+# add_compile_options("-fstack-protector-strong")
+add_compile_options("-fno-stack-protector")
 
 if (BENCH)
   message(STATUS "Benchmarking is enabled.")
@@ -142,7 +143,6 @@ target_include_directories(
 
 target_compile_options(lantern PRIVATE
     -g
-    -fstack-protector-strong
     -Wformat
     -Werror=format-security
     -ftree-vectorize
@@ -297,14 +297,14 @@ add_custom_command(
 
 add_custom_target(phony_always_runs ALL DEPENDS ${CMAKE_BINARY_DIR}/${_script_file})
 
-set(VERSION_HEADER_TEMPLATE "${CMAKE_MODULE_PATH}/version.h.template")
-set(VERSION_HEADER_OUTPUT "${CMAKE_BINARY_DIR}/include/version.h")
-configure_file(${VERSION_HEADER_TEMPLATE} ${VERSION_HEADER_OUTPUT})
+# set(VERSION_HEADER_TEMPLATE "${CMAKE_MODULE_PATH}/version.h.template")
+# set(VERSION_HEADER_OUTPUT "${CMAKE_BINARY_DIR}/include/version.h")
+# configure_file(${VERSION_HEADER_TEMPLATE} ${VERSION_HEADER_OUTPUT})
 
 # AUTO-GENERATE lantern.control file for PostgreSQL
-set(CONTROL_TEMPLATE "${CMAKE_MODULE_PATH}/lantern.control.template")
-set(CONTROL_OUTPUT "${CMAKE_BINARY_DIR}/lantern.control")
-configure_file(${CONTROL_TEMPLATE} ${CONTROL_OUTPUT})
+# set(CONTROL_TEMPLATE "${CMAKE_MODULE_PATH}/lantern.control.template")
+# set(CONTROL_OUTPUT "${CMAKE_BINARY_DIR}/lantern.control")
+# configure_file(${CONTROL_TEMPLATE} ${CONTROL_OUTPUT})
 
 install(TARGETS lantern LIBRARY DESTINATION ${PostgreSQL_PACKAGE_LIBRARY_DIR})
 install(FILES ${CONTROL_OUTPUT} ${CMAKE_BINARY_DIR}/${_script_file}

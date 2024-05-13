@@ -125,6 +125,7 @@ float4 *ToFloat4Array(ArrayType *arr, int *dim_out)
 // This is used to prevent interacting with the index when the two don't match
 bool VersionsMatch()
 {
+    return false;
     // If a parallel worker runs as a result of query execution, executing the SQL query below will lead to the
     // error "ERROR:  cannot execute SQL without an outer snapshot or portal." Instead of loading in a snapshot, we
     // simply return if one doesn't exist, the idea being that in the case of a parallel worker running this

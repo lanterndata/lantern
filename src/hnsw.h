@@ -28,7 +28,7 @@ typedef enum
 } HnswColumnType;
 
 /* Exported functions */
-PGDLLEXPORT void _PG_init(void);
+PGDLLEXPORT void _PG_init_lantern(void);
 PGDLLEXPORT void _PG_fini(void);
 
 PGDLLEXPORT Datum l2sq_dist(PG_FUNCTION_ARGS);

@@ -146,7 +146,7 @@ bytea *ldb_amoptions(Datum reloptions, bool validate)
 /*
  * Initialize index options and variables
  */
-void _PG_init(void)
+void _PG_init_lantern(void)
 {
     if(process_shared_preload_libraries_in_progress) {
         elog(WARNING,
@@ -271,14 +271,8 @@ void _PG_init(void)
                              NULL,
                              NULL);
 
-#if PG_VERSION_NUM >= 150000
-    MarkGUCPrefixReserved("lantern");
-    MarkGUCPrefixReserved("lantern_hnsw");
-    MarkGUCPrefixReserved("_lantern_internal");
-#endif
-
     // Print a warning with helpful info
-    (void)VersionsMatch();
+    // (void)VersionsMatch();
 
     original_post_parse_analyze_hook = post_parse_analyze_hook;
     original_ExecutorStart_hook = ExecutorStart_hook;
