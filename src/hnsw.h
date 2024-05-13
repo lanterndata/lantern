@@ -3,6 +3,7 @@
 
 #include <postgres.h>
 
+#include <assert.h>
 #include <fmgr.h>
 #include <storage/itemptr.h>
 #include <utils/relcache.h>
@@ -29,12 +30,14 @@ typedef enum
 } HnswColumnType;
 
 // C version of uint48_t in c++/usearch
-typedef union __attribute__((__packed__))
-
+typedef union __attribute__((__packed__, aligned(2)))
 {
     ItemPointerData itemPointerData;
     uint32          seqid;
 } ldb_lantern_slot_union_t;
+
+static_assert(sizeof(ldb_lantern_slot_union_t) >= sizeof(ItemPointerData),
+              "ldb_lantern_slot_union_t must be large enough for ItemPointerData");
 
 /* Exported functions */
 PGDLLEXPORT void _PG_init(void);
