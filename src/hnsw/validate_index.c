@@ -574,8 +574,7 @@ void ldb_validate_index(Oid indrelid, bool print_info)
         elog(INFO,
              "index_header = HnswIndexHeaderPage("
              "version=%" PRIu32 " vector_dim=%" PRIu32 " m=%" PRIu32 " ef_construction=%" PRIu32 " ef=%" PRIu32
-             " pq=%d metric_kind=%d num_vectors=%" PRIu32 " last_data_block=%" PRIu32 " blockmap_groups_nr=%" PRIu32
-             ")",
+             " pq=%d metric_kind=%d num_vectors=%" PRIu32 " last_data_block=%" PRIu32 ")",
              index_header->version,
              index_header->vector_dim,
              index_header->m,
@@ -584,15 +583,7 @@ void ldb_validate_index(Oid indrelid, bool print_info)
              index_header->metric_kind,
              index_header->pq,
              index_header->num_vectors,
-             index_header->last_data_block,
-             index_header->blockmap_groups_nr_unused);
-        for(uint32 i = 0; i < index_header->blockmap_groups_nr_unused; ++i) {
-            elog(INFO,
-                 "blockmap_groups[%" PRIu32 "]=(first_block=%" PRIu32 ", blockmaps_initialized=%" PRIu32 "),",
-                 i,
-                 index_header->blockmap_groups_unused[ i ].first_block,
-                 index_header->blockmap_groups_unused[ i ].blockmaps_initialized);
-        }
+             index_header->last_data_block);
     }
 
     blocks_nr = RelationGetNumberOfBlocksInFork(index, MAIN_FORKNUM);

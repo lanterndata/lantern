@@ -188,7 +188,6 @@ void StoreExternalEmptyIndex(Relation index, ForkNumber forkNum, char *data, use
     headerp->num_subvectors = opts->num_subvectors;
 
     headerp->num_vectors = 0;
-    headerp->blockmap_groups_nr_unused = 0;
 
     headerp->last_data_block = InvalidBlockNumber;
 

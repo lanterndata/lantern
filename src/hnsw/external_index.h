@@ -60,11 +60,9 @@ typedef struct HnswIndexHeaderPage
     BlockNumber           last_data_block;
     char                  usearch_header[ USEARCH_HEADER_SIZE ];
 
-    uint32                blockmap_groups_nr_unused;
-    HnswBlockMapGroupDesc blockmap_groups_unused[ HNSW_MAX_BLOCKMAP_GROUPS ];
-    bool                  pq;
-    size_t                num_centroids;
-    size_t                num_subvectors;
+    bool   pq;
+    size_t num_centroids;
+    size_t num_subvectors;
 } HnswIndexHeaderPage;
 
 // the added 40 byte graph header (currently unused)
@@ -109,8 +107,6 @@ typedef struct
 
     Relation index_rel;
 
-    // used for scans
-    HnswBlockMapGroupDesc blockmap_groups_cache_unused[ HNSW_MAX_BLOCKMAP_GROUPS ];  // todo::
     // used for inserts
     HnswIndexHeaderPage *header_page_under_wal;
 
