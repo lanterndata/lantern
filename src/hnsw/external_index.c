@@ -284,7 +284,7 @@ void StoreExternalIndex(Relation                index,
     uint32 num_added_vectors_remaining = num_added_vectors;
     uint32 batch_size = HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
 
-    ItemPointerData *item_pointers = palloc0(num_added_vectors * sizeof(ItemPointerData));
+    ItemPointerData *item_pointers = palloc(num_added_vectors * sizeof(ItemPointerData));
 
     while(num_added_vectors_remaining > 0) {
         StoreExternalIndexBlockMapGroup(index,
@@ -350,11 +350,12 @@ void StoreExternalIndex(Relation                index,
     // rewrote all neighbor list. Rewrite graph entry point as well
     uint64 entry_slot = usearch_header_get_entry_slot(headerp->usearch_header);
     uint64 ret_slot = 0;
-    assert(entry_slot < UINT32_MAX);
-    elog(INFO, "entry slot is %ld offset", entry_slot);
-    elog(INFO, "entry slot is %ld offset there is: %d", entry_slot, item_pointers[entry_slot].ip_posid);
-    memcpy(&ret_slot, &item_pointers[ (uint32)entry_slot ], sizeof(ItemPointerData));
-    usearch_header_set_entry_slot(headerp->usearch_header, ret_slot);
+    // rewrite header slot unless we created an empty index
+    if(num_added_vectors > 0) {
+        assert(entry_slot < UINT32_MAX);
+        memcpy(&ret_slot, &item_pointers[ (uint32)entry_slot ], sizeof(ItemPointerData));
+        usearch_header_set_entry_slot(headerp->usearch_header, ret_slot);
+    }
     MarkBufferDirty(header_buf);
     GenericXLogFinish(state);
     UnlockReleaseBuffer(header_buf);
