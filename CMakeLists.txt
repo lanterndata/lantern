@@ -225,6 +225,8 @@ endif()
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_link_options(lantern PRIVATE -static-libstdc++)
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  # it seems -Wno-unknown-pragmas is not enough for clang
+    target_compile_options(lantern PRIVATE "-Wno-unknown-warning-option")
     target_link_options(lantern PRIVATE -static)
 endif ()
 # not sure why, but the above is not enough to force pulling cpp runtime into lantern.so
