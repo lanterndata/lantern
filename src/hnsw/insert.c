@@ -113,6 +113,9 @@ bool ldb_aminsert(Relation         index,
     hdr_page = GenericXLogRegisterBuffer(state, hdr_buf, LDB_GENERIC_XLOG_DELTA_IMAGE);
     hdr = (HnswIndexHeaderPage *)PageGetContents(hdr_page);
     assert(hdr->magicNumber == LDB_WAL_MAGIC_NUMBER);
+    if(hdr->version != LDB_WAL_VERSION_NUMBER) {
+        elog(ERROR, "unsupported or outdated wal version. Please reindex");
+    }
 
     opts.dimensions = hdr->vector_dim;
     opts.pq = hdr->pq;
