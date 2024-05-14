@@ -152,8 +152,8 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
                                   uint32               new_tuple_id,
                                   uint32               new_tuple_level,
 
-                                  ldb_lantern_slot_union_t *slot,
-                                  HnswInsertState          *insertstate);
+                                  ldb_unaligned_slot_union_t *slot,
+                                  HnswInsertState            *insertstate);
 
 bool isBlockMapBlock(const HnswBlockMapGroupDesc *blockmap_groups, const int blockmap_group_nr, BlockNumber blockno);
 

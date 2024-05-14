@@ -35,8 +35,9 @@ struct ldb_vi_block
     uint32_t               vp_nodes_nr;
 };
 
-static_assert(sizeof(ldb_lantern_slot_union_t) == 6, "index validation assumes neighbor id is 6 bytes");
-static_assert(sizeof(ldb_lantern_slot_union_t) == LANTERN_SLOT_SIZE, "index validation assumes neighbor id is 6 bytes");
+static_assert(sizeof(ldb_unaligned_slot_union_t) == 6, "index validation assumes neighbor id is 6 bytes");
+static_assert(sizeof(ldb_unaligned_slot_union_t) == LANTERN_SLOT_SIZE,
+              "index validation assumes neighbor id is 6 bytes");
 
 /*
  * Represents a stored usearch node.
@@ -55,7 +56,7 @@ struct ldb_vi_node
     uint32         *vn_neighbors_nr;  /* number of neighbors for each level */
     uint32        **vn_neighbors_old; /* array of arrays of *4byte* neighbor IDs for each level */
 
-    ldb_lantern_slot_union_t **vn_neighbors; /* array of arrays of neighbors for each level */
+    ldb_unaligned_slot_union_t **vn_neighbors; /* array of arrays of neighbors for each level */
 };
 
 /*
@@ -211,8 +212,8 @@ static void ldb_vi_read_node_carefully(void               *node_tape,
     uint32  *neighbors_old;
     uint32   unused_neighbor_slot_old;
 
-    ldb_lantern_slot_union_t *neighbors;
-    ldb_lantern_slot_union_t  unused_neighbor_slot;
+    ldb_unaligned_slot_union_t *neighbors;
+    ldb_unaligned_slot_union_t  unused_neighbor_slot;
 
     LDB_VI_READ_NODE_CHUNK(vi_node, vi_node->vn_label, node_tape, &tape_pos, node_tape_size);
     LDB_VI_READ_NODE_CHUNK(vi_node, level_on_tape, node_tape, &tape_pos, node_tape_size);

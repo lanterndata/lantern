@@ -73,10 +73,10 @@ void reset_node_label(char *node)
     n.key(INVALID_ELEMENT_LABEL);
 }
 
-ldb_lantern_slot_union_t *get_node_neighbors_mut(const metadata_t *meta,
-                                                 char             *node,
-                                                 uint32            level,
-                                                 uint32           *neighbors_count)
+ldb_unaligned_slot_union_t *get_node_neighbors_mut(const metadata_t *meta,
+                                                   char             *node,
+                                                   uint32            level,
+                                                   uint32           *neighbors_count)
 {
     const node_t n = node_t{node};
 
@@ -87,7 +87,7 @@ ldb_lantern_slot_union_t *get_node_neighbors_mut(const metadata_t *meta,
 
     node_t::neighbors_ref_t ns = n.neighbors_(pre, level);
     *neighbors_count = ns.size();
-    static_assert(sizeof(ldb_lantern_slot_union_t) == sizeof(node_t::slot_t));
-    static_assert(sizeof(ldb_lantern_slot_union_t) == sizeof(node_t::neighbors_ref_t::compressed_slot_t));
-    return (ldb_lantern_slot_union_t *)ns.misaligned_tape();
+    static_assert(sizeof(ldb_unaligned_slot_union_t) == sizeof(node_t::slot_t));
+    static_assert(sizeof(ldb_unaligned_slot_union_t) == sizeof(node_t::neighbors_ref_t::compressed_slot_t));
+    return (ldb_unaligned_slot_union_t *)ns.misaligned_tape();
 }

@@ -21,10 +21,10 @@ unsigned long label_from_node(char *node);
 unsigned long level_from_node(char *node);
 void          reset_node_label(char *node);
 
-ldb_lantern_slot_union_t *get_node_neighbors_mut(const metadata_t *meta,
-                                                 char             *node,
-                                                 uint32            level,
-                                                 uint32           *neighbors_count);
+ldb_unaligned_slot_union_t *get_node_neighbors_mut(const metadata_t *meta,
+                                                   char             *node,
+                                                   uint32            level,
+                                                   uint32           *neighbors_count);
 
 #ifdef __cplusplus
 }

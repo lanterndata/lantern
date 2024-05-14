@@ -29,15 +29,25 @@ typedef enum
     UNKNOWN
 } HnswColumnType;
 
+// compilers warn about potential UB when members of this struct are accessed directly
+// though the struct is always accessed via memcpy so the warning does not apply
+#pragma GCC diagnostic   push
+#pragma GCC diagnostic   ignored "-Wpacked-not-aligned"
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wpacked-not-aligned"
+
 // C version of uint48_t in c++/usearch
-typedef union __attribute__((__packed__, aligned(2)))
+typedef union __attribute__((__packed__))
 {
     ItemPointerData itemPointerData;
     uint32          seqid;
-} ldb_lantern_slot_union_t;
+} ldb_unaligned_slot_union_t;
 
-static_assert(sizeof(ldb_lantern_slot_union_t) >= sizeof(ItemPointerData),
-              "ldb_lantern_slot_union_t must be large enough for ItemPointerData");
+#pragma clang diagnostic pop
+#pragma GCC diagnostic   pop
+
+static_assert(sizeof(ldb_unaligned_slot_union_t) >= sizeof(ItemPointerData),
+              "ldb_unaligned_slot_union_t must be large enough for ItemPointerData");
 
 /* Exported functions */
 PGDLLEXPORT void _PG_init(void);

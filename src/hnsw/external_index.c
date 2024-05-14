@@ -328,8 +328,8 @@ void StoreExternalIndex(Relation                index,
             HnswIndexTuple *nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
             uint32          level = level_from_node(nodepage->node);
             for(uint32 i = 0; i <= level; i++) {
-                uint32                    slot_count;
-                ldb_lantern_slot_union_t *slots
+                uint32                      slot_count;
+                ldb_unaligned_slot_union_t *slots
                     = get_node_neighbors_mut(external_index_metadata, nodepage->node, i, &slot_count);
                 for(uint32 j = 0; j < slot_count; j++) {
                     uint32 nid = 0;
@@ -403,8 +403,8 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
                                   uint32               new_tuple_id,
                                   uint32               new_tuple_level,
 
-                                  ldb_lantern_slot_union_t *slot,
-                                  HnswInsertState          *insertstate)
+                                  ldb_unaligned_slot_union_t *slot,
+                                  HnswInsertState            *insertstate)
 {
     // if any data blocks exist, the last one's buffer will be read into this
     Buffer last_dblock = InvalidBuffer;

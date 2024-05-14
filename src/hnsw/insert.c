@@ -187,8 +187,8 @@ bool ldb_aminsert(Relation         index,
     // Generic XLog supports up to 4 pages in a single commit, so we are good.
     int vector_size_bytes = opts.dimensions * sizeof(float);
 
-    ldb_lantern_slot_union_t slot;
-    uint64                   slot_copy;
+    ldb_unaligned_slot_union_t slot;
+    uint64                     slot_copy;
     new_tuple = PrepareIndexTuple(index, state, hdr, &meta, new_tuple_id, level, &slot, insertstate);
     memcpy(&slot_copy, &slot, sizeof(slot));
     // initialize node structure per usearch format
