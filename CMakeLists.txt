@@ -141,9 +141,9 @@ target_include_directories(
 
 target_compile_options(lantern PRIVATE
     -g
-    -fstack-protector-strong
     -Wformat
     -Werror=format-security
+    -Wno-unknown-pragmas
     -ftree-vectorize
     -fassociative-math
     -fno-signed-zeros
