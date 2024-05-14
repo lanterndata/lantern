@@ -47,11 +47,11 @@ bool plan_tree_walker(Plan *plan, bool (*walker_func)(Node *plan, void *context)
         case T_SeqScan:
         {
             SeqScan *seqscan = (SeqScan *)plan;
-#if PG_VERSION_NUM >= 150000
-            Plan seqscanplan = seqscan->scan.plan;
-#else
+            // #if PG_VERSION_NUM >= 150000
+            //             Plan seqscanplan = seqscan->scan.plan;
+            // #else
             Plan seqscanplan = seqscan->plan;
-#endif
+            // #endif
             if(base_plan_walker(&seqscanplan, walker_func, context)) return true;
             break;
         }

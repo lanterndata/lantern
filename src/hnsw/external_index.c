@@ -565,19 +565,29 @@ void *ldb_wal_index_node_retriever(void *ctxp, unsigned long long id)
     ItemPointerData tid_data;
     BlockNumber     data_block_no;
 
+    elog(INFO, "START READ NODE::::::: %d, %x", id, &tid_data);
     memcpy(&tid_data, &id, sizeof(ItemPointerData));
+    elog(INFO, "MEMCPY DONE NODE::::::: %d, %d", id, tid_data.ip_posid);
     data_block_no = BlockIdGetBlockNumber(&tid_data.ip_blkid);
+    elog(INFO, "data_block_no NODE::::::: %d", data_block_no);
 
+    elog(INFO, "READING PAGE NODE::::::: %d", id);
     page = extra_dirtied_get(ctx->extra_dirted, data_block_no, NULL);
+    elog(INFO, "READ PAGE NODE::::::: %d", page);
     if(page == NULL) {
+        elog(INFO, "ReadBufferExtended Rel: %x, block: %d", ctx->index_rel, data_block_no);
         buf = ReadBufferExtended(ctx->index_rel, MAIN_FORKNUM, data_block_no, RBM_NORMAL, NULL);
+        elog(INFO, "ReadBufferExtended DONE Rel: %x, block: %d", ctx->index_rel, data_block_no);
         LockBuffer(buf, BUFFER_LOCK_SHARE);
         page = BufferGetPage(buf);
     } else {
         idx_page_prelocked = true;
     }
 
+    elog(INFO, "READING PAGE START:::::::::::::");
+    elog(INFO, "Reading from page::: page: %d, tid_data.ip_posid: %d", page, tid_data.ip_posid);
     nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, tid_data.ip_posid));
+    elog(INFO, "node page read NODE::::::: %x", nodepage);
 #if LANTERNDB_COPYNODES
     BufferNode *buffNode;
     buffNode = (BufferNode *)palloc(sizeof(BufferNode));
@@ -612,6 +622,7 @@ void *ldb_wal_index_node_retriever(void *ctxp, unsigned long long id)
              "pinned more tuples during node retrieval than will fit in work_mem, cosider increasing work_mem");
 #endif
     // fa_cache_insert(&ctx->fa_cache, (uint32)id, nodepage->node);
+    elog(INFO, "DONE READ NODE::::::: %d", id);
     return nodepage->node;
 }
 

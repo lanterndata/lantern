@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.3)
 
-set(LANTERN_VERSION 0.3.0)
+set(LANTERN_VERSION 0.2.7)
 
 project(
   LanternDB
@@ -28,7 +28,7 @@ option(POSTGRES_UBSAN "Turn this on when building with a postgres that has UBSAN
 option(DEV "Developer mode: provide code formatting, get postgres source, etc." OFF)
 option(CODECOVERAGE "Enable code coverage for the build" OFF)
 option(BENCH "Enable benchmarking" OFF)
-option(FAILURE_POINTS "Enable failure points" OFF)
+option(FAILURE_POINTS "Enable failure points" ON)
 option(BUILD_C_TESTS "Build C client tests" OFF)
 
 if (${BUILD_FOR_DISTRIBUTING})
@@ -50,7 +50,8 @@ endif(CODECOVERAGE)
 
 # general flags applicible to everything
 # details: https://lwn.net/Articles/584225/
-add_compile_options("-fstack-protector-strong")
+# add_compile_options("-fstack-protector-strong")
+add_compile_options("-fno-stack-protector")
 
 if (BENCH)
   message(STATUS "Benchmarking is enabled.")
@@ -137,18 +138,17 @@ target_include_directories(
   PRIVATE "./third_party/usearch/c"
   PRIVATE "./third_party/usearch/include/"
   PRIVATE "./third_party/usearch/fp16/include/"
+  PRIVATE "./third_party/usearch/robin-map/include/"
 )
 
 target_compile_options(lantern PRIVATE
     -g
     -Wformat
     -Werror=format-security
-    -Wno-unknown-pragmas
     -ftree-vectorize
     -fassociative-math
     -fno-signed-zeros
     -fno-trapping-math
-    # -fno-omit-frame-pointer
     -fPIC
 )
 if(${MARCH_NATIVE})
@@ -225,8 +225,6 @@ endif()
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_link_options(lantern PRIVATE -static-libstdc++)
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  # it seems -Wno-unknown-pragmas is not enough for clang
-    target_compile_options(lantern PRIVATE "-Wno-unknown-warning-option")
     target_link_options(lantern PRIVATE -static)
 endif ()
 # not sure why, but the above is not enough to force pulling cpp runtime into lantern.so
@@ -278,7 +276,6 @@ set (_update_files
   sql/updates/0.2.4--0.2.5.sql
   sql/updates/0.2.5--0.2.6.sql
   sql/updates/0.2.6--0.2.7.sql
-  sql/updates/0.2.7--0.3.0.sql
 )
 
 # Generate version information for the binary
@@ -300,12 +297,12 @@ add_custom_command(
 
 add_custom_target(phony_always_runs ALL DEPENDS ${CMAKE_BINARY_DIR}/${_script_file})
 
-set(VERSION_HEADER_TEMPLATE "${CMAKE_MODULE_PATH}/version.h.template")
+set(VERSION_HEADER_TEMPLATE "cmake/version.h.template")
 set(VERSION_HEADER_OUTPUT "${CMAKE_BINARY_DIR}/include/version.h")
 configure_file(${VERSION_HEADER_TEMPLATE} ${VERSION_HEADER_OUTPUT})
 
 # AUTO-GENERATE lantern.control file for PostgreSQL
-set(CONTROL_TEMPLATE "${CMAKE_MODULE_PATH}/lantern.control.template")
+set(CONTROL_TEMPLATE "cmake/lantern.control.template")
 set(CONTROL_OUTPUT "${CMAKE_BINARY_DIR}/lantern.control")
 configure_file(${CONTROL_TEMPLATE} ${CONTROL_OUTPUT})
 

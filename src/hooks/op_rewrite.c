@@ -43,92 +43,94 @@ void base_plan_mutator(Plan *plan, void *context)
 // src/include/nodes/plannodes.h and src/include/nodes/nodes.h contain relevant definitions
 Node *plan_tree_mutator(Plan *plan, void *context)
 {
-    check_stack_depth();
-
-    switch(nodeTag(plan)) {
-        case T_SubqueryScan:
-        {
-            SubqueryScan *subqueryscan = (SubqueryScan *)plan;
-            base_plan_mutator(&(subqueryscan->scan.plan), context);
-            subqueryscan->subplan = (Plan *)operator_rewriting_mutator((Node *)subqueryscan->subplan, context);
-            return (Node *)subqueryscan;
-        }
-        case T_CteScan:
-        {
-            CteScan *ctescan = (CteScan *)plan;
-            base_plan_mutator(&(ctescan->scan.plan), context);
-            return (Node *)ctescan;
-        }
-#if PG_VERSION_NUM < 160000
-        case T_Join:
-        {
-            Join *join = (Join *)plan;
-            base_plan_mutator(&(join->plan), context);
-            join->joinqual = (List *)operator_rewriting_mutator((Node *)join->joinqual, context);
-            return (Node *)join;
-        }
-#endif
-        case T_NestLoop:
-        {
-            NestLoop *nestloop = (NestLoop *)plan;
-            base_plan_mutator((Plan *)&(nestloop->join), context);
-            return (Node *)nestloop;
-        }
-        case T_Result:
-        {
-            Result *result = (Result *)plan;
-            base_plan_mutator(&(result->plan), context);
-            result->resconstantqual = operator_rewriting_mutator((Node *)result->resconstantqual, context);
-            return (Node *)result;
-        }
-        case T_Limit:
-        {
-            Limit *limit = (Limit *)plan;
-            base_plan_mutator(&(limit->plan), context);
-            limit->limitOffset = operator_rewriting_mutator((Node *)limit->limitOffset, context);
-            limit->limitCount = operator_rewriting_mutator((Node *)limit->limitCount, context);
-            return (Node *)limit;
-        }
-        case T_Append:
-        {
-            Append *append = (Append *)plan;
-            base_plan_mutator(&(append->plan), context);
-            append->appendplans = (List *)operator_rewriting_mutator((Node *)append->appendplans, context);
-            return (Node *)append;
-        }
-        // case T_IncrementalSort: // We will eventually support this
-        case T_Agg:
-        case T_Group:
-        case T_Sort:
-        case T_Unique:
-        case T_SetOp:
-        case T_Hash:
-        case T_HashJoin:
-        case T_WindowAgg:
-        case T_LockRows:
-        {
-            base_plan_mutator(plan, context);
-            return (Node *)plan;
-        }
-        case T_ModifyTable:  // No order by when modifying a table (update/delete etc)
-        case T_BitmapAnd:    // We do not provide a bitmap index
-        case T_BitmapOr:
-        case T_BitmapHeapScan:
-        case T_BitmapIndexScan:
-        case T_FunctionScan:  // SELECT * FROM fn(x, y, z)
-        case T_ValuesScan:    // VALUES (1), (2)
-        case T_Material:      // https://stackoverflow.com/questions/31410030/
-#if PG_VERSION_NUM >= 140000
-        case T_Memoize:  // memoized inner loop must have an index to be memoized
-#endif
-        case T_WorkTableScan:  // temporary table, shouldn't have index
-        case T_ProjectSet:     // "execute set returning functions" feels safe to exclude
-        case T_TableFuncScan:  // scan of a function that returns a table, shouldn't have an index
-        case T_ForeignScan:    // if the relation is foreign we can't determine if it has an index
-        default:
-            break;
-    }
     return (Node *)plan;
+    //     check_stack_depth();
+    //
+    //     switch(nodeTag(plan)) {
+    //         case T_SubqueryScan:
+    //         {
+    //             SubqueryScan *subqueryscan = (SubqueryScan *)plan;
+    //             base_plan_mutator(&(subqueryscan->scan.plan), context);
+    //             subqueryscan->subplan = (Plan *)operator_rewriting_mutator((Node *)subqueryscan->subplan, context);
+    //             return (Node *)subqueryscan;
+    //         }
+    //         case T_CteScan:
+    //         {
+    //             CteScan *ctescan = (CteScan *)plan;
+    //             base_plan_mutator(&(ctescan->scan.plan), context);
+    //             return (Node *)ctescan;
+    //         }
+    // #if PG_VERSION_NUM < 160000
+    //         case T_Join:
+    //         {
+    //             Join *join = (Join *)plan;
+    //             base_plan_mutator(&(join->plan), context);
+    //             join->joinqual = (List *)operator_rewriting_mutator((Node *)join->joinqual, context);
+    //             return (Node *)join;
+    //         }
+    // #endif
+    //         case T_NestLoop:
+    //         {
+    //             NestLoop *nestloop = (NestLoop *)plan;
+    //             base_plan_mutator((Plan *)&(nestloop->join), context);
+    //             return (Node *)nestloop;
+    //         }
+    //         case T_Result:
+    //         {
+    //             Result *result = (Result *)plan;
+    //             base_plan_mutator(&(result->plan), context);
+    //             result->resconstantqual = operator_rewriting_mutator((Node *)result->resconstantqual, context);
+    //             return (Node *)result;
+    //         }
+    //         case T_Limit:
+    //         {
+    //             Limit *limit = (Limit *)plan;
+    //             base_plan_mutator(&(limit->plan), context);
+    //             limit->limitOffset = operator_rewriting_mutator((Node *)limit->limitOffset, context);
+    //             limit->limitCount = operator_rewriting_mutator((Node *)limit->limitCount, context);
+    //             return (Node *)limit;
+    //         }
+    //         case T_Append:
+    //         {
+    //             Append *append = (Append *)plan;
+    //             base_plan_mutator(&(append->plan), context);
+    //             append->appendplans = (List *)operator_rewriting_mutator((Node *)append->appendplans, context);
+    //             return (Node *)append;
+    //         }
+    //         // case T_IncrementalSort: // We will eventually support this
+    //         case T_Agg:
+    //         case T_Group:
+    //         case T_Sort:
+    //         case T_Unique:
+    //         case T_SetOp:
+    //         case T_Hash:
+    //         case T_HashJoin:
+    //         case T_WindowAgg:
+    //         case T_LockRows:
+    //         {
+    //             base_plan_mutator(plan, context);
+    //             return (Node *)plan;
+    //         }
+    //         case T_ModifyTable:  // No order by when modifying a table (update/delete etc)
+    //         case T_BitmapAnd:    // We do not provide a bitmap index
+    //         case T_BitmapOr:
+    //         case T_BitmapHeapScan:
+    //         case T_BitmapIndexScan:
+    //         case T_FunctionScan:   // SELECT * FROM fn(x, y, z)
+    //         case T_ValuesScan:     // VALUES (1), (2)
+    //         case T_Material:       // https://stackoverflow.com/questions/31410030/
+    //                                // #if PG_VERSION_NUM >= 140000
+    //                                //         case T_Memoize:  // memoized inner loop must have an index to be
+    //                                memoized
+    //                                // #endif
+    //         case T_WorkTableScan:  // temporary table, shouldn't have index
+    //         case T_ProjectSet:     // "execute set returning functions" feels safe to exclude
+    //         case T_TableFuncScan:  // scan of a function that returns a table, shouldn't have an index
+    //         case T_ForeignScan:    // if the relation is foreign we can't determine if it has an index
+    //         default:
+    //             break;
+    //     }
+    //     return (Node *)plan;
 }
 
 // To write syscache calls look for the 'static const struct cachedesc cacheinfo[]' in utils/cache/syscache.c
