@@ -31,8 +31,9 @@ typedef enum
 
 // compilers warn about potential UB when members of this struct are accessed directly
 // though the struct is always accessed via memcpy so the warning does not apply
-#pragma GCC diagnostic   push
-#pragma GCC diagnostic   ignored "-Wpacked-not-aligned"
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpacked-not-aligned"
+
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wpacked-not-aligned"
 
@@ -44,7 +45,8 @@ typedef union __attribute__((__packed__))
 } ldb_unaligned_slot_union_t;
 
 #pragma clang diagnostic pop
-#pragma GCC diagnostic   pop
+
+#pragma GCC diagnostic pop
 
 static_assert(sizeof(ldb_unaligned_slot_union_t) >= sizeof(ItemPointerData),
               "ldb_unaligned_slot_union_t must be large enough for ItemPointerData");
