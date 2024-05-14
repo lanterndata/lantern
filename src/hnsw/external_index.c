@@ -351,6 +351,7 @@ void StoreExternalIndex(Relation                index,
     uint64 entry_slot = usearch_header_get_entry_slot(headerp->usearch_header);
     uint64 ret_slot = 0;
     assert(entry_slot < UINT32_MAX);
+    elog(INFO, "entry slot is %ld offset", entry_slot);
     elog(INFO, "entry slot is %ld offset there is: %d", entry_slot, item_pointers[entry_slot].ip_posid);
     memcpy(&ret_slot, &item_pointers[ (uint32)entry_slot ], sizeof(ItemPointerData));
     usearch_header_set_entry_slot(headerp->usearch_header, ret_slot);
