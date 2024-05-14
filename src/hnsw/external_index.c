@@ -284,7 +284,7 @@ void StoreExternalIndex(Relation                index,
     uint32 num_added_vectors_remaining = num_added_vectors;
     uint32 batch_size = HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
 
-    ItemPointerData *item_pointers = palloc(num_added_vectors * sizeof(ItemPointerData));
+    ItemPointerData *item_pointers = palloc0(num_added_vectors * sizeof(ItemPointerData));
 
     while(num_added_vectors_remaining > 0) {
         StoreExternalIndexBlockMapGroup(index,
