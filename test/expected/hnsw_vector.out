@@ -40,8 +40,8 @@ SELECT * FROM ldb_get_indexes('items');
       indexname      | size  |                                           indexdef                                            | indisvalid 
 ---------------------+-------+-----------------------------------------------------------------------------------------------+------------
  items_pkey          | 16 kB | CREATE UNIQUE INDEX items_pkey ON items USING btree (id)                                      | t
- items_trait_ai_idx  | 24 kB | CREATE INDEX items_trait_ai_idx ON items USING lantern_hnsw (trait_ai) WITH (dim='3', m='2')  | t
- items_trait_ai_idx1 | 24 kB | CREATE INDEX items_trait_ai_idx1 ON items USING lantern_hnsw (trait_ai) WITH (dim='3', m='4') | t
+ items_trait_ai_idx  | 16 kB | CREATE INDEX items_trait_ai_idx ON items USING lantern_hnsw (trait_ai) WITH (dim='3', m='2')  | t
+ items_trait_ai_idx1 | 16 kB | CREATE INDEX items_trait_ai_idx1 ON items USING lantern_hnsw (trait_ai) WITH (dim='3', m='4') | t
 (3 rows)
 
 -- Test index creation on table with existing data
@@ -68,7 +68,7 @@ INFO:  done saving 8 vectors
 SELECT * FROM ldb_get_indexes('small_world');
      indexname     | size  |                                                         indexdef                                                          | indisvalid 
 -------------------+-------+---------------------------------------------------------------------------------------------------------------------------+------------
- small_world_v_idx | 24 kB | CREATE INDEX small_world_v_idx ON small_world USING lantern_hnsw (v) WITH (dim='3', m='5', ef='20', ef_construction='20') | t
+ small_world_v_idx | 16 kB | CREATE INDEX small_world_v_idx ON small_world USING lantern_hnsw (v) WITH (dim='3', m='5', ef='20', ef_construction='20') | t
 (1 row)
 
 INSERT INTO small_world (v) VALUES ('[99,99,2]');

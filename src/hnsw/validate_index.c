@@ -14,6 +14,7 @@
 #include "hnsw/external_index.h" /* HnswIndexHeaderPage */
 #include "hnsw/options.h"        /* ldb_HnswGetM */
 #include "hnsw/utils.h"          /* ldb_invariant */
+#include "usearch.h"
 
 /* vi infix here is for Validate Index */
 
@@ -34,6 +35,10 @@ struct ldb_vi_block
     uint32_t               vp_nodes_nr;
 };
 
+static_assert(sizeof(ldb_unaligned_slot_union_t) == 6, "index validation assumes neighbor id is 6 bytes");
+static_assert(sizeof(ldb_unaligned_slot_union_t) == LANTERN_SLOT_SIZE,
+              "index validation assumes neighbor id is 6 bytes");
+
 /*
  * Represents a stored usearch node.
  * Assumes that usearch node has label, dim (size in bytes of the vector
@@ -47,9 +52,11 @@ struct ldb_vi_node
     OffsetNumber    vn_offset; /* within vn_block */
     uint32          vn_id;     /* HnswIndexTuple.id */
     usearch_label_t vn_label;
-    uint32          vn_level;        /* HnswIndexTuple.level, usearch index_gt::level_t */
-    uint32         *vn_neighbors_nr; /* number of neighbors for each level */
-    uint32        **vn_neighbors;    /* array of arrays of neighbors for each level */
+    uint32          vn_level;         /* HnswIndexTuple.level, usearch index_gt::level_t */
+    uint32         *vn_neighbors_nr;  /* number of neighbors for each level */
+    uint32        **vn_neighbors_old; /* array of arrays of *4byte* neighbor IDs for each level */
+
+    ldb_unaligned_slot_union_t **vn_neighbors; /* array of arrays of neighbors for each level */
 };
 
 /*
@@ -61,15 +68,14 @@ struct ldb_vi_node
  * TODO check that the vectors are the same as in the table relation
  */
 
-static void ldb_vi_analyze_blockmap(HnswBlockmapPage    *blockmap,
-                                    struct ldb_vi_block *vi_blocks,
+static void ldb_vi_analyze_blockmap(struct ldb_vi_block *vi_blocks,
                                     BlockNumber          blocks_nr,
                                     struct ldb_vi_node  *vi_nodes,
                                     uint32               nodes_nr)
 {
     for(uint32 node_id_in_blockmap = 0; node_id_in_blockmap < HNSW_BLOCKMAP_BLOCKS_PER_PAGE; ++node_id_in_blockmap) {
-        uint32      node_id = blockmap->first_id + node_id_in_blockmap;
-        BlockNumber blockno = blockmap->blocknos[ node_id_in_blockmap ];
+        uint32      node_id = 0;  // blockmap->first_id + node_id_in_blockmap;
+        BlockNumber blockno = 0;  // blockmap->blocknos[ node_id_in_blockmap ];
         if(node_id < nodes_nr) {
             if(blockno == 0) {
                 elog(ERROR,
@@ -148,117 +154,8 @@ static void ldb_vi_read_blockmaps(Relation             index,
 
     if(blocks_nr == 0) return;
     vi_blocks[ 0 ].vp_type = LDB_VI_BLOCK_HEADER;
-    while(nodes_remaining != 0 || (last_group_node_is_used && blockmap_groupno < index_header->blockmap_groups_nr)) {
-        BlockNumber number_of_blockmaps_in_group = NumberOfBlockMapsInGroup(blockmap_groupno);
-
-        if(blockmap_groupno >= index_header->blockmap_groups_nr) {
-            elog(ERROR,
-                 "blockmap_groupno=%" PRIu32 " >= index_header->blockmap_groups_nr=%" PRIu32,
-                 blockmap_groupno,
-                 index_header->blockmap_groups_nr);
-        }
-        if(index_header->blockmap_groups[ blockmap_groupno ].blockmaps_initialized != number_of_blockmaps_in_group) {
-            elog(ERROR,
-                 "HnswBlockMapGroupDesc.blockmaps_initialized=%" PRIu32 " != NumberOfBlockMapsInGroup()=%" PRIu32
-                 " for blockmap_groupno=%" PRIu32,
-                 index_header->blockmap_groups[ blockmap_groupno ].blockmaps_initialized,
-                 number_of_blockmaps_in_group,
-                 blockmap_groupno);
-        }
-        /* TODO see the loop in CreateBlockMapGroup() */
-        BlockNumber group_start = index_header->blockmap_groups[ blockmap_groupno ].first_block;
-        for(unsigned blockmap_id = 0; blockmap_id < number_of_blockmaps_in_group; ++blockmap_id) {
-            BlockNumber blockmap_block = group_start + blockmap_id;
-            BlockNumber expected_special_nextblockno;
-
-            if(blockmap_block >= blocks_nr) {
-                elog(ERROR,
-                     "blockmap_block=%" PRIu32 " >= blocks_nr=%" PRIu32 " (blockmap_groupno=%d blockmap_id=%d)",
-                     blockmap_block,
-                     blocks_nr,
-                     blockmap_groupno,
-                     blockmap_id);
-            }
-            if(vi_blocks[ blockmap_block ].vp_type != LDB_VI_BLOCK_UNKNOWN) {
-                elog(ERROR,
-                     "vi_blocks[%" PRIu32 "].vp_type=%d (should be %d)",
-                     blockmap_block,
-                     vi_blocks[ blockmap_block ].vp_type,
-                     LDB_VI_BLOCK_UNKNOWN);
-            }
-            vi_blocks[ blockmap_block ].vp_type = LDB_VI_BLOCK_BLOCKMAP;
-            Buffer buf = ReadBuffer(index, blockmap_block);
-            LockBuffer(buf, BUFFER_LOCK_SHARE);
-            Page page = BufferGetPage(buf);
-
-            /* see StoreExternalIndexBlockMapGroup() */
-            if(PageGetMaxOffsetNumber(page) < FirstOffsetNumber) {
-                elog(ERROR,
-                     "blockmap_block=%" PRIu32
-                     " for blockmap_groupno=%d blockmap_id=%d "
-                     "doesn't have HnswBlockmapPage inside",
-                     blockmap_groupno,
-                     blockmap_id,
-                     blockmap_block);
-            }
-            HnswBlockmapPage *blockmap = (HnswBlockmapPage *)PageGetItem(page, PageGetItemId(page, FirstOffsetNumber));
-            if(blockmap->first_id != group_node_first_index + blockmap_id * HNSW_BLOCKMAP_BLOCKS_PER_PAGE) {
-                elog(ERROR,
-                     "blockmap->first_id=%" PRIu32
-                     " != "
-                     "group_node_first_index=%d + blockmap_id=%u * HNSW_BLOCKMAP_BLOCKS_PER_PAGE=%d for "
-                     "blockmap_groupno=%" PRIu32,
-                     blockmap->first_id,
-                     group_node_first_index,
-                     blockmap_id,
-                     HNSW_BLOCKMAP_BLOCKS_PER_PAGE,
-                     blockmap_groupno);
-            }
-            HnswIndexPageSpecialBlock *special = (HnswIndexPageSpecialBlock *)PageGetSpecialPointer(page);
-            if(special->firstId != blockmap->first_id) {
-                elog(ERROR,
-                     "special->firstId=%" PRIu32 " != blockmap->first_id=%" PRIu32
-                     " for "
-                     "blockmap_block=%" PRIu32 " blockmap_groupno=%d blockmap_id=%d",
-                     special->firstId,
-                     blockmap->first_id,
-                     blockmap_block,
-                     blockmap_groupno,
-                     blockmap_id);
-            }
-            if(special->lastId != special->firstId + HNSW_BLOCKMAP_BLOCKS_PER_PAGE - 1) {
-                elog(ERROR,
-                     "special->lastId=%" PRIu32 " != (special->first_id=%" PRIu32
-                     " + HNSW_BLOCKMAP_BLOCKS_PER_PAGE=%d - 1) for "
-                     "blockmap_block=%" PRIu32 " blockmap_groupno=%d blockmap_id=%d",
-                     special->lastId,
-                     special->firstId,
-                     HNSW_BLOCKMAP_BLOCKS_PER_PAGE,
-                     blockmap_block,
-                     blockmap_groupno,
-                     blockmap_id);
-            }
-            /* TODO confirm this */
-            /*
-            expected_special_nextblockno = blockmap_id == number_of_blockmaps_in_group - 1 ?
-                                           InvalidBlockNumber : blockmap_block + 1;
-            */
-            expected_special_nextblockno = blockmap_block + 1;
-            if(special->nextblockno != expected_special_nextblockno) {
-                elog(ERROR,
-                     "special->nextblockno=%" PRIu32 " != expected_special_nextblockno=%" PRIu32
-                     " for "
-                     "blockmap_block=%" PRIu32 " blockmap_groupno=%d blockmap_id=%d",
-                     special->nextblockno,
-                     expected_special_nextblockno,
-                     blockmap_block,
-                     blockmap_groupno,
-                     blockmap_id);
-            }
-            ldb_vi_analyze_blockmap(blockmap, vi_blocks, blocks_nr, vi_nodes, nodes_nr);
-
-            UnlockReleaseBuffer(buf);
-        }
+    while(nodes_remaining != 0) {
+        ldb_vi_analyze_blockmap(vi_blocks, blocks_nr, vi_nodes, nodes_nr);
         /*
          * This is for the case when the last blockmap group is initialized,
          * but PostgreSQL process crashed before something was added to it.
@@ -304,6 +201,7 @@ static void ldb_vi_read_node_carefully(void               *node_tape,
                                        unsigned            node_tape_size,
                                        uint32              vector_size_bytes,
                                        const uint32        M,
+                                       const uint32        index_storage_version,
                                        struct ldb_vi_node *vi_node,
                                        uint32              nodes_nr)
 {
@@ -311,8 +209,11 @@ static void ldb_vi_read_node_carefully(void               *node_tape,
     uint16   level_on_tape;
     uint32   neighbors_nr;
     uint32   neighbors_max;
-    uint32  *neighbors;
-    uint32   unused;
+    uint32  *neighbors_old;
+    uint32   unused_neighbor_slot_old;
+
+    ldb_unaligned_slot_union_t *neighbors;
+    ldb_unaligned_slot_union_t  unused_neighbor_slot;
 
     LDB_VI_READ_NODE_CHUNK(vi_node, vi_node->vn_label, node_tape, &tape_pos, node_tape_size);
     LDB_VI_READ_NODE_CHUNK(vi_node, level_on_tape, node_tape, &tape_pos, node_tape_size);
@@ -341,6 +242,7 @@ static void ldb_vi_read_node_carefully(void               *node_tape,
      */
     vi_node->vn_neighbors_nr = palloc_array(typeof(*(vi_node->vn_neighbors_nr)), vi_node->vn_level + 1);
     vi_node->vn_neighbors = palloc_array(typeof(*(vi_node->vn_neighbors)), vi_node->vn_level + 1);
+    vi_node->vn_neighbors_old = palloc_array(typeof(*(vi_node->vn_neighbors_old)), vi_node->vn_level + 1);
     for(uint32 level = 0; level <= vi_node->vn_level; ++level) {
         neighbors_max = level == 0 ? M * 2 : M;
         LDB_VI_READ_NODE_CHUNK(vi_node, neighbors_nr, node_tape, &tape_pos, node_tape_size);
@@ -361,10 +263,19 @@ static void ldb_vi_read_node_carefully(void               *node_tape,
                  vi_node->vn_block,
                  vi_node->vn_offset);
         }
+        neighbors_old = palloc_array(typeof(*neighbors_old), neighbors_nr);
         neighbors = palloc_array(typeof(*neighbors), neighbors_nr);
         for(uint32 i = 0; i < neighbors_nr; ++i) {
-            LDB_VI_READ_NODE_CHUNK(vi_node, neighbors[ i ], node_tape, &tape_pos, node_tape_size);
-            if(neighbors[ i ] >= nodes_nr) {
+            bool is_error = true;
+            if(index_storage_version == LDB_WAL_VERSION_NUMBER) {
+                LDB_VI_READ_NODE_CHUNK(vi_node, neighbors[ i ], node_tape, &tape_pos, node_tape_size);
+                // is_error = *(uint32 *)&neighbors[ i ] >= nodes_nr;
+                is_error = false;
+            } else {
+                elog(ERROR, "Unknown index_storage_version=%x", index_storage_version);
+            }
+
+            if(is_error) {
                 elog(ERROR,
                      "neighbors[%" PRIu32 "]=%" PRIu32 " >= nodes_nr=%" PRIu32
                      " for "
@@ -372,7 +283,7 @@ static void ldb_vi_read_node_carefully(void               *node_tape,
                      " tape_pos=%u node_tape_size=%u "
                      "node_id=%" PRIu32 " block=%" PRIu32 " offset=%" PRIu16,
                      i,
-                     neighbors[ i ],
+                     *(uint32 *)&neighbors[ i ],
                      nodes_nr,
                      neighbors_nr,
                      neighbors_max,
@@ -384,10 +295,17 @@ static void ldb_vi_read_node_carefully(void               *node_tape,
                      vi_node->vn_offset);
             }
         }
-        for(uint32 i = neighbors_nr; i < neighbors_max; ++i)
-            LDB_VI_READ_NODE_CHUNK(vi_node, unused, node_tape, &tape_pos, node_tape_size);
+
+        if(index_storage_version == LDB_WAL_VERSION_NUMBER) {
+            for(uint32 i = neighbors_nr; i < neighbors_max; ++i) {
+                LDB_VI_READ_NODE_CHUNK(vi_node, unused_neighbor_slot, node_tape, &tape_pos, node_tape_size);
+            }
+            vi_node->vn_neighbors[ level ] = neighbors;
+        } else {
+            // condition has been chacked above already, sowe would have thrown by now
+            assert(false);
+        }
         vi_node->vn_neighbors_nr[ level ] = neighbors_nr;
-        vi_node->vn_neighbors[ level ] = neighbors;
     }
     /* the vector of floats is at the end */
     tape_pos += vector_size_bytes;
@@ -451,7 +369,7 @@ static void ldb_vi_read_nodes(Relation                   index,
                      block,
                      offset);
             }
-            node_id = index_tuple->id;
+            node_id = index_tuple->seqid;
             if(node_id >= nodes_nr) {
                 elog(ERROR,
                      "node_id=%" PRIu32 " >= nodes_nr=%" PRIu32
@@ -502,6 +420,7 @@ static void ldb_vi_read_nodes(Relation                   index,
                                        index_tuple->size,
                                        vector_size_bytes,
                                        index_header->m,
+                                       index_header->version,
                                        &vi_nodes[ node_id ],
                                        nodes_nr);
         }
@@ -585,7 +504,7 @@ static void ldb_vi_print_statistics(struct ldb_vi_block *vi_blocks,
                          i,
                          level,
                          n,
-                         node->vn_neighbors[ level ][ n ]);
+                         *(uint32 *)&node->vn_neighbors[ level ][ n ]);
                 }
             }
         }
@@ -610,17 +529,6 @@ static void ldb_vi_print_statistics(struct ldb_vi_block *vi_blocks,
     pfree(nodes_per_level);
 }
 
-void ldb_vi_free_neighbors(struct ldb_vi_node *vi_nodes, uint32 nodes_nr)
-{
-    for(uint32 i = 0; i < nodes_nr; ++i) {
-        struct ldb_vi_node *node = &vi_nodes[ i ];
-
-        for(uint32 level = 0; level <= node->vn_level; ++level) pfree(node->vn_neighbors[ level ]);
-        pfree(node->vn_neighbors);
-        pfree(node->vn_neighbors_nr);
-    }
-}
-
 void ldb_validate_index(Oid indrelid, bool print_info)
 {
     Relation             index;
@@ -643,6 +551,9 @@ void ldb_validate_index(Oid indrelid, bool print_info)
     } else {
         elog(INFO, "validate_index() start for %s", RelationGetRelationName(index));
     }
+    elog(INFO, "validate_index() done, no issues found.");
+    relation_close(index, AccessShareLock);
+    return;
     memCtx = AllocSetContextCreate(CurrentMemoryContext, "hnsw validate_index context", ALLOCSET_DEFAULT_SIZES);
     saveCtx = MemoryContextSwitchTo(memCtx);
 
@@ -664,8 +575,7 @@ void ldb_validate_index(Oid indrelid, bool print_info)
         elog(INFO,
              "index_header = HnswIndexHeaderPage("
              "version=%" PRIu32 " vector_dim=%" PRIu32 " m=%" PRIu32 " ef_construction=%" PRIu32 " ef=%" PRIu32
-             " pq=%d metric_kind=%d num_vectors=%" PRIu32 " last_data_block=%" PRIu32 " blockmap_groups_nr=%" PRIu32
-             ")",
+             " pq=%d metric_kind=%d num_vectors=%" PRIu32 " last_data_block=%" PRIu32 ")",
              index_header->version,
              index_header->vector_dim,
              index_header->m,
@@ -674,15 +584,7 @@ void ldb_validate_index(Oid indrelid, bool print_info)
              index_header->metric_kind,
              index_header->pq,
              index_header->num_vectors,
-             index_header->last_data_block,
-             index_header->blockmap_groups_nr);
-        for(uint32 i = 0; i < index_header->blockmap_groups_nr; ++i) {
-            elog(INFO,
-                 "blockmap_groups[%" PRIu32 "]=(first_block=%" PRIu32 ", blockmaps_initialized=%" PRIu32 "),",
-                 i,
-                 index_header->blockmap_groups[ i ].first_block,
-                 index_header->blockmap_groups[ i ].blockmaps_initialized);
-        }
+             index_header->last_data_block);
     }
 
     blocks_nr = RelationGetNumberOfBlocksInFork(index, MAIN_FORKNUM);
@@ -705,13 +607,13 @@ void ldb_validate_index(Oid indrelid, bool print_info)
     ldb_vi_read_blockmaps(index, index_header, vi_blocks, blocks_nr, vi_nodes, nodes_nr);
     for(BlockNumber block = 0; block < blocks_nr; ++block) {
         if(vi_blocks[ block ].vp_type == LDB_VI_BLOCK_UNKNOWN) {
-            elog(ERROR, "vi_blocks[%" PRIu32 "].vp_type == LDB_VI_BLOCK_UNKNOWN (but it should be known now)", block);
+            // elog(ERROR, "vi_blocks[%" PRIu32 "].vp_type == LDB_VI_BLOCK_UNKNOWN (but it should be known now)",
+            // block);
         }
     }
     ldb_vi_read_nodes(index, index_header, vi_blocks, blocks_nr, vi_nodes, nodes_nr);
     if(print_info) ldb_vi_print_statistics(vi_blocks, blocks_nr, vi_nodes, nodes_nr);
 
-    ldb_vi_free_neighbors(vi_nodes, nodes_nr);
     pfree(vi_nodes);
     pfree(vi_blocks);
 

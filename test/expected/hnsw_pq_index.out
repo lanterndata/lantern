@@ -143,7 +143,7 @@ SELECT id FROM small_world_pq ORDER BY v <-> :'v4' LIMIT 1;
 SELECT * FROM ldb_get_indexes('small_world_pq');
    indexname   | size  |                                       indexdef                                        | indisvalid 
 ---------------+-------+---------------------------------------------------------------------------------------+------------
- hnsw_l2_index | 24 kB | CREATE INDEX hnsw_l2_index ON small_world_pq USING lantern_hnsw (v) WITH (pq='false') | t
+ hnsw_l2_index | 16 kB | CREATE INDEX hnsw_l2_index ON small_world_pq USING lantern_hnsw (v) WITH (pq='false') | t
 (1 row)
 
 DROP INDEX hnsw_l2_index;

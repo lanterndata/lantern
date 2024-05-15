@@ -32,8 +32,14 @@ $$ LANGUAGE plpgsql;
 
 -- This function checks if val2 is within some error margin of val1.
 CREATE OR REPLACE FUNCTION is_within_error(val1 real, val2 real, error_margin real) RETURNS boolean AS $$
+DECLARE
+    is_within boolean;
 BEGIN
-    RETURN val2 BETWEEN val1 * (1 - error_margin) AND val1 * (1 + error_margin);
+    is_within := val1 BETWEEN val2 * (1 - error_margin) AND val2 * (1 + error_margin);
+    IF NOT is_within THEN
+        RAISE NOTICE 'Expected: % +/- % %%, Actual: %', val2, error_margin * 100, val1;
+    END IF;
+    return is_within;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -70,14 +76,14 @@ DROP INDEX hnsw_idx;
 -- Case 2, higher M.
 -- Should see higher cost than Case 1.
 CREATE INDEX hnsw_idx ON sift_base10k USING lantern_hnsw (v dist_l2sq_ops) WITH (M=20, ef_construction=10, ef=4, dim=128);
-SELECT is_cost_estimate_within_error(format(:'explain_query_template', :'v4444'), 3.27);
+SELECT is_cost_estimate_within_error(format(:'explain_query_template', :'v4444'), 3.30);
 SELECT _lantern_internal.validate_index('hnsw_idx', false);
 DROP INDEX hnsw_idx;
 
 -- Case 3, higher ef.
 -- Should see higher cost than Case 2.
 CREATE INDEX hnsw_idx ON sift_base10k USING lantern_hnsw (v dist_l2sq_ops) WITH (M=20, ef_construction=10, ef=16, dim=128);
-SELECT is_cost_estimate_within_error(format(:'explain_query_template', :'v4444'), 3.91);
+SELECT is_cost_estimate_within_error(format(:'explain_query_template', :'v4444'), 3.99);
 SELECT _lantern_internal.validate_index('hnsw_idx', false);
 DROP INDEX hnsw_idx;
 

@@ -96,9 +96,9 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     if(error != NULL) elog(ERROR, "error loading index: %s", error);
     assert(error == NULL);
 
-    memcpy(
-        retriever_ctx->blockmap_groups_cache, headerp->blockmap_groups, sizeof(retriever_ctx->blockmap_groups_cache));
-    retriever_ctx->header_page_under_wal = NULL;
+    if(headerp->version != LDB_WAL_VERSION_NUMBER) {
+        elog(ERROR, "unsupported or outdated wal version. Please reindex");
+    }
 
     usearch_mem = headerp->usearch_header;
     // this reserves memory for internal structures,
@@ -222,7 +222,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
                                          scanstate->labels,
                                          scanstate->distances,
                                          &error);
-        ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);
+        ldb_wal_retriever_area_reset(scanstate->retriever_ctx);
 
         scanstate->count = num_returned;
         scanstate->current = 0;
@@ -269,7 +269,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
                                          scanstate->labels,
                                          scanstate->distances,
                                          &error);
-        ldb_wal_retriever_area_reset(scanstate->retriever_ctx, NULL);
+        ldb_wal_retriever_area_reset(scanstate->retriever_ctx);
 
         scanstate->count = num_returned;
 

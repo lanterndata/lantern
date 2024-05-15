@@ -17,7 +17,10 @@
 #include "usearch.h"
 
 #define LDB_WAL_MAGIC_NUMBER   0xa47e60db
-#define LDB_WAL_VERSION_NUMBER 0x00000002
+#define LDB_WAL_VERSION_NUMBER 0x00000003
+
+// old version numbers. Suffix is the last version that used this format
+// #define LDB_WAL_VERSION_NUMBER_0_2_7 0x00000002
 
 // used for code clarity when modifying WAL entries
 #define LDB_GENERIC_XLOG_DELTA_IMAGE 0
@@ -57,11 +60,9 @@ typedef struct HnswIndexHeaderPage
     BlockNumber           last_data_block;
     char                  usearch_header[ USEARCH_HEADER_SIZE ];
 
-    uint32                blockmap_groups_nr;
-    HnswBlockMapGroupDesc blockmap_groups[ HNSW_MAX_BLOCKMAP_GROUPS ];
-    bool                  pq;
-    size_t                num_centroids;
-    size_t                num_subvectors;
+    bool   pq;
+    size_t num_centroids;
+    size_t num_subvectors;
 } HnswIndexHeaderPage;
 
 // the added 40 byte graph header (currently unused)
@@ -84,7 +85,7 @@ typedef struct HnswIndexPageSpecialBlock
 
 typedef struct HnswIndexTuple
 {
-    uint32 id;
+    uint32 seqid;
     uint32 level;
     // stores size of the flexible array member
     uint32 size;
@@ -106,8 +107,6 @@ typedef struct
 
     Relation index_rel;
 
-    // used for scans
-    HnswBlockMapGroupDesc blockmap_groups_cache[ HNSW_MAX_BLOCKMAP_GROUPS ];  // todo::
     // used for inserts
     HnswIndexHeaderPage *header_page_under_wal;
 
@@ -152,15 +151,10 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
                                   metadata_t          *metadata,
                                   uint32               new_tuple_id,
                                   uint32               new_tuple_level,
-                                  HnswInsertState     *insertstate);
 
-BlockNumber NumberOfBlockMapsInGroup(unsigned groupno);
+                                  ldb_unaligned_slot_union_t *slot,
+                                  HnswInsertState            *insertstate);
 
-/*
- * Continue and finish the last blockmap group initialization if needed.
- * @see ContinueBlockMapGroupInitialization
- */
-void ldb_continue_blockmap_group_initialization(Oid indrelid);
 bool isBlockMapBlock(const HnswBlockMapGroupDesc *blockmap_groups, const int blockmap_group_nr, BlockNumber blockno);
 
 #endif  // LDB_HNSW_EXTERNAL_INDEX_H

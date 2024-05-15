@@ -64,6 +64,11 @@ RUN git clone https://github.com/lanterndata/benchmark build/benchmark \
     && pip install -r core/requirements.txt \
     && pip install -r external/requirements.txt
 
+# Install perf
+RUN sudo apt update && sudo apt install -y linux-tools-common linux-tools-generic linux-tools-`uname -r`
+# in host, enable perf_event paranoid via
+# echo -1 | sudo tee /proc/sys/kernel/perf_event_paranoid
+
 ENV DATABASE_URL=postgres://postgres@localhost:5432/postgres
 ENV LANTERN_DATABASE_URL=postgres://postgres@localhost:5432/postgres
 
@@ -71,7 +76,11 @@ ENV LANTERN_DATABASE_URL=postgres://postgres@localhost:5432/postgres
 # RUN /usr/local/pgsql/bin/initdb -D /var/lib/postgresql/data
 # RUN echo "listen_addresses '*' " >> /var/lib/postgresql/data/postgresql.conf
 RUN /usr/local/pgsql/bin/initdb -D /var/lib/postgresql/data
-RUN echo "shared_preload_libraries = 'pg_cron,pg_stat_statements' " >> /var/lib/postgresql/data/postgresql.conf
-# RUN echo "host    all             all             0.0.0.0/0               trust" >> /var/lib/postgresql/data/pg_hba.conf
+RUN echo "shared_preload_libraries = 'pg_cron,pg_stat_statements' " >> /var/lib/postgresql/data/postgresql.conf && \
+    echo "wal_level = 'logical' " >> /var/lib/postgresql/data/postgresql.conf && \
+    echo "listen_addresses = '*' " >> /var/lib/postgresql/data/postgresql.conf && \
+    echo "shared_buffers = '4GB' " >> /var/lib/postgresql/data/postgresql.conf
+
+RUN echo "host    all             all             0.0.0.0/0               trust" >> /var/lib/postgresql/data/pg_hba.conf
 # CMD ["/usr/local/pgsql/bin/postgres", "-D", "/var/lib/postgresql/data"]
 CMD ["/usr/local/pgsql/bin/postgres", "-D", "/var/lib/postgresql/data"]

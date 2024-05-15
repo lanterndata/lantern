@@ -98,7 +98,7 @@ ORDER BY
 SELECT * from ldb_get_indexes('small_world');
      indexname     | size  |                                      indexdef                                       | indisvalid 
 -------------------+-------+-------------------------------------------------------------------------------------+------------
- small_world_v_idx | 24 kB | CREATE INDEX small_world_v_idx ON small_world USING lantern_hnsw (v) WITH (dim='3') | t
+ small_world_v_idx | 16 kB | CREATE INDEX small_world_v_idx ON small_world USING lantern_hnsw (v) WITH (dim='3') | t
 (1 row)
 
 -- Ensure the query plan remains consistent after inserts

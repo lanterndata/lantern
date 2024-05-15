@@ -113,6 +113,9 @@ bool ldb_aminsert(Relation         index,
     hdr_page = GenericXLogRegisterBuffer(state, hdr_buf, LDB_GENERIC_XLOG_DELTA_IMAGE);
     hdr = (HnswIndexHeaderPage *)PageGetContents(hdr_page);
     assert(hdr->magicNumber == LDB_WAL_MAGIC_NUMBER);
+    if(hdr->version != LDB_WAL_VERSION_NUMBER) {
+        elog(ERROR, "unsupported or outdated wal version. Please reindex");
+    }
 
     opts.dimensions = hdr->vector_dim;
     opts.pq = hdr->pq;
@@ -185,14 +188,17 @@ bool ldb_aminsert(Relation         index,
     // 3) (sometimes) the page that used to be last page of the index
     // 4) The blockmap page for the block in which the vector was added
     // Generic XLog supports up to 4 pages in a single commit, so we are good.
-    new_tuple = PrepareIndexTuple(index, state, hdr, &meta, new_tuple_id, level, insertstate);
     int vector_size_bytes = opts.dimensions * sizeof(float);
+
+    ldb_unaligned_slot_union_t slot;
+    uint64                     slot_copy;
+    new_tuple = PrepareIndexTuple(index, state, hdr, &meta, new_tuple_id, level, &slot, insertstate);
+    memcpy(&slot_copy, &slot, sizeof(slot));
     // initialize node structure per usearch format
-    usearch_init_node(
-        &meta, new_tuple->node, *(unsigned long *)heap_tid, level, new_tuple_id, vector, vector_size_bytes);
+    usearch_init_node(&meta, new_tuple->node, *(unsigned long *)heap_tid, level, slot_copy, vector, vector_size_bytes);
 
     usearch_add_external(
-        uidx, *(unsigned long *)heap_tid, vector, new_tuple->node, usearch_scalar_f32_k, level, &error);
+        uidx, *(unsigned long *)heap_tid, vector, new_tuple->node, usearch_scalar_f32_k, level, slot_copy, &error);
     if(error != NULL) {
         elog(ERROR, "usearch insert error: %s", error);
     }
@@ -200,7 +206,7 @@ bool ldb_aminsert(Relation         index,
     usearch_update_header(uidx, hdr->usearch_header, &error);
     // todo:: handle error
 
-    ldb_wal_retriever_area_reset(insertstate->retriever_ctx, hdr);
+    ldb_wal_retriever_area_reset(insertstate->retriever_ctx);
 
     int needs_wal = RelationNeedsWAL(index);
     // we only release the header buffer AFTER inserting is finished to make sure nobody else changes the block

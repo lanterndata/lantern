@@ -24,7 +24,6 @@ IndexBulkDeleteResult *ldb_ambulkdelete(IndexVacuumInfo        *info,
     elog(WARNING,
          "LanternDB: hnsw index deletes are currently not implemented. This is a no-op. No memory will be reclaimed");
     // traverse through the index and call the callback for all elements
-    BlockNumber         blockno;
     Buffer              buf;
     HnswIndexHeaderPage header;
     Page                page;
@@ -46,21 +45,18 @@ IndexBulkDeleteResult *ldb_ambulkdelete(IndexVacuumInfo        *info,
         gxlogState = GenericXLogStart(info->index);
         page = GenericXLogRegisterBuffer(gxlogState, buf, LDB_GENERIC_XLOG_DELTA_IMAGE);
         maxoffset = PageGetMaxOffsetNumber(page);
+        // when index is a pq-index, there will be pq header pages that are currently empty
+        // the loop below will skip those. in the future, when those pages are filled up,
+        // we need to add a branch here and skip those pages
 
-        if(isBlockMapBlock(header.blockmap_groups, header.blockmap_groups_nr, blockno)) {
-            ldb_invariant(1 == maxoffset, "expected blockmap page with single item");
-            HnswBlockmapPage *blockmap_page
-                = (HnswBlockmapPage *)PageGetItem(page, PageGetItemId(page, FirstOffsetNumber));
-        } else {
-            for(offset = FirstOffsetNumber; offset <= maxoffset; offset = OffsetNumberNext(offset)) {
-                HnswIndexTuple *nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
-                unsigned long   label = label_from_node(nodepage->node);
-                label2ItemPointer(label, &tid_data);
-                if(callback(&tid_data, callback_state)) {
-                    block_modified = true;
-                    reset_node_label(nodepage->node);
-                    stats->tuples_removed += 1;
-                }
+        for(offset = FirstOffsetNumber; offset <= maxoffset; offset = OffsetNumberNext(offset)) {
+            HnswIndexTuple *nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
+            unsigned long   label = label_from_node(nodepage->node);
+            label2ItemPointer(label, &tid_data);
+            if(callback(&tid_data, callback_state)) {
+                block_modified = true;
+                reset_node_label(nodepage->node);
+                stats->tuples_removed += 1;
             }
         }
 

@@ -3,7 +3,9 @@
 
 #include <postgres.h>
 
+#include <assert.h>
 #include <fmgr.h>
+#include <storage/itemptr.h>
 #include <utils/relcache.h>
 
 #define LANTERN_INTERNAL_SCHEMA_NAME "_lantern_internal"
@@ -26,6 +28,28 @@ typedef enum
     VECTOR,
     UNKNOWN
 } HnswColumnType;
+
+// compilers warn about potential UB when members of this struct are accessed directly
+// though the struct is always accessed via memcpy so the warning does not apply
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpacked-not-aligned"
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wpacked-not-aligned"
+
+// C version of uint48_t in c++/usearch
+typedef union __attribute__((__packed__))
+{
+    ItemPointerData itemPointerData;
+    uint32          seqid;
+} ldb_unaligned_slot_union_t;
+
+#pragma clang diagnostic pop
+
+#pragma GCC diagnostic pop
+
+static_assert(sizeof(ldb_unaligned_slot_union_t) >= sizeof(ItemPointerData),
+              "ldb_unaligned_slot_union_t must be large enough for ItemPointerData");
 
 /* Exported functions */
 PGDLLEXPORT void _PG_init(void);
