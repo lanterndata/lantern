@@ -59,71 +59,6 @@ struct ldb_vi_node
     ldb_unaligned_slot_union_t **vn_neighbors; /* array of arrays of neighbors for each level */
 };
 
-/*
- * TODO add const to parameters wherever needed
- * TODO validate groups after max group no
- * TODO export entire index into json (for Python)
- * TODO test for non-default M
- * TODO add execution times for each stage
- * TODO check that the vectors are the same as in the table relation
- */
-
-static void ldb_vi_analyze_blockmap(struct ldb_vi_block *vi_blocks,
-                                    BlockNumber          blocks_nr,
-                                    struct ldb_vi_node  *vi_nodes,
-                                    uint32               nodes_nr)
-{
-    for(uint32 node_id_in_blockmap = 0; node_id_in_blockmap < HNSW_BLOCKMAP_BLOCKS_PER_PAGE; ++node_id_in_blockmap) {
-        uint32      node_id = 0;  // blockmap->first_id + node_id_in_blockmap;
-        BlockNumber blockno = 0;  // blockmap->blocknos[ node_id_in_blockmap ];
-        if(node_id < nodes_nr) {
-            if(blockno == 0) {
-                elog(ERROR,
-                     "blockmap.blocknos[%" PRIu32
-                     "] == 0 for "
-                     "node_id=%" PRIu32 " nodes_nr=%" PRIu32,
-                     node_id_in_blockmap,
-                     node_id,
-                     nodes_nr);
-            }
-            if(blockno >= blocks_nr) {
-                elog(ERROR,
-                     "blockmap.blocknos[%" PRIu32 "]=%" PRIu32 " >= blocks_nr=%" PRIu32
-                     " for "
-                     "node_id=%" PRIu32 " nodes_nr=%" PRIu32,
-                     node_id_in_blockmap,
-                     blockno,
-                     blocks_nr,
-                     node_id,
-                     nodes_nr);
-            }
-            if(vi_blocks[ blockno ].vp_type == LDB_VI_BLOCK_UNKNOWN) vi_blocks[ blockno ].vp_type = LDB_VI_BLOCK_NODES;
-            if(vi_blocks[ blockno ].vp_type != LDB_VI_BLOCK_NODES) {
-                elog(ERROR,
-                     "vi_blocks[%" PRIu32
-                     "].vp_type=%d != %d for "
-                     "blocks_nr=%" PRIu32 " node_id_in_blockmap=%" PRIu32 " node_id=%" PRIu32 " nodes_nr=%" PRIu32,
-                     blockno,
-                     vi_blocks[ blockno ].vp_type,
-                     LDB_VI_BLOCK_NODES,
-                     blocks_nr,
-                     node_id_in_blockmap,
-                     node_id,
-                     nodes_nr);
-            }
-            vi_nodes[ node_id ].vn_block = blockno;
-        } else if(blockno != 0) {
-            elog(ERROR,
-                 "blockmap.blocknos[%" PRIu32 "]=%" PRIu32
-                 " != 0 for "
-                 "node_id=%" PRIu32 " nodes_nr=%" PRIu32,
-                 node_id_in_blockmap,
-                 blockno,
-                 node_id,
-                 nodes_nr);
-        }
-    }
-}
 static void ldb_vi_read_pq_codebook(Relation             index,
                                     HnswIndexHeaderPage *index_header,
 
@@ -135,36 +70,6 @@ static void ldb_vi_read_pq_codebook(Relation             index,
     int num_clusters = 256;
     for(int i = 0; i < ceil((float)((num_clusters)*index_header->vector_dim * sizeof(float)) / BLCKSZ); i++) {
         vi_blocks[ i + 1 ].vp_type = LDB_VI_BLOCK_CODEBOOK;
-    }
-}
-
-static void ldb_vi_read_blockmaps(Relation             index,
-                                  HnswIndexHeaderPage *index_header,
-                                  struct ldb_vi_block *vi_blocks,
-                                  BlockNumber          blocks_nr,
-                                  struct ldb_vi_node  *vi_nodes,
-                                  uint32               nodes_nr)
-{
-    /* TODO the outer loop math is mostly copy-pasted from StoreExternalIndex() */
-    uint32 blockmap_groupno = 0;
-    uint32 group_node_first_index = 0;
-    uint32 nodes_remaining = nodes_nr;
-    uint32 batch_size = HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
-    bool   last_group_node_is_used = true;
-
-    if(blocks_nr == 0) return;
-    vi_blocks[ 0 ].vp_type = LDB_VI_BLOCK_HEADER;
-    while(nodes_remaining != 0) {
-        ldb_vi_analyze_blockmap(vi_blocks, blocks_nr, vi_nodes, nodes_nr);
-        /*
-         * This is for the case when the last blockmap group is initialized,
-         * but PostgreSQL process crashed before something was added to it.
-         */
-        last_group_node_is_used = batch_size == nodes_remaining;
-        nodes_remaining -= Min(batch_size, nodes_remaining);
-        group_node_first_index += batch_size;
-        batch_size = batch_size * 2;
-        blockmap_groupno++;
     }
 }
 
@@ -210,7 +115,6 @@ static void ldb_vi_read_node_carefully(void               *node_tape,
     uint32   neighbors_nr;
     uint32   neighbors_max;
     uint32  *neighbors_old;
-    uint32   unused_neighbor_slot_old;
 
     ldb_unaligned_slot_union_t *neighbors;
     ldb_unaligned_slot_union_t  unused_neighbor_slot;
@@ -604,7 +508,6 @@ void ldb_validate_index(Oid indrelid, bool print_info)
     if(index_header->pq) {
         ldb_vi_read_pq_codebook(index, index_header, vi_blocks, blocks_nr);
     }
-    ldb_vi_read_blockmaps(index, index_header, vi_blocks, blocks_nr, vi_nodes, nodes_nr);
     for(BlockNumber block = 0; block < blocks_nr; ++block) {
         if(vi_blocks[ block ].vp_type == LDB_VI_BLOCK_UNKNOWN) {
             // elog(ERROR, "vi_blocks[%" PRIu32 "].vp_type == LDB_VI_BLOCK_UNKNOWN (but it should be known now)",

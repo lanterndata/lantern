@@ -539,19 +539,6 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
     return new_tup_ref;
 }
 
-bool isBlockMapBlock(const HnswBlockMapGroupDesc *blockmap_groups, const int blockmap_group_nr, BlockNumber blockno)
-{
-    if(!BlockNumberIsValid(blockno)) {
-        return false;
-    }
-    for(int i = 0; i < blockmap_group_nr; i++) {
-        if(blockmap_groups[ i ].first_block <= blockno && blockno < blockmap_groups[ i ].first_block + (1 << i)) {
-            return true;
-        }
-    }
-    return false;
-}
-
 void *ldb_wal_index_node_retriever(void *ctxp, unsigned long long id)
 {
     RetrieverCtx   *ctx = (RetrieverCtx *)ctxp;
