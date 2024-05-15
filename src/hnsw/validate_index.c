@@ -415,7 +415,7 @@ static void ldb_vi_read_nodes(Relation                   index,
             }
             vi_nodes[ node_id ].vn_offset = offset;
             vi_nodes[ node_id ].vn_id = node_id;
-            vi_nodes[ node_id ].vn_level = index_tuple->level;
+            // node_tupe no longer contains a level field directly. copy it from cpp if need be
             ldb_vi_read_node_carefully(&index_tuple->node,
                                        index_tuple->size,
                                        vector_size_bytes,
