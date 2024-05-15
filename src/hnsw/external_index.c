@@ -32,26 +32,20 @@
 #endif
 
 /*
- * Updates HnswBlockMapGroupDesc for groupno in the HnswIndexHeaderPage.
- * The header is fsynced to the WAL after this function returns if flush_log is true.
- * Assumes that the header (block 0) buffer is locked.
- *
- * In the current use cases the header page is added to a WAL record somewhere
- * up the call stack, so the changes made here must be duplicated to the
- * HnswIndexHeaderPage in that header page, otherwise they would be overwritten
- * when that WAL record up the stack is written to the log.
+ * Stores hnsw nodes onto postgres index pages
+ * Assumes individual writes are not WAL tracked and instead a final
+ * pass brings everything under WAL.
  */
-
-void StoreExternalIndexBlockMapGroup(Relation             index,
-                                     const metadata_t    *metadata,
-                                     HnswIndexHeaderPage *headerp,
-                                     ForkNumber           forkNum,
-                                     char                *data,
-                                     uint64              *progress,
-                                     int                  dimension,
-                                     uint32               first_node_index,
-                                     uint32               num_added_vectors,
-                                     ItemPointerData     *item_pointers)
+void StoreExternalIndexNodes(Relation             index,
+                             const metadata_t    *metadata,
+                             HnswIndexHeaderPage *headerp,
+                             ForkNumber           forkNum,
+                             char                *data,
+                             uint64              *progress,
+                             int                  dimension,
+                             uint32               first_node_index,
+                             uint32               num_added_vectors,
+                             ItemPointerData     *item_pointers)
 {
     // Now add nodes to data pages
     char  *node = 0;
@@ -77,8 +71,7 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
         OffsetNumber offsetno;
         LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 
-        GenericXLogState *state = GenericXLogStart(index);
-        Page              page = GenericXLogRegisterBuffer(state, buf, GENERIC_XLOG_FULL_IMAGE);
+        Page page = BufferGetPage(buf);
         PageInit(page, BufferGetPageSize(buf), sizeof(HnswIndexPageSpecialBlock));
 
         if(predicted_next_block != InvalidBlockNumber) {
@@ -146,8 +139,9 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
         special->nextblockno = predicted_next_block;
 
         MarkBufferDirty(buf);
-        GenericXLogFinish(state);
         UnlockReleaseBuffer(buf);
+
+        CHECK_FOR_INTERRUPTS();
     }
     headerp->last_data_block = last_block;
 
@@ -225,8 +219,7 @@ void StoreExternalIndex(Relation                index,
     assert(BufferGetBlockNumber(header_buf) == 0);
     LockBuffer(header_buf, BUFFER_LOCK_EXCLUSIVE);
 
-    GenericXLogState *state = GenericXLogStart(index);
-    Page              header_page = GenericXLogRegisterBuffer(state, header_buf, GENERIC_XLOG_FULL_IMAGE);
+    Page header_page = BufferGetPage(header_buf);
 
     PageInit(header_page, BufferGetPageSize(header_buf), 0);
     HnswIndexHeaderPage *headerp = (HnswIndexHeaderPage *)PageGetContents(header_page);
@@ -249,17 +242,6 @@ void StoreExternalIndex(Relation                index,
     memcpy(headerp->usearch_header, data, USEARCH_HEADER_SIZE);
     ((PageHeader)header_page)->pd_lower = ((char *)headerp + sizeof(HnswIndexHeaderPage)) - (char *)header_page;
 
-    // Flush header page to WAL, because StoreExternalIndexBlockMapGroup references header page
-    // In wal logs when adding block map groups, and WAL redo crashes in replica as header page record
-    // Would not exist yet
-
-    MarkBufferDirty(header_buf);
-    GenericXLogFinish(state);
-
-    state = GenericXLogStart(index);
-    header_page = GenericXLogRegisterBuffer(state, header_buf, GENERIC_XLOG_FULL_IMAGE);
-    headerp = (HnswIndexHeaderPage *)PageGetContents(header_page);
-
     // allocate some pages for pq codebook
     // for now, always add this blocks to make sure all tests run with these and nothing fails
     if(opts->pq) {
@@ -269,60 +251,48 @@ void StoreExternalIndex(Relation                index,
         for(int i = 0; i < ceil((float)(num_clusters)*opts->dimensions * sizeof(float) / BLCKSZ); i++) {
             Buffer cluster_buf = ReadBufferExtended(index, forkNum, P_NEW, RBM_NORMAL, NULL);
             LockBuffer(cluster_buf, BUFFER_LOCK_EXCLUSIVE);
-            GenericXLogState *cluster_state = GenericXLogStart(index);
-
-            GenericXLogRegisterBuffer(cluster_state, cluster_buf, GENERIC_XLOG_FULL_IMAGE);
+            Page page = BufferGetPage(cluster_buf);
+            PageInit(page, BufferGetPageSize(cluster_buf), 0);
             // todo:: actually, write the codebook here
-            GenericXLogFinish(cluster_state);
+            MarkBufferDirty(cluster_buf);
             UnlockReleaseBuffer(cluster_buf);
         }
     }
 
     uint64 progress = USEARCH_HEADER_SIZE;
-    uint32 group_node_first_index = 0;
-    uint32 num_added_vectors_remaining = num_added_vectors;
-    uint32 batch_size = HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
 
     ItemPointerData *item_pointers = palloc(num_added_vectors * sizeof(ItemPointerData));
 
-    while(num_added_vectors_remaining > 0) {
-        StoreExternalIndexBlockMapGroup(index,
-                                        external_index_metadata,
-                                        headerp,
-                                        forkNum,
-                                        data,
-                                        &progress,
-                                        opts->dimensions,
-                                        group_node_first_index,
-                                        Min(num_added_vectors_remaining, batch_size),
-                                        item_pointers);
-        num_added_vectors_remaining -= Min(num_added_vectors_remaining, batch_size);
-        group_node_first_index += batch_size;
-        batch_size = batch_size * 2;
-    }
+    StoreExternalIndexNodes(index,
+                            external_index_metadata,
+                            headerp,
+                            forkNum,
+                            data,
+                            &progress,
+                            opts->dimensions,
+                            0,
+                            num_added_vectors,
+                            item_pointers);
 
     // this is where I rewrite all neighbors to use BlockNumber
     Buffer              buf;
     HnswIndexHeaderPage header_copy;
     Page                page;
     OffsetNumber        offset, maxoffset;
-    GenericXLogState   *gxlogState;
     header_copy = *(HnswIndexHeaderPage *)PageGetContents(header_page);
     // rewrite neighbor lists in terms of block numbers
     for(BlockNumber blockno = 1;
         BlockNumberIsValid(header_copy.last_data_block) && blockno <= header_copy.last_data_block;
         blockno++) {
-        bool block_modified = false;
         buf = ReadBufferExtended(index, MAIN_FORKNUM, blockno, RBM_NORMAL, GetAccessStrategy(BAS_BULKREAD));
         LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
-        gxlogState = GenericXLogStart(index);
-        page = GenericXLogRegisterBuffer(gxlogState, buf, LDB_GENERIC_XLOG_DELTA_IMAGE);
+        page = BufferGetPage(buf);
         maxoffset = PageGetMaxOffsetNumber(page);
 
         // when index is a pq-index, there will be pq header pages that are currently empty
         // the loop below will skip those. in the future, when those pages are filled up,
         // we need to add a branch here and skip those pages
-        block_modified = true;
+
         for(offset = FirstOffsetNumber; offset <= maxoffset; offset = OffsetNumberNext(offset)) {
             HnswIndexTuple *nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
             uint32          level = level_from_node(nodepage->node);
@@ -338,12 +308,7 @@ void StoreExternalIndex(Relation                index,
             }
         }
 
-        if(block_modified) {
-            GenericXLogFinish(gxlogState);
-        } else {
-            GenericXLogAbort(gxlogState);
-        }
-
+        MarkBufferDirty(buf);
         UnlockReleaseBuffer(buf);
     }
     // rewrote all neighbor list. Rewrite graph entry point as well
@@ -356,8 +321,18 @@ void StoreExternalIndex(Relation                index,
         usearch_header_set_entry_slot(headerp->usearch_header, ret_slot);
     }
     MarkBufferDirty(header_buf);
-    GenericXLogFinish(state);
     UnlockReleaseBuffer(header_buf);
+    /*
+     * We didn't write WAL records as we built the index, so if
+     * WAL-logging is required, write all pages to the WAL now.
+     * Note: the WAL logging function is going to take an exclusive lock on all pages, so
+     * we must call this after unlocking all the pages (header page, in particular, here).
+     * Since we are in index building phase, postgres has taken an AccessExclusiveLock on the relation itself,
+     * so this is safe
+     */
+    if(RelationNeedsWAL(index)) {
+        log_newpage_range(index, MAIN_FORKNUM, 0, RelationGetNumberOfBlocks(index), true);
+    }
 }
 
 // adds a an item to hnsw index relation page. assumes the page has enough space for the item
