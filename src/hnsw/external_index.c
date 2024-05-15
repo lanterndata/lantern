@@ -108,7 +108,6 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
                                 /*->>output*/ &node_size,
                                 &node_level);
             bufferpage->seqid = node_id;
-            bufferpage->level = node_level;
             bufferpage->size = node_size;
             ldb_invariant(node_level < 100,
                           "node level is too large. at id %d"
@@ -424,7 +423,6 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
     // which depends on parameters passed into UsearchNodeBytes above
     alloced_tuple = (HnswIndexTuple *)palloc0(sizeof(HnswIndexTuple) + new_tuple_size);
     alloced_tuple->seqid = new_tuple_id;
-    alloced_tuple->level = new_tuple_level;
     alloced_tuple->size = new_tuple_size;
 
     /*** Add a new tuple corresponding to the added vector to the list of tuples in the index
@@ -532,7 +530,6 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
     memcpy(&slot->itemPointerData, &tmp, sizeof(ItemPointerData));
     new_tup_ref = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, new_tup_at));
     assert(new_tup_ref->seqid == new_tuple_id);
-    assert(new_tup_ref->level == new_tuple_level);
     assert(new_tup_ref->size == new_tuple_size);
     page = NULL;  // to avoid its accidental use
     /*** Update header ***/
