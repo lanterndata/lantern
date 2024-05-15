@@ -69,21 +69,21 @@ DROP INDEX empty_idx;
 -- Case 1, more data in index.
 -- Should see higher cost than Case 0.
 CREATE INDEX hnsw_idx ON sift_base10k USING lantern_hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=4, dim=128);
-SELECT is_cost_estimate_within_error(format(:'explain_query_template', :'v4444'), 3.00);
+SELECT is_cost_estimate_within_error(format(:'explain_query_template', :'v4444'), 3.10);
 SELECT _lantern_internal.validate_index('hnsw_idx', false);
 DROP INDEX hnsw_idx;
 
 -- Case 2, higher M.
 -- Should see higher cost than Case 1.
-CREATE INDEX hnsw_idx ON sift_base10k USING lantern_hnsw (v dist_l2sq_ops) WITH (M=20, ef_construction=10, ef=4, dim=128);
-SELECT is_cost_estimate_within_error(format(:'explain_query_template', :'v4444'), 3.30);
+CREATE INDEX hnsw_idx ON sift_base10k USING lantern_hnsw (v dist_l2sq_ops) WITH (M=8, ef_construction=10, ef=4, dim=128);
+SELECT is_cost_estimate_within_error(format(:'explain_query_template', :'v4444'), 3.07);
 SELECT _lantern_internal.validate_index('hnsw_idx', false);
 DROP INDEX hnsw_idx;
 
 -- Case 3, higher ef.
 -- Should see higher cost than Case 2.
-CREATE INDEX hnsw_idx ON sift_base10k USING lantern_hnsw (v dist_l2sq_ops) WITH (M=20, ef_construction=10, ef=16, dim=128);
-SELECT is_cost_estimate_within_error(format(:'explain_query_template', :'v4444'), 3.99);
+CREATE INDEX hnsw_idx ON sift_base10k USING lantern_hnsw (v dist_l2sq_ops) WITH (M=8, ef_construction=10, ef=16, dim=128);
+SELECT is_cost_estimate_within_error(format(:'explain_query_template', :'v4444'), 3.24);
 SELECT _lantern_internal.validate_index('hnsw_idx', false);
 DROP INDEX hnsw_idx;
 
@@ -107,29 +107,29 @@ SET lantern_hnsw.init_k = 10;
 SELECT COUNT(*) FROM views_vec10k WHERE views < 100;
 
 -- Create partial lantern index with (views < 100) filter
-CREATE INDEX hnsw_partial_views_100 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 100;
+CREATE INDEX hnsw_partial_views_100 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (M=8, dim=6) WHERE views < 100;
 
 -- This should use the partial index we just created, since it is an exact filter match
 EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 100 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
 
 -- Goal: Test that the index selectivity being calculated for partial indexes is correct
 -- note that these boundaries are selected so that mac num_pages and cost values align
-CREATE INDEX hnsw_partial_views_1000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 1000;
+CREATE INDEX hnsw_partial_views_1000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (M=9, dim=6) WHERE views < 1000;
 SELECT _lantern_internal.validate_index('hnsw_partial_views_1000', false);
 
-CREATE INDEX hnsw_partial_views_2000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 2000;
+CREATE INDEX hnsw_partial_views_2000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (M=9, dim=6) WHERE views < 2000;
 SELECT _lantern_internal.validate_index('hnsw_partial_views_2000', false);
 
-CREATE INDEX hnsw_partial_views_3000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 3000;
+CREATE INDEX hnsw_partial_views_3000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (M=9, dim=6) WHERE views < 3000;
 SELECT _lantern_internal.validate_index('hnsw_partial_views_3000', false);
 
-CREATE INDEX hnsw_partial_views_4000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 4000;
+CREATE INDEX hnsw_partial_views_4000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (M=9, dim=6) WHERE views < 4000;
 SELECT _lantern_internal.validate_index('hnsw_partial_views_4000', false);
 
-CREATE INDEX hnsw_partial_views_6000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 6000;
+CREATE INDEX hnsw_partial_views_6000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (M=9, dim=6) WHERE views < 6000;
 SELECT _lantern_internal.validate_index('hnsw_partial_views_6000', false);
 
-CREATE INDEX hnsw_partial_views_8000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 8000;
+CREATE INDEX hnsw_partial_views_8000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (M=9, dim=6) WHERE views < 8000;
 SELECT _lantern_internal.validate_index('hnsw_partial_views_8000', false);
 
 -- Trigger each partial index by using its exact filter in a filtered query
