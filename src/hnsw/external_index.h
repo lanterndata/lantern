@@ -50,6 +50,8 @@ typedef struct HnswIndexHeaderPage
     bool   pq;
     size_t num_centroids;
     size_t num_subvectors;
+
+    QuantBitsEnum quant_bits;
 } HnswIndexHeaderPage;
 
 // the added 40 byte graph header (currently unused)
