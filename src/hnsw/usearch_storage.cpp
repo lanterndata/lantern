@@ -17,7 +17,8 @@ using node_t = unum::usearch::node_at<default_key_t, lantern_slot_t>;
 uint32_t UsearchNodeBytes(const metadata_t *metadata, int vector_bytes, int level)
 {
     const int NODE_HEAD_BYTES = sizeof(usearch_label_t) + sizeof(unum::usearch::level_t) /*sizeof level*/;
-    uint32_t  node_bytes = 0;
+    assert(sizeof(usearch_label_t) == 8);
+    uint32_t node_bytes = 0;
 
     node_bytes += NODE_HEAD_BYTES + metadata->neighbors_base_bytes;
     node_bytes += metadata->neighbors_bytes * level;
@@ -29,7 +30,7 @@ uint32_t UsearchNodeBytes(const metadata_t *metadata, int vector_bytes, int leve
 }
 
 void usearch_init_node(
-    metadata_t *meta, char *tape, unsigned long key, uint32_t level, uint64_t slot_id, void *vector, size_t vector_len)
+    metadata_t *meta, char *tape, usearch_key_t key, uint32_t level, uint64_t slot_id, void *vector, size_t vector_len)
 {
     int node_size = UsearchNodeBytes(meta, vector_len, level);
     std::memset(tape, 0, node_size);
@@ -49,13 +50,13 @@ char *extract_node(char              *data,
     char  *tape = data + progress;
     node_t node = node_t{tape};
 
-    *level = node.level();
+    *level = (int)node.level();
     const int VECTOR_BYTES = dim * sizeof(float);
     *node_size = UsearchNodeBytes(metadata, VECTOR_BYTES, *level);
     return tape;
 }
 
-unsigned long label_from_node(char *node)
+usearch_label_t label_from_node(char *node)
 {
     node_t n = node_t{node};
     return n.key();

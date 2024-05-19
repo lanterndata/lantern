@@ -194,11 +194,15 @@ bool ldb_aminsert(Relation         index,
     uint64                     slot_copy;
     new_tuple = PrepareIndexTuple(index, state, hdr, &meta, new_tuple_id, level, &slot, insertstate);
     memcpy(&slot_copy, &slot, sizeof(slot));
-    // initialize node structure per usearch format
-    usearch_init_node(&meta, new_tuple->node, *(unsigned long *)heap_tid, level, slot_copy, vector, vector_size_bytes);
 
-    usearch_add_external(
-        uidx, *(unsigned long *)heap_tid, vector, new_tuple->node, usearch_scalar_f32_k, level, slot_copy, &error);
+    // initialize node structure per usearch format
+    static_assert(sizeof(ItemPointerData) <= sizeof(usearch_label_t), "index label type is not large enough");
+    usearch_label_t heap_tid_copy = 0;
+    memcpy(&heap_tid_copy, heap_tid, sizeof(ItemPointerData));
+
+    usearch_init_node(&meta, new_tuple->node, heap_tid_copy, level, slot_copy, vector, vector_size_bytes);
+
+    usearch_add_external(uidx, heap_tid_copy, vector, new_tuple->node, usearch_scalar_f32_k, level, slot_copy, &error);
     if(error != NULL) {
         elog(ERROR, "usearch insert error: %s", error);
     }
