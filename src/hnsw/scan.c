@@ -278,7 +278,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
     }
 
     while(scanstate->current < scanstate->count) {
-        unsigned long int label = scanstate->labels[ scanstate->current ];
+        usearch_label_t label = scanstate->labels[ scanstate->current ];
         if(INVALID_ELEMENT_LABEL == label) {
             // the element was deleted, do not return it
             scanstate->current++;

@@ -51,7 +51,7 @@ IndexBulkDeleteResult *ldb_ambulkdelete(IndexVacuumInfo        *info,
 
         for(offset = FirstOffsetNumber; offset <= maxoffset; offset = OffsetNumberNext(offset)) {
             HnswIndexTuple *nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
-            unsigned long   label = label_from_node(nodepage->node);
+            usearch_label_t label = label_from_node(nodepage->node);
             label2ItemPointer(label, &tid_data);
             if(callback(&tid_data, callback_state)) {
                 block_modified = true;
