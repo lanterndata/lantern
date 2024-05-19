@@ -61,10 +61,12 @@ void PopulateUsearchOpts(Relation index, usearch_init_options_t *opts)
 usearch_label_t ItemPointer2Label(ItemPointer itemPtr)
 {
     usearch_label_t label = 0;
-    memcpy((unsigned long *)&label, itemPtr, 6);
+    ldb_invariant(sizeof(*itemPtr) <= sizeof(label), "label type too small");
+    memcpy(&label, itemPtr, sizeof(*itemPtr));
     return label;
 }
-void label2ItemPointer(usearch_label_t label, ItemPointer itemPtr) { memcpy(itemPtr, (unsigned long *)&label, 6); }
+
+void label2ItemPointer(usearch_label_t label, ItemPointer itemPtr) { memcpy(itemPtr, &label, sizeof(*itemPtr)); }
 
 void CheckMem(int limit, Relation index, usearch_index_t uidx, uint32 n_nodes, char *msg)
 {
