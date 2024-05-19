@@ -12,6 +12,7 @@
 #include <pg_config.h>  // BLCKSZ
 #include <storage/block.h>
 #include <storage/bufmgr.h>  // Buffer
+#include <utils/elog.h>
 #include <utils/hsearch.h>
 #include <utils/relcache.h>
 
@@ -64,6 +65,7 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
 
     /* Add all the vectors to the WAL */
     for(uint32 node_id = first_node_index; node_id < first_node_index + num_added_vectors;) {
+        ldb_dlog("ADD NODE %d", node_id);
         // 1. create HnswIndexTuple
 
         // 2. fill header and special
@@ -134,6 +136,7 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
             BlockIdSet(&item_pointers[ node_id ].ip_blkid, blockno);
             item_pointers[ node_id ].ip_posid = offsetno;
             *progress += node_size;
+            ldb_dlog("ADDED NODE %d", node_id);
             node_id++;
         }
 
@@ -219,6 +222,7 @@ void StoreExternalIndex(Relation                index,
                         usearch_init_options_t *opts,
                         size_t                  num_added_vectors)
 {
+    ldb_dlog("StoreExternalIndex");
     Buffer header_buf = ReadBufferExtended(index, forkNum, P_NEW, RBM_NORMAL, NULL);
 
     // even when we are creating a new page, it must always be the first page we create
@@ -331,9 +335,15 @@ void StoreExternalIndex(Relation                index,
                 uint32                      slot_count;
                 ldb_unaligned_slot_union_t *slots
                     = get_node_neighbors_mut(external_index_metadata, nodepage->node, i, &slot_count);
+                elog(INFO, "level=%d, slot_count=%d", level, slot_count);
                 for(uint32 j = 0; j < slot_count; j++) {
                     uint32 nid = 0;
+                    // elog(INFO, "slots[ %d ].seqid=%d", j, slots[ j ].seqid);
+                    // TODO:: The issue is here, slots[j].seqid is sometimes a huge number, and also the slot_count is
+                    // not correct So this SEGFAULTS or the index scan is not returning data because of invalid item
+                    // pointer
                     memcpy(&nid, &slots[ j ].seqid, sizeof(slots[ j ].seqid));
+                    // elog(INFO, "Copy item_pointers[%d] to slotes[%d]", nid, j);
                     memcpy(&slots[ j ].itemPointerData, &item_pointers[ nid ], sizeof(ItemPointerData));
                 }
             }
@@ -565,11 +575,8 @@ void *ldb_wal_index_node_retriever(void *ctxp, unsigned long long id)
     ItemPointerData tid_data;
     BlockNumber     data_block_no;
 
-    elog(INFO, "START READ NODE::::::: %d, %x", id, &tid_data);
     memcpy(&tid_data, &id, sizeof(ItemPointerData));
-    elog(INFO, "MEMCPY DONE NODE::::::: %d, %d", id, tid_data.ip_posid);
     data_block_no = BlockIdGetBlockNumber(&tid_data.ip_blkid);
-    elog(INFO, "data_block_no NODE::::::: %d", data_block_no);
 
     elog(INFO, "READING PAGE NODE::::::: %d", id);
     page = extra_dirtied_get(ctx->extra_dirted, data_block_no, NULL);
@@ -584,10 +591,7 @@ void *ldb_wal_index_node_retriever(void *ctxp, unsigned long long id)
         idx_page_prelocked = true;
     }
 
-    elog(INFO, "READING PAGE START:::::::::::::");
-    elog(INFO, "Reading from page::: page: %d, tid_data.ip_posid: %d", page, tid_data.ip_posid);
     nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, tid_data.ip_posid));
-    elog(INFO, "node page read NODE::::::: %x", nodepage);
 #if LANTERNDB_COPYNODES
     BufferNode *buffNode;
     buffNode = (BufferNode *)palloc(sizeof(BufferNode));
