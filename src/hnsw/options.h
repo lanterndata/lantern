@@ -49,8 +49,9 @@ typedef struct ldb_HnswOptions
     int   ef_construction;
     int   ef;
     bool  pq;
-    int   quant_bits;
-    int   experimantal_index_path_offset;
+
+    QuantBitsEnum quant_bits;
+    int           experimantal_index_path_offset;
 } ldb_HnswOptions;
 
 int                   ldb_HnswGetDim(Relation index);

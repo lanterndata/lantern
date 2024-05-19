@@ -33,7 +33,8 @@ static relopt_enum_elt_def quant_bits_options_relopt[] = {{"1", QUANT_BITS_1},
                                                           {"4", QUANT_BITS_4},
                                                           {"8", QUANT_BITS_8},
                                                           {"16", QUANT_BITS_16},
-                                                          {"32", QUANT_BITS_32}
+                                                          {"32", QUANT_BITS_32},
+                                                          {NULL, 0}
 
 };
 
@@ -131,7 +132,7 @@ bytea *ldb_amoptions(Datum reloptions, bool validate)
         {"ef_construction", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, ef_construction)},
         {"ef", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, ef)},
         {"pq", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, pq)},
-        {"quant_bits", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, quant_bits)},
+        {"quant_bits", RELOPT_TYPE_ENUM, offsetof(ldb_HnswOptions, quant_bits)},
         {"_experimental_index_path", RELOPT_TYPE_STRING, offsetof(ldb_HnswOptions, experimantal_index_path_offset)},
     };
 
