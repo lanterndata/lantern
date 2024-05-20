@@ -10,12 +10,7 @@ uint32_t UsearchNodeBytes(const metadata_t *metadata, int vector_bytes, int leve
 void     usearch_init_node(
         metadata_t *meta, char *tape, usearch_key_t key, uint32_t level, uint64_t slot_id, void *vector, size_t vector_len);
 
-char *extract_node(char             *data,
-                   uint64_t          progress,
-                   int               dim,
-                   const metadata_t *metadata,
-                   /*->>out*/ int   *node_size,
-                   int              *level);
+uint32 node_tuple_size(char *node, uint32 vector_dim, const metadata_t *meta);
 
 usearch_label_t label_from_node(char *node);
 unsigned long   level_from_node(char *node);

@@ -1,6 +1,8 @@
-#include <usearch.h>
-#include <usearch/index.hpp>
-#include <usearch/lantern_storage.hpp>
+#include "usearch.h"
+#include "usearch/index.hpp"
+#include "usearch/index_plugins.hpp"
+#include "usearch/lantern_storage.hpp"
+
 extern "C" {
 #include "hnsw.h"
 #include "usearch_storage.hpp"
@@ -40,20 +42,41 @@ void usearch_init_node(
     node.key(key);
 }
 
-char *extract_node(char              *data,
-                   uint64_t           progress,
-                   int                dim,
-                   const metadata_t  *metadata,
-                   /*->>output*/ int *node_size,
-                   int               *level)
+static scalar_kind_t scalar_kind_to_cpp(usearch_scalar_kind_t kind)
 {
-    char  *tape = data + progress;
-    node_t node = node_t{tape};
+    switch(kind) {
+        case usearch_scalar_f32_k:
+            return scalar_kind_t::f32_k;
+        case usearch_scalar_f64_k:
+            return scalar_kind_t::f64_k;
+        case usearch_scalar_f16_k:
+            return scalar_kind_t::f16_k;
+        case usearch_scalar_i8_k:
+            return scalar_kind_t::i8_k;
+        case usearch_scalar_b1_k:
+            return scalar_kind_t::b1x8_k;
+        default:
+            return scalar_kind_t::unknown_k;
+    }
+}
 
-    *level = (int)node.level();
-    const int VECTOR_BYTES = dim * sizeof(float);
-    *node_size = UsearchNodeBytes(metadata, VECTOR_BYTES, *level);
-    return tape;
+uint32 node_tuple_size(char *node, uint32 vector_dim, const metadata_t *meta)
+{
+    precomputed_constants_t pre;
+    pre.neighbors_bytes = meta->neighbors_bytes;
+    pre.neighbors_base_bytes = meta->neighbors_base_bytes;
+    pre.inverse_log_connectivity = meta->inverse_log_connectivity;
+    node_t n = node_t{node};
+    uint32 vector_bytes = vector_dim * bits_per_scalar(scalar_kind_to_cpp(meta->init_options.quantization)) / 8;
+
+    // assuming at most 2**8 centroids(= 1 byte) per subvector
+    if(meta->init_options.pq) {
+        assert(meta->init_options.num_subvectors <= vector_dim);
+        assert(meta->init_options.num_subvectors > 0);
+        vector_bytes = meta->init_options.num_subvectors;
+    }
+
+    return n.node_size_bytes(pre) + vector_bytes;
 }
 
 usearch_label_t label_from_node(char *node)
@@ -65,7 +88,7 @@ usearch_label_t label_from_node(char *node)
 unsigned long level_from_node(char *node)
 {
     node_t n = node_t{node};
-    return n.level();
+    return (int)n.level();
 }
 
 void reset_node_label(char *node)
