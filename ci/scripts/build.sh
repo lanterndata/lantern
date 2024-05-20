@@ -76,7 +76,7 @@ function build_and_install() {
   if [[ "$ENABLE_COVERAGE" == "1" ]]
   then
     flags="$flags -DCODECOVERAGE=ON"
-    mv /usr/bin/gcov-13 /usr/bin/gcov
+    mv /usr/bin/gcov-12 /usr/bin/gcov
   fi
 
   # Run cmake
