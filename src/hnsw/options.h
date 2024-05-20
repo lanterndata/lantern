@@ -65,6 +65,7 @@ int                   ldb_HnswGetEf(Relation index);
 char*                 ldb_HnswGetIndexFilePath(Relation index);
 bool                  ldb_HnswGetPq(Relation index);
 usearch_metric_kind_t ldb_HnswGetMetricKind(Relation index);
+usearch_scalar_kind_t ldb_HnswGetScalarKind(Relation index);
 
 bytea* ldb_amoptions(Datum reloptions, bool validate);
 

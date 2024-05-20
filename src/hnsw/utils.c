@@ -53,7 +53,7 @@ void PopulateUsearchOpts(Relation index, usearch_init_options_t *opts)
     opts->expansion_search = ldb_HnswGetEf(index);
     opts->metric_kind = ldb_HnswGetMetricKind(index);
     opts->metric = NULL;
-    opts->quantization = usearch_scalar_f32_k;
+    opts->quantization = ldb_HnswGetScalarKind(index);
     opts->pq = ldb_HnswGetPq(index);
     opts->num_threads = 1;
 }
