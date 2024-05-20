@@ -163,7 +163,6 @@ void ldb_amrescan(IndexScanDesc scan, ScanKey keys, int nkeys, ScanKey orderbys,
 bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
 {
     HnswScanState *scanstate = (HnswScanState *)scan->opaque;
-    ItemPointer    tid;
     LDB_UNUSED(dir);
 
     // posgres does not allow backwards scan on operators
@@ -285,14 +284,12 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
             continue;
         }
 
-        scanstate->iptr = (ItemPointer)&label;
-
-        tid = scanstate->iptr;
+        memcpy(&scanstate->tid_data, &label, sizeof(scanstate->tid_data));
 
 #if PG_VERSION_NUM >= 120000
-        scan->xs_heaptid = *tid;
+        scan->xs_heaptid = scanstate->tid_data;
 #else
-        scan->xs_ctup.t_self = *tid;
+        scan->xs_ctup.t_self = scanstate->tid_data;
 #endif
 
         // todo:: there is a mid-sized designed issue with index storage
