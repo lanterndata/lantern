@@ -93,13 +93,10 @@ void StoreExternalIndexNodes(Relation             index,
             if(node_id >= first_node_index + num_added_vectors) break;
             memset(bufferpage, 0, BLCKSZ);
             /************* extract node from usearch index************/
+            node = data + *progress;
+            node_level = level_from_node(node);
+            node_size = node_tuple_size(node, dimension, metadata);
 
-            node = extract_node(data,
-                                *progress,
-                                dimension,
-                                metadata,
-                                /*->>output*/ &node_size,
-                                &node_level);
             bufferpage->seqid = node_id;
             bufferpage->size = node_size;
             ldb_invariant(node_level < 100,
