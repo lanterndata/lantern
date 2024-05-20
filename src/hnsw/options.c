@@ -21,6 +21,7 @@
 // We import this header file
 // to access the op class support function pointers
 #include "../hnsw.h"
+#include "usearch.h"
 #include "utils.h"
 
 #ifndef NDEBUG
@@ -127,6 +128,28 @@ usearch_metric_kind_t ldb_HnswGetMetricKind(Relation index)
         return usearch_metric_cos_k;
     } else {
         elog(ERROR, "could not find distance function for index");
+    }
+}
+
+usearch_scalar_kind_t ldb_HnswGetScalarKind(Relation index)
+{
+    ldb_HnswOptions *opts = (ldb_HnswOptions *)index->rd_options;
+    if(!opts) return usearch_scalar_f32_k;
+    switch(opts->quant_bits) {
+        case QUANT_BITS_32:
+        case QUANT_BITS_UNSET:
+            return usearch_scalar_f32_k;
+        case QUANT_BITS_16:
+            return usearch_scalar_f16_k;
+        case QUANT_BITS_8:
+            return usearch_scalar_i8_k;
+
+        case QUANT_BITS_4:
+        case QUANT_BITS_2:
+        case QUANT_BITS_1:
+            elog(ERROR, "unimplemented quantization");
+        default:
+            elog(ERROR, "unrecognized quantization provided");
     }
 }
 
