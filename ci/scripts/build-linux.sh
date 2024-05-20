@@ -3,8 +3,8 @@ set -e
 
 function setup_locale_and_install_packages() {
   echo "LC_ALL=en_US.UTF-8" > /etc/environment
-  echo "CC=/usr/bin/gcc-13" >> /etc/environment
-  echo "CXX=/usr/bin/g++-13" >> /etc/environment
+  echo "CC=/usr/bin/gcc-12" >> /etc/environment
+  echo "CXX=/usr/bin/g++-12" >> /etc/environment
   echo "en_US.UTF-8 UTF-8" > /etc/locale.gen
   echo "LANG=en_US.UTF-8" > /etc/locale.conf
 
