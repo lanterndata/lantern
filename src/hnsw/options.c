@@ -130,10 +130,11 @@ bytea *ldb_amoptions(Datum reloptions, bool validate)
     return (bytea *)build_reloptions(
         reloptions, true, ldb_hnsw_index_withopts, sizeof(ldb_HnswOptions), tab, lengthof(tab));
 #else
-    // todo::currently unused so out of date
-    relopt_value    *options;
-    int              numoptions;
+    // clang-format off
+    relopt_value *options;
+    int numoptions;
     ldb_HnswOptions *rdopts;
+    // clang-format on
 
     options = parseRelOptions(reloptions, validate, ldb_hnsw_index_withopts, &numoptions);
     rdopts = allocateReloptStruct(sizeof(ldb_HnswOptions), options, numoptions);
