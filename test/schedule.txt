@@ -3,9 +3,13 @@
 # - every test that needs to be run iff pgvector is installed appears in a 'test_pgvector:' line
 # - every test that needs to be run iff pg_cron is installed appears in a 'test_pg_cron:' line
 # - 'test' lines may have multiple space-separated tests. All tests in a single 'test' line will be run in parallel
-test:   hnsw_config hnsw_correct hnsw_create hnsw_create_expr hnsw_dist_func hnsw_insert hnsw_select hnsw_todo hnsw_index_from_file hnsw_cost_estimate ext_relocation hnsw_operators hnsw_create_unlogged hnsw_insert_unlogged hnsw_logged_unlogged missing_outer_snapshot_portal hnsw_pq hnsw_concurrent hnsw_delete
+
+# pg11 and pg12 do not have enums, so quant_bits API errors are slightly different there, causing regressions
+ignore: hnsw_sq
 # pg11 does not have CREATE INDEX CONCURRENTLY
 ignore: hnsw_concurrent
+
+test:   hnsw_config hnsw_correct hnsw_create hnsw_create_expr hnsw_dist_func hnsw_insert hnsw_select hnsw_todo hnsw_index_from_file hnsw_cost_estimate ext_relocation hnsw_operators hnsw_create_unlogged hnsw_insert_unlogged hnsw_logged_unlogged missing_outer_snapshot_portal hnsw_pq hnsw_concurrent hnsw_delete hnsw_sq
 test_pg_cron: async_tasks
 test: hnsw_pq_index
 test_pgvector: hnsw_vector weighted_search
