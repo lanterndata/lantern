@@ -23,6 +23,13 @@
 #include "../hnsw.h"
 #include "utils.h"
 
+#ifndef NDEBUG
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#endif
+
 // reloption for lantern hnsw index creation paramters in
 // CREATE INDEX ... WITH (...)
 //                       ^^^^
@@ -161,6 +168,26 @@ bytea *ldb_amoptions(Datum reloptions, bool validate)
     return (bytea *)rdopts;
 #endif
 }
+
+#ifndef NDEBUG
+static void ldb_wait_for_gdb(int sig)
+{
+    if(false) {
+        elog(WARNING, "exitting due to '%s'. set LDB_GDB=1 to wait for gdb", strsignal(sig));
+        signal(SIGSEGV, NULL);
+        signal(SIGABRT, NULL);
+        return;
+    }
+
+    pid_t pid = getpid();
+    elog(WARNING, "in segv handler pid: %d", pid);
+    bool wait = true;
+    while(wait) {
+        elog(WARNING, "waiting for gdb to connect to %d", pid);
+        sleep(5);
+    }
+}
+#endif
 
 /*
  * Initialize index options and variables
@@ -320,6 +347,11 @@ void _PG_init(void)
 
     post_parse_analyze_hook = post_parse_analyze_hook_with_operator_check;
     ExecutorStart_hook = ExecutorStart_hook_with_operator_check;
+
+#ifndef NDEBUG
+    signal(SIGSEGV, ldb_wait_for_gdb);
+    signal(SIGABRT, ldb_wait_for_gdb);
+#endif
 }
 
 // Called with extension unload.
