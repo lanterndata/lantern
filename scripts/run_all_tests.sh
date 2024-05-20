@@ -12,6 +12,7 @@ EXCLUDE="${EXCLUDE:-}"
 DB_PORT="${DB_PORT:-5432}"
 # $USER is not set in docker containers, so use whoami
 DEFAULT_USER=$(whoami)
+PG_VERSION=$(pg_config --version | awk '{print $2}' | cut -d. -f1)
 
 if [[ -n "$FILTER" && -n "$EXCLUDE" ]]; then
     echo "-FILTER and -EXCLUDE cannot be used together, please use only one"
@@ -163,6 +164,12 @@ if [[ -n "$FILTER" || -n "$EXCLUDE" ]]; then
         fi
     fi
 
+    if [ $PG_VERSION -lt 13 ]; then
+        for line in $(grep "^ignore:" $SCHEDULE); do
+            echo "$line" >> "$TMP_OUTDIR/schedule.txt"
+        done
+        echo "" >> "$TMP_OUTDIR/schedule.txt"
+    fi
     while IFS= read -r f; do
         if [ "$f" == "test:" ]; then
             FIRST_TEST=1
