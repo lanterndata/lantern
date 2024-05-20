@@ -1,4 +1,4 @@
 [submodule "third_party/usearch"]
 	path = third_party/usearch
-	url = https://github.com/var77/usearch
-	branch = varik/lantern-wasm
+	url = https://github.com/ngalstyan4/usearch
+	branch = pg-rebase
