@@ -12,7 +12,7 @@
 typedef struct HnswScanState
 {
     Buffer           buf;
-    ItemPointer      iptr;
+    ItemPointerData  tid_data;
     float           *distances;
     usearch_label_t *labels;
     HnswColumnType   columnType;
