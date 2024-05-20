@@ -117,6 +117,7 @@ usearch_metric_kind_t ldb_HnswGetMetricKind(Relation index)
 bytea *ldb_amoptions(Datum reloptions, bool validate)
 {
     static const relopt_parse_elt tab[] = {
+
         {"dim", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, dim)},
         {"m", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, m)},
         {"ef_construction", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, ef_construction)},
