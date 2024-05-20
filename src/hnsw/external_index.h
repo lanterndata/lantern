@@ -25,19 +25,6 @@
 // used for code clarity when modifying WAL entries
 #define LDB_GENERIC_XLOG_DELTA_IMAGE 0
 
-// This is enough store up to 2^32-1 vectors
-// N.B. other factors make this a hard upper limit (e.g. num_vectors is uint32)
-// So one cannot increase this number and expect to handle larger indexes
-#define HNSW_MAX_BLOCKMAP_GROUPS 32
-
-// each blockmap entry is a 4 byte ID. 2000 fits in BLCKSZ=8192 page.
-// Note: If you make complex changes at the code of the database, you can change this number to a smaller value
-// to be able to test more of the algorithm corner cases with a small table dataset
-#define HNSW_BLOCKMAP_BLOCKS_PER_PAGE 2000
-
-// the header is updated every time this number of pages is initialized in ContinueBlockMapGroupInitialization()
-#define HNSW_BLOCKMAP_UPDATE_HEADER_EVERY 100
-
 // usearch header size (80) + graph header size (40 + 16)
 #define USEARCH_HEADER_SIZE 136
 
@@ -63,6 +50,8 @@ typedef struct HnswIndexHeaderPage
     bool   pq;
     size_t num_centroids;
     size_t num_subvectors;
+
+    QuantBitsEnum quant_bits;
 } HnswIndexHeaderPage;
 
 // the added 40 byte graph header (currently unused)
@@ -86,20 +75,10 @@ typedef struct HnswIndexPageSpecialBlock
 typedef struct HnswIndexTuple
 {
     uint32 seqid;
-    uint32 level;
     // stores size of the flexible array member
     uint32 size;
     char   node[ FLEXIBLE_ARRAY_MEMBER ];
 } HnswIndexTuple;
-
-typedef struct
-{
-    // for debugging, each block will store the ground truth index for the first
-    // block id it is holding
-    // this is calculated externally, however
-    uint32      first_id;
-    BlockNumber blocknos[ HNSW_BLOCKMAP_BLOCKS_PER_PAGE ];
-} HnswBlockmapPage;
 
 typedef struct
 {

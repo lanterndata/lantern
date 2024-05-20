@@ -12,7 +12,6 @@
 #include <pg_config.h>  // BLCKSZ
 #include <storage/block.h>
 #include <storage/bufmgr.h>  // Buffer
-#include <utils/elog.h>
 #include <utils/hsearch.h>
 #include <utils/relcache.h>
 
@@ -33,26 +32,20 @@
 #endif
 
 /*
- * Updates HnswBlockMapGroupDesc for groupno in the HnswIndexHeaderPage.
- * The header is fsynced to the WAL after this function returns if flush_log is true.
- * Assumes that the header (block 0) buffer is locked.
- *
- * In the current use cases the header page is added to a WAL record somewhere
- * up the call stack, so the changes made here must be duplicated to the
- * HnswIndexHeaderPage in that header page, otherwise they would be overwritten
- * when that WAL record up the stack is written to the log.
+ * Stores hnsw nodes onto postgres index pages
+ * Assumes individual writes are not WAL tracked and instead a final
+ * pass brings everything under WAL.
  */
-
-void StoreExternalIndexBlockMapGroup(Relation             index,
-                                     const metadata_t    *metadata,
-                                     HnswIndexHeaderPage *headerp,
-                                     ForkNumber           forkNum,
-                                     char                *data,
-                                     uint64              *progress,
-                                     int                  dimension,
-                                     uint32               first_node_index,
-                                     uint32               num_added_vectors,
-                                     ItemPointerData     *item_pointers)
+void StoreExternalIndexNodes(Relation             index,
+                             const metadata_t    *metadata,
+                             HnswIndexHeaderPage *headerp,
+                             ForkNumber           forkNum,
+                             char                *data,
+                             uint64              *progress,
+                             int                  dimension,
+                             uint32               first_node_index,
+                             uint32               num_added_vectors,
+                             ItemPointerData     *item_pointers)
 {
     // Now add nodes to data pages
     char  *node = 0;
@@ -65,7 +58,6 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
 
     /* Add all the vectors to the WAL */
     for(uint32 node_id = first_node_index; node_id < first_node_index + num_added_vectors;) {
-        ldb_dlog("ADD NODE %d", node_id);
         // 1. create HnswIndexTuple
 
         // 2. fill header and special
@@ -79,8 +71,7 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
         OffsetNumber offsetno;
         LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 
-        GenericXLogState *state = GenericXLogStart(index);
-        Page              page = GenericXLogRegisterBuffer(state, buf, GENERIC_XLOG_FULL_IMAGE);
+        Page page = BufferGetPage(buf);
         PageInit(page, BufferGetPageSize(buf), sizeof(HnswIndexPageSpecialBlock));
 
         if(predicted_next_block != InvalidBlockNumber) {
@@ -110,7 +101,6 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
                                 /*->>output*/ &node_size,
                                 &node_level);
             bufferpage->seqid = node_id;
-            bufferpage->level = node_level;
             bufferpage->size = node_size;
             ldb_invariant(node_level < 100,
                           "node level is too large. at id %d"
@@ -136,7 +126,6 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
             BlockIdSet(&item_pointers[ node_id ].ip_blkid, blockno);
             item_pointers[ node_id ].ip_posid = offsetno;
             *progress += node_size;
-            ldb_dlog("ADDED NODE %d", node_id);
             node_id++;
         }
 
@@ -150,8 +139,9 @@ void StoreExternalIndexBlockMapGroup(Relation             index,
         special->nextblockno = predicted_next_block;
 
         MarkBufferDirty(buf);
-        GenericXLogFinish(state);
         UnlockReleaseBuffer(buf);
+
+        CHECK_FOR_INTERRUPTS();
     }
     headerp->last_data_block = last_block;
 
@@ -222,7 +212,6 @@ void StoreExternalIndex(Relation                index,
                         usearch_init_options_t *opts,
                         size_t                  num_added_vectors)
 {
-    ldb_dlog("StoreExternalIndex");
     Buffer header_buf = ReadBufferExtended(index, forkNum, P_NEW, RBM_NORMAL, NULL);
 
     // even when we are creating a new page, it must always be the first page we create
@@ -230,8 +219,7 @@ void StoreExternalIndex(Relation                index,
     assert(BufferGetBlockNumber(header_buf) == 0);
     LockBuffer(header_buf, BUFFER_LOCK_EXCLUSIVE);
 
-    GenericXLogState *state = GenericXLogStart(index);
-    Page              header_page = GenericXLogRegisterBuffer(state, header_buf, GENERIC_XLOG_FULL_IMAGE);
+    Page header_page = BufferGetPage(header_buf);
 
     PageInit(header_page, BufferGetPageSize(header_buf), 0);
     HnswIndexHeaderPage *headerp = (HnswIndexHeaderPage *)PageGetContents(header_page);
@@ -254,17 +242,6 @@ void StoreExternalIndex(Relation                index,
     memcpy(headerp->usearch_header, data, USEARCH_HEADER_SIZE);
     ((PageHeader)header_page)->pd_lower = ((char *)headerp + sizeof(HnswIndexHeaderPage)) - (char *)header_page;
 
-    // Flush header page to WAL, because StoreExternalIndexBlockMapGroup references header page
-    // In wal logs when adding block map groups, and WAL redo crashes in replica as header page record
-    // Would not exist yet
-
-    MarkBufferDirty(header_buf);
-    GenericXLogFinish(state);
-
-    state = GenericXLogStart(index);
-    header_page = GenericXLogRegisterBuffer(state, header_buf, GENERIC_XLOG_FULL_IMAGE);
-    headerp = (HnswIndexHeaderPage *)PageGetContents(header_page);
-
     // allocate some pages for pq codebook
     // for now, always add this blocks to make sure all tests run with these and nothing fails
     if(opts->pq) {
@@ -274,60 +251,48 @@ void StoreExternalIndex(Relation                index,
         for(int i = 0; i < ceil((float)(num_clusters)*opts->dimensions * sizeof(float) / BLCKSZ); i++) {
             Buffer cluster_buf = ReadBufferExtended(index, forkNum, P_NEW, RBM_NORMAL, NULL);
             LockBuffer(cluster_buf, BUFFER_LOCK_EXCLUSIVE);
-            GenericXLogState *cluster_state = GenericXLogStart(index);
-
-            GenericXLogRegisterBuffer(cluster_state, cluster_buf, GENERIC_XLOG_FULL_IMAGE);
+            Page page = BufferGetPage(cluster_buf);
+            PageInit(page, BufferGetPageSize(cluster_buf), 0);
             // todo:: actually, write the codebook here
-            GenericXLogFinish(cluster_state);
+            MarkBufferDirty(cluster_buf);
             UnlockReleaseBuffer(cluster_buf);
         }
     }
 
     uint64 progress = USEARCH_HEADER_SIZE;
-    uint32 group_node_first_index = 0;
-    uint32 num_added_vectors_remaining = num_added_vectors;
-    uint32 batch_size = HNSW_BLOCKMAP_BLOCKS_PER_PAGE;
 
     ItemPointerData *item_pointers = palloc(num_added_vectors * sizeof(ItemPointerData));
 
-    while(num_added_vectors_remaining > 0) {
-        StoreExternalIndexBlockMapGroup(index,
-                                        external_index_metadata,
-                                        headerp,
-                                        forkNum,
-                                        data,
-                                        &progress,
-                                        opts->dimensions,
-                                        group_node_first_index,
-                                        Min(num_added_vectors_remaining, batch_size),
-                                        item_pointers);
-        num_added_vectors_remaining -= Min(num_added_vectors_remaining, batch_size);
-        group_node_first_index += batch_size;
-        batch_size = batch_size * 2;
-    }
+    StoreExternalIndexNodes(index,
+                            external_index_metadata,
+                            headerp,
+                            forkNum,
+                            data,
+                            &progress,
+                            opts->dimensions,
+                            0,
+                            num_added_vectors,
+                            item_pointers);
 
     // this is where I rewrite all neighbors to use BlockNumber
     Buffer              buf;
     HnswIndexHeaderPage header_copy;
     Page                page;
     OffsetNumber        offset, maxoffset;
-    GenericXLogState   *gxlogState;
     header_copy = *(HnswIndexHeaderPage *)PageGetContents(header_page);
     // rewrite neighbor lists in terms of block numbers
     for(BlockNumber blockno = 1;
         BlockNumberIsValid(header_copy.last_data_block) && blockno <= header_copy.last_data_block;
         blockno++) {
-        bool block_modified = false;
         buf = ReadBufferExtended(index, MAIN_FORKNUM, blockno, RBM_NORMAL, GetAccessStrategy(BAS_BULKREAD));
         LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
-        gxlogState = GenericXLogStart(index);
-        page = GenericXLogRegisterBuffer(gxlogState, buf, LDB_GENERIC_XLOG_DELTA_IMAGE);
+        page = BufferGetPage(buf);
         maxoffset = PageGetMaxOffsetNumber(page);
 
         // when index is a pq-index, there will be pq header pages that are currently empty
         // the loop below will skip those. in the future, when those pages are filled up,
         // we need to add a branch here and skip those pages
-        block_modified = true;
+
         for(offset = FirstOffsetNumber; offset <= maxoffset; offset = OffsetNumberNext(offset)) {
             HnswIndexTuple *nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, offset));
             uint32          level = level_from_node(nodepage->node);
@@ -335,26 +300,15 @@ void StoreExternalIndex(Relation                index,
                 uint32                      slot_count;
                 ldb_unaligned_slot_union_t *slots
                     = get_node_neighbors_mut(external_index_metadata, nodepage->node, i, &slot_count);
-                elog(INFO, "level=%d, slot_count=%d", level, slot_count);
                 for(uint32 j = 0; j < slot_count; j++) {
                     uint32 nid = 0;
-                    // elog(INFO, "slots[ %d ].seqid=%d", j, slots[ j ].seqid);
-                    // TODO:: The issue is here, slots[j].seqid is sometimes a huge number, and also the slot_count is
-                    // not correct So this SEGFAULTS or the index scan is not returning data because of invalid item
-                    // pointer
                     memcpy(&nid, &slots[ j ].seqid, sizeof(slots[ j ].seqid));
-                    // elog(INFO, "Copy item_pointers[%d] to slotes[%d]", nid, j);
                     memcpy(&slots[ j ].itemPointerData, &item_pointers[ nid ], sizeof(ItemPointerData));
                 }
             }
         }
 
-        if(block_modified) {
-            GenericXLogFinish(gxlogState);
-        } else {
-            GenericXLogAbort(gxlogState);
-        }
-
+        MarkBufferDirty(buf);
         UnlockReleaseBuffer(buf);
     }
     // rewrote all neighbor list. Rewrite graph entry point as well
@@ -367,8 +321,18 @@ void StoreExternalIndex(Relation                index,
         usearch_header_set_entry_slot(headerp->usearch_header, ret_slot);
     }
     MarkBufferDirty(header_buf);
-    GenericXLogFinish(state);
     UnlockReleaseBuffer(header_buf);
+    /*
+     * We didn't write WAL records as we built the index, so if
+     * WAL-logging is required, write all pages to the WAL now.
+     * Note: the WAL logging function is going to take an exclusive lock on all pages, so
+     * we must call this after unlocking all the pages (header page, in particular, here).
+     * Since we are in index building phase, postgres has taken an AccessExclusiveLock on the relation itself,
+     * so this is safe
+     */
+    if(RelationNeedsWAL(index)) {
+        log_newpage_range(index, MAIN_FORKNUM, 0, RelationGetNumberOfBlocks(index), true);
+    }
 }
 
 // adds a an item to hnsw index relation page. assumes the page has enough space for the item
@@ -434,7 +398,6 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
     // which depends on parameters passed into UsearchNodeBytes above
     alloced_tuple = (HnswIndexTuple *)palloc0(sizeof(HnswIndexTuple) + new_tuple_size);
     alloced_tuple->seqid = new_tuple_id;
-    alloced_tuple->level = new_tuple_level;
     alloced_tuple->size = new_tuple_size;
 
     /*** Add a new tuple corresponding to the added vector to the list of tuples in the index
@@ -542,7 +505,6 @@ HnswIndexTuple *PrepareIndexTuple(Relation             index_rel,
     memcpy(&slot->itemPointerData, &tmp, sizeof(ItemPointerData));
     new_tup_ref = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, new_tup_at));
     assert(new_tup_ref->seqid == new_tuple_id);
-    assert(new_tup_ref->level == new_tuple_level);
     assert(new_tup_ref->size == new_tuple_size);
     page = NULL;  // to avoid its accidental use
     /*** Update header ***/
@@ -578,13 +540,9 @@ void *ldb_wal_index_node_retriever(void *ctxp, unsigned long long id)
     memcpy(&tid_data, &id, sizeof(ItemPointerData));
     data_block_no = BlockIdGetBlockNumber(&tid_data.ip_blkid);
 
-    elog(INFO, "READING PAGE NODE::::::: %d", id);
     page = extra_dirtied_get(ctx->extra_dirted, data_block_no, NULL);
-    elog(INFO, "READ PAGE NODE::::::: %d", page);
     if(page == NULL) {
-        elog(INFO, "ReadBufferExtended Rel: %x, block: %d", ctx->index_rel, data_block_no);
         buf = ReadBufferExtended(ctx->index_rel, MAIN_FORKNUM, data_block_no, RBM_NORMAL, NULL);
-        elog(INFO, "ReadBufferExtended DONE Rel: %x, block: %d", ctx->index_rel, data_block_no);
         LockBuffer(buf, BUFFER_LOCK_SHARE);
         page = BufferGetPage(buf);
     } else {
@@ -626,7 +584,6 @@ void *ldb_wal_index_node_retriever(void *ctxp, unsigned long long id)
              "pinned more tuples during node retrieval than will fit in work_mem, cosider increasing work_mem");
 #endif
     // fa_cache_insert(&ctx->fa_cache, (uint32)id, nodepage->node);
-    elog(INFO, "DONE READ NODE::::::: %d", id);
     return nodepage->node;
 }
 

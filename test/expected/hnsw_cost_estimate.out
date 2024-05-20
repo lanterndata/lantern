@@ -91,7 +91,7 @@ CREATE INDEX hnsw_idx ON sift_base10k USING lantern_hnsw (v dist_l2sq_ops) WITH 
 INFO:  done init usearch index
 INFO:  inserted 10000 elements
 INFO:  done saving 10000 vectors
-SELECT is_cost_estimate_within_error(format(:'explain_query_template', :'v4444'), 3.00);
+SELECT is_cost_estimate_within_error(format(:'explain_query_template', :'v4444'), 3.10);
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
 DEBUG:  LANTERN - Total cost: 16.345000
@@ -115,17 +115,17 @@ INFO:  validate_index() done, no issues found.
 DROP INDEX hnsw_idx;
 -- Case 2, higher M.
 -- Should see higher cost than Case 1.
-CREATE INDEX hnsw_idx ON sift_base10k USING lantern_hnsw (v dist_l2sq_ops) WITH (M=20, ef_construction=10, ef=4, dim=128);
+CREATE INDEX hnsw_idx ON sift_base10k USING lantern_hnsw (v dist_l2sq_ops) WITH (M=8, ef_construction=10, ef=4, dim=128);
 INFO:  done init usearch index
 INFO:  inserted 10000 elements
 INFO:  done saving 10000 vectors
-SELECT is_cost_estimate_within_error(format(:'explain_query_template', :'v4444'), 3.30);
+SELECT is_cost_estimate_within_error(format(:'explain_query_template', :'v4444'), 3.07);
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 313.723173
+DEBUG:  LANTERN - Total cost: 85.852500
 DEBUG:  LANTERN - Selectivity: 1.000000
-DEBUG:  LANTERN - Num pages: 77.000000
-DEBUG:  LANTERN - Num tuples: 773.000000
+DEBUG:  LANTERN - Num pages: 21.000000
+DEBUG:  LANTERN - Num tuples: 247.000000
 DEBUG:  LANTERN - ---------------------
  is_cost_estimate_within_error 
 -------------------------------
@@ -143,17 +143,17 @@ INFO:  validate_index() done, no issues found.
 DROP INDEX hnsw_idx;
 -- Case 3, higher ef.
 -- Should see higher cost than Case 2.
-CREATE INDEX hnsw_idx ON sift_base10k USING lantern_hnsw (v dist_l2sq_ops) WITH (M=20, ef_construction=10, ef=16, dim=128);
+CREATE INDEX hnsw_idx ON sift_base10k USING lantern_hnsw (v dist_l2sq_ops) WITH (M=8, ef_construction=10, ef=16, dim=128);
 INFO:  done init usearch index
 INFO:  inserted 10000 elements
 INFO:  done saving 10000 vectors
-SELECT is_cost_estimate_within_error(format(:'explain_query_template', :'v4444'), 3.99);
+SELECT is_cost_estimate_within_error(format(:'explain_query_template', :'v4444'), 3.24);
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 1006.412954
+DEBUG:  LANTERN - Total cost: 257.625000
 DEBUG:  LANTERN - Selectivity: 1.000000
-DEBUG:  LANTERN - Num pages: 247.000000
-DEBUG:  LANTERN - Num tuples: 2465.000000
+DEBUG:  LANTERN - Num pages: 63.000000
+DEBUG:  LANTERN - Num tuples: 750.000000
 DEBUG:  LANTERN - ---------------------
  is_cost_estimate_within_error 
 -------------------------------
@@ -194,7 +194,7 @@ SELECT COUNT(*) FROM views_vec10k WHERE views < 100;
 (1 row)
 
 -- Create partial lantern index with (views < 100) filter
-CREATE INDEX hnsw_partial_views_100 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 100;
+CREATE INDEX hnsw_partial_views_100 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (M=8, dim=6) WHERE views < 100;
 INFO:  done init usearch index
 INFO:  inserted 58 elements
 INFO:  done saving 58 vectors
@@ -216,7 +216,7 @@ DEBUG:  LANTERN - ---------------------
 
 -- Goal: Test that the index selectivity being calculated for partial indexes is correct
 -- note that these boundaries are selected so that mac num_pages and cost values align
-CREATE INDEX hnsw_partial_views_1000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 1000;
+CREATE INDEX hnsw_partial_views_1000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (M=9, dim=6) WHERE views < 1000;
 INFO:  done init usearch index
 INFO:  inserted 477 elements
 INFO:  done saving 477 vectors
@@ -228,7 +228,7 @@ INFO:  validate_index() done, no issues found.
  
 (1 row)
 
-CREATE INDEX hnsw_partial_views_2000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 2000;
+CREATE INDEX hnsw_partial_views_2000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (M=9, dim=6) WHERE views < 2000;
 INFO:  done init usearch index
 INFO:  inserted 996 elements
 INFO:  done saving 996 vectors
@@ -240,7 +240,7 @@ INFO:  validate_index() done, no issues found.
  
 (1 row)
 
-CREATE INDEX hnsw_partial_views_3000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 3000;
+CREATE INDEX hnsw_partial_views_3000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (M=9, dim=6) WHERE views < 3000;
 INFO:  done init usearch index
 INFO:  inserted 1490 elements
 INFO:  done saving 1490 vectors
@@ -252,7 +252,7 @@ INFO:  validate_index() done, no issues found.
  
 (1 row)
 
-CREATE INDEX hnsw_partial_views_4000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 4000;
+CREATE INDEX hnsw_partial_views_4000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (M=9, dim=6) WHERE views < 4000;
 INFO:  done init usearch index
 INFO:  inserted 2021 elements
 INFO:  done saving 2021 vectors
@@ -264,7 +264,7 @@ INFO:  validate_index() done, no issues found.
  
 (1 row)
 
-CREATE INDEX hnsw_partial_views_6000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 6000;
+CREATE INDEX hnsw_partial_views_6000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (M=9, dim=6) WHERE views < 6000;
 INFO:  done init usearch index
 INFO:  inserted 2997 elements
 INFO:  done saving 2997 vectors
@@ -276,7 +276,7 @@ INFO:  validate_index() done, no issues found.
  
 (1 row)
 
-CREATE INDEX hnsw_partial_views_8000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (dim=6) WHERE views < 8000;
+CREATE INDEX hnsw_partial_views_8000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (M=9, dim=6) WHERE views < 8000;
 INFO:  done init usearch index
 INFO:  inserted 3972 elements
 INFO:  done saving 3972 vectors
@@ -296,44 +296,44 @@ INFO:  validate_index() done, no issues found.
 EXPLAIN (COSTS FALSE) SELECT id, views FROM views_vec10k WHERE views < 1000 ORDER BY vec<->'{0,1,2,3,4,5}' LIMIT 10;
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 181.704318
+DEBUG:  LANTERN - Total cost: 125.930000
 DEBUG:  LANTERN - Selectivity: 0.397306
-DEBUG:  LANTERN - Num pages: 43.000000
+DEBUG:  LANTERN - Num pages: 29.000000
 DEBUG:  LANTERN - Num tuples: 1324.000000
 DEBUG:  LANTERN - ---------------------
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 139.492500
+DEBUG:  LANTERN - Total cost: 95.492500
 DEBUG:  LANTERN - Selectivity: 0.299812
-DEBUG:  LANTERN - Num pages: 33.000000
+DEBUG:  LANTERN - Num pages: 22.000000
 DEBUG:  LANTERN - Num tuples: 999.000000
 DEBUG:  LANTERN - ---------------------
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 92.828043
+DEBUG:  LANTERN - Total cost: 65.047500
 DEBUG:  LANTERN - Selectivity: 0.201732
-DEBUG:  LANTERN - Num pages: 22.000000
+DEBUG:  LANTERN - Num pages: 15.000000
 DEBUG:  LANTERN - Num tuples: 673.000000
 DEBUG:  LANTERN - ---------------------
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 71.720000
+DEBUG:  LANTERN - Total cost: 47.720000
 DEBUG:  LANTERN - Selectivity: 0.148849
-DEBUG:  LANTERN - Num pages: 17.000000
+DEBUG:  LANTERN - Num pages: 11.000000
 DEBUG:  LANTERN - Num tuples: 496.000000
 DEBUG:  LANTERN - ---------------------
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 50.490000
+DEBUG:  LANTERN - Total cost: 34.490000
 DEBUG:  LANTERN - Selectivity: 0.099913
-DEBUG:  LANTERN - Num pages: 12.000000
+DEBUG:  LANTERN - Num pages: 8.000000
 DEBUG:  LANTERN - Num tuples: 332.000000
 DEBUG:  LANTERN - ---------------------
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
-DEBUG:  LANTERN - Total cost: 25.192500
+DEBUG:  LANTERN - Total cost: 17.192500
 DEBUG:  LANTERN - Selectivity: 0.047342
-DEBUG:  LANTERN - Num pages: 6.000000
+DEBUG:  LANTERN - Num pages: 4.000000
 DEBUG:  LANTERN - Num tuples: 159.000000
 DEBUG:  LANTERN - ---------------------
                            QUERY PLAN                           

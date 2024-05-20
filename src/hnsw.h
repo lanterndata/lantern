@@ -8,9 +8,9 @@
 #include <storage/itemptr.h>
 #include <utils/relcache.h>
 
-#define LANTERN_INTERNAL_SCHEMA_NAME "_lantern_internal"
+#include "usearch.h"
 
-static const int INVALID_ELEMENT_LABEL = 0;
+#define LANTERN_INTERNAL_SCHEMA_NAME "_lantern_internal"
 
 #if PG_VERSION_NUM < 110000
 #error "Requires PostgreSQL 11+"
@@ -37,12 +37,16 @@ typedef enum
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wpacked-not-aligned"
 
+static const usearch_label_t INVALID_ELEMENT_LABEL = 0;
 // C version of uint48_t in c++/usearch
 typedef union __attribute__((__packed__))
 {
     ItemPointerData itemPointerData;
     uint32          seqid;
 } ldb_unaligned_slot_union_t;
+
+// the slot must fit in a usearch label
+static_assert(sizeof(ldb_unaligned_slot_union_t) <= sizeof(usearch_label_t), "index label too small for lantern slot");
 
 #pragma clang diagnostic pop
 

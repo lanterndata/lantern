@@ -28,6 +28,16 @@
 //                       ^^^^
 static relopt_kind ldb_hnsw_index_withopts;
 
+static relopt_enum_elt_def quant_bits_options_relopt[] = {{"1", QUANT_BITS_1},
+                                                          {"2", QUANT_BITS_2},
+                                                          {"4", QUANT_BITS_4},
+                                                          {"8", QUANT_BITS_8},
+                                                          {"16", QUANT_BITS_16},
+                                                          {"32", QUANT_BITS_32},
+                                                          {NULL, 0}
+
+};
+
 int ldb_hnsw_init_k;
 int ldb_hnsw_ef_search;
 
@@ -122,6 +132,7 @@ bytea *ldb_amoptions(Datum reloptions, bool validate)
         {"ef_construction", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, ef_construction)},
         {"ef", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, ef)},
         {"pq", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, pq)},
+        {"quant_bits", RELOPT_TYPE_ENUM, offsetof(ldb_HnswOptions, quant_bits)},
         {"_experimental_index_path", RELOPT_TYPE_STRING, offsetof(ldb_HnswOptions, experimantal_index_path_offset)},
     };
 
@@ -146,7 +157,11 @@ bytea *ldb_amoptions(Datum reloptions, bool validate)
 /*
  * Initialize index options and variables
  */
+#ifdef EMSCRIPTEN
 void _PG_init_lantern(void)
+#else
+void _PG_init(void)
+#endif
 {
     if(process_shared_preload_libraries_in_progress) {
         elog(WARNING,
@@ -223,6 +238,17 @@ void _PG_init_lantern(void)
 #endif
 
     );
+    add_enum_reloption(ldb_hnsw_index_withopts,
+                       "quant_bits",
+                       "When set, will quantize 32 bit vector elements into specified number of bits.",
+                       quant_bits_options_relopt,
+                       QUANT_BITS_UNSET,
+                       "Unsupported quantization bits. Supported values are 1, 2, 4, 8, 16 and 32"
+#if PG_VERSION_NUM >= 130000
+                       ,
+                       AccessExclusiveLock
+#endif
+    );
     DefineCustomIntVariable("lantern_hnsw.init_k",
                             "Number of elements to initially retrieve from the index in a scan",
                             "Valid values are in range [1, 1000]",
@@ -271,11 +297,11 @@ void _PG_init_lantern(void)
                              NULL,
                              NULL);
 
-    // #if PG_VERSION_NUM >= 150000
-    //     MarkGUCPrefixReserved("lantern");
-    //     MarkGUCPrefixReserved("lantern_hnsw");
-    //     MarkGUCPrefixReserved("_lantern_internal");
-    // #endif
+    #if PG_VERSION_NUM >= 150000 && !defined EMSCRIPTEN
+        MarkGUCPrefixReserved("lantern");
+        MarkGUCPrefixReserved("lantern_hnsw");
+        MarkGUCPrefixReserved("_lantern_internal");
+    #endif
 
     // Print a warning with helpful info
     (void)VersionsMatch();

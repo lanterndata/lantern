@@ -37,9 +37,11 @@ usearch_metric_kind_t GetMetricKindFromStr(char *metric_kind_str);
 // search operations.
 // For this reason on hot codepaths we should avoid elog all together.
 // To print debug or test output on these hot codepaths, use ldb_dlog.
-#define ldb_dlog(...)            \
-    do {                         \
-        elog(INFO, __VA_ARGS__); \
+#define ldb_dlog(...)                  \
+    do {                               \
+        if(unlikely(ldb_is_test)) {    \
+            elog(DEBUG5, __VA_ARGS__); \
+        }                              \
     } while(0)
 
 #endif  // LDB_HNSW_UTILS_H

@@ -61,10 +61,12 @@ void PopulateUsearchOpts(Relation index, usearch_init_options_t *opts)
 usearch_label_t ItemPointer2Label(ItemPointer itemPtr)
 {
     usearch_label_t label = 0;
-    memcpy((unsigned long *)&label, itemPtr, 6);
+    ldb_invariant(sizeof(*itemPtr) <= sizeof(label), "label type too small");
+    memcpy(&label, itemPtr, sizeof(*itemPtr));
     return label;
 }
-void label2ItemPointer(usearch_label_t label, ItemPointer itemPtr) { memcpy(itemPtr, (unsigned long *)&label, 6); }
+
+void label2ItemPointer(usearch_label_t label, ItemPointer itemPtr) { memcpy(itemPtr, &label, sizeof(*itemPtr)); }
 
 void CheckMem(int limit, Relation index, usearch_index_t uidx, uint32 n_nodes, char *msg)
 {
@@ -125,7 +127,9 @@ float4 *ToFloat4Array(ArrayType *arr, int *dim_out)
 // This is used to prevent interacting with the index when the two don't match
 bool VersionsMatch()
 {
+#ifdef EMSCRIPTEN
     return true;
+#endif
     // If a parallel worker runs as a result of query execution, executing the SQL query below will lead to the
     // error "ERROR:  cannot execute SQL without an outer snapshot or portal." Instead of loading in a snapshot, we
     // simply return if one doesn't exist, the idea being that in the case of a parallel worker running this
