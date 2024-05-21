@@ -51,7 +51,7 @@ typedef struct HnswIndexHeaderPage
     size_t num_centroids;
     size_t num_subvectors;
 
-    QuantBitsType quant_bits;
+    usearch_scalar_kind_t quantization;
 } HnswIndexHeaderPage;
 
 // the added 40 byte graph header (currently unused)

@@ -63,7 +63,7 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     opts.expansion_search = headerp->ef;
     opts.metric_kind = headerp->metric_kind;
     opts.metric = NULL;
-    opts.quantization = usearch_scalar_f32_k;
+    opts.quantization = headerp->quantization;
     opts.num_threads = 1;
     opts.pq = headerp->pq;
     opts.num_centroids = headerp->num_centroids;

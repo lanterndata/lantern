@@ -173,6 +173,7 @@ void StoreExternalEmptyIndex(Relation index, ForkNumber forkNum, char *data, use
     headerp->ef_construction = opts->expansion_add;
     headerp->ef = opts->expansion_search;
     headerp->metric_kind = opts->metric_kind;
+    headerp->quantization = opts->quantization;
     headerp->pq = opts->pq;
     headerp->num_centroids = opts->num_centroids;
     headerp->num_subvectors = opts->num_subvectors;
@@ -228,6 +229,7 @@ void StoreExternalIndex(Relation                index,
     headerp->ef_construction = opts->expansion_add;
     headerp->ef = opts->expansion_search;
     headerp->metric_kind = opts->metric_kind;
+    headerp->quantization = opts->quantization;
 
     headerp->num_vectors = num_added_vectors;
     headerp->pq = opts->pq;
