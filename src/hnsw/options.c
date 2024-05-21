@@ -146,8 +146,9 @@ usearch_scalar_kind_t ldb_HnswGetScalarKind(Relation index)
 
         case QUANT_BITS_4:
         case QUANT_BITS_2:
-        case QUANT_BITS_1:
             elog(ERROR, "unimplemented quantization");
+        case QUANT_BITS_1:
+            return usearch_scalar_b1_k;
         default:
             elog(ERROR, "unrecognized quantization provided");
     }
