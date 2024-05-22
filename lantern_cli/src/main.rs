@@ -7,6 +7,8 @@ mod cli;
 
 #[cfg(feature = "cli")]
 fn main() {
+    use tokio_util::sync::CancellationToken;
+
     let cli = cli::Cli::parse();
     let mut _main_logger = None;
     let res = match cli.command {
@@ -54,7 +56,7 @@ fn main() {
         cli::Commands::StartDaemon(args) => {
             let logger = Logger::new("Lantern Daemon", args.log_level.value());
             _main_logger = Some(logger.clone());
-            daemon::start(args, Some(logger), None)
+            daemon::start(args, Some(logger), CancellationToken::new())
         }
         cli::Commands::StartServer(args) => {
             let logger = Logger::new("Lantern HTTP", LogLevel::Debug);

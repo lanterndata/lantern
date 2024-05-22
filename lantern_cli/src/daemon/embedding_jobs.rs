@@ -1,48 +1,18 @@
-/*
-    Embedding Jobs Table should have the following structure:
-    CREATE TABLE "public"."embedding_generation_jobs" (
-        "id" SERIAL PRIMARY KEY,
-        "database_id" text NOT NULL,
-        "db_connection" text NOT NULL,
-        "schema" text NOT NULL,
-        "table" text NOT NULL,
-        "pk" text NOT NULL,
-        "runtime" text NOT NULL,
-        "runtime_params" jsonb,
-        "src_column" text NOT NULL,
-        "dst_column" text NOT NULL,
-        "embedding_model" text NOT NULL,
-        "created_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "updated_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "canceled_at" timestamp,
-        "init_started_at" timestamp,
-        "init_finished_at" timestamp,
-        "init_failed_at" timestamp,
-        "init_failure_reason" text,
-        "init_progress" int2 DEFAULT 0,
-        "failed_requests" bigint DEFAULT 0,
-        "failed_rows" bigint DEFAULT 0
-    );
-*/
-
-use super::cli;
-use super::client_embedding_jobs::toggle_client_job;
+use super::client_embedding_jobs::{stop_client_job, toggle_client_job};
 use super::helpers::{
-    db_notification_listener, get_missing_rows_filter, remove_job_handle, schedule_job_retry,
-    set_job_handle, startup_hook,
+    cancellation_handler, db_notification_listener, get_missing_rows_filter, remove_job_handle,
+    schedule_job_retry, set_job_handle, startup_hook,
 };
 use super::types::{
-    EmbeddingJob, JobCancellationHandlersMap, JobInsertNotification, JobUpdateNotification,
-    VoidFuture,
+    EmbeddingJob, JobCancellationHandlersMap, JobInsertNotification, JobRunArgs,
+    JobUpdateNotification,
 };
 use crate::embeddings::cli::EmbeddingArgs;
 use crate::logger::Logger;
 use crate::utils::{get_common_embedding_ignore_filters, get_full_table_name, quote_ident};
 use crate::{embeddings, types::*};
-use futures::future;
 use std::collections::HashMap;
 use std::path::Path;
-use std::process;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::SystemTime;
@@ -51,7 +21,29 @@ use tokio::sync::mpsc::{Receiver, Sender, UnboundedReceiver, UnboundedSender};
 use tokio::sync::{mpsc, Mutex, RwLock};
 use tokio_postgres::types::ToSql;
 use tokio_postgres::{Client, NoTls};
+use tokio_util::sync::CancellationToken;
 
+const JOB_TABLE_DEFINITION: &'static str = r#"
+"id" SERIAL PRIMARY KEY,
+"schema" text NOT NULL DEFAULT 'public',
+"table" text NOT NULL,
+"pk" text NOT NULL DEFAULT 'id',
+"runtime" text NOT NULL DEFAULT 'ort',
+"runtime_params" jsonb,
+"src_column" text NOT NULL,
+"dst_column" text NOT NULL,
+"embedding_model" text NOT NULL,
+"created_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+"updated_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+"canceled_at" timestamp,
+"init_started_at" timestamp,
+"init_finished_at" timestamp,
+"init_failed_at" timestamp,
+"init_failure_reason" text,
+"init_progress" int2 DEFAULT 0,
+"failed_requests" bigint DEFAULT 0,
+"failed_rows" bigint DEFAULT 0
+"#;
 const EMB_LOCK_TABLE_NAME: &'static str = "_lantern_emb_job_locks";
 
 lazy_static! {
@@ -167,6 +159,8 @@ async fn stream_job(
 ) -> AnyhowVoidResult {
     let top_logger = logger.clone();
     let job_id = job.id;
+    let notifications_tx_clone = notifications_tx.clone();
+    let job_clone = job.clone();
     let task = tokio::spawn(async move {
         logger.info(&format!("Start streaming job {}", job.id));
         // Enable triggers for job
@@ -194,10 +188,28 @@ async fn stream_job(
         let (mut job_client, connection) = tokio_postgres::connect(&job.db_uri, NoTls).await?;
         let job_id = job.id;
 
+        let job_clone = job.clone();
+        let notifications_tx_clone = notifications_tx.clone();
         tokio::spawn(async move {
             if let Err(e) = connection.await {
                 connection_logger.error(&format!("Error while streaming job: {job_id}. {e}"));
+                if job.is_init {
+                    toggle_client_job(
+                        job_clone.id,
+                        job_clone.db_uri,
+                        job_clone.pk,
+                        job_clone.column,
+                        job_clone.out_column,
+                        job_clone.table,
+                        job_clone.schema,
+                        connection_logger.level.clone(),
+                        Some(notifications_tx_clone),
+                        false,
+                    )
+                    .await?;
+                }
             }
+            Ok::<(), anyhow::Error>(())
         });
 
         let column = &job.column;
@@ -322,6 +334,21 @@ async fn stream_job(
     if let Err(e) = task.await? {
         top_logger.error(&format!("Error while streaming job {job_id}: {e}"));
         remove_job_handle(&JOBS, job_id).await?;
+        if job_clone.is_init {
+            toggle_client_job(
+                job_clone.id,
+                job_clone.db_uri,
+                job_clone.pk,
+                job_clone.column,
+                job_clone.out_column,
+                job_clone.table,
+                job_clone.schema,
+                top_logger.level.clone(),
+                Some(notifications_tx_clone),
+                false,
+            )
+            .await?;
+        }
     }
 
     Ok(())
@@ -332,7 +359,6 @@ async fn embedding_worker(
     job_queue_tx: Sender<EmbeddingJob>,
     db_uri: String,
     schema: String,
-    internal_schema: String,
     table: String,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
@@ -489,7 +515,7 @@ async fn embedding_worker(
                 // As we are using table ctid for lock key, after table VACUUM the ctids may repeat
                 // And if new row will be inserted with previously locked ctid
                 // it won't be taken by daemon
-                let lock_table_name = get_full_table_name(&internal_schema, EMB_LOCK_TABLE_NAME);
+                let lock_table_name = get_full_table_name(&schema, EMB_LOCK_TABLE_NAME);
                 unlock_rows(
                     client_ref,
                     &lock_table_name,
@@ -531,12 +557,11 @@ async fn collect_pending_jobs(
 }
 
 async fn job_insert_processor(
-    db_uri: String,
     mut notifications_rx: UnboundedReceiver<JobInsertNotification>,
     notifications_tx: UnboundedSender<JobInsertNotification>,
     job_tx: Sender<EmbeddingJob>,
+    db_uri: String,
     schema: String,
-    lock_table_schema: String,
     table: String,
     data_path: &'static str,
     logger: Arc<Logger>,
@@ -559,14 +584,14 @@ async fn job_insert_processor(
     // inserts to the table between 10 seconds all that rows will be batched.
     let full_table_name = Arc::new(get_full_table_name(&schema, &table));
     // TODO:: Select pk here
-    let job_query_sql = Arc::new(format!("SELECT id, db_connection as db_uri, src_column as \"column\", dst_column, \"table\", \"schema\", embedding_model as model, runtime, runtime_params::text FROM {0}", &full_table_name));
+    let job_query_sql = Arc::new(format!("SELECT id, src_column as \"column\", dst_column, \"table\", \"schema\", embedding_model as model, runtime, runtime_params::text FROM {0}", &full_table_name));
 
     let db_uri_r1 = db_uri.clone();
     let full_table_name_r1 = full_table_name.clone();
     let job_query_sql_r1 = job_query_sql.clone();
     let job_tx_r1 = job_tx.clone();
     let logger_r1 = logger.clone();
-    let lock_table_name = Arc::new(get_full_table_name(&lock_table_schema, EMB_LOCK_TABLE_NAME));
+    let lock_table_name = Arc::new(get_full_table_name(&schema, EMB_LOCK_TABLE_NAME));
     let job_batching_hashmap_r1 = JOB_BATCHING_HASHMAP.clone();
 
     let insert_processor_task = tokio::spawn(async move {
@@ -628,7 +653,7 @@ async fn job_insert_processor(
                 .await;
 
             if let Ok(row) = job_result {
-                let job = EmbeddingJob::new(row, data_path);
+                let job = EmbeddingJob::new(row, data_path, &db_uri_r1);
 
                 if let Err(e) = &job {
                     logger_r1.error(&format!("Error while creating job {id}: {e}",));
@@ -681,7 +706,7 @@ async fn job_insert_processor(
                     continue;
                 }
                 let row = job_result.unwrap();
-                let job = EmbeddingJob::new(row, data_path);
+                let job = EmbeddingJob::new(row, data_path, &db_uri);
 
                 if let Err(e) = &job {
                     logger.error(&format!("Error while creating job {job_id}: {e}"));
@@ -734,7 +759,7 @@ async fn job_update_processor(
             let full_table_name =  get_full_table_name(&schema, &table);
             let id = notification.id;
             // TODO:: Select pk here
-            let row = client.query_one(&format!("SELECT db_connection as db_uri, dst_column, src_column as \"column\", \"table\", \"schema\", canceled_at, init_finished_at FROM {0} WHERE id=$1", &full_table_name), &[&id]).await?;
+            let row = client.query_one(&format!("SELECT dst_column, src_column as \"column\", \"table\", \"schema\", canceled_at, init_finished_at FROM {0} WHERE id=$1", &full_table_name), &[&id]).await?;
             let src_column = row.get::<&str, String>("column").to_owned();
             let out_column = row.get::<&str, String>("dst_column").to_owned();
 
@@ -746,7 +771,7 @@ async fn job_update_processor(
             }
 
             if init_finished_at.is_some() {
-              toggle_client_job(id, row.get::<&str, String>("db_uri").to_owned(), "id".to_owned(), row.get::<&str, String>("column").to_owned(), row.get::<&str, String>("dst_column").to_owned(), row.get::<&str, String>("table").to_owned(), row.get::<&str, String>("schema").to_owned(), logger.level.clone(), Some(job_insert_queue_tx.clone()), canceled_at.is_none()).await?;
+              toggle_client_job(id, db_uri.clone(), "id".to_owned(), row.get::<&str, String>("column").to_owned(), row.get::<&str, String>("dst_column").to_owned(), row.get::<&str, String>("table").to_owned(), row.get::<&str, String>("schema").to_owned(), logger.level.clone(), Some(job_insert_queue_tx.clone()), canceled_at.is_none()).await?;
             } else if canceled_at.is_some() {
                 // Cancel ongoing job
                 let jobs = JOBS.read().await;
@@ -805,8 +830,44 @@ async fn create_data_path(logger: Arc<Logger>) -> &'static str {
     tmp_path
 }
 
-#[tokio::main]
-pub async fn start(args: cli::DaemonArgs, logger: Arc<Logger>) -> AnyhowVoidResult {
+async fn stop_all_client_jobs(
+    client: Arc<Client>,
+    logger: Arc<Logger>,
+    db_uri: String,
+    schema: String,
+    jobs_table_name: String,
+) -> AnyhowVoidResult {
+    let rows = client
+        .query(
+            &format!("SELECT id, runtime, \"table\" FROM {jobs_table_name} WHERE init_finished_at IS NOT NULL AND canceled_at IS NULL ORDER BY id"),
+            &[],
+        )
+        .await?;
+
+    for row in rows {
+        let job_id = row.get::<&str, i32>("id").to_owned();
+        let job_runtime = row.get::<&str, &str>("runtime").to_owned();
+        let job_table = row.get::<&str, &str>("table").to_owned();
+
+        let task_logger = Arc::new(Logger::new(
+            &format!("Embedding Job {}|{:?}", job_id, job_runtime),
+            logger.level.clone(),
+        ));
+
+        if let Err(e) =
+            stop_client_job(task_logger, &db_uri, job_id, &job_table, &schema, false).await
+        {
+            logger.error(&format!("Error while stopping job {job_id}: {e}"));
+        };
+    }
+    Ok(())
+}
+
+pub async fn start(
+    args: JobRunArgs,
+    logger: Arc<Logger>,
+    cancel_token: CancellationToken,
+) -> AnyhowVoidResult {
     logger.info("Starting Embedding Jobs");
 
     let (main_db_client, connection) = tokio_postgres::connect(&args.uri, NoTls).await?;
@@ -827,69 +888,82 @@ pub async fn start(args: cli::DaemonArgs, logger: Arc<Logger>) -> AnyhowVoidResu
     ) = mpsc::unbounded_channel();
     let (job_queue_tx, job_queue_rx): (Sender<EmbeddingJob>, Receiver<EmbeddingJob>) =
         mpsc::channel(1);
-    let table = args.embedding_table.unwrap();
+    let table = args.table_name;
 
     startup_hook(
         main_db_client.clone(),
         &table,
+        JOB_TABLE_DEFINITION,
         &args.schema,
-        Some(&args.internal_schema),
         Some(EMB_LOCK_TABLE_NAME),
+        None,
+        None,
         &notification_channel,
         logger.clone(),
     )
     .await?;
 
-    let handles = vec![
-        Box::pin(db_notification_listener(
-            args.uri.clone(),
+    let logger_clone = logger.clone();
+    let jobs_table_name = get_full_table_name(&args.schema, &table);
+    let main_db_uri = args.uri.clone();
+    let schema = args.schema.clone();
+
+    tokio::try_join!(
+        db_notification_listener(
+            main_db_uri.clone(),
             &notification_channel,
             insert_notification_queue_tx.clone(),
             Some(update_notification_queue_tx.clone()),
+            cancel_token.clone(),
             logger.clone(),
-        )) as VoidFuture,
-        Box::pin(job_insert_processor(
-            args.uri.clone(),
+        ),
+        job_insert_processor(
             insert_notification_queue_rx,
             insert_notification_queue_tx.clone(),
             job_queue_tx.clone(),
-            args.schema.clone(),
-            args.internal_schema.clone(),
+            main_db_uri.clone(),
+            schema.clone(),
             table.clone(),
             data_path,
             logger.clone(),
-        )) as VoidFuture,
-        Box::pin(job_update_processor(
-            args.uri.clone(),
+        ),
+        job_update_processor(
+            main_db_uri.clone(),
             update_notification_queue_rx,
             insert_notification_queue_tx.clone(),
-            args.schema.clone(),
+            schema.clone(),
             table.clone(),
             logger.clone(),
-        )) as VoidFuture,
-        Box::pin(embedding_worker(
+        ),
+        embedding_worker(
             job_queue_rx,
             job_queue_tx.clone(),
-            args.uri.clone(),
-            args.schema.clone(),
-            args.internal_schema.clone(),
+            main_db_uri.clone(),
+            schema.clone(),
             table.clone(),
             logger.clone(),
-        )) as VoidFuture,
-        Box::pin(collect_pending_jobs(
+        ),
+        collect_pending_jobs(
             main_db_client.clone(),
             update_notification_queue_tx.clone(),
-            get_full_table_name(&args.schema, &table),
-        )) as VoidFuture,
-    ];
+            jobs_table_name.clone(),
+        ),
+        cancellation_handler(
+            cancel_token.clone(),
+            Some(move || async {
+                stop_all_client_jobs(
+                    main_db_client,
+                    logger_clone,
+                    main_db_uri,
+                    schema,
+                    jobs_table_name,
+                )
+                .await?;
 
-    drop(main_db_client);
-
-    if let Err(e) = future::try_join_all(handles).await {
-        logger.error(&e.to_string());
-        logger.error("Fatal error exiting process");
-        process::exit(1);
-    }
+                Ok::<(), anyhow::Error>(())
+            })
+        )
+    )?;
 
     Ok(())
 }

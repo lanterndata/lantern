@@ -31,33 +31,37 @@ impl LogLevel {
 #[derive(Parser, Debug, Clone)]
 #[command(version, about, long_about = None)]
 pub struct DaemonArgs {
-    /// Fully associated database connection string including db name to get jobs
-    #[arg(short, long)]
-    pub uri: String,
-
-    /// Embedding jobs table name
+    /// Routing database to take new client databases to connect
     #[arg(long)]
-    pub embedding_table: Option<String>,
+    pub master_db: Option<String>,
 
-    /// Autotune jobs table name
-    #[arg(long)]
-    pub autotune_table: Option<String>,
+    /// Schema where --databases-table is located
+    #[arg(long, default_value = "public")]
+    pub master_db_schema: String,
 
-    /// Autotune results table name
-    #[arg(long)]
-    pub autotune_results_table: Option<String>,
+    /// Table on master database which contains target databases
+    #[arg(long, default_value = "databases")]
+    pub databases_table: String,
 
-    /// External index jobs table name
-    #[arg(long)]
-    pub external_index_table: Option<String>,
+    /// List of target databases to connect and listen for jobs
+    #[arg(long, value_delimiter = ' ', num_args = 1..)]
+    pub target_db: Option<Vec<String>>,
+
+    /// Enable Embedding jobs
+    #[arg(long, default_value_t = false)]
+    pub embeddings: bool,
+
+    /// Enable Autotune jobs
+    #[arg(long, default_value_t = false)]
+    pub autotune: bool,
+
+    /// Enable External Index jobs
+    #[arg(long, default_value_t = false)]
+    pub external_index: bool,
 
     /// Schema name
-    #[arg(short, long, default_value = "public")]
-    pub schema: String,
-
-    /// Internal schema name to create required tables
     #[arg(short, long, default_value = "lantern")]
-    pub internal_schema: String,
+    pub schema: String,
 
     /// Log level
     #[arg(long, value_enum, default_value_t = LogLevel::Info)] // arg_enum here

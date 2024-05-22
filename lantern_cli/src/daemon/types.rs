@@ -1,11 +1,38 @@
-use crate::external_index::cli::UMetricKind;
-use crate::types::AnyhowVoidResult;
-use crate::{embeddings::cli::Runtime, utils::get_common_embedding_ignore_filters};
-use futures::Future;
+use crate::embeddings::cli::Runtime;
+use crate::utils::get_common_embedding_ignore_filters;
 use itertools::Itertools;
-use std::{collections::HashMap, pin::Pin};
+use std::collections::HashMap;
 use tokio::sync::{mpsc::Sender, RwLock};
 use tokio_postgres::Row;
+use tokio_util::sync::CancellationToken;
+
+#[derive(Clone)]
+pub struct JobRunArgs {
+    pub uri: String,
+    pub schema: String,
+    pub log_level: crate::logger::LogLevel,
+    pub table_name: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct TargetDB {
+    pub uri: String,
+    pub name: String,
+}
+
+impl TargetDB {
+    pub fn from_uri(db_url: &str) -> Result<TargetDB, anyhow::Error> {
+        let parts: Vec<&str> = db_url.split('@').collect();
+        if parts.len() < 2 {
+            anyhow::bail!("Invalid format for --target-db, should be 'postgres://username:[password]@host/db'")
+        }
+
+        Ok(TargetDB {
+            name: parts[parts.len() - 1].to_owned(),
+            uri: db_url.to_owned(),
+        })
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct EmbeddingJob {
@@ -28,7 +55,7 @@ pub struct EmbeddingJob {
 }
 
 impl EmbeddingJob {
-    pub fn new(row: Row, data_path: &str) -> Result<EmbeddingJob, anyhow::Error> {
+    pub fn new(row: Row, data_path: &str, db_uri: &str) -> Result<EmbeddingJob, anyhow::Error> {
         let runtime = Runtime::try_from(row.get::<&str, Option<&str>>("runtime").unwrap_or("ort"))?;
         let runtime_params = if runtime == Runtime::Ort {
             format!(r#"{{ "data_path": "{data_path}" }}"#)
@@ -40,7 +67,7 @@ impl EmbeddingJob {
         Ok(Self {
             id: row.get::<&str, i32>("id"),
             pk: "id".to_owned(), // TODO:: row.get::<&str, String>("pk"),
-            db_uri: row.get::<&str, String>("db_uri"),
+            db_uri: db_uri.to_owned(),
             schema: row.get::<&str, String>("schema"),
             table: row.get::<&str, String>("table"),
             column: row.get::<&str, String>("column"),
@@ -117,10 +144,10 @@ pub struct AutotuneJob {
 }
 
 impl AutotuneJob {
-    pub fn new(row: Row) -> AutotuneJob {
+    pub fn new(row: Row, db_uri: &str) -> AutotuneJob {
         Self {
             id: row.get::<&str, i32>("id"),
-            db_uri: row.get::<&str, String>("db_uri"),
+            db_uri: db_uri.to_owned(),
             schema: row.get::<&str, String>("schema"),
             table: row.get::<&str, String>("table"),
             column: row.get::<&str, String>("column"),
@@ -142,7 +169,7 @@ pub struct ExternalIndexJob {
     pub schema: String,
     pub table: String,
     pub column: String,
-    pub metric_kind: UMetricKind,
+    pub operator_class: String,
     pub index_name: Option<String>,
     pub ef: usize,
     pub efc: usize,
@@ -150,19 +177,19 @@ pub struct ExternalIndexJob {
 }
 
 impl ExternalIndexJob {
-    pub fn new(row: Row) -> Result<ExternalIndexJob, anyhow::Error> {
-        Ok(Self {
+    pub fn new(row: Row, db_uri: &str) -> ExternalIndexJob {
+        Self {
             id: row.get::<&str, i32>("id"),
-            db_uri: row.get::<&str, String>("db_uri"),
+            db_uri: db_uri.to_owned(),
             schema: row.get::<&str, String>("schema"),
             table: row.get::<&str, String>("table"),
             column: row.get::<&str, String>("column"),
-            metric_kind: UMetricKind::from_ops(row.get::<&str, &str>("operator"))?,
+            operator_class: row.get::<&str, String>("operator"),
             index_name: row.get::<&str, Option<String>>("index"),
             ef: row.get::<&str, i32>("ef") as usize,
             efc: row.get::<&str, i32>("efc") as usize,
             m: row.get::<&str, i32>("m") as usize,
-        })
+        }
     }
 }
 
@@ -182,5 +209,5 @@ pub struct JobUpdateNotification {
 }
 
 pub type JobTaskCancelTx = Sender<String>;
-pub type VoidFuture = Pin<Box<dyn Future<Output = AnyhowVoidResult>>>;
 pub type JobCancellationHandlersMap = RwLock<HashMap<i32, JobTaskCancelTx>>;
+pub type DaemonJobHandlerMap = RwLock<HashMap<String, CancellationToken>>;

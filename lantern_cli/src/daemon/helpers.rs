@@ -11,6 +11,7 @@ use std::time::{Duration, SystemTime};
 use tokio::sync::mpsc::{Sender, UnboundedReceiver, UnboundedSender};
 use tokio_postgres::AsyncMessage;
 use tokio_postgres::Client;
+use tokio_util::sync::CancellationToken;
 
 pub async fn check_table_exists(client: Arc<Client>, table: &str) -> AnyhowVoidResult {
     // verify that table exists
@@ -29,6 +30,7 @@ pub async fn db_notification_listener(
     notification_channel: &'static str,
     insert_queue_tx: UnboundedSender<JobInsertNotification>,
     update_queue_tx: Option<UnboundedSender<JobUpdateNotification>>,
+    cancel_token: CancellationToken,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
     let (client, mut connection) = tokio_postgres::connect(&db_uri, tokio_postgres::NoTls).await?;
@@ -40,49 +42,63 @@ pub async fn db_notification_listener(
         let mut stream = futures::stream::poll_fn(move |cx| connection.poll_message(cx));
         logger.info("Lisening for notifications");
 
-        while let Some(message) = stream.next().await {
-            if let Err(e) = &message {
-                logger.error(&format!("Failed to get message from db: {}", e));
-            }
+        loop {
+            tokio::select! {
+               notification = stream.next() => {
+                 if notification.is_none() {
+                     return;
+                 }
 
-            let message = message.unwrap();
+                 let message = notification.unwrap();
 
-            if let AsyncMessage::Notification(not) = message {
-                let parts: Vec<&str> = not.payload().split(':').collect();
+                 if let Err(e) = &message {
+                     logger.error(&format!("Failed to get message from db: {}", e));
+                     return;
+                 }
 
-                if parts.len() < 2 {
-                    logger.error(&format!("Invalid notification received {}", not.payload()));
-                    continue;
-                }
+                 let message = message.unwrap();
 
-                let action: &str = parts[0];
-                let id = i32::from_str_radix(parts[1], 10).unwrap();
+                 if let AsyncMessage::Notification(not) = message {
+                     let parts: Vec<&str> = not.payload().split(':').collect();
 
-                match action {
-                    "insert" => {
-                        insert_queue_tx
-                            .send(JobInsertNotification {
-                                id,
-                                init: true,
-                                generate_missing: false,
-                                row_id: None,
-                                filter: None,
-                                limit: None,
-                            })
-                            .unwrap();
-                    }
-                    "update" => {
-                        if let Some(update_tx) = &update_queue_tx {
-                            update_tx
-                                .send(JobUpdateNotification {
-                                    id,
-                                    generate_missing: true,
-                                })
-                                .unwrap();
-                        }
-                    }
-                    _ => logger.error(&format!("Invalid notification received {}", not.payload())),
-                }
+                     if parts.len() < 2 {
+                         logger.error(&format!("Invalid notification received {}", not.payload()));
+                         return;
+                     }
+
+                     let action: &str = parts[0];
+                     let id = i32::from_str_radix(parts[1], 10).unwrap();
+
+                     match action {
+                         "insert" => {
+                             insert_queue_tx
+                                 .send(JobInsertNotification {
+                                     id,
+                                     init: true,
+                                     generate_missing: false,
+                                     row_id: None,
+                                     filter: None,
+                                     limit: None,
+                                 })
+                                 .unwrap();
+                         }
+                         "update" => {
+                             if let Some(update_tx) = &update_queue_tx {
+                                 update_tx
+                                     .send(JobUpdateNotification {
+                                         id,
+                                         generate_missing: true,
+                                     })
+                                     .unwrap();
+                             }
+                         }
+                         _ => logger.error(&format!("Invalid notification received {}", not.payload())),
+                     }
+                 }
+               },
+               _ = cancel_token.cancelled() => {
+                    break;
+               }
             }
         }
         drop(client_ref);
@@ -93,22 +109,30 @@ pub async fn db_notification_listener(
         .await?;
 
     task.await?;
+
     Ok(())
 }
 
 pub async fn startup_hook(
     client: Arc<Client>,
     table: &str,
+    table_def: &str,
     schema: &str,
-    lock_table_schema: Option<&str>,
     lock_table_name: Option<&str>,
+    results_table_name: Option<&str>,
+    results_table_def: Option<&str>,
     channel: &str,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
     logger.info("Setting up environment");
-    // verify that table exists
+    // create table if not exists
     let full_table_name = get_full_table_name(schema, table);
-    check_table_exists(client.clone(), &full_table_name).await?;
+    client
+        .execute(
+            &format!("CREATE TABLE IF NOT EXISTS {full_table_name} ({table_def})"),
+            &[],
+        )
+        .await?;
 
     let insert_function_name = quote_ident(&format!("notify_insert_{table}"));
     let update_function_name = quote_ident(&format!("notify_update_{table}"));
@@ -151,22 +175,31 @@ pub async fn startup_hook(
         ))
         .await?;
 
-    if lock_table_name.is_some() && lock_table_schema.is_some() {
-        let lock_table_name =
-            get_full_table_name(lock_table_schema.unwrap(), lock_table_name.unwrap());
+    if lock_table_name.is_some() {
+        let lock_table_name = get_full_table_name(schema, lock_table_name.unwrap());
         client
             .batch_execute(&format!(
                 "
             -- Create Lock Table
-            CREATE SCHEMA IF NOT EXISTS {lock_table_schema};
             CREATE UNLOGGED TABLE IF NOT EXISTS {lock_table_name} (
               job_id INTEGER NOT NULL,
               row_id TEXT NOT NULL,
               CONSTRAINT ldb_lock_jobid_rowid UNIQUE (job_id, row_id)
             );
         ",
-                lock_table_schema = quote_ident(lock_table_schema.as_deref().unwrap())
             ))
+            .await?;
+    }
+
+    if results_table_name.is_some() && results_table_def.is_some() {
+        let results_table_name = get_full_table_name(schema, results_table_name.unwrap());
+        let results_table_def = results_table_def.unwrap();
+
+        client
+            .execute(
+                &format!("CREATE TABLE IF NOT EXISTS {results_table_name} ({results_table_def})"),
+                &[],
+            )
             .await?;
     }
 
@@ -241,6 +274,17 @@ pub async fn index_job_update_processor(
     Ok(())
 }
 
+pub async fn cancel_all_jobs(map: &JobCancellationHandlersMap) -> AnyhowVoidResult {
+    let mut jobs_map = map.write().await;
+    let jobs: Vec<(i32, JobTaskCancelTx)> = jobs_map.drain().collect();
+
+    for (_, tx) in jobs {
+        tx.send(JOB_CANCELLED_MESSAGE.to_owned()).await?;
+    }
+
+    Ok(())
+}
+
 pub async fn set_job_handle(
     map: &JobCancellationHandlersMap,
     job_id: i32,
@@ -290,5 +334,22 @@ pub async fn schedule_job_retry(
             )),
         };
     });
+    Ok(())
+}
+
+pub async fn cancellation_handler<F, Fut>(
+    cancel_token: CancellationToken,
+    cleanup_fn: Option<F>,
+) -> AnyhowVoidResult
+where
+    F: FnOnce() -> Fut,
+    Fut: futures::Future<Output = AnyhowVoidResult>,
+{
+    cancel_token.cancelled().await;
+
+    if let Some(cleanup_fn) = cleanup_fn {
+        cleanup_fn().await?;
+    }
+
     Ok(())
 }

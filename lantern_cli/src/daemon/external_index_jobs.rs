@@ -1,45 +1,35 @@
-/*
-    External Index Jobs Table should have the following structure:
-    CREATE TABLE "public"."index_jobs" (
-        "id" SERIAL PRIMARY KEY,
-        "database_id" text NOT NULL,
-        "db_connection" text NOT NULL,
-        "schema" text NOT NULL,
-        "table" text NOT NULL,
-        "column" text NOT NULL,
-        "index" text,
-        "operator" text NOT NULL,
-        "efc" INT NOT NULL,
-        "ef" INT NOT NULL,
-        "m" INT NOT NULL,
-        "created_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "updated_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "canceled_at" timestamp,
-        "started_at" timestamp,
-        "finished_at" timestamp,
-        "failed_at" timestamp,
-        "failure_reason" text,
-        "progress" INT2 DEFAULT 0
-    );
-*/
-
-use super::cli;
-use super::helpers::{db_notification_listener, startup_hook, collect_pending_index_jobs, index_job_update_processor};
+use super::helpers::{cancel_all_jobs, cancellation_handler, collect_pending_index_jobs, db_notification_listener, index_job_update_processor, startup_hook};
 use crate::types::*;
-use super::types::{ExternalIndexJob, JobInsertNotification, VoidFuture, JobUpdateNotification, JobTaskCancelTx, JobCancellationHandlersMap};
-use futures::future;
-use crate::external_index::cli::CreateIndexArgs;
+use super::types::{ExternalIndexJob, JobCancellationHandlersMap, JobInsertNotification, JobRunArgs, JobTaskCancelTx, JobUpdateNotification};
+use crate::external_index::cli::{CreateIndexArgs, UMetricKind};
 use crate::logger::{Logger, LogLevel};
 use crate::utils::get_full_table_name;
 use tokio::sync::RwLock;
+use tokio_util::sync::CancellationToken;
 use std::collections::HashMap;
-use std::process;
 use std::sync::Arc;
-use tokio::sync::{
-    mpsc,
-    mpsc::{UnboundedReceiver, UnboundedSender},
-};
+use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tokio_postgres::{Client, NoTls};
+
+const JOB_TABLE_DEFINITION: &'static str = r#"
+"id" SERIAL PRIMARY KEY,
+"schema" text NOT NULL DEFAULT 'public',
+"table" text NOT NULL,
+"column" text NOT NULL,
+"index" text,
+"operator" text NOT NULL,
+"efc" INT NOT NULL,
+"ef" INT NOT NULL,
+"m" INT NOT NULL,
+"created_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+"updated_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+"canceled_at" timestamp,
+"started_at" timestamp,
+"finished_at" timestamp,
+"failed_at" timestamp,
+"failure_reason" text,
+"progress" INT2 DEFAULT 0
+"#;
 
 lazy_static! {
     static ref JOBS: JobCancellationHandlersMap = RwLock::new(HashMap::new());
@@ -119,6 +109,7 @@ async fn external_index_worker(
             let task_handle = tokio::spawn(async move {
                 let is_canceled = Arc::new(std::sync::RwLock::new(false));
                 let is_canceled_clone = is_canceled.clone();
+                let metric_kind = UMetricKind::from_ops(&job_clone.operator_class)?;
                 let task = tokio::task::spawn_blocking(move || {
                     let val: u32  = rand::random();
                     let index_path = format!("/tmp/daemon-index-{val}.usearch");
@@ -127,7 +118,7 @@ async fn external_index_worker(
                         uri: job_clone.db_uri.clone(),
                         table: job_clone.table.clone(),
                         column: job_clone.column.clone(),
-                        metric_kind: job_clone.metric_kind.clone(),
+                        metric_kind,
                         index_name: job_clone.index_name.clone(),
                         m: job_clone.m,
                         ef: job_clone.ef,
@@ -179,6 +170,7 @@ async fn job_insert_processor(
     client: Arc<Client>,
     mut notifications_rx: UnboundedReceiver<JobInsertNotification>,
     job_tx: UnboundedSender<ExternalIndexJob>,
+    db_uri: String,
     schema: String,
     table: String,
     logger: Arc<Logger>,
@@ -190,7 +182,7 @@ async fn job_insert_processor(
 
     tokio::spawn(async move {
         let full_table_name = Arc::new(get_full_table_name(&schema, &table));
-        let job_query_sql = Arc::new(format!("SELECT id, db_connection as db_uri, \"column\", \"table\", \"schema\", operator, efc, ef, m, \"index\"  FROM {0}", &full_table_name));
+        let job_query_sql = Arc::new(format!("SELECT id, \"column\", \"table\", \"schema\", operator, efc, ef, m, \"index\"  FROM {0}", &full_table_name));
         while let Some(notification) = notifications_rx.recv().await {
             let id = notification.id;
 
@@ -210,7 +202,7 @@ async fn job_insert_processor(
                 .await;
 
             if let Ok(row) = job_result {
-                job_tx.send(ExternalIndexJob::new(row)?)?;
+                job_tx.send(ExternalIndexJob::new(row, &db_uri.clone()))?;
             } else {
                 logger.error(&format!(
                     "Error while getting job {id}: {}",
@@ -224,9 +216,7 @@ async fn job_insert_processor(
     Ok(())
 }
 
-
-#[tokio::main]
-pub async fn start(args: cli::DaemonArgs, logger: Arc<Logger>) -> AnyhowVoidResult {
+pub async fn start(args: JobRunArgs, logger: Arc<Logger>, cancel_token: CancellationToken) -> AnyhowVoidResult {
     logger.info("Starting External Index Jobs");
 
     let (main_db_client, connection) = tokio_postgres::connect(&args.uri, NoTls).await?;
@@ -248,12 +238,14 @@ pub async fn start(args: cli::DaemonArgs, logger: Arc<Logger>) -> AnyhowVoidResu
     let (job_queue_tx, job_queue_rx): (UnboundedSender<ExternalIndexJob>, UnboundedReceiver<ExternalIndexJob>) =
         mpsc::unbounded_channel();
 
-    let table = args.external_index_table.unwrap();
+    let table = args.table_name;
 
     startup_hook(
         main_db_client.clone(),
         &table,
+        JOB_TABLE_DEFINITION,
         &args.schema,
+        None,
         None,
         None,
         &notification_channel,
@@ -261,48 +253,55 @@ pub async fn start(args: cli::DaemonArgs, logger: Arc<Logger>) -> AnyhowVoidResu
     )
     .await?;
 
-    let handles = vec![
-        Box::pin(db_notification_listener(
+    tokio::try_join!(
+        db_notification_listener(
             args.uri.clone(),
             &notification_channel,
             insert_notification_queue_tx.clone(),
             Some(update_notification_queue_tx.clone()),
+            cancel_token.clone(),
             logger.clone(),
-        )) as VoidFuture,
-        Box::pin(job_insert_processor(
+        ),
+        job_insert_processor(
             main_db_client.clone(),
             insert_notification_queue_rx,
             job_queue_tx,
+            args.uri.clone(),
             args.schema.clone(),
             table.clone(),
             logger.clone(),
-        )) as VoidFuture,
-        Box::pin(index_job_update_processor(
+        ),
+        index_job_update_processor(
             main_db_client.clone(),
             update_notification_queue_rx,
             args.schema.clone(),
             table.clone(),
             &JOBS
-        )) as VoidFuture,
-        Box::pin(external_index_worker(
+        ),
+        external_index_worker(
             job_queue_rx,
             main_db_client.clone(),
             args.schema.clone(),
             table.clone(),
             logger.clone(),
-        )) as VoidFuture,
-        Box::pin(collect_pending_index_jobs(
+        ),
+        collect_pending_index_jobs(
             main_db_client.clone(),
             insert_notification_queue_tx.clone(),
             get_full_table_name(&args.schema, &table),
-        )) as VoidFuture,
-    ];
+        ),
+        cancellation_handler(
+            cancel_token.clone(),
+            Some(move || async {
+                cancel_all_jobs(
+                    &JOBS,
+                )
+                .await?;
 
-    if let Err(e) = future::try_join_all(handles).await {
-        logger.error(&e.to_string());
-        logger.error("Fatal error exiting process");
-        process::exit(1);
-    }
+                Ok::<(), anyhow::Error>(())
+            })
+        )
+    )?;
 
     Ok(())
 }

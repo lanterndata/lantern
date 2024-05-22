@@ -404,7 +404,7 @@ async fn start_client_job(
     Ok(())
 }
 
-async fn stop_client_job(
+pub async fn stop_client_job(
     logger: Arc<Logger>,
     db_uri: &str,
     job_id: i32,

@@ -201,6 +201,7 @@ fn calculate_ground_truth(
          FROM {tmp_table_name} tmp
          WHERE id IN (SELECT id FROM {tmp_table_name} ORDER BY RANDOM() LIMIT 10)",
     ))?;
+
     let ground_truth = client.query(
         &format!("SELECT v, neighbors FROM {truth_table_name}",),
         &[],
