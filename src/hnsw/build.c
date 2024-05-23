@@ -93,10 +93,8 @@ static void AddTupleToUsearchIndex(ItemPointer         tid,
             usearch_scalar = usearch_scalar_f32_k;
             break;
         case INT_ARRAY:
-            // this is fine, since we only use integer arrays with hamming distance metric
-            // and hamming distance in usearch doesn't care about scalar type
-            // also, usearch will appropriately cast integer arrays even with this scalar type
-            usearch_scalar = usearch_scalar_f32_k;
+            // this is taken in hamming distance
+            usearch_scalar = usearch_scalar_b1_k;
             break;
         default:
             pg_unreachable();
@@ -460,6 +458,14 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
         buildstate->pq_codebook = load_pq_codebook(index, opts.dimensions, &opts.num_centroids, &opts.num_subvectors);
         assert(0 < opts.num_centroids && opts.num_centroids <= 256);
     }
+
+    buildstate->usearch_scalar = usearch_scalar_f32_k;
+    if(opts.metric_kind == usearch_metric_hamming_k) {
+        // when using hamming distance, we pass usearch dimension as number of bits
+        opts.dimensions *= sizeof(int32) * CHAR_BIT;
+        opts.quantization = usearch_scalar_b1_k;
+        buildstate->usearch_scalar = usearch_scalar_b1_k;
+    }
     // retrievers are not called from here,
     // but we are setting them so the storage layer knows objects are managed
     // externally and does not try to load objects from stream when we call
@@ -583,6 +589,13 @@ static void BuildEmptyIndex(Relation index, IndexInfo *indexInfo, ldb_HnswBuildS
     InitBuildState(buildstate, NULL, index, indexInfo);
     opts.dimensions = buildstate->dimensions;
     PopulateUsearchOpts(index, &opts);
+    // when using hamming distance, we pass dimension as number of bits
+    buildstate->usearch_scalar = usearch_scalar_f32_k;
+    if(opts.metric_kind == usearch_metric_hamming_k) {
+        opts.dimensions *= sizeof(int32) * CHAR_BIT;
+        opts.quantization = usearch_scalar_b1_k;
+        buildstate->usearch_scalar = usearch_scalar_b1_k;
+    }
 
     if(opts.pq) {
         buildstate->pq_codebook = load_pq_codebook(index, opts.dimensions, &opts.num_centroids, &opts.num_subvectors);
@@ -596,7 +609,7 @@ static void BuildEmptyIndex(Relation index, IndexInfo *indexInfo, ldb_HnswBuildS
     usearch_save_buffer(buildstate->usearch_index, result_buf, USEARCH_EMPTY_INDEX_SIZE, &error);
     assert(error == NULL && result_buf != NULL);
 
-    StoreExternalEmptyIndex(index, INIT_FORKNUM, result_buf, &opts);
+    StoreExternalEmptyIndex(index, INIT_FORKNUM, result_buf, buildstate->dimensions, &opts);
 
     usearch_free(buildstate->usearch_index, &error);
     assert(error == NULL);

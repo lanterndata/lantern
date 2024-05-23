@@ -68,6 +68,7 @@ uint32 node_tuple_size(char *node, uint32 vector_dim, const metadata_t *meta)
     pre.inverse_log_connectivity = meta->inverse_log_connectivity;
     node_t n = node_t{node};
     uint32 vector_bytes = vector_dim * bits_per_scalar(scalar_kind_to_cpp(meta->init_options.quantization)) / 8;
+    assert(vector_bytes > 0);
 
     // assuming at most 2**8 centroids(= 1 byte) per subvector
     if(meta->init_options.pq) {

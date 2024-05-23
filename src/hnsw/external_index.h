@@ -114,7 +114,8 @@ typedef struct
     float          *pq_codebook;
 } HnswInsertState;
 
-void StoreExternalEmptyIndex(Relation index, ForkNumber forkNum, char *data, usearch_init_options_t *opts);
+void StoreExternalEmptyIndex(
+    Relation index, ForkNumber forkNum, char *data, int dimensions, usearch_init_options_t *opts);
 void StoreExternalIndex(Relation                index,
                         const metadata_t       *external_index_metadata,
                         ForkNumber              forkNum,

@@ -145,7 +145,8 @@ void StoreExternalIndexNodes(Relation             index,
     LDB_FAILURE_POINT_CRASH_IF_ENABLED("just_before_updating_blockmaps_after_inserting_nodes");
 }
 
-void StoreExternalEmptyIndex(Relation index, ForkNumber forkNum, char *data, usearch_init_options_t *opts)
+void StoreExternalEmptyIndex(
+    Relation index, ForkNumber forkNum, char *data, int dimensions, usearch_init_options_t *opts)
 {
     // this method is intended to store empty indexes for unlogged tables (ambuildempty method) and should hence be
     // called with forkNum = INIT_FORKNUM
@@ -168,7 +169,7 @@ void StoreExternalEmptyIndex(Relation index, ForkNumber forkNum, char *data, use
 
     headerp->magicNumber = LDB_WAL_MAGIC_NUMBER;
     headerp->version = LDB_WAL_VERSION_NUMBER;
-    headerp->vector_dim = opts->dimensions;
+    headerp->vector_dim = dimensions;
     headerp->m = opts->connectivity;
     headerp->ef_construction = opts->expansion_add;
     headerp->ef = opts->expansion_search;
@@ -225,6 +226,9 @@ void StoreExternalIndex(Relation                index,
     headerp->magicNumber = LDB_WAL_MAGIC_NUMBER;
     headerp->version = LDB_WAL_VERSION_NUMBER;
     headerp->vector_dim = opts->dimensions;
+    if(opts->metric_kind == usearch_metric_hamming_k) {
+        headerp->vector_dim /= sizeof(int32) * CHAR_BIT;
+    }
     headerp->m = opts->connectivity;
     headerp->ef_construction = opts->expansion_add;
     headerp->ef = opts->expansion_search;
