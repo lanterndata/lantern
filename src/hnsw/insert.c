@@ -117,12 +117,20 @@ bool ldb_aminsert(Relation         index,
         elog(ERROR, "unsupported or outdated wal version. Please reindex");
     }
 
-    opts.dimensions = hdr->vector_dim;
     opts.pq = hdr->pq;
     opts.num_centroids = hdr->num_centroids;
     opts.num_subvectors = hdr->num_subvectors;
-    CheckHnswIndexDimensions(index, values[ 0 ], opts.dimensions);
+    CheckHnswIndexDimensions(index, values[ 0 ], hdr->vector_dim);
     PopulateUsearchOpts(index, &opts);
+    opts.dimensions = hdr->vector_dim;
+    // CheckHnswIndexDimensions(index, values[ 0 ], opts.dimensions);
+    usearch_scalar_kind_t usearch_scalar = usearch_scalar_f32_k;
+    // when using hamming distance, we pass dimension as number of bits
+    if(opts.metric_kind == usearch_metric_hamming_k) {
+        opts.dimensions *= sizeof(int32) * CHAR_BIT;
+        opts.quantization = usearch_scalar_b1_k;
+        usearch_scalar = usearch_scalar_b1_k;
+    }
     opts.retriever_ctx = ldb_wal_retriever_area_init(index, hdr);
     opts.retriever = ldb_wal_index_node_retriever;
     opts.retriever_mut = ldb_wal_index_node_retriever_mut;
@@ -157,7 +165,7 @@ bool ldb_aminsert(Relation         index,
     assert(!error);
 
     datum = PointerGetDatum(PG_DETOAST_DATUM(values[ 0 ]));
-    void *vector = DatumGetSizedArray(datum, insertstate->columnType, opts.dimensions, false);
+    void *vector = DatumGetSizedArray(datum, insertstate->columnType, hdr->vector_dim, false);
 
 #if LANTERNDB_COPYNODES
     // currently not fully ported to the latest changes
@@ -188,7 +196,7 @@ bool ldb_aminsert(Relation         index,
     // 3) (sometimes) the page that used to be last page of the index
     // 4) The blockmap page for the block in which the vector was added
     // Generic XLog supports up to 4 pages in a single commit, so we are good.
-    int vector_size_bytes = opts.dimensions * sizeof(float);
+    int vector_size_bytes = hdr->vector_dim * sizeof(float);
 
     ldb_unaligned_slot_union_t slot;
     uint64                     slot_copy;
@@ -202,7 +210,7 @@ bool ldb_aminsert(Relation         index,
 
     usearch_init_node(&meta, new_tuple->node, heap_tid_copy, level, slot_copy, vector, vector_size_bytes);
 
-    usearch_add_external(uidx, heap_tid_copy, vector, new_tuple->node, usearch_scalar_f32_k, level, slot_copy, &error);
+    usearch_add_external(uidx, heap_tid_copy, vector, new_tuple->node, usearch_scalar, level, slot_copy, &error);
     if(error != NULL) {
         elog(ERROR, "usearch insert error: %s", error);
     }

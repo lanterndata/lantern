@@ -83,6 +83,13 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
         assert(tmp_num_subvectors == headerp->num_subvectors);
     }
 
+    scanstate->usearch_scalar = usearch_scalar_f32_k;
+    if(opts.metric_kind == usearch_metric_hamming_k) {
+        opts.dimensions *= sizeof(int32) * CHAR_BIT;
+        opts.quantization = usearch_scalar_b1_k;
+        scanstate->usearch_scalar = usearch_scalar_b1_k;
+    }
+
     opts.retriever = ldb_wal_index_node_retriever;
     opts.retriever_mut = ldb_wal_index_node_retriever_mut;
 
@@ -215,7 +222,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         ldb_dlog("LANTERN querying index for %d elements", k);
         num_returned = usearch_search_ef(scanstate->usearch_index,
                                          vec,
-                                         usearch_scalar_f32_k,
+                                         scanstate->usearch_scalar,
                                          k,
                                          ef,
                                          scanstate->labels,
@@ -262,7 +269,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         ldb_dlog("LANTERN - querying index for %d elements", k);
         num_returned = usearch_search_ef(scanstate->usearch_index,
                                          vec,
-                                         usearch_scalar_f32_k,
+                                         scanstate->usearch_scalar,
                                          k,
                                          ef,
                                          scanstate->labels,

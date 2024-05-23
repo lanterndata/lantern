@@ -25,8 +25,10 @@ typedef struct
     double reltuples;
 
     /* hnsw */
-    usearch_index_t usearch_index;
-    float          *pq_codebook;
+    usearch_index_t       usearch_index;
+    usearch_scalar_kind_t usearch_scalar;
+
+    float *pq_codebook;
 
     /* Memory */
     MemoryContext tmpCtx;

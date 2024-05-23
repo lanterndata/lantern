@@ -23,9 +23,12 @@ typedef struct HnswScanState
     // used and advanced through gettupple calls
     int current;
     // set when the distances and labels are populated
-    int             count;
-    usearch_index_t usearch_index;
-    float          *pq_codebook;
+    int count;
+
+    usearch_index_t       usearch_index;
+    usearch_scalar_kind_t usearch_scalar;
+
+    float *pq_codebook;
 
     RetrieverCtx *retriever_ctx;
 } HnswScanState;

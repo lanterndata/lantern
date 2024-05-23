@@ -311,10 +311,9 @@ static float4 array_dist(ArrayType *a, ArrayType *b, usearch_metric_kind_t metri
         int32 *ax_int = (int32 *)ARR_DATA_PTR(a);
         int32 *bx_int = (int32 *)ARR_DATA_PTR(b);
 
-        // calling usearch_scalar_f32_k here even though it's an integer array is fine
-        // the hamming distance in usearch actually ignores the scalar type
-        // and it will get casted appropriately in usearch even with this scalar type
-        result = usearch_distance(ax_int, bx_int, usearch_scalar_f32_k, a_dim, metric_kind, &error);
+        // for hamming distance dimension is number of bits in the vector
+        result = usearch_distance(
+            ax_int, bx_int, usearch_scalar_b1_k, a_dim * sizeof(int32) * CHAR_BIT, usearch_metric_hamming_k, &error);
         assert(!error);
     } else {
         int     dim;
