@@ -302,7 +302,7 @@ async fn start_client_job(
 
     let (job_signal_tx, mut job_signal_rx): (UnboundedSender<Signal>, UnboundedReceiver<Signal>) =
         mpsc::unbounded_channel();
-    logger.info("Staring Client Listener");
+    logger.info("Starting Client Listener");
 
     // Connect to client database
     let (db_client, connection) = tokio_postgres::connect(&db_uri, NoTls).await?;

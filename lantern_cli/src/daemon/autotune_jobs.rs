@@ -15,7 +15,7 @@ use tokio::sync::{
 };
 use tokio_postgres::{Client, NoTls};
 
-const JOB_TABLE_DEFINITION: &'static str = r#"
+pub const JOB_TABLE_DEFINITION: &'static str = r#"
 "id" SERIAL PRIMARY KEY,
 "schema" text NOT NULL DEFAULT 'public',
 "table" text NOT NULL,
@@ -47,10 +47,6 @@ latency DOUBLE PRECISION NOT NULL,
 build_time DOUBLE PRECISION NULL
 "#;
 
-lazy_static! {
-    static ref JOBS: JobCancellationHandlersMap = RwLock::new(HashMap::new());
-}
-
 async fn autotune_worker(
     mut job_queue_rx: UnboundedReceiver<AutotuneJob>,
     client: Arc<Client>,
@@ -58,6 +54,7 @@ async fn autotune_worker(
     schema: String,
     table: String,
     autotune_results_table: String,
+    jobs_map: Arc<JobCancellationHandlersMap>,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
     let schema = Arc::new(schema);
@@ -156,17 +153,17 @@ async fn autotune_worker(
                 task.await?
             });
 
-            set_job_handle(&JOBS, job.id, cancel_tx).await?;
+            set_job_handle(&jobs_map, job.id, cancel_tx).await?;
       
             match task_handle.await? {
                 Ok(_) => {
-                    remove_job_handle(&JOBS, job.id).await?;
+                    remove_job_handle(&jobs_map, job.id).await?;
                     // mark success
                     client_ref.execute(&format!("UPDATE {jobs_table_name} SET finished_at=NOW(), updated_at=NOW() WHERE id=$1"), &[&job.id]).await?;
                 },
                 Err(e) => {
                     logger.error(&format!("Error while executing job {job_id}: {e}", job_id=job.id));
-                    remove_job_handle(&JOBS, job.id).await?;
+                    remove_job_handle(&jobs_map, job.id).await?;
                     // update failure reason
                     client_ref.execute(&format!("UPDATE {jobs_table_name} SET failed_at=NOW(), updated_at=NOW(), failure_reason=$1 WHERE id=$2"), &[&e.to_string(), &job.id]).await?;
                 }
@@ -267,6 +264,9 @@ pub async fn start(args: JobRunArgs, logger: Arc<Logger>, cancel_token: Cancella
     )
     .await?;
 
+    let jobs_map: Arc<JobCancellationHandlersMap> = Arc::new(RwLock::new(HashMap::new()));
+    let jobs_map_clone = jobs_map.clone();
+
     tokio::try_join!(
         db_notification_listener(
             args.uri.clone(),
@@ -290,7 +290,7 @@ pub async fn start(args: JobRunArgs, logger: Arc<Logger>, cancel_token: Cancella
             update_notification_queue_rx,
             args.schema.clone(),
             table.clone(),
-            &JOBS
+            jobs_map.clone()
         ),
         autotune_worker(
             job_queue_rx,
@@ -299,6 +299,7 @@ pub async fn start(args: JobRunArgs, logger: Arc<Logger>, cancel_token: Cancella
             args.schema.clone(),
             table.clone(),
             autotune_results_table.clone(),
+            jobs_map.clone(),
             logger.clone(),
         ),
         collect_pending_index_jobs(
@@ -310,7 +311,7 @@ pub async fn start(args: JobRunArgs, logger: Arc<Logger>, cancel_token: Cancella
             cancel_token.clone(),
             Some(move || async {
                 cancel_all_jobs(
-                    &JOBS,
+                    jobs_map_clone,
                 )
                 .await?;
 

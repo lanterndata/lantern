@@ -11,7 +11,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tokio_postgres::{Client, NoTls};
 
-const JOB_TABLE_DEFINITION: &'static str = r#"
+pub const JOB_TABLE_DEFINITION: &'static str = r#"
 "id" SERIAL PRIMARY KEY,
 "schema" text NOT NULL DEFAULT 'public',
 "table" text NOT NULL,
@@ -31,18 +31,14 @@ const JOB_TABLE_DEFINITION: &'static str = r#"
 "progress" INT2 DEFAULT 0
 "#;
 
-lazy_static! {
-    static ref JOBS: JobCancellationHandlersMap = RwLock::new(HashMap::new());
-}
-
-async fn set_job_handle(job_id: i32, handle: JobTaskCancelTx) -> AnyhowVoidResult {
-    let mut jobs = JOBS.write().await;
+async fn set_job_handle(jobs_map: Arc<JobCancellationHandlersMap>, job_id: i32, handle: JobTaskCancelTx) -> AnyhowVoidResult {
+    let mut jobs = jobs_map.write().await;
     jobs.insert(job_id, handle);
     Ok(())
 }
 
-async fn remove_job_handle(job_id: i32) -> AnyhowVoidResult {
-    let mut jobs = JOBS.write().await;
+async fn remove_job_handle(jobs_map: Arc<JobCancellationHandlersMap>, job_id: i32) -> AnyhowVoidResult {
+    let mut jobs = jobs_map.write().await;
     jobs.remove(&job_id);
     Ok(())
 }
@@ -52,6 +48,7 @@ async fn external_index_worker(
     client: Arc<Client>,
     schema: String,
     table: String,
+    jobs_map: Arc<JobCancellationHandlersMap>,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
     let schema = Arc::new(schema);
@@ -143,17 +140,17 @@ async fn external_index_worker(
                 task.await?
             });
 
-            set_job_handle(job.id, cancel_tx).await?;
+            set_job_handle(jobs_map.clone(), job.id, cancel_tx).await?;
       
             match task_handle.await? {
                 Ok(_) => {
-                    remove_job_handle(job.id).await?;
+                    remove_job_handle(jobs_map.clone(), job.id).await?;
                     // mark success
                     client_ref.execute(&format!("UPDATE {jobs_table_name} SET finished_at=NOW(), updated_at=NOW() WHERE id=$1"), &[&job.id]).await?;
                 },
                 Err(e) => {
                     logger.error(&format!("Error while executing job {job_id}: {e}", job_id=job.id));
-                    remove_job_handle(job.id).await?;
+                    remove_job_handle(jobs_map.clone(), job.id).await?;
                     // update failure reason
                     client_ref.execute(&format!("UPDATE {jobs_table_name} SET failed_at=NOW(), updated_at=NOW(), failure_reason=$1 WHERE id=$2"), &[&e.to_string(), &job.id]).await?;
                 }
@@ -253,6 +250,9 @@ pub async fn start(args: JobRunArgs, logger: Arc<Logger>, cancel_token: Cancella
     )
     .await?;
 
+    let jobs_map: Arc<JobCancellationHandlersMap> = Arc::new(RwLock::new(HashMap::new()));
+    let jobs_map_clone = jobs_map.clone();
+
     tokio::try_join!(
         db_notification_listener(
             args.uri.clone(),
@@ -276,13 +276,14 @@ pub async fn start(args: JobRunArgs, logger: Arc<Logger>, cancel_token: Cancella
             update_notification_queue_rx,
             args.schema.clone(),
             table.clone(),
-            &JOBS
+            jobs_map.clone()
         ),
         external_index_worker(
             job_queue_rx,
             main_db_client.clone(),
             args.schema.clone(),
             table.clone(),
+            jobs_map.clone(),
             logger.clone(),
         ),
         collect_pending_index_jobs(
@@ -294,7 +295,7 @@ pub async fn start(args: JobRunArgs, logger: Arc<Logger>, cancel_token: Cancella
             cancel_token.clone(),
             Some(move || async {
                 cancel_all_jobs(
-                    &JOBS,
+                    jobs_map_clone,
                 )
                 .await?;
 

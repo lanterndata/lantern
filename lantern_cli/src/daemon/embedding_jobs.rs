@@ -4,8 +4,8 @@ use super::helpers::{
     schedule_job_retry, set_job_handle, startup_hook,
 };
 use super::types::{
-    EmbeddingJob, JobCancellationHandlersMap, JobInsertNotification, JobRunArgs,
-    JobUpdateNotification,
+    EmbeddingJob, JobBatchingHashMap, JobCancellationHandlersMap, JobInsertNotification,
+    JobRunArgs, JobUpdateNotification,
 };
 use crate::embeddings::cli::EmbeddingArgs;
 use crate::logger::Logger;
@@ -23,7 +23,7 @@ use tokio_postgres::types::ToSql;
 use tokio_postgres::{Client, NoTls};
 use tokio_util::sync::CancellationToken;
 
-const JOB_TABLE_DEFINITION: &'static str = r#"
+pub const JOB_TABLE_DEFINITION: &'static str = r#"
 "id" SERIAL PRIMARY KEY,
 "schema" text NOT NULL DEFAULT 'public',
 "table" text NOT NULL,
@@ -45,12 +45,6 @@ const JOB_TABLE_DEFINITION: &'static str = r#"
 "failed_rows" bigint DEFAULT 0
 "#;
 const EMB_LOCK_TABLE_NAME: &'static str = "_lantern_emb_job_locks";
-
-lazy_static! {
-    static ref JOBS: JobCancellationHandlersMap = RwLock::new(HashMap::new());
-    static ref JOB_BATCHING_HASHMAP: Arc<Mutex<HashMap<i32, Vec<String>>>> =
-        Arc::new(Mutex::new(HashMap::new()));
-}
 
 async fn lock_row(
     client: Arc<Client>,
@@ -155,12 +149,15 @@ async fn stream_job(
     notifications_tx: UnboundedSender<JobInsertNotification>,
     jobs_table_name: String,
     _lock_table_name: String,
+    jobs_map: Arc<JobCancellationHandlersMap>,
     job: EmbeddingJob,
 ) -> AnyhowVoidResult {
     let top_logger = logger.clone();
     let job_id = job.id;
     let notifications_tx_clone = notifications_tx.clone();
     let job_clone = job.clone();
+    let jobs_map_clone = jobs_map.clone();
+
     let task = tokio::spawn(async move {
         logger.info(&format!("Start streaming job {}", job.id));
         // Enable triggers for job
@@ -181,7 +178,7 @@ async fn stream_job(
         }
 
         let (job_error_tx, mut job_error_rx): (Sender<String>, Receiver<String>) = mpsc::channel(1);
-        set_job_handle(&JOBS, job.id, job_error_tx).await?;
+        set_job_handle(&jobs_map, job.id, job_error_tx).await?;
 
         let connection_logger = logger.clone();
 
@@ -333,7 +330,7 @@ async fn stream_job(
 
     if let Err(e) = task.await? {
         top_logger.error(&format!("Error while streaming job {job_id}: {e}"));
-        remove_job_handle(&JOBS, job_id).await?;
+        remove_job_handle(&jobs_map_clone, job_id).await?;
         if job_clone.is_init {
             toggle_client_job(
                 job_clone.id,
@@ -360,6 +357,7 @@ async fn embedding_worker(
     db_uri: String,
     schema: String,
     table: String,
+    jobs_map: Arc<JobCancellationHandlersMap>,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
     let schema = Arc::new(schema);
@@ -455,7 +453,7 @@ async fn embedding_worker(
                     }
 
                     if job.is_last_chunk {
-                        remove_job_handle(&JOBS, job.id).await?;
+                        remove_job_handle(&jobs_map, job.id).await?;
                     }
                 }
                 Err(e) => {
@@ -500,7 +498,7 @@ async fn embedding_worker(
                         }
                     } else {
                         // Send error via channel, so init streaming task will catch that
-                        let jobs = JOBS.read().await;
+                        let jobs = jobs_map.read().await;
                         if let Some(tx) = jobs.get(&job.id) {
                             tx.send(e.to_string()).await?;
                         }
@@ -564,6 +562,8 @@ async fn job_insert_processor(
     schema: String,
     table: String,
     data_path: &'static str,
+    jobs_map: Arc<JobCancellationHandlersMap>,
+    job_batching_hashmap: Arc<JobBatchingHashMap>,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
     // This function will have 2 running tasks
@@ -592,7 +592,7 @@ async fn job_insert_processor(
     let job_tx_r1 = job_tx.clone();
     let logger_r1 = logger.clone();
     let lock_table_name = Arc::new(get_full_table_name(&schema, EMB_LOCK_TABLE_NAME));
-    let job_batching_hashmap_r1 = JOB_BATCHING_HASHMAP.clone();
+    let job_batching_hashmap_r1 = job_batching_hashmap.clone();
 
     let insert_processor_task = tokio::spawn(async move {
         let (insert_client, connection) = tokio_postgres::connect(&db_uri_r1, NoTls).await?;
@@ -672,6 +672,7 @@ async fn job_insert_processor(
                     notifications_tx.clone(),
                     full_table_name_r1.to_string(),
                     lock_table_name.to_string(),
+                    jobs_map.clone(),
                     job,
                 ));
             } else {
@@ -684,7 +685,7 @@ async fn job_insert_processor(
         Ok(()) as AnyhowVoidResult
     });
 
-    let job_batching_hashmap = JOB_BATCHING_HASHMAP.clone();
+    let job_batching_hashmap = job_batching_hashmap.clone();
     let batch_collector_task = tokio::spawn(async move {
         let (batch_client, connection) = tokio_postgres::connect(&db_uri, NoTls).await?;
         tokio::spawn(async move { connection.await.unwrap() });
@@ -750,6 +751,8 @@ async fn job_update_processor(
     job_insert_queue_tx: UnboundedSender<JobInsertNotification>,
     schema: String,
     table: String,
+    jobs_map: Arc<JobCancellationHandlersMap>,
+    job_batching_hashmap: Arc<JobBatchingHashMap>,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
     tokio::spawn(async move {
@@ -774,7 +777,7 @@ async fn job_update_processor(
               toggle_client_job(id, db_uri.clone(), "id".to_owned(), row.get::<&str, String>("column").to_owned(), row.get::<&str, String>("dst_column").to_owned(), row.get::<&str, String>("table").to_owned(), row.get::<&str, String>("schema").to_owned(), logger.level.clone(), Some(job_insert_queue_tx.clone()), canceled_at.is_none()).await?;
             } else if canceled_at.is_some() {
                 // Cancel ongoing job
-                let jobs = JOBS.read().await;
+                let jobs = jobs_map.read().await;
                 let job = jobs.get(&id);
 
                 if let Some(tx) = job {
@@ -783,7 +786,7 @@ async fn job_update_processor(
                 drop(jobs);
 
                 // Cancel collected jobs
-                let mut job_map = JOB_BATCHING_HASHMAP.lock().await;
+                let mut job_map = job_batching_hashmap.lock().await;
                 job_map.remove(&id);
                 drop(job_map);
             }
@@ -908,6 +911,9 @@ pub async fn start(
     let main_db_uri = args.uri.clone();
     let schema = args.schema.clone();
 
+    let jobs_map: Arc<JobCancellationHandlersMap> = Arc::new(RwLock::new(HashMap::new()));
+    let job_batching_hashmap: Arc<JobBatchingHashMap> = Arc::new(Mutex::new(HashMap::new()));
+
     tokio::try_join!(
         db_notification_listener(
             main_db_uri.clone(),
@@ -925,6 +931,8 @@ pub async fn start(
             schema.clone(),
             table.clone(),
             data_path,
+            jobs_map.clone(),
+            job_batching_hashmap.clone(),
             logger.clone(),
         ),
         job_update_processor(
@@ -933,6 +941,8 @@ pub async fn start(
             insert_notification_queue_tx.clone(),
             schema.clone(),
             table.clone(),
+            jobs_map.clone(),
+            job_batching_hashmap.clone(),
             logger.clone(),
         ),
         embedding_worker(
@@ -941,6 +951,7 @@ pub async fn start(
             main_db_uri.clone(),
             schema.clone(),
             table.clone(),
+            jobs_map.clone(),
             logger.clone(),
         ),
         collect_pending_jobs(

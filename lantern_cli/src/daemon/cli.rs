@@ -60,7 +60,7 @@ pub struct DaemonArgs {
     pub external_index: bool,
 
     /// Schema name
-    #[arg(short, long, default_value = "lantern")]
+    #[arg(short, long, default_value = "lantern_extras")]
     pub schema: String,
 
     /// Log level

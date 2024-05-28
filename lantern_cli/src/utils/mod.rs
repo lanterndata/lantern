@@ -1,3 +1,6 @@
+#[cfg(feature = "daemon")]
+pub mod test_utils;
+
 pub fn quote_ident(str: &str) -> String {
     format!("\"{}\"", str.replace("\"", "\"\""))
 }

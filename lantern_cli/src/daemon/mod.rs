@@ -1,12 +1,12 @@
 use tokio::sync::RwLock;
-mod autotune_jobs;
+pub mod autotune_jobs;
 use tokio_postgres::{AsyncMessage, NoTls};
 pub mod cli;
 mod client_embedding_jobs;
-mod embedding_jobs;
+pub mod embedding_jobs;
 use futures::StreamExt;
 use tokio_util::sync::CancellationToken;
-mod external_index_jobs;
+pub mod external_index_jobs;
 mod helpers;
 mod types;
 
@@ -260,7 +260,6 @@ async fn db_change_listener(
     Ok(())
 }
 
-#[tokio::main]
 pub async fn start(
     args: cli::DaemonArgs,
     logger: Option<Logger>,
@@ -269,8 +268,6 @@ pub async fn start(
     let logger = Arc::new(logger.unwrap_or(Logger::new("Lantern Daemon", args.log_level.value())));
 
     let target_databases: Vec<TargetDB> = get_target_databases(&args).await?;
-
-    logger.info(&format!("Target Databases -> {:?}", target_databases));
 
     let args_arc = Arc::new(args);
     let args_arc_clone = args_arc.clone();

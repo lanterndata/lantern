@@ -125,7 +125,16 @@ pub async fn startup_hook(
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
     logger.info("Setting up environment");
-    // create table if not exists
+    // create schema and table if not exists
+    client
+        .execute(
+            &format!(
+                "CREATE SCHEMA IF NOT EXISTS {schema}",
+                schema = quote_ident(schema)
+            ),
+            &[],
+        )
+        .await?;
     let full_table_name = get_full_table_name(schema, table);
     client
         .execute(
@@ -242,7 +251,7 @@ pub async fn index_job_update_processor(
     mut update_queue_rx: UnboundedReceiver<JobUpdateNotification>,
     schema: String,
     table: String,
-    job_cancelleation_handlers: &'static JobCancellationHandlersMap,
+    job_cancelleation_handlers: Arc<JobCancellationHandlersMap>,
 ) -> AnyhowVoidResult {
     tokio::spawn(async move {
         while let Some(notification) = update_queue_rx.recv().await {
@@ -274,7 +283,7 @@ pub async fn index_job_update_processor(
     Ok(())
 }
 
-pub async fn cancel_all_jobs(map: &JobCancellationHandlersMap) -> AnyhowVoidResult {
+pub async fn cancel_all_jobs(map: Arc<JobCancellationHandlersMap>) -> AnyhowVoidResult {
     let mut jobs_map = map.write().await;
     let jobs: Vec<(i32, JobTaskCancelTx)> = jobs_map.drain().collect();
 
