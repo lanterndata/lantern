@@ -124,7 +124,6 @@ elif [ "$MISC" -eq 1 ]; then
 else
     SCHEDULE='schedule.txt'
 fi
-
 if [[ -n "$FILTER" || -n "$EXCLUDE" ]]; then
     if [ "$PARALLEL" -eq 1 ]; then
         TEST_FILES=$(cat $SCHEDULE | grep -E '^(test:|test_begin:|test_end:)' | sed -E -e 's/^test_begin:|test_end:/test:/' | tr " " "\n" | sed -e '/^$/d')
@@ -199,7 +198,11 @@ else
     fi
 
     while IFS= read -r line; do
-        if [[ "$line" =~ ^test_pgvector: ]]; then
+        if [[ $PG_VERSION -ge 13 && "$line" =~  ^ignore: ]]; then
+            # pass
+            # needed in pg16+, which fails to parse ignored lines
+            echo
+        elif [[ "$line" =~ ^test_pgvector: ]]; then
             test_name=$(echo "$line" | sed -e 's/test_pgvector://')
             if [ "$pgvector_installed" == "1" ]; then
                 echo "test: $test_name" >> $TMP_OUTDIR/schedule.txt
