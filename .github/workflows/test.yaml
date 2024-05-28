@@ -50,9 +50,6 @@ jobs:
         if: ${{ !startsWith(matrix.os, 'mac') }}
       - name: Run update tests linux
         id: update-test-linux
-        # We fix some flaky tests in new versions but those keep failing in the version before, resulting
-        # in CI failures. This prevents it: TODO: 0.4.0+ remove this
-        continue-on-error: true
         run: |
           # Start postgres
           sudo su postgres -c "PG_VERSION=$PG_VERSION RUN_TESTS=0 ./ci/scripts/run-tests-linux.sh" && \
@@ -63,7 +60,6 @@ jobs:
         if: ${{ !startsWith(matrix.os, 'mac') }}
       - name: Run catalog update checks
         id: catalog-update-test-linux
-        continue-on-error: true
         run: |
           sudo su postgres -c "PG_VERSION=$PG_VERSION RUN_TESTS=0 ./ci/scripts/run-tests-linux.sh" && \
           sudo su -c  "PG_VERSION=$PG_VERSION DATABASE_URL='postgresql://postgres@localhost:5432/postgres' ruby ./scripts/test_updates/main.rb test lantern" &&\
@@ -71,21 +67,6 @@ jobs:
         env:
           PG_VERSION: ${{ matrix.postgres }}
         if: ${{ !startsWith(matrix.os, 'mac') }}
-
-      - name: Write a comment if the update tests failied above
-        if: ${{ !startsWith(matrix.os, 'mac') }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if [ ${{ steps.update-test-linux.outcome }} != 'success' ]; then
-            echo "Update tests failed. Posting a comment to the PR/commit..."
-            PR_NUMBER=$(jq --raw-output .pull_request.number "$GITHUB_EVENT_PATH")
-            if [ "$PR_NUMBER" != "null" ]; then
-              gh pr comment "$PR_NUMBER" --body "The update tests on Linux failed. Please check the logs for more details."
-            else
-              echo "Could not determine PR number. Skipping comment."
-            fi
-          fi
 
       - name: Run tests mac
         id: test-mac
