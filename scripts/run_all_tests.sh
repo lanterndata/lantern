@@ -245,6 +245,10 @@ function print_diff {
 
 trap print_diff ERR
 
+if [ $PG_VERSION -lt 12 ]; then
+  # disable parallel tests on pg11 since they fail because of lack of reindex index concurrently
+  exit 0
+fi
 if [ "$PARALLEL" -eq 1 ]; then
     cd parallel
     MISC=$MISC PARALLEL=$PARALLEL DB_USER=$DB_USER $(pg_config --pkglibdir)/pgxs/src/test/regress/pg_regress --user=$DB_USER --schedule=$SCHEDULE --outputdir=$TMP_OUTDIR --launcher=../test_runner.sh
