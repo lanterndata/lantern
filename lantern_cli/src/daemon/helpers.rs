@@ -4,7 +4,7 @@ use super::types::{
 };
 use crate::logger::Logger;
 use crate::types::{AnyhowVoidResult, JOB_CANCELLED_MESSAGE};
-use crate::utils::{get_full_table_name, quote_ident};
+use crate::utils::{get_common_embedding_ignore_filters, get_full_table_name, quote_ident};
 use futures::StreamExt;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
@@ -259,8 +259,8 @@ pub async fn remove_job_handle(map: &JobCancellationHandlersMap, job_id: i32) ->
 
 pub fn get_missing_rows_filter(src_column: &str, out_column: &str) -> String {
     format!(
-        "({src_column} IS NOT NULL OR {src_column} != '') AND {out_column} IS NULL",
-        src_column = quote_ident(&src_column),
+        "({common_filter}) AND {out_column} IS NULL",
+        common_filter = get_common_embedding_ignore_filters(&quote_ident(&src_column)),
         out_column = quote_ident(&out_column)
     )
 }

@@ -37,7 +37,7 @@ use super::types::{
 };
 use crate::embeddings::cli::EmbeddingArgs;
 use crate::logger::Logger;
-use crate::utils::{get_full_table_name, quote_ident};
+use crate::utils::{get_common_embedding_ignore_filters, get_full_table_name, quote_ident};
 use crate::{embeddings, types::*};
 use futures::future;
 use std::collections::HashMap;
@@ -207,8 +207,8 @@ async fn stream_job(
         let full_table_name = get_full_table_name(schema, table);
 
         let filter_sql = format!(
-            "WHERE {out_column} IS NULL AND {column} IS NOT NULL AND {column} != ''",
-            column = quote_ident(column)
+            "WHERE {out_column} IS NULL AND {common_filter}",
+            common_filter = get_common_embedding_ignore_filters(&quote_ident(column)),
         );
 
         let transaction = job_client.transaction().await?;

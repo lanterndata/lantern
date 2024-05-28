@@ -25,3 +25,7 @@ pub fn append_params_to_uri(db_uri: &str, params: &str) -> String {
 
     db_uri_string
 }
+
+pub fn get_common_embedding_ignore_filters(src_column: &str) -> String {
+    format!("{src_column} IS NOT NULL AND {src_column} != '' AND {src_column} != 'Error: Summary failed (llm)'")
+}
