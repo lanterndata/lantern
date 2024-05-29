@@ -229,21 +229,22 @@ async fn stream_job(
             return Ok(());
         }
 
-        let portal = transaction
-            .bind(
-                &format!(
-                    "SELECT {pk}::text FROM {full_table_name} {filter_sql};",
-                    pk = quote_ident(&job.pk)
-                ),
-                &[],
-            )
-            .await?;
+        let portal_query = format!(
+            "SELECT {pk}::text FROM {full_table_name} {filter_sql};",
+            pk = quote_ident(&job.pk)
+        );
+
+        let portal = transaction.bind(&portal_query, &[]).await?;
         let mut progress = 0;
         let mut processed_rows = 0;
 
         let batch_size = embeddings::get_default_batch_size(&job.model) as i32;
+        // let mut reconnected = false;
         loop {
             // Check if job was errored or cancelled
+            logger.debug(&format!(
+                "Trying to receive error for streaming job {job_id}"
+            ));
             if let Ok(err_msg) = job_error_rx.try_recv() {
                 logger.error(&format!("Error received on job {job_id}. {err_msg}"));
                 if job.is_init {
@@ -267,11 +268,28 @@ async fn stream_job(
             }
 
             // poll batch_size rows from portal and send it to embedding thread via channel
+            logger.debug(&format!("Polling rows for streaming job {job_id}"));
             let rows = transaction.query_portal(&portal, batch_size).await?;
+            logger.debug(&format!(
+                "Polled {} rows for streaming job {job_id}",
+                rows.len()
+            ));
 
             if rows.len() == 0 {
+                // if reconnected {
+                logger.debug(&format!(
+                        "Portal does not return rows for streaming job {job_id} after reconnect, exit streaming"
+                    ));
                 break;
+                // } else {
+                //     logger.debug(&format!("Portal does not return rows for streaming job {job_id}, reconnecting portal"));
+                //     logger.debug(&format!("Portal query for job {job_id} is: {portal_query}"));
+                //     portal = transaction.bind(&portal_query, &[]).await?;
+                //     reconnected = true;
+                //     continue;
+                // }
             }
+            // reconnected = false;
 
             let mut streamed_job = job.clone();
             let row_ids: Vec<String> = rows.iter().map(|r| r.get::<usize, String>(0)).collect();
@@ -281,8 +299,7 @@ async fn stream_job(
             // TODO:: This check is now commented because
             // There might be case when the job will be stopped abnoarmally and
             // Rows will stay locked, so in next run the missed rows will be considered as locked
-            // And won't be taken to be processed
-            // streamed_job.set_row_ids(row_ids);
+            // And won't be taken to be processed streamed_job.set_row_ids(row_ids);
             // if !job.is_init
             //     && !lock_rows(
             //         main_client.clone(),
@@ -313,7 +330,9 @@ async fn stream_job(
                 streamed_job.set_is_last_chunk(true);
             }
 
+            logger.debug(&format!("Sending streaming job {job_id} to process"));
             job_queue_tx.send(streamed_job).await?;
+            logger.debug(&format!("Sent streaming job {job_id} to process"));
         }
 
         Ok::<(), anyhow::Error>(())
@@ -346,6 +365,7 @@ async fn embedding_worker(
         let client = Arc::new(client);
         logger.info("Embedding worker started");
         while let Some(job) = job_queue_rx.recv().await {
+            logger.debug(&format!("Embedding worker received job {}", job.id));
             let client_ref = client.clone();
             let orig_job_clone = job.clone();
             let job = Arc::new(job);
@@ -666,10 +686,18 @@ async fn job_insert_processor(
         loop {
             let mut job_map = job_batching_hashmap.lock().await;
             let jobs: Vec<(i32, Vec<String>)> = job_map.drain().collect();
+            logger.debug(&format!(
+                "Job Batching: number of jobs to process -> {}",
+                jobs.len()
+            ));
             // release lock
             drop(job_map);
 
             for (job_id, row_ids) in jobs {
+                logger.debug(&format!(
+                    "Trying to process batch job: {job_id}, row count: {}",
+                    row_ids.len()
+                ));
                 let job_result = batch_client
                     .query_one(
                         &format!("{job_query_sql} WHERE id=$1 AND canceled_at IS NULL"),
@@ -746,7 +774,7 @@ async fn job_update_processor(
             }
 
             if init_finished_at.is_some() {
-              toggle_client_job(id, "id".to_owned(), row.get::<&str, String>("db_uri").to_owned(), row.get::<&str, String>("column").to_owned(), row.get::<&str, String>("dst_column").to_owned(), row.get::<&str, String>("table").to_owned(), row.get::<&str, String>("schema").to_owned(), logger.level.clone(), Some(job_insert_queue_tx.clone()), canceled_at.is_none()).await?;
+              toggle_client_job(id, row.get::<&str, String>("db_uri").to_owned(), "id".to_owned(), row.get::<&str, String>("column").to_owned(), row.get::<&str, String>("dst_column").to_owned(), row.get::<&str, String>("table").to_owned(), row.get::<&str, String>("schema").to_owned(), logger.level.clone(), Some(job_insert_queue_tx.clone()), canceled_at.is_none()).await?;
             } else if canceled_at.is_some() {
                 // Cancel ongoing job
                 let jobs = JOBS.read().await;
