@@ -1,6 +1,6 @@
-use crate::embeddings::cli::Runtime;
 use crate::external_index::cli::UMetricKind;
 use crate::types::AnyhowVoidResult;
+use crate::{embeddings::cli::Runtime, utils::get_common_embedding_ignore_filters};
 use futures::Future;
 use itertools::Itertools;
 use std::{collections::HashMap, pin::Pin};
@@ -93,7 +93,10 @@ impl EmbeddingJob {
 
     pub fn set_id_filter(&mut self, row_ids: &Vec<String>) {
         let row_ctids_str = row_ids.iter().join(",");
-        self.set_filter(&format!("id IN ({row_ctids_str})"));
+        self.set_filter(&format!(
+            "id IN ({row_ctids_str}) AND {common_filter}",
+            common_filter = get_common_embedding_ignore_filters(&self.column)
+        ));
     }
 }
 

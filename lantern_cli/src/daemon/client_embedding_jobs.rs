@@ -2,7 +2,9 @@ use super::helpers::{check_table_exists, get_missing_rows_filter};
 use super::types::JobInsertNotification;
 use crate::logger::{LogLevel, Logger};
 use crate::types::AnyhowVoidResult;
-use crate::utils::{append_params_to_uri, get_full_table_name, quote_ident};
+use crate::utils::{
+    append_params_to_uri, get_common_embedding_ignore_filters, get_full_table_name, quote_ident,
+};
 use futures::StreamExt;
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -110,7 +112,7 @@ async fn setup_client_triggers(
             "
             CREATE OR REPLACE FUNCTION {function_name}() RETURNS TRIGGER AS $$
               BEGIN
-                IF (NEW.{column_name} IS NOT NULL)
+                IF ({common_filter})
                 THEN
                     PERFORM pg_notify('{channel}', NEW.{pk}::TEXT || ':' || '{job_id}');
                 END IF;
@@ -130,6 +132,7 @@ async fn setup_client_triggers(
             FOR EACH ROW
             EXECUTE PROCEDURE {function_name}();
         ",
+            common_filter = get_common_embedding_ignore_filters(&format!("NEW.{column_name}"))
         ))
         .await?;
 
