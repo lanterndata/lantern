@@ -3,8 +3,9 @@ pub mod daemon_test_utils {
     use std::{env, time::Duration};
     use tokio_postgres::{Client, NoTls};
 
-    static CLIENT_TABLE_NAME: &'static str = "_lantern_cloud_client1";
-    static EMBEDDING_USAGE_TABLE_NAME: &'static str = "_daemon_embedding_usage";
+    pub static CLIENT_TABLE_NAME: &'static str = "_lantern_cloud_client1";
+    pub static CLIENT_TABLE_NAME_2: &'static str = "_lantern_cloud_client2";
+    pub static EMBEDDING_USAGE_TABLE_NAME: &'static str = "_daemon_embedding_usage";
 
     async fn drop_db(client: &mut Client, name: &str) -> AnyhowVoidResult {
         client

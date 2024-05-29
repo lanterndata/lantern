@@ -220,7 +220,6 @@ async fn client_notification_listener(
                 let job_id = i32::from_str_radix(parts[1], 10).unwrap();
                 let result = job_insert_queue_tx.send(JobInsertNotification {
                     id: job_id,
-                    init: false,
                     generate_missing: false,
                     row_id: Some(pk.to_owned()),
                     filter: None,
@@ -385,7 +384,6 @@ async fn start_client_job(
                         cancel_listener_task = tx;
                         job_insert_queue_tx.send(JobInsertNotification {
                             id: job_id,
-                            init: false,
                             generate_missing: true,
                             row_id: None,
                             filter: Some(get_missing_rows_filter(&column, &out_column)),

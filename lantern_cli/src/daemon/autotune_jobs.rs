@@ -1,5 +1,5 @@
 use super::helpers::{cancel_all_jobs, cancellation_handler, db_notification_listener, startup_hook, set_job_handle, collect_pending_index_jobs, index_job_update_processor, remove_job_handle};
-use super::types::{AutotuneJob, JobCancellationHandlersMap, JobInsertNotification, JobRunArgs, JobUpdateNotification };
+use super::types::{AutotuneJob, JobEvent, JobEventHandlersMap, JobInsertNotification, JobRunArgs, JobUpdateNotification };
 use crate::types::*;
 use tokio_util::sync::CancellationToken;
 use crate::external_index::cli::UMetricKind;
@@ -9,6 +9,7 @@ use crate::utils::get_full_table_name;
 use tokio::sync::RwLock;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::SystemTime;
 use tokio::sync::{
     mpsc,
     mpsc::{UnboundedReceiver, UnboundedSender},
@@ -54,7 +55,7 @@ async fn autotune_worker(
     schema: String,
     table: String,
     autotune_results_table: String,
-    jobs_map: Arc<JobCancellationHandlersMap>,
+    jobs_map: Arc<JobEventHandlersMap>,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
     let schema = Arc::new(schema);
@@ -102,8 +103,8 @@ async fn autotune_worker(
                 Logger::new(&format!("Autotune Job {}", job.id), logger.level.clone());
             let job_clone = job.clone();
             
-            let (cancel_tx, mut cancel_rx) = mpsc::channel(1);
-            let cancel_tx_clone = cancel_tx.clone();
+            let (event_tx, mut event_rx) = mpsc::channel(1);
+            let event_tx_clone = event_tx.clone();
 
             // We will spawn 2 tasks
             // The first one will run autotune job and as soon as it finish
@@ -139,13 +140,15 @@ async fn autotune_worker(
                         recall: job_clone.recall,
                         metric_kind: UMetricKind::from_ops(&job_clone.metric_kind)?
                     }, progress_callback, Some(is_canceled_clone), Some(task_logger));
-                    futures::executor::block_on(cancel_tx_clone.send(String::new()))?;
+                    futures::executor::block_on(event_tx_clone.send(JobEvent::Done))?;
                     result
                 });
 
-                while let Some(should_cancel) = cancel_rx.recv().await {
-                    if should_cancel == JOB_CANCELLED_MESSAGE.to_owned() {
-                        *is_canceled.write().unwrap() = true;
+                while let Some(event) = event_rx.recv().await {
+                    if let JobEvent::Errored(msg) = event {
+                        if msg == JOB_CANCELLED_MESSAGE.to_owned() {
+                            *is_canceled.write().unwrap() = true;
+                        }
                     }
                     break;
                 }
@@ -153,7 +156,7 @@ async fn autotune_worker(
                 task.await?
             });
 
-            set_job_handle(&jobs_map, job.id, cancel_tx).await?;
+            set_job_handle(&jobs_map, job.id, event_tx).await?;
       
             match task_handle.await? {
                 Ok(_) => {
@@ -191,17 +194,10 @@ async fn job_insert_processor(
 
     tokio::spawn(async move {
         let full_table_name = Arc::new(get_full_table_name(&schema, &table));
-        let job_query_sql = Arc::new(format!("SELECT id, \"column\",  \"table\", \"schema\", embedding_model as model, target_recall, k, n as sample_size, create_index, operator as metric_kind  FROM {0}", &full_table_name));
+        let job_query_sql = Arc::new(format!("SELECT id, \"column\",  \"table\", \"schema\", embedding_model as model, target_recall, k, n as sample_size, create_index, operator as metric_kind, finished_at  FROM {0}", &full_table_name));
         while let Some(notification) = notifications_rx.recv().await {
             let id = notification.id;
 
-            if notification.init && !notification.generate_missing {
-                // Only update init time if this is the first time job is being executed
-                let updated_count = client.execute(&format!("UPDATE {0} SET started_at=NOW() WHERE started_at IS NULL AND id=$1", &full_table_name), &[&id]).await?;
-                if updated_count == 0 {
-                    continue;
-                }
-            }
 
             let job_result = client
                 .query_one(
@@ -211,6 +207,17 @@ async fn job_insert_processor(
                 .await;
 
             if let Ok(row) = job_result {
+                let is_init = row
+                    .get::<&str, Option<SystemTime>>("finished_at")
+                    .is_none();
+
+                if is_init {
+                    // Only update init time if this is the first time job is being executed
+                    let updated_count = client.execute(&format!("UPDATE {0} SET started_at=NOW() WHERE started_at IS NULL AND id=$1", &full_table_name), &[&id]).await?;
+                    if updated_count == 0 && !notification.generate_missing {
+                        continue;
+                    }
+                }
                 job_tx.send(AutotuneJob::new(row, &db_uri))?;
             } else {
                 logger.error(&format!(
@@ -264,7 +271,7 @@ pub async fn start(args: JobRunArgs, logger: Arc<Logger>, cancel_token: Cancella
     )
     .await?;
 
-    let jobs_map: Arc<JobCancellationHandlersMap> = Arc::new(RwLock::new(HashMap::new()));
+    let jobs_map: Arc<JobEventHandlersMap> = Arc::new(RwLock::new(HashMap::new()));
     let jobs_map_clone = jobs_map.clone();
 
     tokio::try_join!(

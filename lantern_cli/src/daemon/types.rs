@@ -196,7 +196,6 @@ impl ExternalIndexJob {
 #[derive(Debug)]
 pub struct JobInsertNotification {
     pub id: i32,
-    pub init: bool,
     pub generate_missing: bool,
     pub row_id: Option<String>,
     pub filter: Option<String>,
@@ -208,7 +207,12 @@ pub struct JobUpdateNotification {
     pub generate_missing: bool,
 }
 
-pub type JobTaskCancelTx = Sender<String>;
-pub type JobCancellationHandlersMap = RwLock<HashMap<i32, JobTaskCancelTx>>;
+pub type JobTaskEventTx = Sender<JobEvent>;
+pub type JobEventHandlersMap = RwLock<HashMap<i32, JobTaskEventTx>>;
 pub type JobBatchingHashMap = Mutex<HashMap<i32, Vec<String>>>;
 pub type DaemonJobHandlerMap = RwLock<HashMap<String, CancellationToken>>;
+
+pub enum JobEvent {
+    Done,
+    Errored(String),
+}

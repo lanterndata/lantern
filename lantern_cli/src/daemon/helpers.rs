@@ -1,5 +1,5 @@
 use super::types::{
-    EmbeddingJob, JobCancellationHandlersMap, JobInsertNotification, JobTaskCancelTx,
+    EmbeddingJob, JobEvent, JobEventHandlersMap, JobInsertNotification, JobTaskEventTx,
     JobUpdateNotification,
 };
 use crate::logger::Logger;
@@ -74,7 +74,6 @@ pub async fn db_notification_listener(
                              insert_queue_tx
                                  .send(JobInsertNotification {
                                      id,
-                                     init: true,
                                      generate_missing: false,
                                      row_id: None,
                                      filter: None,
@@ -231,7 +230,6 @@ pub async fn collect_pending_index_jobs(
     for row in rows {
         insert_notification_tx.send(JobInsertNotification {
             id: row.get::<usize, i32>(0).to_owned(),
-            init: true,
             row_id: None,
             filter: None,
             limit: None,
@@ -251,7 +249,7 @@ pub async fn index_job_update_processor(
     mut update_queue_rx: UnboundedReceiver<JobUpdateNotification>,
     schema: String,
     table: String,
-    job_cancelleation_handlers: Arc<JobCancellationHandlersMap>,
+    job_cancelleation_handlers: Arc<JobEventHandlersMap>,
 ) -> AnyhowVoidResult {
     tokio::spawn(async move {
         while let Some(notification) = update_queue_rx.recv().await {
@@ -272,7 +270,8 @@ pub async fn index_job_update_processor(
                 let job = jobs.get(&id);
 
                 if let Some(tx) = job {
-                    tx.send(JOB_CANCELLED_MESSAGE.to_owned()).await?;
+                    tx.send(JobEvent::Errored(JOB_CANCELLED_MESSAGE.to_owned()))
+                        .await?;
                 }
                 drop(jobs);
             }
@@ -283,28 +282,29 @@ pub async fn index_job_update_processor(
     Ok(())
 }
 
-pub async fn cancel_all_jobs(map: Arc<JobCancellationHandlersMap>) -> AnyhowVoidResult {
+pub async fn cancel_all_jobs(map: Arc<JobEventHandlersMap>) -> AnyhowVoidResult {
     let mut jobs_map = map.write().await;
-    let jobs: Vec<(i32, JobTaskCancelTx)> = jobs_map.drain().collect();
+    let jobs: Vec<(i32, JobTaskEventTx)> = jobs_map.drain().collect();
 
     for (_, tx) in jobs {
-        tx.send(JOB_CANCELLED_MESSAGE.to_owned()).await?;
+        tx.send(JobEvent::Errored(JOB_CANCELLED_MESSAGE.to_owned()))
+            .await?;
     }
 
     Ok(())
 }
 
 pub async fn set_job_handle(
-    map: &JobCancellationHandlersMap,
+    map: &JobEventHandlersMap,
     job_id: i32,
-    handle: JobTaskCancelTx,
+    handle: JobTaskEventTx,
 ) -> AnyhowVoidResult {
     let mut jobs = map.write().await;
     jobs.insert(job_id, handle);
     Ok(())
 }
 
-pub async fn remove_job_handle(map: &JobCancellationHandlersMap, job_id: i32) -> AnyhowVoidResult {
+pub async fn remove_job_handle(map: &JobEventHandlersMap, job_id: i32) -> AnyhowVoidResult {
     let mut jobs = map.write().await;
     jobs.remove(&job_id);
     Ok(())
@@ -323,7 +323,7 @@ pub async fn schedule_job_retry(
     job: EmbeddingJob,
     tx: Sender<EmbeddingJob>,
     retry_after: Duration,
-) -> AnyhowVoidResult {
+) {
     tokio::spawn(async move {
         let job_id = job.id;
         let batch_len = if let Some(row_ids) = &job.row_ids {
@@ -343,7 +343,6 @@ pub async fn schedule_job_retry(
             )),
         };
     });
-    Ok(())
 }
 
 pub async fn cancellation_handler<F, Fut>(
@@ -361,4 +360,14 @@ where
     }
 
     Ok(())
+}
+
+pub async fn notify_job(jobs_map: Arc<JobEventHandlersMap>, job_id: i32, msg: JobEvent) {
+    tokio::spawn(async move {
+        let jobs = jobs_map.read().await;
+        if let Some(tx) = jobs.get(&job_id) {
+            tx.send(msg).await?;
+        }
+        Ok::<(), anyhow::Error>(())
+    });
 }

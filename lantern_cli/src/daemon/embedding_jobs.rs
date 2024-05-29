@@ -1,10 +1,10 @@
 use super::client_embedding_jobs::{stop_client_job, toggle_client_job};
 use super::helpers::{
-    cancellation_handler, db_notification_listener, get_missing_rows_filter, remove_job_handle,
-    schedule_job_retry, set_job_handle, startup_hook,
+    cancellation_handler, db_notification_listener, get_missing_rows_filter, notify_job,
+    remove_job_handle, schedule_job_retry, set_job_handle, startup_hook,
 };
 use super::types::{
-    EmbeddingJob, JobBatchingHashMap, JobCancellationHandlersMap, JobInsertNotification,
+    EmbeddingJob, JobBatchingHashMap, JobEvent, JobEventHandlersMap, JobInsertNotification,
     JobRunArgs, JobUpdateNotification,
 };
 use crate::embeddings::cli::EmbeddingArgs;
@@ -149,7 +149,7 @@ async fn stream_job(
     notifications_tx: UnboundedSender<JobInsertNotification>,
     jobs_table_name: String,
     _lock_table_name: String,
-    jobs_map: Arc<JobCancellationHandlersMap>,
+    jobs_map: Arc<JobEventHandlersMap>,
     job: EmbeddingJob,
 ) -> AnyhowVoidResult {
     let top_logger = logger.clone();
@@ -177,8 +177,9 @@ async fn stream_job(
             .await?;
         }
 
-        let (job_error_tx, mut job_error_rx): (Sender<String>, Receiver<String>) = mpsc::channel(1);
-        set_job_handle(&jobs_map, job.id, job_error_tx).await?;
+        let (job_event_tx, mut job_event_rx): (Sender<JobEvent>, Receiver<JobEvent>) =
+            mpsc::channel(1);
+        set_job_handle(&jobs_map, job.id, job_event_tx).await?;
 
         let connection_logger = logger.clone();
 
@@ -252,29 +253,6 @@ async fn stream_job(
 
         let batch_size = embeddings::get_default_batch_size(&job.model) as i32;
         loop {
-            // Check if job was errored or cancelled
-            if let Ok(err_msg) = job_error_rx.try_recv() {
-                logger.error(&format!("Error received on job {job_id}. {err_msg}"));
-                if job.is_init {
-                    // set init failed at if this is init job
-                    main_client.execute(&format!("UPDATE {jobs_table_name} SET init_failed_at=NOW(), updated_at=NOW(), init_failure_reason=$1 WHERE id=$2"), &[&err_msg.to_string(), &job_id]).await?;
-                }
-                toggle_client_job(
-                    job.id.clone(),
-                    job.db_uri.clone(),
-                    job.pk.clone(),
-                    job.column.clone(),
-                    job.out_column.clone(),
-                    job.table.clone(),
-                    job.schema.clone(),
-                    logger.level.clone(),
-                    Some(notifications_tx.clone()),
-                    false,
-                )
-                .await?;
-                anyhow::bail!(err_msg);
-            }
-
             // poll batch_size rows from portal and send it to embedding thread via channel
             let rows = transaction.query_portal(&portal, batch_size).await?;
 
@@ -323,15 +301,23 @@ async fn stream_job(
             }
 
             job_queue_tx.send(streamed_job).await?;
+
+            // Wait for response from embedding worker
+            if let Some(msg) = job_event_rx.recv().await {
+                if let JobEvent::Errored(err) = msg {
+                    anyhow::bail!(err);
+                }
+            }
         }
 
-        Ok::<(), anyhow::Error>(())
+        Ok(())
     });
 
     if let Err(e) = task.await? {
         top_logger.error(&format!("Error while streaming job {job_id}: {e}"));
         remove_job_handle(&jobs_map_clone, job_id).await?;
         if job_clone.is_init {
+            main_client.execute(&format!("UPDATE {jobs_table_name} SET init_failed_at=NOW(), updated_at=NOW(), init_failure_reason=$1 WHERE id=$2 AND init_finished_at IS NULL"), &[&e.to_string(), &job_id]).await?;
             toggle_client_job(
                 job_clone.id,
                 job_clone.db_uri,
@@ -357,7 +343,7 @@ async fn embedding_worker(
     db_uri: String,
     schema: String,
     table: String,
-    jobs_map: Arc<JobCancellationHandlersMap>,
+    jobs_map: Arc<JobEventHandlersMap>,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
     let schema = Arc::new(schema);
@@ -452,15 +438,20 @@ async fn embedding_worker(
                             .await?;
                     }
 
+                    // Send done event via channel
+                    notify_job(jobs_map.clone(), job.id, JobEvent::Done).await;
+
                     if job.is_last_chunk {
                         remove_job_handle(&jobs_map, job.id).await?;
                     }
                 }
                 Err(e) => {
                     logger.error(&format!(
-                        "Error while executing job {job_id}: {e}",
-                        job_id = job.id
+                        "Error while executing job {job_id} (is_init: {is_init}): {e}",
+                        job_id = job.id,
+                        is_init = job.is_init
                     ));
+
                     if !job.is_init {
                         schedule_job_retry(
                             logger.clone(),
@@ -468,7 +459,7 @@ async fn embedding_worker(
                             job_queue_tx.clone(),
                             Duration::from_secs(300),
                         )
-                        .await?;
+                        .await;
 
                         let fn_name =
                             get_full_table_name(&schema_ref, "increment_embedding_failures");
@@ -496,14 +487,10 @@ async fn embedding_worker(
                                 job_id = job.id
                             ));
                         }
-                    } else {
-                        // Send error via channel, so init streaming task will catch that
-                        let jobs = jobs_map.read().await;
-                        if let Some(tx) = jobs.get(&job.id) {
-                            tx.send(e.to_string()).await?;
-                        }
-                        drop(jobs);
                     }
+
+                    // Send error via channel, so init streaming task will catch that
+                    notify_job(jobs_map.clone(), job.id, JobEvent::Errored(e.to_string())).await;
                 }
             }
 
@@ -562,7 +549,7 @@ async fn job_insert_processor(
     schema: String,
     table: String,
     data_path: &'static str,
-    jobs_map: Arc<JobCancellationHandlersMap>,
+    jobs_map: Arc<JobEventHandlersMap>,
     job_batching_hashmap: Arc<JobBatchingHashMap>,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
@@ -584,7 +571,7 @@ async fn job_insert_processor(
     // inserts to the table between 10 seconds all that rows will be batched.
     let full_table_name = Arc::new(get_full_table_name(&schema, &table));
     // TODO:: Select pk here
-    let job_query_sql = Arc::new(format!("SELECT id, src_column as \"column\", dst_column, \"table\", \"schema\", embedding_model as model, runtime, runtime_params::text FROM {0}", &full_table_name));
+    let job_query_sql = Arc::new(format!("SELECT id, src_column as \"column\", dst_column, \"table\", \"schema\", embedding_model as model, runtime, runtime_params::text, init_finished_at FROM {0}", &full_table_name));
 
     let db_uri_r1 = db_uri.clone();
     let full_table_name_r1 = full_table_name.clone();
@@ -637,14 +624,6 @@ async fn job_insert_processor(
                 continue;
             }
 
-            if notification.init && !notification.generate_missing {
-                // Only update init time if this is the first time job is being executed
-                let updated_count = insert_client.execute(&format!("UPDATE {0} SET init_started_at=NOW() WHERE init_started_at IS NULL AND id=$1", &full_table_name_r1), &[&id]).await?;
-                if updated_count == 0 {
-                    continue;
-                }
-            }
-
             let job_result = insert_client
                 .query_one(
                     &format!("{job_query_sql_r1} WHERE id=$1 AND canceled_at IS NULL"),
@@ -653,6 +632,18 @@ async fn job_insert_processor(
                 .await;
 
             if let Ok(row) = job_result {
+                let is_init = row
+                    .get::<&str, Option<SystemTime>>("init_finished_at")
+                    .is_none();
+
+                if is_init {
+                    // Only update init time if this is the first time job is being executed
+                    let updated_count = insert_client.execute(&format!("UPDATE {0} SET init_started_at=NOW() WHERE init_started_at IS NULL AND id=$1", &full_table_name_r1), &[&id]).await?;
+                    if updated_count == 0 && !notification.generate_missing {
+                        continue;
+                    }
+                }
+
                 let job = EmbeddingJob::new(row, data_path, &db_uri_r1);
 
                 if let Err(e) = &job {
@@ -660,7 +651,7 @@ async fn job_insert_processor(
                     continue;
                 }
                 let mut job = job.unwrap();
-                job.set_is_init(notification.init);
+                job.set_is_init(is_init);
                 if let Some(filter) = notification.filter {
                     job.set_filter(&filter);
                 }
@@ -751,7 +742,7 @@ async fn job_update_processor(
     job_insert_queue_tx: UnboundedSender<JobInsertNotification>,
     schema: String,
     table: String,
-    jobs_map: Arc<JobCancellationHandlersMap>,
+    jobs_map: Arc<JobEventHandlersMap>,
     job_batching_hashmap: Arc<JobBatchingHashMap>,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
@@ -781,7 +772,7 @@ async fn job_update_processor(
                 let job = jobs.get(&id);
 
                 if let Some(tx) = job {
-                   tx.send(JOB_CANCELLED_MESSAGE.to_owned()).await?;
+                   tx.send(JobEvent::Errored(JOB_CANCELLED_MESSAGE.to_string())).await?;
                 }
                 drop(jobs);
 
@@ -794,7 +785,7 @@ async fn job_update_processor(
             if canceled_at.is_none() && notification.generate_missing {
                 // this will be on startup to generate embeddings for rows that might be inserted
                 // while daemon is offline
-                job_insert_queue_tx.send(JobInsertNotification { id, init: init_finished_at.is_none(), generate_missing: true, filter: Some(get_missing_rows_filter(&src_column, &out_column)), limit: None, row_id: None })?;
+                job_insert_queue_tx.send(JobInsertNotification { id, generate_missing: true, filter: Some(get_missing_rows_filter(&src_column, &out_column)), limit: None, row_id: None })?;
             }
         }
         Ok(()) as AnyhowVoidResult
@@ -911,7 +902,7 @@ pub async fn start(
     let main_db_uri = args.uri.clone();
     let schema = args.schema.clone();
 
-    let jobs_map: Arc<JobCancellationHandlersMap> = Arc::new(RwLock::new(HashMap::new()));
+    let jobs_map: Arc<JobEventHandlersMap> = Arc::new(RwLock::new(HashMap::new()));
     let job_batching_hashmap: Arc<JobBatchingHashMap> = Arc::new(Mutex::new(HashMap::new()));
 
     tokio::try_join!(
