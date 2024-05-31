@@ -6,11 +6,13 @@ use crate::logger::Logger;
 use crate::types::{AnyhowVoidResult, JOB_CANCELLED_MESSAGE};
 use crate::utils::{get_common_embedding_ignore_filters, get_full_table_name, quote_ident};
 use futures::StreamExt;
+use postgres::tls::MakeTlsConnect;
+use postgres::{IsolationLevel, Socket};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::mpsc::{Sender, UnboundedReceiver, UnboundedSender};
-use tokio_postgres::AsyncMessage;
 use tokio_postgres::Client;
+use tokio_postgres::{AsyncMessage, Connection};
 use tokio_util::sync::CancellationToken;
 
 pub async fn check_table_exists(client: Arc<Client>, table: &str) -> AnyhowVoidResult {
@@ -113,19 +115,30 @@ pub async fn db_notification_listener(
 }
 
 pub async fn startup_hook(
-    client: Arc<Client>,
+    client: &mut Client,
     table: &str,
     table_def: &str,
     schema: &str,
     lock_table_name: Option<&str>,
     results_table_name: Option<&str>,
     results_table_def: Option<&str>,
+    create_failure_tracking_fn: bool,
     channel: &str,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
     logger.info("Setting up environment");
+    let transaction = client
+        .build_transaction()
+        .isolation_level(IsolationLevel::Serializable)
+        .read_only(false)
+        .start()
+        .await?;
+    // lock to not have conflict among other daemon instances
+    transaction
+        .execute("SELECT pg_advisory_lock(1337);", &[])
+        .await?;
     // create schema and table if not exists
-    client
+    transaction
         .execute(
             &format!(
                 "CREATE SCHEMA IF NOT EXISTS {schema}",
@@ -135,19 +148,19 @@ pub async fn startup_hook(
         )
         .await?;
     let full_table_name = get_full_table_name(schema, table);
-    client
+    transaction
         .execute(
             &format!("CREATE TABLE IF NOT EXISTS {full_table_name} ({table_def})"),
             &[],
         )
         .await?;
 
-    let insert_function_name = quote_ident(&format!("notify_insert_{table}"));
-    let update_function_name = quote_ident(&format!("notify_update_{table}"));
+    let insert_function_name = &get_full_table_name(schema, &format!("notify_insert_{table}"));
+    let update_function_name = &get_full_table_name(schema, &format!("notify_update_{table}"));
     let insert_trigger_name = quote_ident(&format!("trigger_insert_{table}"));
     let update_trigger_name = quote_ident(&format!("trigger_update_{table}"));
     // Set up trigger on table insert
-    client
+    transaction
         .batch_execute(&format!(
             "
             CREATE OR REPLACE FUNCTION {insert_function_name}() RETURNS TRIGGER AS $$
@@ -185,7 +198,7 @@ pub async fn startup_hook(
 
     if lock_table_name.is_some() {
         let lock_table_name = get_full_table_name(schema, lock_table_name.unwrap());
-        client
+        transaction
             .batch_execute(&format!(
                 "
             -- Create Lock Table
@@ -203,13 +216,32 @@ pub async fn startup_hook(
         let results_table_name = get_full_table_name(schema, results_table_name.unwrap());
         let results_table_def = results_table_def.unwrap();
 
-        client
+        transaction
             .execute(
                 &format!("CREATE TABLE IF NOT EXISTS {results_table_name} ({results_table_def})"),
                 &[],
             )
             .await?;
     }
+
+    if create_failure_tracking_fn {
+        let failures_function_name = &get_full_table_name(schema, "increment_embedding_failures");
+        transaction
+        .batch_execute(&format!(
+            "
+            CREATE OR REPLACE FUNCTION {failures_function_name}(job_id INTEGER, row_count INTEGER) RETURNS VOID AS $$
+            BEGIN
+              UPDATE {full_table_name} SET failed_rows = failed_rows + row_count, failed_requests = failed_requests + 1 WHERE id=job_id;
+            END;
+            $$ LANGUAGE plpgsql;
+            "
+         )).await?;
+    }
+
+    transaction
+        .execute("SELECT pg_advisory_unlock(1337);", &[])
+        .await?;
+    transaction.commit().await?;
 
     Ok(())
 }
@@ -370,4 +402,16 @@ pub async fn notify_job(jobs_map: Arc<JobEventHandlersMap>, job_id: i32, msg: Jo
         }
         Ok::<(), anyhow::Error>(())
     });
+}
+
+pub async fn anyhow_wrap_connection<T>(
+    connection: Connection<Socket, T::Stream>,
+) -> AnyhowVoidResult
+where
+    T: MakeTlsConnect<Socket>,
+{
+    if let Err(e) = connection.await {
+        anyhow::bail!(e);
+    }
+    Ok(())
 }

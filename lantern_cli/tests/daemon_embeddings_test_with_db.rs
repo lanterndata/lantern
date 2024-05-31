@@ -604,4 +604,3 @@ async fn test_daemon_embedding_multiple_new_jobs_with_failure() {
 
     cancel_token.cancel();
 }
-// TODO:: Test failure cases, Test usage and failure info tracking

@@ -273,7 +273,7 @@ fn db_exporter_worker(
         }
 
         // Try to check if user has write permissions to table
-        let res = transaction.query("SELECT 1 FROM information_schema.column_privileges WHERE table_schema=$1 AND table_name=$2 AND column_name=$3 AND privilege_type='UPDATE' AND grantee=current_user", &[schema, table, column])?;
+        let res = transaction.query("SELECT grantee FROM information_schema.column_privileges WHERE table_schema=$1 AND table_name=$2 AND column_name=$3 AND privilege_type='UPDATE' AND grantee=current_user UNION SELECT usename from pg_user where usename = CURRENT_USER AND usesuper=true;", &[schema, table, column])?;
 
         if res.get(0).is_none() {
             anyhow::bail!("User does not have write permissions to target table");

@@ -1,5 +1,6 @@
 use super::helpers::{cancel_all_jobs, cancellation_handler, db_notification_listener, startup_hook, set_job_handle, collect_pending_index_jobs, index_job_update_processor, remove_job_handle};
 use super::types::{AutotuneJob, JobEvent, JobEventHandlersMap, JobInsertNotification, JobRunArgs, JobUpdateNotification };
+use crate::daemon::helpers::anyhow_wrap_connection;
 use crate::types::*;
 use tokio_util::sync::CancellationToken;
 use crate::external_index::cli::UMetricKind;
@@ -14,7 +15,7 @@ use tokio::sync::{
     mpsc,
     mpsc::{UnboundedReceiver, UnboundedSender},
 };
-use tokio_postgres::{Client, NoTls};
+use tokio_postgres::{Client,  NoTls};
 
 pub const JOB_TABLE_DEFINITION: &'static str = r#"
 "id" SERIAL PRIMARY KEY,
@@ -100,7 +101,7 @@ async fn autotune_worker(
             };
 
             let task_logger =
-                Logger::new(&format!("Autotune Job {}", job.id), logger.level.clone());
+                Logger::new(&format!("{}|{}", logger.label, job.id), logger.level.clone());
             let job_clone = job.clone();
             
             let (event_tx, mut event_rx) = mpsc::channel(1);
@@ -237,12 +238,11 @@ pub async fn start(args: JobRunArgs, logger: Arc<Logger>, cancel_token: Cancella
 
     let autotune_results_table = String::from("autotune_results");
 
-    let (main_db_client, connection) = tokio_postgres::connect(&args.uri, NoTls).await?;
+    let (mut main_db_client, connection) = tokio_postgres::connect(&args.uri, NoTls).await?;
 
-    tokio::spawn(async move { connection.await.unwrap() });
+    let connection_task = tokio::spawn(async move { connection.await });
 
-    let main_db_client = Arc::new(main_db_client);
-    let notification_channel = "lantern_cloud_autotune_jobs";
+    let notification_channel = "lantern_cloud_autotune_jobs_v2";
 
     let (insert_notification_queue_tx, insert_notification_queue_rx): (
         UnboundedSender<JobInsertNotification>,
@@ -259,22 +259,28 @@ pub async fn start(args: JobRunArgs, logger: Arc<Logger>, cancel_token: Cancella
     let table = args.table_name;
 
     startup_hook(
-        main_db_client.clone(),
+        &mut main_db_client,
         &table,
         JOB_TABLE_DEFINITION,
         &args.schema,
         None,
         Some(&autotune_results_table),
         Some(RESULT_TABLE_DEFINITION),
+        false,
         &notification_channel,
         logger.clone(),
     )
     .await?;
 
+    connection_task.abort();
+    let (main_db_client, connection) = tokio_postgres::connect(&args.uri, NoTls).await?;
+    let main_db_client = Arc::new(main_db_client);
+    
     let jobs_map: Arc<JobEventHandlersMap> = Arc::new(RwLock::new(HashMap::new()));
     let jobs_map_clone = jobs_map.clone();
 
     tokio::try_join!(
+        anyhow_wrap_connection::<NoTls>(connection),
         db_notification_listener(
             args.uri.clone(),
             &notification_channel,

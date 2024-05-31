@@ -1,4 +1,5 @@
 use super::helpers::{cancel_all_jobs, cancellation_handler, collect_pending_index_jobs, db_notification_listener, index_job_update_processor, startup_hook};
+use crate::daemon::helpers::anyhow_wrap_connection;
 use crate::types::*;
 use super::types::{ExternalIndexJob, JobEvent, JobEventHandlersMap, JobInsertNotification, JobRunArgs, JobTaskEventTx, JobUpdateNotification};
 use crate::external_index::cli::{CreateIndexArgs, UMetricKind};
@@ -89,7 +90,7 @@ async fn external_index_worker(
                 Some(Box::new(progress_callback) as ProgressCbFn);
 
             let task_logger =
-                Logger::new(&format!("External Index Job {}", job.id), LogLevel::Info);
+                Logger::new(&format!("{}|{}", logger.label, job.id), LogLevel::Info);
             let job_clone = job.clone();
             
             let (event_tx, mut event_rx) = mpsc::channel(1);
@@ -222,12 +223,11 @@ async fn job_insert_processor(
 pub async fn start(args: JobRunArgs, logger: Arc<Logger>, cancel_token: CancellationToken) -> AnyhowVoidResult {
     logger.info("Starting External Index Jobs");
 
-    let (main_db_client, connection) = tokio_postgres::connect(&args.uri, NoTls).await?;
+    let (mut main_db_client, connection) = tokio_postgres::connect(&args.uri, NoTls).await?;
 
-    tokio::spawn(async move { connection.await.unwrap() });
+    let connection_task = tokio::spawn(async move { connection.await });
 
-    let main_db_client = Arc::new(main_db_client);
-    let notification_channel = "lantern_cloud_index_jobs";
+    let notification_channel = "lantern_cloud_index_jobs_v2";
 
     let (insert_notification_queue_tx, insert_notification_queue_rx): (
         UnboundedSender<JobInsertNotification>,
@@ -244,22 +244,28 @@ pub async fn start(args: JobRunArgs, logger: Arc<Logger>, cancel_token: Cancella
     let table = args.table_name;
 
     startup_hook(
-        main_db_client.clone(),
+        &mut main_db_client,
         &table,
         JOB_TABLE_DEFINITION,
         &args.schema,
         None,
         None,
         None,
+        false,
         &notification_channel,
         logger.clone(),
     )
     .await?;
 
+    connection_task.abort();
+    let (main_db_client, connection) = tokio_postgres::connect(&args.uri, NoTls).await?;
+    let main_db_client = Arc::new(main_db_client);
+
     let jobs_map: Arc<JobEventHandlersMap> = Arc::new(RwLock::new(HashMap::new()));
     let jobs_map_clone = jobs_map.clone();
 
     tokio::try_join!(
+        anyhow_wrap_connection::<NoTls>(connection),
         db_notification_listener(
             args.uri.clone(),
             &notification_channel,

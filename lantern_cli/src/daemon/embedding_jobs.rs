@@ -7,6 +7,7 @@ use super::types::{
     EmbeddingJob, JobBatchingHashMap, JobEvent, JobEventHandlersMap, JobInsertNotification,
     JobRunArgs, JobUpdateNotification,
 };
+use crate::daemon::helpers::anyhow_wrap_connection;
 use crate::embeddings::cli::EmbeddingArgs;
 use crate::logger::Logger;
 use crate::utils::{get_common_embedding_ignore_filters, get_full_table_name, quote_ident};
@@ -171,6 +172,7 @@ async fn stream_job(
                 job.table.clone(),
                 job.schema.clone(),
                 logger.level.clone(),
+                &logger.label,
                 Some(notifications_tx.clone()),
                 true,
             )
@@ -201,6 +203,7 @@ async fn stream_job(
                         job_clone.table,
                         job_clone.schema,
                         connection_logger.level.clone(),
+                        &connection_logger.label,
                         Some(notifications_tx_clone),
                         false,
                     )
@@ -327,6 +330,7 @@ async fn stream_job(
                 job_clone.table,
                 job_clone.schema,
                 top_logger.level.clone(),
+                &top_logger.label,
                 Some(notifications_tx_clone),
                 false,
             )
@@ -352,7 +356,7 @@ async fn embedding_worker(
 
     tokio::spawn(async move {
         let (client, connection) = tokio_postgres::connect(&db_uri, NoTls).await?;
-        tokio::spawn(async move { connection.await.unwrap() });
+        tokio::spawn(async move { connection.await });
         let client = Arc::new(client);
         logger.info("Embedding worker started");
         while let Some(job) = job_queue_rx.recv().await {
@@ -362,7 +366,7 @@ async fn embedding_worker(
             let schema_ref = schema.clone();
 
             let task_logger = Logger::new(
-                &format!("Embedding Job {}|{:?}", job.id, job.runtime),
+                &format!("{} - {}|{:?}", logger.label, job.id, job.runtime),
                 logger.level.clone(),
             );
             let job_clone = job.clone();
@@ -584,7 +588,7 @@ async fn job_insert_processor(
     let insert_processor_task = tokio::spawn(async move {
         let (insert_client, connection) = tokio_postgres::connect(&db_uri_r1, NoTls).await?;
         let insert_client = Arc::new(insert_client);
-        tokio::spawn(async move { connection.await.unwrap() });
+        tokio::spawn(async move { connection.await });
         while let Some(notification) = notifications_rx.recv().await {
             let id = notification.id;
 
@@ -679,7 +683,7 @@ async fn job_insert_processor(
     let job_batching_hashmap = job_batching_hashmap.clone();
     let batch_collector_task = tokio::spawn(async move {
         let (batch_client, connection) = tokio_postgres::connect(&db_uri, NoTls).await?;
-        tokio::spawn(async move { connection.await.unwrap() });
+        tokio::spawn(async move { connection.await });
         loop {
             let mut job_map = job_batching_hashmap.lock().await;
             let jobs: Vec<(i32, Vec<String>)> = job_map.drain().collect();
@@ -749,7 +753,7 @@ async fn job_update_processor(
     tokio::spawn(async move {
         while let Some(notification) = update_queue_rx.recv().await {
             let (client, connection) = tokio_postgres::connect(&db_uri, NoTls).await?;
-            tokio::spawn(async move { connection.await.unwrap() });
+            tokio::spawn(async move { connection.await });
             let full_table_name =  get_full_table_name(&schema, &table);
             let id = notification.id;
             // TODO:: Select pk here
@@ -765,7 +769,7 @@ async fn job_update_processor(
             }
 
             if init_finished_at.is_some() {
-              toggle_client_job(id, db_uri.clone(), "id".to_owned(), row.get::<&str, String>("column").to_owned(), row.get::<&str, String>("dst_column").to_owned(), row.get::<&str, String>("table").to_owned(), row.get::<&str, String>("schema").to_owned(), logger.level.clone(), Some(job_insert_queue_tx.clone()), canceled_at.is_none()).await?;
+              toggle_client_job(id, db_uri.clone(), "id".to_owned(), row.get::<&str, String>("column").to_owned(), row.get::<&str, String>("dst_column").to_owned(), row.get::<&str, String>("table").to_owned(), row.get::<&str, String>("schema").to_owned(), logger.level.clone(), &logger.label, Some(job_insert_queue_tx.clone()), canceled_at.is_none()).await?;
             } else if canceled_at.is_some() {
                 // Cancel ongoing job
                 let jobs = jobs_map.read().await;
@@ -844,7 +848,7 @@ async fn stop_all_client_jobs(
         let job_table = row.get::<&str, &str>("table").to_owned();
 
         let task_logger = Arc::new(Logger::new(
-            &format!("Embedding Job {}|{:?}", job_id, job_runtime),
+            &format!("{}|{}|{:?}", logger.label, job_id, job_runtime),
             logger.level.clone(),
         ));
 
@@ -864,12 +868,11 @@ pub async fn start(
 ) -> AnyhowVoidResult {
     logger.info("Starting Embedding Jobs");
 
-    let (main_db_client, connection) = tokio_postgres::connect(&args.uri, NoTls).await?;
+    let (mut main_db_client, connection) = tokio_postgres::connect(&args.uri, NoTls).await?;
 
-    tokio::spawn(async move { connection.await.unwrap() });
+    let connection_task = tokio::spawn(async move { connection.await });
 
-    let main_db_client = Arc::new(main_db_client);
-    let notification_channel = "lantern_cloud_embedding_jobs";
+    let notification_channel = "lantern_cloud_embedding_jobs_v2";
     let data_path = create_data_path(logger.clone()).await;
 
     let (insert_notification_queue_tx, insert_notification_queue_rx): (
@@ -885,17 +888,22 @@ pub async fn start(
     let table = args.table_name;
 
     startup_hook(
-        main_db_client.clone(),
+        &mut main_db_client,
         &table,
         JOB_TABLE_DEFINITION,
         &args.schema,
         Some(EMB_LOCK_TABLE_NAME),
         None,
         None,
+        true,
         &notification_channel,
         logger.clone(),
     )
     .await?;
+
+    connection_task.abort();
+    let (main_db_client, connection) = tokio_postgres::connect(&args.uri, NoTls).await?;
+    let main_db_client = Arc::new(main_db_client);
 
     let logger_clone = logger.clone();
     let jobs_table_name = get_full_table_name(&args.schema, &table);
@@ -906,6 +914,7 @@ pub async fn start(
     let job_batching_hashmap: Arc<JobBatchingHashMap> = Arc::new(Mutex::new(HashMap::new()));
 
     tokio::try_join!(
+        anyhow_wrap_connection::<NoTls>(connection),
         db_notification_listener(
             main_db_uri.clone(),
             &notification_channel,

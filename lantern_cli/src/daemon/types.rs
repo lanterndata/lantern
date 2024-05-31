@@ -27,8 +27,17 @@ impl TargetDB {
             anyhow::bail!("Invalid format for --target-db, should be 'postgres://username:[password]@host/db'")
         }
 
+        let db_host = parts[parts.len() - 1];
+        let db_name_index = db_host.find("/");
+
+        if db_name_index.is_none() {
+            anyhow::bail!("Can not get database name from specified url");
+        }
+
+        let db_name_index = db_name_index.unwrap();
+
         Ok(TargetDB {
-            name: parts[parts.len() - 1].to_owned(),
+            name: format!("{}{}", &db_host[..5], &db_host[db_name_index..]),
             uri: db_url.to_owned(),
         })
     }
@@ -215,4 +224,9 @@ pub type DaemonJobHandlerMap = RwLock<HashMap<String, CancellationToken>>;
 pub enum JobEvent {
     Done,
     Errored(String),
+}
+pub enum JobType {
+    Embeddings,
+    ExternalIndex,
+    Autotune,
 }

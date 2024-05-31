@@ -1,20 +1,24 @@
-use tokio::sync::RwLock;
 pub mod autotune_jobs;
-use tokio_postgres::{AsyncMessage, NoTls};
 pub mod cli;
 mod client_embedding_jobs;
 pub mod embedding_jobs;
-use futures::StreamExt;
-use tokio_util::sync::CancellationToken;
 pub mod external_index_jobs;
 mod helpers;
 mod types;
 
-use crate::types::AnyhowVoidResult;
-use crate::{logger::Logger, utils::get_full_table_name};
+use futures::StreamExt;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tokio::sync::RwLock;
+use tokio_postgres::{AsyncMessage, NoTls};
+use tokio_util::sync::CancellationToken;
+
+use crate::types::AnyhowVoidResult;
+use crate::{logger::Logger, utils::get_full_table_name};
 use types::{DaemonJobHandlerMap, JobRunArgs, TargetDB};
+
+use self::types::JobType;
 
 lazy_static! {
     static ref JOBS: DaemonJobHandlerMap = RwLock::new(HashMap::new());
@@ -66,94 +70,118 @@ async fn destroy_jobs(target_db: &TargetDB, logger: Arc<Logger>) {
     cancel_token.cancel();
 }
 
-async fn spawn_jobs(target_db: &TargetDB, args: Arc<cli::DaemonArgs>) {
+async fn spawn_job(
+    target_db: Arc<TargetDB>,
+    args: Arc<cli::DaemonArgs>,
+    cancel_token: CancellationToken,
+    job_type: JobType,
+) {
+    let mut retry_interval = 5;
+
+    let log_label = match job_type {
+        JobType::Embeddings => "embeddings",
+        JobType::Autotune => "autotune",
+        JobType::ExternalIndex => "indexing",
+    };
+
+    let logger = Arc::new(Logger::new(
+        &format!("{} - {log_label}", &target_db.name),
+        args.log_level.value(),
+    ));
+
+    let mut last_retry = Instant::now();
+
+    loop {
+        let result = match job_type {
+            JobType::Embeddings => {
+                embedding_jobs::start(
+                    JobRunArgs {
+                        uri: target_db.uri.clone(),
+                        schema: args.schema.clone(),
+                        log_level: args.log_level.value(),
+                        table_name: "embedding_generation_jobs".to_owned(),
+                    },
+                    logger.clone(),
+                    cancel_token.clone(),
+                )
+                .await
+            }
+            JobType::ExternalIndex => {
+                external_index_jobs::start(
+                    JobRunArgs {
+                        uri: target_db.uri.clone(),
+                        schema: args.schema.clone(),
+                        log_level: args.log_level.value(),
+                        table_name: "external_index_jobs".to_owned(),
+                    },
+                    logger.clone(),
+                    cancel_token.clone(),
+                )
+                .await
+            }
+            JobType::Autotune => {
+                autotune_jobs::start(
+                    JobRunArgs {
+                        uri: target_db.uri.clone(),
+                        schema: args.schema.clone(),
+                        log_level: args.log_level.value(),
+                        table_name: "autotune_jobs".to_owned(),
+                    },
+                    logger.clone(),
+                    cancel_token.clone(),
+                )
+                .await
+            }
+        };
+
+        if let Err(e) = result {
+            logger.error(&format!("Error from job: {e}"));
+
+            if last_retry.elapsed().as_secs() > retry_interval * 2 {
+                // reset retry exponential backoff time if job was not failing constantly
+                retry_interval = 10;
+            }
+            tokio::time::sleep(Duration::from_secs(retry_interval)).await;
+            retry_interval *= 2;
+            last_retry = Instant::now();
+            continue;
+        }
+
+        break;
+    }
+}
+
+async fn spawn_jobs(target_db: TargetDB, args: Arc<cli::DaemonArgs>) {
     let mut jobs = JOBS.write().await;
     let cancel_token = CancellationToken::new();
+    let target_db = Arc::new(target_db);
     jobs.insert(target_db.name.clone(), cancel_token.clone());
 
     if args.embeddings {
-        let logger = Arc::new(Logger::new(
-            &format!("{} - embeddings", &target_db.name),
-            args.log_level.value(),
+        tokio::spawn(spawn_job(
+            target_db.clone(),
+            args.clone(),
+            cancel_token.clone(),
+            JobType::Embeddings,
         ));
-        let args = args.clone();
-        let uri = target_db.uri.clone();
-        let cancel_token = cancel_token.clone();
-
-        tokio::spawn(async move {
-            let result = embedding_jobs::start(
-                JobRunArgs {
-                    uri,
-                    schema: args.schema.clone(),
-                    log_level: args.log_level.value(),
-                    table_name: "embedding_generation_jobs".to_owned(),
-                },
-                logger.clone(),
-                cancel_token,
-            )
-            .await;
-
-            if let Err(e) = result {
-                logger.error(&format!("Error from embedding job: {e}"));
-            }
-        });
     }
 
     if args.external_index {
-        let logger = Arc::new(Logger::new(
-            &format!("{} - indexing", &target_db.name),
-            args.log_level.value(),
+        tokio::spawn(spawn_job(
+            target_db.clone(),
+            args.clone(),
+            cancel_token.clone(),
+            JobType::ExternalIndex,
         ));
-        let args = args.clone();
-        let uri = target_db.uri.clone();
-        let cancel_token = cancel_token.clone();
-
-        tokio::spawn(async move {
-            let result = external_index_jobs::start(
-                JobRunArgs {
-                    uri,
-                    schema: args.schema.clone(),
-                    log_level: args.log_level.value(),
-                    table_name: "external_index_jobs".to_owned(),
-                },
-                logger.clone(),
-                cancel_token,
-            )
-            .await;
-
-            if let Err(e) = result {
-                logger.error(&format!("Error from indexing job: {e}"));
-            }
-        });
     }
 
     if args.autotune {
-        let logger = Arc::new(Logger::new(
-            &format!("{} - autotune", &target_db.name),
-            args.log_level.value(),
+        tokio::spawn(spawn_job(
+            target_db.clone(),
+            args.clone(),
+            cancel_token.clone(),
+            JobType::Autotune,
         ));
-
-        let args = args.clone();
-        let uri = target_db.uri.clone();
-        let cancel_token = cancel_token.clone();
-
-        tokio::spawn(async move {
-            let result = autotune_jobs::start(
-                JobRunArgs {
-                    uri,
-                    schema: args.schema.clone(),
-                    log_level: args.log_level.value(),
-                    table_name: "autotune_jobs".to_owned(),
-                },
-                logger.clone(),
-                cancel_token,
-            )
-            .await;
-
-            if let Err(e) = result {
-                logger.error(&format!("Error from autotune job: {e}"));
-            }
-        });
     }
 }
 
@@ -215,7 +243,7 @@ async fn db_change_listener(
                             destroy_jobs(&target_db, logger.clone()).await;
                         }
                         "insert" => {
-                            spawn_jobs(&target_db, args.clone()).await;
+                            spawn_jobs(target_db, args.clone()).await;
                         }
                         _ => logger.error(&format!("Invalid action received: {action}")),
                     }
@@ -271,7 +299,7 @@ pub async fn start(
 
     let args_arc = Arc::new(args);
     let args_arc_clone = args_arc.clone();
-    for target_db in &target_databases {
+    for target_db in target_databases {
         spawn_jobs(target_db, args_arc_clone.clone()).await;
     }
 

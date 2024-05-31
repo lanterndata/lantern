@@ -36,10 +36,11 @@ pub async fn toggle_client_job(
     table: String,
     schema: String,
     log_level: LogLevel,
+    log_label: &str,
     job_insert_queue_tx: Option<UnboundedSender<JobInsertNotification>>,
     enable: bool,
 ) -> AnyhowVoidResult {
-    let logger = Arc::new(Logger::new(&format!("Embedding Job {job_id}"), log_level));
+    let logger = Arc::new(Logger::new(&format!("{log_label}|{job_id}"), log_level));
     let job_logger = logger.clone();
     if enable {
         let job_insert_queue_tx = job_insert_queue_tx.unwrap();
@@ -73,15 +74,15 @@ pub async fn toggle_client_job(
 }
 
 fn get_trigger_name(job_id: i32, operation: &str) -> String {
-    return format!("trigger_lantern_jobs_{operation}_{job_id}");
+    return format!("trigger_lantern_jobs_v2_{operation}_{job_id}");
 }
 
 fn get_function_name(job_id: i32) -> String {
-    return format!("notify_insert_lantern_daemon_{job_id}");
+    return format!("notify_insert_lantern_daemon_v2_{job_id}");
 }
 
 fn get_notification_channel_name(job_id: i32) -> String {
-    return format!("lantern_client_notifications_{job_id}");
+    return format!("lantern_client_notifications_v2_{job_id}");
 }
 
 async fn setup_client_triggers(
@@ -356,6 +357,7 @@ async fn start_client_job(
     let signal_listener_logger = logger.clone();
     // Listen for signals and abort/restart jobs
     tokio::spawn(async move {
+        let mut restart_interval = 10;
         while let Some(signal) = job_signal_rx.recv().await {
             match signal {
                 Signal::Stop => {
@@ -381,6 +383,7 @@ async fn start_client_job(
                     .await;
 
                     if let Ok(tx) = res {
+                        restart_interval = 10;
                         cancel_listener_task = tx;
                         job_insert_queue_tx.send(JobInsertNotification {
                             id: job_id,
@@ -391,7 +394,8 @@ async fn start_client_job(
                         })?;
                         break;
                     } else {
-                        tokio::time::sleep(Duration::from_secs(10)).await;
+                        tokio::time::sleep(Duration::from_secs(restart_interval)).await;
+                        restart_interval *= 2;
                     }
                 },
             }
