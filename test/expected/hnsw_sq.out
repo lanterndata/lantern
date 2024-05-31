@@ -145,18 +145,18 @@ EXPLAIN SELECT id, ROUND((v_transformed <-> :'v_transformed42')::numeric, 1) as 
 (3 rows)
 
         SELECT id, ROUND((v_transformed <-> :'v_transformed42')::numeric, 1) as dist FROM sift_base1k ORDER BY v_transformed <-> :'v_transformed42' LIMIT 10;
- id | dist 
-----+------
-  1 | 37.3
-  2 | 40.8
-  3 | 41.7
-  4 | 43.3
-  5 | 42.4
-  6 | 42.4
-  7 | 37.2
-  8 | 39.9
-  9 | 42.0
- 10 | 38.0
+ id  | dist 
+-----+------
+  42 |  0.0
+  36 |  1.1
+ 886 |  7.2
+ 340 |  8.7
+  48 |  5.1
+  69 | 12.9
+ 402 |  7.7
+  46 | 10.8
+  50 | 11.5
+ 665 | 13.2
 (10 rows)
 
 -- test on 2000+ dim vectors
