@@ -40,7 +40,7 @@ pub struct DaemonArgs {
     pub master_db_schema: String,
 
     /// Table on master database which contains target databases
-    #[arg(long, default_value = "databases")]
+    #[arg(long, default_value = "daemon_databases")]
     pub databases_table: String,
 
     /// List of target databases to connect and listen for jobs
