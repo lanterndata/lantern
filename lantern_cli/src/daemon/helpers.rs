@@ -122,7 +122,8 @@ pub async fn startup_hook(
     lock_table_name: Option<&str>,
     results_table_name: Option<&str>,
     results_table_def: Option<&str>,
-    create_failure_tracking_fn: bool,
+    usage_table_name: Option<&str>,
+    usage_table_def: Option<&str>,
     channel: &str,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
@@ -224,18 +225,15 @@ pub async fn startup_hook(
             .await?;
     }
 
-    if create_failure_tracking_fn {
-        let failures_function_name = &get_full_table_name(schema, "increment_embedding_failures");
+    if usage_table_name.is_some() && usage_table_def.is_some() {
+        let usage_table_name = get_full_table_name(schema, usage_table_name.unwrap());
+        let usage_table_def = usage_table_def.unwrap();
         transaction
-        .batch_execute(&format!(
-            "
-            CREATE OR REPLACE FUNCTION {failures_function_name}(job_id INTEGER, row_count INTEGER) RETURNS VOID AS $$
-            BEGIN
-              UPDATE {full_table_name} SET failed_rows = failed_rows + row_count, failed_requests = failed_requests + 1 WHERE id=job_id;
-            END;
-            $$ LANGUAGE plpgsql;
-            "
-         )).await?;
+            .execute(
+                &format!("CREATE TABLE IF NOT EXISTS {usage_table_name} ({usage_table_def})"),
+                &[],
+            )
+            .await?;
     }
 
     transaction

@@ -5,7 +5,6 @@ use lantern_cli::{
     },
     utils::test_utils::daemon_test_utils::{
         setup_test, wait_for_completion, CLIENT_TABLE_NAME, CLIENT_TABLE_NAME_2,
-        EMBEDDING_USAGE_TABLE_NAME,
     },
 };
 use std::time::Duration;
@@ -580,7 +579,7 @@ async fn test_daemon_embedding_multiple_new_jobs_with_failure() {
 
     wait_for_completion(
         &mut new_db_client,
-        &format!("SELECT usage=8 FROM {EMBEDDING_USAGE_TABLE_NAME} WHERE job_id=10"),
+        &format!("SELECT SUM(tokens)=32 FROM _lantern_internal.embedding_usage_info WHERE job_id=10 AND failed=FALSE GROUP BY job_id"),
         1,
     )
     .await
@@ -588,7 +587,7 @@ async fn test_daemon_embedding_multiple_new_jobs_with_failure() {
 
     wait_for_completion(
         &mut new_db_client,
-        &format!("SELECT tokens=32 FROM {EMBEDDING_USAGE_TABLE_NAME} WHERE job_id=10"),
+        &format!("SELECT SUM(rows)=8 FROM _lantern_internal.embedding_usage_info WHERE job_id=10 AND failed=FALSE GROUP BY job_id"),
         1,
     )
     .await
@@ -598,6 +597,98 @@ async fn test_daemon_embedding_multiple_new_jobs_with_failure() {
         &mut new_db_client,
         &format!("SELECT COUNT(*)=1 FROM _lantern_internal.embedding_generation_jobs WHERE id=11 AND init_failure_reason IS NOT NULL"),
         60,
+    )
+    .await
+    .unwrap();
+
+    cancel_token.cancel();
+}
+
+#[tokio::test]
+async fn test_daemon_embedding_jobs_streaming_with_failure() {
+    let (new_connection_uri, mut new_db_client) =
+        setup_test("test_daemon_embedding_jobs_streaming_with_failure")
+            .await
+            .unwrap();
+    new_db_client
+        .batch_execute(&format!(
+            r#"
+    INSERT INTO _lantern_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model)
+    VALUES (10, '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', 'BAAI/bge-small-en');
+
+    INSERT INTO {CLIENT_TABLE_NAME} (id, title)
+    VALUES (1, 'Test1'),
+           (2, 'Test2'),
+           (3, 'Test3'),
+           (4, 'Test4'),
+           (5, 'Test5');
+     "#
+        ))
+        .await
+        .unwrap();
+    let cancel_token = CancellationToken::new();
+    let cancel_token_clone = cancel_token.clone();
+
+    tokio::spawn(async {
+        daemon::start(
+            DaemonArgs {
+                master_db: None,
+                master_db_schema: String::new(),
+                embeddings: true,
+                autotune: false,
+                external_index: false,
+                databases_table: String::new(),
+                schema: "_lantern_internal".to_owned(),
+                target_db: Some(vec![new_connection_uri]),
+                log_level: LogLevel::Debug,
+            },
+            None,
+            cancel_token_clone,
+        )
+        .await
+        .unwrap();
+    });
+
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
+    new_db_client
+        .batch_execute(&format!(
+            r#"
+            UPDATE _lantern_internal.embedding_generation_jobs SET embedding_model='test';
+            INSERT INTO {CLIENT_TABLE_NAME} (id, title) VALUES (6, 'Test6'), (7, 'Test7'), (8, 'Test8');
+            "#
+        ))
+        .await
+        .unwrap();
+
+    wait_for_completion(
+        &mut new_db_client,
+        &format!("SELECT COUNT(*)=5 FROM {CLIENT_TABLE_NAME} WHERE title_embedding IS NOT NULL"),
+        60,
+    )
+    .await
+    .unwrap();
+
+    wait_for_completion(
+        &mut new_db_client,
+        &format!("SELECT SUM(rows)=5 FROM _lantern_internal.embedding_usage_info WHERE job_id=10 AND failed=FALSE GROUP BY job_id"),
+        1,
+    )
+    .await
+    .unwrap();
+
+    wait_for_completion(
+        &mut new_db_client,
+        &format!("SELECT SUM(tokens)=20 FROM _lantern_internal.embedding_usage_info WHERE job_id=10 AND failed=FALSE GROUP BY job_id"),
+        1,
+    )
+    .await
+    .unwrap();
+
+    wait_for_completion(
+        &mut new_db_client,
+        &format!("SELECT SUM(rows)=3 FROM _lantern_internal.embedding_usage_info WHERE job_id=10 AND failed=TRUE GROUP BY job_id"),
+        20,
     )
     .await
     .unwrap();

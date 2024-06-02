@@ -41,10 +41,19 @@ pub const JOB_TABLE_DEFINITION: &'static str = r#"
 "init_finished_at" timestamp,
 "init_failed_at" timestamp,
 "init_failure_reason" text,
-"init_progress" int2 DEFAULT 0,
-"failed_requests" bigint DEFAULT 0,
-"failed_rows" bigint DEFAULT 0
+"init_progress" int2 DEFAULT 0
 "#;
+
+pub const USAGE_TABLE_DEFINITION: &'static str = r#"
+"id" SERIAL PRIMARY KEY,
+"job_id" INT NOT NULL,
+"rows" INT NOT NULL,
+"tokens" INT NOT NULL,
+"failed" BOOL NOT NULL DEFAULT FALSE,
+"created_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+"#;
+
+const EMB_USAGE_TABLE_NAME: &'static str = "embedding_usage_info";
 const EMB_LOCK_TABLE_NAME: &'static str = "_lantern_emb_job_locks";
 
 async fn lock_row(
@@ -353,6 +362,7 @@ async fn embedding_worker(
     let schema = Arc::new(schema);
     let table = Arc::new(table);
     let jobs_table_name = Arc::new(get_full_table_name(&schema, &table));
+    let usage_table_name = get_full_table_name(&schema, EMB_USAGE_TABLE_NAME);
 
     tokio::spawn(async move {
         let (client, connection) = tokio_postgres::connect(&db_uri, NoTls).await?;
@@ -363,7 +373,6 @@ async fn embedding_worker(
             let client_ref = client.clone();
             let orig_job_clone = job.clone();
             let job = Arc::new(job);
-            let schema_ref = schema.clone();
 
             let task_logger = Logger::new(
                 &format!("{} - {}|{:?}", logger.label, job.id, job.runtime),
@@ -401,25 +410,18 @@ async fn embedding_worker(
             match result {
                 Ok((processed_rows, processed_tokens)) => {
                     if processed_tokens > 0 {
-                        let fn_name = get_full_table_name(
-                            &schema_ref,
-                            "increment_embedding_usage_and_tokens",
-                        );
                         let res = client_ref
                             .execute(
                                 &format!(
-                                    "SELECT {fn_name}({job_id},{usage},{tokens}::bigint)",
-                                    job_id = job.id,
-                                    usage = processed_rows,
-                                    tokens = processed_tokens
+                                    "INSERT INTO {usage_table_name} (job_id, rows, tokens) VALUES ($1, $2, $3)",
                                 ),
-                                &[],
+                                &[&job.id, &(processed_rows as i32), &(processed_tokens as i32)],
                             )
                             .await;
 
                         if let Err(e) = res {
                             logger.error(&format!(
-                                "Error while updating usage for {job_id}: {e}",
+                                "Error while inserting usage info for job {job_id}: {e}",
                                 job_id = job.id
                             ));
                         }
@@ -465,25 +467,21 @@ async fn embedding_worker(
                         )
                         .await;
 
-                        let fn_name =
-                            get_full_table_name(&schema_ref, "increment_embedding_failures");
 
                         let row_count = if job.row_ids.is_some() {
                             job.row_ids.as_ref().unwrap().len()
                         } else {
                             0
                         };
+                        let res = client_ref
+                            .execute(
+                                &format!(
+                                    "INSERT INTO {usage_table_name} (job_id, rows, tokens, failed) VALUES ($1, $2, 0, TRUE)",
+                                ),
+                                &[&job.id, &(row_count as i32)],
+                            )
+                            .await;
 
-                        let res =
-                            client_ref
-                                .execute(
-                                    &format!(
-                                        "SELECT {fn_name}({job_id},{row_count})",
-                                        job_id = job.id,
-                                    ),
-                                    &[],
-                                )
-                                .await;
 
                         if let Err(e) = res {
                             logger.error(&format!(
@@ -895,7 +893,8 @@ pub async fn start(
         Some(EMB_LOCK_TABLE_NAME),
         None,
         None,
-        true,
+        Some(EMB_USAGE_TABLE_NAME),
+        Some(USAGE_TABLE_DEFINITION),
         &notification_channel,
         logger.clone(),
     )

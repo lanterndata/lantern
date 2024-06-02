@@ -251,7 +251,8 @@ pub async fn start(args: JobRunArgs, logger: Arc<Logger>, cancel_token: Cancella
         None,
         None,
         None,
-        false,
+        None,
+        None,
         &notification_channel,
         logger.clone(),
     )

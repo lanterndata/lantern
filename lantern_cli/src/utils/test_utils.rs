@@ -5,9 +5,14 @@ pub mod daemon_test_utils {
 
     pub static CLIENT_TABLE_NAME: &'static str = "_lantern_cloud_client1";
     pub static CLIENT_TABLE_NAME_2: &'static str = "_lantern_cloud_client2";
-    pub static EMBEDDING_USAGE_TABLE_NAME: &'static str = "_daemon_embedding_usage";
 
     async fn drop_db(client: &mut Client, name: &str) -> AnyhowVoidResult {
+        client
+            .execute(
+                &format!("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='{name}';"),
+                &[],
+            )
+            .await?;
         client
             .execute(&format!("DROP DATABASE IF EXISTS {name}"), &[])
             .await?;
@@ -36,8 +41,8 @@ pub mod daemon_test_utils {
 
         tokio::spawn(async move { connection.await.unwrap() });
         new_db_client
-        .batch_execute(&format!(
-            r#"
+            .batch_execute(&format!(
+                r#"
     CREATE EXTENSION IF NOT EXISTS lantern;
 
     CREATE TABLE {CLIENT_TABLE_NAME} (
@@ -46,37 +51,16 @@ pub mod daemon_test_utils {
        title_embedding REAL[]
     );
 
-    CREATE TABLE {EMBEDDING_USAGE_TABLE_NAME} (
-        id SERIAL PRIMARY KEY,
-        job_id INT NOT NULL UNIQUE,
-        usage INT NOT NULL DEFAULT 0,
-        tokens BIGINT NOT NULL DEFAULT 0
-   );
-
-    CREATE OR REPLACE FUNCTION _lantern_internal.increment_embedding_usage_and_tokens(v_job_id integer, v_usage integer, v_tokens BIGINT DEFAULT 0)
-     RETURNS VOID
-     LANGUAGE plpgsql
-    AS $function$
-    BEGIN
-    INSERT INTO {EMBEDDING_USAGE_TABLE_NAME} (job_id, usage, tokens)
-      VALUES (v_job_id, v_usage, v_tokens)
-      ON CONFLICT (job_id)
-      DO UPDATE SET
-        usage = {EMBEDDING_USAGE_TABLE_NAME}.usage + v_usage,
-        tokens = {EMBEDDING_USAGE_TABLE_NAME}.tokens + v_tokens;
-    END;
-    $function$;
-
     CREATE TABLE _lantern_internal.embedding_generation_jobs ({embedding_job_table_def});
     CREATE TABLE _lantern_internal.autotune_jobs ({autotune_job_table_def});
     CREATE TABLE _lantern_internal.external_index_jobs ({indexing_job_table_def});
     
-     "#, 
-        embedding_job_table_def = daemon::embedding_jobs::JOB_TABLE_DEFINITION,
-        autotune_job_table_def = daemon::autotune_jobs::JOB_TABLE_DEFINITION,
-        indexing_job_table_def = daemon::external_index_jobs::JOB_TABLE_DEFINITION,
-        ))
-        .await?;
+     "#,
+                embedding_job_table_def = daemon::embedding_jobs::JOB_TABLE_DEFINITION,
+                autotune_job_table_def = daemon::autotune_jobs::JOB_TABLE_DEFINITION,
+                indexing_job_table_def = daemon::external_index_jobs::JOB_TABLE_DEFINITION,
+            ))
+            .await?;
 
         Ok((new_connection_uri, new_db_client))
     }
@@ -88,12 +72,16 @@ pub mod daemon_test_utils {
     ) -> AnyhowVoidResult {
         let mut check_cnt = 0;
         loop {
-            let client_data = client.query_one(query_condition, &[]).await.unwrap();
-            let exists: bool = client_data.get::<usize, bool>(0);
+            let client_data = client.query(query_condition, &[]).await.unwrap();
+            let mut exists = false;
+
+            if client_data.len() != 0 {
+                exists = client_data[0].get::<usize, bool>(0);
+            }
 
             if !exists {
                 if check_cnt >= timeout {
-                    anyhow::bail!("Force exit after 30 seconds");
+                    anyhow::bail!("Force exit after {check_cnt} seconds");
                 }
                 check_cnt += 1;
                 tokio::time::sleep(Duration::from_secs(1)).await;
