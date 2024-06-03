@@ -1,33 +1,19 @@
 use super::helpers::{check_table_exists, get_missing_rows_filter};
-use super::types::JobInsertNotification;
+use super::types::{ClientJobSignal, ClientJobsMap, JobInsertNotification};
 use crate::logger::{LogLevel, Logger};
 use crate::types::AnyhowVoidResult;
 use crate::utils::{
     append_params_to_uri, get_common_embedding_ignore_filters, get_full_table_name, quote_ident,
 };
 use futures::StreamExt;
-use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tokio::sync::RwLock;
-use tokio::sync::{
-    mpsc,
-    mpsc::{UnboundedReceiver, UnboundedSender},
-};
+use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tokio_postgres::{AsyncMessage, Client, NoTls};
 
-enum Signal {
-    Stop,
-    Restart,
-}
-
-lazy_static! {
-    static ref CLIENT_JOBS: RwLock<HashMap<i32, UnboundedSender<Signal>>> =
-        RwLock::new(HashMap::new());
-}
-
 pub async fn toggle_client_job(
+    client_jobs_map: Arc<ClientJobsMap>,
     job_id: i32,
     db_uri: String,
     pk: String,
@@ -48,6 +34,7 @@ pub async fn toggle_client_job(
         tokio::spawn(async move {
             let res = start_client_job(
                 job_logger,
+                client_jobs_map,
                 job_id,
                 pk,
                 db_uri,
@@ -64,7 +51,16 @@ pub async fn toggle_client_job(
             }
         });
     } else {
-        let res = stop_client_job(job_logger, &db_uri, job_id, &table, &schema, true).await;
+        let res = stop_client_job(
+            job_logger,
+            client_jobs_map,
+            &db_uri,
+            job_id,
+            &table,
+            &schema,
+            true,
+        )
+        .await;
         if let Err(e) = res {
             logger.error(&format!("Error while stopping job {}", e.to_string()));
         }
@@ -179,7 +175,7 @@ async fn remove_client_triggers(
 async fn client_notification_listener(
     db_uri: Arc<String>,
     notification_channel: Arc<String>,
-    job_signal_tx: UnboundedSender<Signal>,
+    job_signal_tx: UnboundedSender<ClientJobSignal>,
     job_insert_queue_tx: UnboundedSender<JobInsertNotification>,
     logger: Arc<Logger>,
 ) -> Result<UnboundedSender<()>, anyhow::Error> {
@@ -204,7 +200,7 @@ async fn client_notification_listener(
                     "Error receiving message from DB: {}",
                     &e.to_string()
                 ));
-                let _ = job_signal_tx.send(Signal::Restart);
+                let _ = job_signal_tx.send(ClientJobSignal::Restart);
                 break;
             }
 
@@ -282,6 +278,7 @@ async fn client_notification_listener(
 
 async fn start_client_job(
     logger: Arc<Logger>,
+    client_jobs_map: Arc<ClientJobsMap>,
     job_id: i32,
     pk: String,
     db_uri: String,
@@ -291,17 +288,28 @@ async fn start_client_job(
     schema: String,
     job_insert_queue_tx: UnboundedSender<JobInsertNotification>,
 ) -> AnyhowVoidResult {
-    let jobs = CLIENT_JOBS.read().await;
+    let jobs = client_jobs_map.read().await;
     if jobs.get(&job_id).is_some() {
         logger.warn("Job is active, cancelling before running again");
         drop(jobs);
-        stop_client_job(logger.clone(), &db_uri, job_id, &table, &schema, false).await?;
+        stop_client_job(
+            logger.clone(),
+            client_jobs_map.clone(),
+            &db_uri,
+            job_id,
+            &table,
+            &schema,
+            false,
+        )
+        .await?;
     } else {
         drop(jobs);
     }
 
-    let (job_signal_tx, mut job_signal_rx): (UnboundedSender<Signal>, UnboundedReceiver<Signal>) =
-        mpsc::unbounded_channel();
+    let (job_signal_tx, mut job_signal_rx): (
+        UnboundedSender<ClientJobSignal>,
+        UnboundedReceiver<ClientJobSignal>,
+    ) = mpsc::unbounded_channel();
     logger.info("Starting Client Listener");
 
     // Connect to client database
@@ -341,7 +349,7 @@ async fn start_client_job(
     let job_signal_tx_clone = job_signal_tx.clone();
 
     // Save job tx into shared hashmap, so we will be able to stop the job later
-    let mut jobs = CLIENT_JOBS.write().await;
+    let mut jobs = client_jobs_map.write().await;
     jobs.insert(job_id, job_signal_tx);
     drop(jobs);
 
@@ -360,7 +368,7 @@ async fn start_client_job(
         let mut restart_interval = 10;
         while let Some(signal) = job_signal_rx.recv().await {
             match signal {
-                Signal::Stop => {
+                ClientJobSignal::Stop => {
                     // remove client listener
                     if let Err(e) = cancel_listener_task.send(()) {
                         signal_listener_logger
@@ -370,7 +378,7 @@ async fn start_client_job(
                     signal_listener_logger.info("Job stopped");
                     break;
                 }
-                Signal::Restart => loop {
+                ClientJobSignal::Restart => loop {
                     signal_listener_logger.info("Restarting job");
 
                     let res = client_notification_listener(
@@ -408,6 +416,7 @@ async fn start_client_job(
 
 pub async fn stop_client_job(
     logger: Arc<Logger>,
+    client_jobs_map: Arc<ClientJobsMap>,
     db_uri: &str,
     job_id: i32,
     table: &str,
@@ -424,7 +433,7 @@ pub async fn stop_client_job(
     }
 
     // Cancel job and remove from hashmap
-    let mut jobs = CLIENT_JOBS.write().await;
+    let mut jobs = client_jobs_map.write().await;
     let job = jobs.remove(&job_id);
     drop(jobs);
 
@@ -433,7 +442,7 @@ pub async fn stop_client_job(
             logger.error(&format!("Job {job_id} not found in job list"));
         }
 
-        Some(job) => job.send(Signal::Stop)?,
+        Some(job) => job.send(ClientJobSignal::Stop)?,
     }
 
     Ok(())

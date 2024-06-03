@@ -4,8 +4,8 @@ use super::helpers::{
     remove_job_handle, schedule_job_retry, set_job_handle, startup_hook,
 };
 use super::types::{
-    EmbeddingJob, JobBatchingHashMap, JobEvent, JobEventHandlersMap, JobInsertNotification,
-    JobRunArgs, JobUpdateNotification,
+    ClientJobsMap, EmbeddingJob, JobBatchingHashMap, JobEvent, JobEventHandlersMap,
+    JobInsertNotification, JobRunArgs, JobUpdateNotification,
 };
 use crate::daemon::helpers::anyhow_wrap_connection;
 use crate::embeddings::cli::EmbeddingArgs;
@@ -154,6 +154,7 @@ async fn unlock_rows(
 
 async fn stream_job(
     logger: Arc<Logger>,
+    client_jobs_map: Arc<ClientJobsMap>,
     main_client: Arc<Client>,
     job_queue_tx: Sender<EmbeddingJob>,
     notifications_tx: UnboundedSender<JobInsertNotification>,
@@ -167,12 +168,15 @@ async fn stream_job(
     let notifications_tx_clone = notifications_tx.clone();
     let job_clone = job.clone();
     let jobs_map_clone = jobs_map.clone();
+    let client_jobs_map_clone = client_jobs_map.clone();
 
     let task = tokio::spawn(async move {
         logger.info(&format!("Start streaming job {}", job.id));
         // Enable triggers for job
         if job.is_init {
+            let client_jobs_map = client_jobs_map.clone();
             toggle_client_job(
+                client_jobs_map,
                 job.id.clone(),
                 job.db_uri.clone(),
                 job.pk.clone(),
@@ -204,6 +208,7 @@ async fn stream_job(
                 connection_logger.error(&format!("Error while streaming job: {job_id}. {e}"));
                 if job.is_init {
                     toggle_client_job(
+                        client_jobs_map.clone(),
                         job_clone.id,
                         job_clone.db_uri,
                         job_clone.pk,
@@ -331,6 +336,7 @@ async fn stream_job(
         if job_clone.is_init {
             main_client.execute(&format!("UPDATE {jobs_table_name} SET init_failed_at=NOW(), updated_at=NOW(), init_failure_reason=$1 WHERE id=$2 AND init_finished_at IS NULL"), &[&e.to_string(), &job_id]).await?;
             toggle_client_job(
+                client_jobs_map_clone.clone(),
                 job_clone.id,
                 job_clone.db_uri,
                 job_clone.pk,
@@ -553,6 +559,7 @@ async fn job_insert_processor(
     data_path: &'static str,
     jobs_map: Arc<JobEventHandlersMap>,
     job_batching_hashmap: Arc<JobBatchingHashMap>,
+    client_jobs_map: Arc<ClientJobsMap>,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
     // This function will have 2 running tasks
@@ -660,6 +667,7 @@ async fn job_insert_processor(
                 // TODO:: Check if passing insert_client does not make deadlocks
                 tokio::spawn(stream_job(
                     logger_r1.clone(),
+                    client_jobs_map.clone(),
                     insert_client.clone(),
                     job_tx_r1.clone(),
                     notifications_tx.clone(),
@@ -746,6 +754,7 @@ async fn job_update_processor(
     table: String,
     jobs_map: Arc<JobEventHandlersMap>,
     job_batching_hashmap: Arc<JobBatchingHashMap>,
+    client_jobs_map: Arc<ClientJobsMap>,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
     tokio::spawn(async move {
@@ -767,7 +776,7 @@ async fn job_update_processor(
             }
 
             if init_finished_at.is_some() {
-              toggle_client_job(id, db_uri.clone(), "id".to_owned(), row.get::<&str, String>("column").to_owned(), row.get::<&str, String>("dst_column").to_owned(), row.get::<&str, String>("table").to_owned(), row.get::<&str, String>("schema").to_owned(), logger.level.clone(), &logger.label, Some(job_insert_queue_tx.clone()), canceled_at.is_none()).await?;
+              toggle_client_job(client_jobs_map.clone(), id, db_uri.clone(), "id".to_owned(), row.get::<&str, String>("column").to_owned(), row.get::<&str, String>("dst_column").to_owned(), row.get::<&str, String>("table").to_owned(), row.get::<&str, String>("schema").to_owned(), logger.level.clone(), &logger.label, Some(job_insert_queue_tx.clone()), canceled_at.is_none()).await?;
             } else if canceled_at.is_some() {
                 // Cancel ongoing job
                 let jobs = jobs_map.read().await;
@@ -829,6 +838,7 @@ async fn create_data_path(logger: Arc<Logger>) -> &'static str {
 async fn stop_all_client_jobs(
     client: Arc<Client>,
     logger: Arc<Logger>,
+    client_jobs_map: Arc<ClientJobsMap>,
     db_uri: String,
     schema: String,
     jobs_table_name: String,
@@ -850,8 +860,16 @@ async fn stop_all_client_jobs(
             logger.level.clone(),
         ));
 
-        if let Err(e) =
-            stop_client_job(task_logger, &db_uri, job_id, &job_table, &schema, false).await
+        if let Err(e) = stop_client_job(
+            task_logger,
+            client_jobs_map.clone(),
+            &db_uri,
+            job_id,
+            &job_table,
+            &schema,
+            false,
+        )
+        .await
         {
             logger.error(&format!("Error while stopping job {job_id}: {e}"));
         };
@@ -910,6 +928,8 @@ pub async fn start(
     let schema = args.schema.clone();
 
     let jobs_map: Arc<JobEventHandlersMap> = Arc::new(RwLock::new(HashMap::new()));
+    let client_jobs_map: Arc<ClientJobsMap> = Arc::new(RwLock::new(HashMap::new()));
+
     let job_batching_hashmap: Arc<JobBatchingHashMap> = Arc::new(Mutex::new(HashMap::new()));
 
     tokio::try_join!(
@@ -932,6 +952,7 @@ pub async fn start(
             data_path,
             jobs_map.clone(),
             job_batching_hashmap.clone(),
+            client_jobs_map.clone(),
             logger.clone(),
         ),
         job_update_processor(
@@ -942,6 +963,7 @@ pub async fn start(
             table.clone(),
             jobs_map.clone(),
             job_batching_hashmap.clone(),
+            client_jobs_map.clone(),
             logger.clone(),
         ),
         embedding_worker(
@@ -964,6 +986,7 @@ pub async fn start(
                 stop_all_client_jobs(
                     main_db_client,
                     logger_clone,
+                    client_jobs_map,
                     main_db_uri,
                     schema,
                     jobs_table_name,

@@ -2,7 +2,10 @@ use crate::embeddings::cli::Runtime;
 use crate::utils::get_common_embedding_ignore_filters;
 use itertools::Itertools;
 use std::collections::HashMap;
-use tokio::sync::{mpsc::Sender, Mutex, RwLock};
+use tokio::sync::{
+    mpsc::{Sender, UnboundedSender},
+    Mutex, RwLock,
+};
 use tokio_postgres::Row;
 use tokio_util::sync::CancellationToken;
 
@@ -219,12 +222,19 @@ pub struct JobUpdateNotification {
 pub type JobTaskEventTx = Sender<JobEvent>;
 pub type JobEventHandlersMap = RwLock<HashMap<i32, JobTaskEventTx>>;
 pub type JobBatchingHashMap = Mutex<HashMap<i32, Vec<String>>>;
+pub type ClientJobsMap = RwLock<HashMap<i32, UnboundedSender<ClientJobSignal>>>;
 pub type DaemonJobHandlerMap = RwLock<HashMap<String, CancellationToken>>;
 
 pub enum JobEvent {
     Done,
     Errored(String),
 }
+
+pub enum ClientJobSignal {
+    Stop,
+    Restart,
+}
+
 pub enum JobType {
     Embeddings,
     ExternalIndex,

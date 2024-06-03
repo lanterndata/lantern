@@ -143,7 +143,12 @@ pub fn create_codebook<'a> (
     } else {
         // In this case as this will be only task running we can use whole connection pool
         let active_connections = transaction.query_one("SELECT COUNT(DISTINCT pid) FROM pg_stat_activity", &[])?;
-        let active_connections = active_connections.get::<usize, i64>(0) as usize;
+        let mut active_connections = active_connections.get::<usize, i64>(0) as usize;
+
+        if max_connections < active_connections {
+            active_connections = max_connections;
+        }
+
         cmp::min(num_cores, max_connections - active_connections)
     };
 
