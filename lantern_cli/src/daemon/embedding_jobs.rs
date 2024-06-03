@@ -375,7 +375,7 @@ async fn embedding_worker(
             let job = Arc::new(job);
 
             let task_logger = Logger::new(
-                &format!("{} - {}|{:?}", logger.label, job.id, job.runtime),
+                &format!("{}|{}|{:?}", logger.label, job.id, job.runtime),
                 logger.level.clone(),
             );
             let job_clone = job.clone();

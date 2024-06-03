@@ -229,10 +229,10 @@ pub async fn startup_hook(
         let usage_table_name = get_full_table_name(schema, usage_table_name.unwrap());
         let usage_table_def = usage_table_def.unwrap();
         transaction
-            .execute(
-                &format!("CREATE TABLE IF NOT EXISTS {usage_table_name} ({usage_table_def})"),
-                &[],
-            )
+            .batch_execute(&format!(
+                "CREATE TABLE IF NOT EXISTS {usage_table_name} ({usage_table_def});
+                 CREATE INDEX IF NOT EXISTS embedding_usage_date_idx ON {usage_table_name}(created_at);"
+            ))
             .await?;
     }
 
