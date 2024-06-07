@@ -948,13 +948,6 @@ pub async fn start(
         mpsc::channel(1);
     let table = args.table_name;
 
-    //TODO:: Remove migration on next release
-    let migration_sql = format!(
-        "ALTER TABLE {full_table_name} ADD COLUMN IF NOT EXISTS label TEXT NULL;",
-        full_table_name = get_full_table_name(&args.schema, &table)
-    );
-    // ======================================
-
     startup_hook(
         &mut main_db_client,
         &table,
@@ -965,7 +958,7 @@ pub async fn start(
         None,
         Some(EMB_USAGE_TABLE_NAME),
         Some(USAGE_TABLE_DEFINITION),
-        Some(&migration_sql),
+        None,
         &notification_channel,
         logger.clone(),
     )
