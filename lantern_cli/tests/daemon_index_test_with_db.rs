@@ -36,6 +36,7 @@ async fn test_daemon_external_index_create() {
     tokio::spawn(async {
         daemon::start(
             DaemonArgs {
+                label: None,
                 master_db: None,
                 master_db_schema: String::new(),
                 embeddings: false,

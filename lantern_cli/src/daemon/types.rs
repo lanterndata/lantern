@@ -15,6 +15,7 @@ pub struct JobRunArgs {
     pub schema: String,
     pub log_level: crate::logger::LogLevel,
     pub table_name: String,
+    pub label: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -56,6 +57,7 @@ pub struct EmbeddingJob {
     pub column: String,
     pub pk: String,
     pub filter: Option<String>,
+    pub label: Option<String>,
     pub out_column: String,
     pub model: String,
     pub runtime_params: String,
@@ -78,7 +80,8 @@ impl EmbeddingJob {
 
         Ok(Self {
             id: row.get::<&str, i32>("id"),
-            pk: "id".to_owned(), // TODO:: row.get::<&str, String>("pk"),
+            pk: row.get::<&str, String>("pk"),
+            label: row.get::<&str, Option<String>>("label"),
             db_uri: db_uri.to_owned(),
             schema: row.get::<&str, String>("schema"),
             table: row.get::<&str, String>("table"),
@@ -224,6 +227,7 @@ pub type JobEventHandlersMap = RwLock<HashMap<i32, JobTaskEventTx>>;
 pub type JobBatchingHashMap = Mutex<HashMap<i32, Vec<String>>>;
 pub type ClientJobsMap = RwLock<HashMap<i32, UnboundedSender<ClientJobSignal>>>;
 pub type DaemonJobHandlerMap = RwLock<HashMap<String, CancellationToken>>;
+pub type JobLabelsMap = RwLock<HashMap<i32, String>>;
 
 pub enum JobEvent {
     Done,

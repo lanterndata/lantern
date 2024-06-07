@@ -5,7 +5,7 @@ use super::helpers::{
 };
 use super::types::{
     ClientJobsMap, EmbeddingJob, JobBatchingHashMap, JobEvent, JobEventHandlersMap,
-    JobInsertNotification, JobRunArgs, JobUpdateNotification,
+    JobInsertNotification, JobLabelsMap, JobRunArgs, JobUpdateNotification,
 };
 use crate::daemon::helpers::anyhow_wrap_connection;
 use crate::embeddings::cli::EmbeddingArgs;
@@ -29,6 +29,7 @@ pub const JOB_TABLE_DEFINITION: &'static str = r#"
 "schema" text NOT NULL DEFAULT 'public',
 "table" text NOT NULL,
 "pk" text NOT NULL DEFAULT 'id',
+"label" text NULL,
 "runtime" text NOT NULL DEFAULT 'ort',
 "runtime_params" jsonb,
 "src_column" text NOT NULL,
@@ -169,6 +170,7 @@ async fn stream_job(
     let job_clone = job.clone();
     let jobs_map_clone = jobs_map.clone();
     let client_jobs_map_clone = client_jobs_map.clone();
+    let jobs_table_name_clone = jobs_table_name.clone();
 
     let task = tokio::spawn(async move {
         logger.info(&format!("Start streaming job {}", job.id));
@@ -253,6 +255,17 @@ async fn stream_job(
         let total_rows = total_rows as usize;
 
         if total_rows == 0 {
+            if job.is_init {
+                transaction.execute(
+                  &format!(
+                      "UPDATE {jobs_table_name} SET init_finished_at=NOW(), updated_at=NOW(), init_progress=100 WHERE id=$1"
+                  ),
+                  &[&job.id],
+                )
+                .await?;
+                transaction.commit().await?;
+            }
+
             return Ok(());
         }
 
@@ -334,7 +347,7 @@ async fn stream_job(
         top_logger.error(&format!("Error while streaming job {job_id}: {e}"));
         remove_job_handle(&jobs_map_clone, job_id).await?;
         if job_clone.is_init {
-            main_client.execute(&format!("UPDATE {jobs_table_name} SET init_failed_at=NOW(), updated_at=NOW(), init_failure_reason=$1 WHERE id=$2 AND init_finished_at IS NULL"), &[&e.to_string(), &job_id]).await?;
+            main_client.execute(&format!("UPDATE {jobs_table_name_clone} SET init_failed_at=NOW(), updated_at=NOW(), init_failure_reason=$1 WHERE id=$2 AND init_finished_at IS NULL"), &[&e.to_string(), &job_id]).await?;
             toggle_client_job(
                 client_jobs_map_clone.clone(),
                 job_clone.id,
@@ -556,10 +569,12 @@ async fn job_insert_processor(
     db_uri: String,
     schema: String,
     table: String,
+    daemon_label: String,
     data_path: &'static str,
     jobs_map: Arc<JobEventHandlersMap>,
     job_batching_hashmap: Arc<JobBatchingHashMap>,
     client_jobs_map: Arc<ClientJobsMap>,
+    job_labels_map: Arc<JobLabelsMap>,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
     // This function will have 2 running tasks
@@ -579,8 +594,7 @@ async fn job_insert_processor(
     // batch jobs for the rows. This will optimize embedding generation as if there will be lots of
     // inserts to the table between 10 seconds all that rows will be batched.
     let full_table_name = Arc::new(get_full_table_name(&schema, &table));
-    // TODO:: Select pk here
-    let job_query_sql = Arc::new(format!("SELECT id, src_column as \"column\", dst_column, \"table\", \"schema\", embedding_model as model, runtime, runtime_params::text, init_finished_at FROM {0}", &full_table_name));
+    let job_query_sql = Arc::new(format!("SELECT id, pk, label, src_column as \"column\", dst_column, \"table\", \"schema\", embedding_model as model, runtime, runtime_params::text, init_finished_at FROM {0}", &full_table_name));
 
     let db_uri_r1 = db_uri.clone();
     let full_table_name_r1 = full_table_name.clone();
@@ -589,6 +603,7 @@ async fn job_insert_processor(
     let logger_r1 = logger.clone();
     let lock_table_name = Arc::new(get_full_table_name(&schema, EMB_LOCK_TABLE_NAME));
     let job_batching_hashmap_r1 = job_batching_hashmap.clone();
+    let job_labels_map_r1 = job_labels_map.clone();
 
     let insert_processor_task = tokio::spawn(async move {
         let (insert_client, connection) = tokio_postgres::connect(&db_uri_r1, NoTls).await?;
@@ -596,6 +611,14 @@ async fn job_insert_processor(
         tokio::spawn(async move { connection.await });
         while let Some(notification) = notifications_rx.recv().await {
             let id = notification.id;
+
+            // check if job's label is not matching the label of current daemon instance
+            // do not process the row
+            if let Some(label) = job_labels_map.read().await.get(&id) {
+                if label != &daemon_label {
+                    continue;
+                }
+            }
 
             if let Some(row_id) = notification.row_id {
                 // Do this in a non-blocking way to not block collecting of updates while locking
@@ -645,6 +668,24 @@ async fn job_insert_processor(
                     .get::<&str, Option<SystemTime>>("init_finished_at")
                     .is_none();
 
+                let job = EmbeddingJob::new(row, data_path, &db_uri_r1);
+
+                if let Err(e) = &job {
+                    logger_r1.error(&format!("Error while creating job {id}: {e}",));
+                    continue;
+                }
+
+                let mut job = job.unwrap();
+
+                if let Some(label) = &job.label {
+                    // insert label in cache
+                    job_labels_map.write().await.insert(job.id, label.clone());
+
+                    if label != &daemon_label {
+                        continue;
+                    }
+                }
+
                 if is_init {
                     // Only update init time if this is the first time job is being executed
                     let updated_count = insert_client.execute(&format!("UPDATE {0} SET init_started_at=NOW() WHERE init_started_at IS NULL AND id=$1", &full_table_name_r1), &[&id]).await?;
@@ -653,13 +694,6 @@ async fn job_insert_processor(
                     }
                 }
 
-                let job = EmbeddingJob::new(row, data_path, &db_uri_r1);
-
-                if let Err(e) = &job {
-                    logger_r1.error(&format!("Error while creating job {id}: {e}",));
-                    continue;
-                }
-                let mut job = job.unwrap();
                 job.set_is_init(is_init);
                 if let Some(filter) = notification.filter {
                     job.set_filter(&filter);
@@ -715,6 +749,17 @@ async fn job_insert_processor(
                     continue;
                 }
                 let mut job = job.unwrap();
+
+                // update label in cache
+                if let Some(label) = &job.label {
+                    job_labels_map_r1
+                        .write()
+                        .await
+                        .insert(job.id, label.clone());
+                } else {
+                    job_labels_map_r1.write().await.remove(&job.id);
+                }
+
                 job.set_is_init(false);
                 let rows_len = row_ids.len();
                 job.set_id_filter(&row_ids);
@@ -903,6 +948,13 @@ pub async fn start(
         mpsc::channel(1);
     let table = args.table_name;
 
+    //TODO:: Remove migration on next release
+    let migration_sql = format!(
+        "ALTER TABLE {full_table_name} ADD COLUMN IF NOT EXISTS label TEXT NULL;",
+        full_table_name = get_full_table_name(&args.schema, &table)
+    );
+    // ======================================
+
     startup_hook(
         &mut main_db_client,
         &table,
@@ -913,6 +965,7 @@ pub async fn start(
         None,
         Some(EMB_USAGE_TABLE_NAME),
         Some(USAGE_TABLE_DEFINITION),
+        Some(&migration_sql),
         &notification_channel,
         logger.clone(),
     )
@@ -929,6 +982,7 @@ pub async fn start(
 
     let jobs_map: Arc<JobEventHandlersMap> = Arc::new(RwLock::new(HashMap::new()));
     let client_jobs_map: Arc<ClientJobsMap> = Arc::new(RwLock::new(HashMap::new()));
+    let job_labels_map: Arc<JobLabelsMap> = Arc::new(RwLock::new(HashMap::new()));
 
     let job_batching_hashmap: Arc<JobBatchingHashMap> = Arc::new(Mutex::new(HashMap::new()));
 
@@ -949,10 +1003,12 @@ pub async fn start(
             main_db_uri.clone(),
             schema.clone(),
             table.clone(),
+            args.label.clone().unwrap_or(String::new()),
             data_path,
             jobs_map.clone(),
             job_batching_hashmap.clone(),
             client_jobs_map.clone(),
+            job_labels_map,
             logger.clone(),
         ),
         job_update_processor(

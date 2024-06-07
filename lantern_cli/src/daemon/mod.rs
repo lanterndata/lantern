@@ -96,6 +96,7 @@ async fn spawn_job(
             JobType::Embeddings => {
                 embedding_jobs::start(
                     JobRunArgs {
+                        label: args.label.clone(),
                         uri: target_db.uri.clone(),
                         schema: args.schema.clone(),
                         log_level: args.log_level.value(),
@@ -109,6 +110,7 @@ async fn spawn_job(
             JobType::ExternalIndex => {
                 external_index_jobs::start(
                     JobRunArgs {
+                        label: args.label.clone(),
                         uri: target_db.uri.clone(),
                         schema: args.schema.clone(),
                         log_level: args.log_level.value(),
@@ -122,6 +124,7 @@ async fn spawn_job(
             JobType::Autotune => {
                 autotune_jobs::start(
                     JobRunArgs {
+                        label: args.label.clone(),
                         uri: target_db.uri.clone(),
                         schema: args.schema.clone(),
                         log_level: args.log_level.value(),

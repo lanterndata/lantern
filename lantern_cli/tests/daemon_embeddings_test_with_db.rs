@@ -36,6 +36,7 @@ async fn test_daemon_embedding_init_job() {
     tokio::spawn(async {
         daemon::start(
             DaemonArgs {
+                label: None,
                 master_db: None,
                 master_db_schema: String::new(),
                 embeddings: true,
@@ -85,6 +86,7 @@ async fn test_daemon_embedding_job_client_insert_listener() {
     tokio::spawn(async {
         daemon::start(
             DaemonArgs {
+                label: None,
                 master_db: None,
                 master_db_schema: String::new(),
                 embeddings: true,
@@ -156,6 +158,7 @@ async fn test_daemon_embedding_job_client_update_listener() {
     tokio::spawn(async {
         daemon::start(
             DaemonArgs {
+                label: None,
                 master_db: None,
                 master_db_schema: String::new(),
                 embeddings: true,
@@ -226,6 +229,7 @@ async fn test_daemon_embedding_job_resume() {
     tokio::spawn(async {
         daemon::start(
             DaemonArgs {
+                label: None,
                 master_db: None,
                 master_db_schema: String::new(),
                 embeddings: true,
@@ -285,6 +289,7 @@ async fn test_daemon_embedding_finished_job_listener() {
     tokio::spawn(async {
         daemon::start(
             DaemonArgs {
+                label: None,
                 master_db: None,
                 master_db_schema: String::new(),
                 embeddings: true,
@@ -360,6 +365,7 @@ async fn test_daemon_embedding_multiple_jobs_listener() {
     tokio::spawn(async {
         daemon::start(
             DaemonArgs {
+                label: None,
                 master_db: None,
                 master_db_schema: String::new(),
                 embeddings: true,
@@ -446,6 +452,7 @@ async fn test_daemon_embedding_multiple_new_jobs_streaming() {
     tokio::spawn(async {
         daemon::start(
             DaemonArgs {
+                label: None,
                 master_db: None,
                 master_db_schema: String::new(),
                 embeddings: true,
@@ -540,6 +547,7 @@ async fn test_daemon_embedding_multiple_new_jobs_with_failure() {
     tokio::spawn(async {
         daemon::start(
             DaemonArgs {
+                label: None,
                 master_db: None,
                 master_db_schema: String::new(),
                 embeddings: true,
@@ -632,6 +640,7 @@ async fn test_daemon_embedding_jobs_streaming_with_failure() {
     tokio::spawn(async {
         daemon::start(
             DaemonArgs {
+                label: None,
                 master_db: None,
                 master_db_schema: String::new(),
                 embeddings: true,
@@ -688,6 +697,91 @@ async fn test_daemon_embedding_jobs_streaming_with_failure() {
     wait_for_completion(
         &mut new_db_client,
         &format!("SELECT SUM(rows)=3 FROM _lantern_internal.embedding_usage_info WHERE job_id=10 AND failed=TRUE GROUP BY job_id"),
+        20,
+    )
+    .await
+    .unwrap();
+
+    cancel_token.cancel();
+}
+
+#[tokio::test]
+async fn test_daemon_job_labels() {
+    let (new_connection_uri, mut new_db_client) =
+        setup_test("test_daemon_job_labels").await.unwrap();
+    new_db_client
+        .batch_execute(&format!(
+            r#"
+    INSERT INTO _lantern_internal.embedding_generation_jobs ("id", "label", "table", src_column, dst_column, embedding_model)
+    VALUES (13, 'test-label', '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', 'BAAI/bge-small-en');
+     "#
+        ))
+        .await
+        .unwrap();
+
+    let cancel_token = CancellationToken::new();
+    let cancel_token_clone = cancel_token.clone();
+
+    let connection_uri = new_connection_uri.clone();
+    tokio::spawn(async {
+        daemon::start(
+            DaemonArgs {
+                label: None,
+                master_db: None,
+                master_db_schema: String::new(),
+                embeddings: true,
+                autotune: false,
+                external_index: false,
+                databases_table: String::new(),
+                schema: "_lantern_internal".to_owned(),
+                target_db: Some(vec![connection_uri]),
+                log_level: LogLevel::Debug,
+            },
+            None,
+            cancel_token_clone,
+        )
+        .await
+        .unwrap();
+    });
+
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    wait_for_completion(
+        &mut new_db_client,
+        &format!("SELECT COUNT(*)=1 FROM _lantern_internal.embedding_generation_jobs WHERE init_started_at IS NULL"),
+        1,
+    )
+    .await
+    .unwrap();
+
+    cancel_token.cancel();
+
+    let cancel_token = CancellationToken::new();
+    let cancel_token_clone = cancel_token.clone();
+    tokio::spawn(async {
+        daemon::start(
+            DaemonArgs {
+                label: Some("test-label".to_owned()),
+                master_db: None,
+                master_db_schema: String::new(),
+                embeddings: true,
+                autotune: false,
+                external_index: false,
+                databases_table: String::new(),
+                schema: "_lantern_internal".to_owned(),
+                target_db: Some(vec![new_connection_uri]),
+                log_level: LogLevel::Debug,
+            },
+            None,
+            cancel_token_clone,
+        )
+        .await
+        .unwrap();
+    });
+
+    wait_for_completion(
+        &mut new_db_client,
+        &format!("SELECT COUNT(*)=1 FROM _lantern_internal.embedding_generation_jobs WHERE init_started_at IS NOT NULL AND init_finished_at IS NOT NULL"),
         20,
     )
     .await

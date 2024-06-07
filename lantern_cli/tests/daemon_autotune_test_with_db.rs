@@ -37,6 +37,7 @@ async fn test_daemon_autotune_with_create_index() {
     tokio::spawn(async {
         daemon::start(
             DaemonArgs {
+                label: None,
                 master_db: None,
                 master_db_schema: String::new(),
                 embeddings: false,

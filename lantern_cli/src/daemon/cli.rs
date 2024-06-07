@@ -63,6 +63,10 @@ pub struct DaemonArgs {
     #[arg(short, long, default_value = "_lantern_internal")]
     pub schema: String,
 
+    /// Label which will be matched against embedding job label
+    #[arg(long)]
+    pub label: Option<String>,
+
     /// Log level
     #[arg(long, value_enum, default_value_t = LogLevel::Info)] // arg_enum here
     pub log_level: LogLevel,

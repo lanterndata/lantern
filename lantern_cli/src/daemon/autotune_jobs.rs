@@ -268,6 +268,7 @@ pub async fn start(args: JobRunArgs, logger: Arc<Logger>, cancel_token: Cancella
         Some(RESULT_TABLE_DEFINITION),
         None,
         None,
+        None,
         &notification_channel,
         logger.clone(),
     )

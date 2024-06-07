@@ -124,6 +124,7 @@ pub async fn startup_hook(
     results_table_def: Option<&str>,
     usage_table_name: Option<&str>,
     usage_table_def: Option<&str>,
+    migration: Option<&str>,
     channel: &str,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
@@ -155,6 +156,10 @@ pub async fn startup_hook(
             &[],
         )
         .await?;
+
+    if let Some(migration_sql) = migration {
+        transaction.batch_execute(migration_sql).await?;
+    }
 
     let insert_function_name = &get_full_table_name(schema, &format!("notify_insert_{table}"));
     let update_function_name = &get_full_table_name(schema, &format!("notify_update_{table}"));
