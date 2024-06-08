@@ -159,8 +159,6 @@ void StoreExternalEmptyIndex(
 
     LockBuffer(header_buf, BUFFER_LOCK_EXCLUSIVE);
 
-    START_CRIT_SECTION();
-
     Page header_page = BufferGetPage(header_buf);
 
     PageInit(header_page, BufferGetPageSize(header_buf), 0);
@@ -187,6 +185,7 @@ void StoreExternalEmptyIndex(
     ((PageHeader)header_page)->pd_lower = ((char *)headerp + sizeof(HnswIndexHeaderPage)) - (char *)header_page;
 
     MarkBufferDirty(header_buf);
+    UnlockReleaseBuffer(header_buf);
 
     // Write a WAL record containing a full image of the page. Even though this is an unlogged table that doesn't use
     // WAL, this line appears to flush changes to disc immediately (and not waiting after the first checkpoint). This is
@@ -195,13 +194,7 @@ void StoreExternalEmptyIndex(
     // immediately. Otherwise, if a crash occurs before the first postgres checkpoint, postgres can't read the init fork
     // from disc and we will have a corrupted index when postgres attempts recovery. This is also what nbtree access
     // method's implementation does for empty unlogged indexes (ambuildempty implementation).
-    // NOTE: we MUST have this be inside a crit section, or else an assertion inside this method will fail and crash the
-    // db
-    log_newpage_buffer(header_buf, false);
-
-    END_CRIT_SECTION();
-
-    UnlockReleaseBuffer(header_buf);
+    log_newpage_range(index, INIT_FORKNUM, 0, RelationGetNumberOfBlocksInFork(index, INIT_FORKNUM), false);
 }
 
 void StoreExternalIndex(Relation                index,
