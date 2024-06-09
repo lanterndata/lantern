@@ -48,6 +48,17 @@ jobs:
           PG_VERSION: ${{ matrix.postgres }}
           ENABLE_COVERAGE: ${{ (startsWith(matrix.os, 'ubuntu') && matrix.postgres == 15) && '1' || '0' }}
         if: ${{ !startsWith(matrix.os, 'mac') }}
+      # add a step to run integration tests
+      - name: Run integration tests
+        id: integration-test-linux
+        run: |
+          # pytest tries to open files with full path and so 'work' home folder must be listable by postgres for it to work
+          sudo chmod +x /home/runner && \
+          sudo su postgres -c "python3 ./scripts/integration_tests.py" &&\
+          sudo su postgres -c "python3 -m pytest ./scripts/integration_tests.py --rootdir=./scripts -c /dev/null" &&\
+          echo "Done with integration tests"
+        env:
+          PG_VERSION: ${{ matrix.postgres }}
       - name: Run update tests linux
         id: update-test-linux
         run: |
