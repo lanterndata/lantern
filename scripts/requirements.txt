@@ -1,2 +1,3 @@
 GitPython==3.1.43
-testgres==1.10.0
+git+https://github.com/postgrespro/testgres@e375302a114cd4df3ceed54d6526f250c44c08e7
+pytest==7.2.1
