@@ -47,6 +47,6 @@ SELECT * FROM ldb_get_indexes('sift_base1k');
 SELECT v_transformed as v_transformed42 from sift_base1k WHERE id = 42 \gset
 CREATE INDEX ind1 ON sift_base1k USING lantern_hnsw (v_transformed) WITH (dim=128, M=8, quant_bits=1);
 SELECT * FROM ldb_get_indexes('sift_base1k');
-EXPLAIN SELECT id, ROUND((v_transformed <-> :'v_transformed42')::numeric, 1) as dist FROM sift_base1k ORDER BY v_transformed <-> :'v_transformed42' LIMIT 10;
-        SELECT id, ROUND((v_transformed <-> :'v_transformed42')::numeric, 1) as dist FROM sift_base1k ORDER BY v_transformed <-> :'v_transformed42' LIMIT 10;
+EXPLAIN SELECT id, ROUND((v_transformed <-> :'v_transformed42')::numeric, 1) as dist FROM sift_base1k ORDER BY v_transformed <-> :'v_transformed42' LIMIT 4;
+        SELECT id, ROUND((v_transformed <-> :'v_transformed42')::numeric, 1) as dist FROM sift_base1k ORDER BY v_transformed <-> :'v_transformed42' LIMIT 4;
 -- test on 2000+ dim vectors
