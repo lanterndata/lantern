@@ -54,8 +54,7 @@ jobs:
         run: |
           # pytest tries to open files with full path and so 'work' home folder must be listable by postgres for it to work
           sudo chmod +x /home/runner && \
-          sudo su postgres -c "python3 ./scripts/integration_tests.py" &&\
-          sudo su postgres -c "python3 -m pytest ./scripts/integration_tests.py --rootdir=./scripts -c /dev/null" &&\
+          sudo su postgres -c "/tmp/lantern/cienv/bin/python ./scripts/integration_tests.py" &&\
           echo "Done with integration tests"
         env:
           PG_VERSION: ${{ matrix.postgres }}
@@ -64,7 +63,7 @@ jobs:
         run: |
           # Start postgres
           sudo su postgres -c "PG_VERSION=$PG_VERSION RUN_TESTS=0 ./ci/scripts/run-tests-linux.sh" && \
-          sudo su -c "PG_VERSION=$PG_VERSION python3 ./scripts/test_updates.py -U postgres" &&\
+          sudo su -c "PG_VERSION=$PG_VERSION /tmp/lantern/cienv/bin/python ./scripts/test_updates.py -U postgres" &&\
           echo "Done with updates"
         env:
           PG_VERSION: ${{ matrix.postgres }}
