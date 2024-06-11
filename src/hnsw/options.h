@@ -24,16 +24,20 @@
 #define HNSW_DEFAULT_EF 64
 #define HNSW_MAX_EF     400
 
-/* quantization options */
+/* quantization options
+ * We explicitly pass all enum values to maintain compatibility on older PG versions where
+ * the value is stored in an int
+ * */
+
 typedef enum
 {
     QUANT_BITS_UNSET = 0,
-    QUANT_BITS_1,
-    QUANT_BITS_2,
-    QUANT_BITS_4,
-    QUANT_BITS_8,
-    QUANT_BITS_16,
-    QUANT_BITS_32,
+    QUANT_BITS_1 = 1,
+    QUANT_BITS_2 = 2,
+    QUANT_BITS_4 = 4,
+    QUANT_BITS_8 = 8,
+    QUANT_BITS_16 = 16,
+    QUANT_BITS_32 = 32,
 
 } QuantBitsEnum;
 
