@@ -64,7 +64,9 @@ function build_and_install() {
   popd
 
   # install update and WAL test dependencies
-  sudo pip install -r /tmp/lantern/scripts/requirements.txt
+  python3 -m venv cienv
+  source cienv/bin/activate
+  pip install -r /tmp/lantern/scripts/requirements.txt
 
   mkdir build
   cd build
