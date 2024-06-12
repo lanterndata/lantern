@@ -14,6 +14,7 @@
 #include "options.h"
 #include "pqtable.h"
 #include "retriever.h"
+#include "usearch.h"
 #include "utils.h"
 #include "vector.h"
 
@@ -225,6 +226,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
                                          scanstate->usearch_scalar,
                                          k,
                                          ef,
+                                         false, /** the first round is never streaming_search */
                                          scanstate->labels,
                                          scanstate->distances,
                                          &error);
@@ -247,6 +249,11 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
         int             k = scanstate->count * 2;
         int             index_size = usearch_size(scanstate->usearch_index, &error);
         assert(error == NULL);
+
+        if(scanstate->count >= 1000) {
+            elog(WARNING, "skipping streaming after loading 1000 elements from the index");
+            return false;
+        }
 
         if(index_size == scanstate->current) {
             return false;
@@ -272,12 +279,17 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
                                          scanstate->usearch_scalar,
                                          k,
                                          ef,
+                                         true, /* streaming_search */
                                          scanstate->labels,
                                          scanstate->distances,
                                          &error);
         ldb_wal_retriever_area_reset(scanstate->retriever_ctx);
 
         scanstate->count = num_returned;
+        // in streaming search the index returns the next batch of elements
+        // without streaming search, we rerun the exact same search with larger limit
+        // so we ignore the first scanstate->current elements by not resetting this
+        scanstate->current = 0;
 
         /* Clean up if we allocated a new value */
         if(value != scan->orderByData->sk_argument) pfree(DatumGetPointer(value));
