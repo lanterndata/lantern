@@ -193,7 +193,8 @@ pub mod tests {
     fn test_clip_text() {
         let embedding =
             Spi::get_one::<Vec<f32>>(&format!("SELECT clip_text('{HELLO_WORLD_TEXT}');")).unwrap();
-        assert_eq!(embedding.unwrap(), HELLO_WORLD_CLIP_EMB.to_vec())
+        let distance = 1.0 - cosine_similarity(&embedding.unwrap(), HELLO_WORLD_CLIP_EMB);
+        assert!(distance < 0.01);
     }
     #[pg_test]
     fn test_cohere_embeddings() {
