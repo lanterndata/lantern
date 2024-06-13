@@ -850,7 +850,7 @@ async fn job_update_processor(
     Ok(())
 }
 
-async fn create_data_path(logger: Arc<Logger>) -> &'static str {
+async fn create_data_path(logger: Arc<Logger>) -> Result<&'static str, anyhow::Error> {
     let tmp_path = "/tmp/lantern-daemon";
     let data_path = if cfg!(target_os = "macos") {
         "/usr/local/var/lantern-daemon"
@@ -860,11 +860,11 @@ async fn create_data_path(logger: Arc<Logger>) -> &'static str {
 
     let data_path_obj = Path::new(data_path);
     if data_path_obj.exists() {
-        return data_path;
+        return Ok(data_path);
     }
 
     if fs::create_dir(data_path).await.is_ok() {
-        return data_path;
+        return Ok(data_path);
     }
 
     logger.warn(&format!(
@@ -873,11 +873,16 @@ async fn create_data_path(logger: Arc<Logger>) -> &'static str {
     let tmp_path_obj = Path::new(tmp_path);
 
     if tmp_path_obj.exists() {
-        return tmp_path;
+        return Ok(tmp_path);
     }
 
-    fs::create_dir(tmp_path).await.unwrap();
-    tmp_path
+    if let Err(e) = fs::create_dir(tmp_path).await {
+        match e.kind() {
+            std::io::ErrorKind::AlreadyExists => {}
+            _ => anyhow::bail!(e),
+        }
+    }
+    Ok(tmp_path)
 }
 
 async fn stop_all_client_jobs(
@@ -934,7 +939,7 @@ pub async fn start(
     let connection_task = tokio::spawn(async move { connection.await });
 
     let notification_channel = "lantern_cloud_embedding_jobs_v2";
-    let data_path = create_data_path(logger.clone()).await;
+    let data_path = create_data_path(logger.clone()).await?;
 
     let (insert_notification_queue_tx, insert_notification_queue_rx): (
         UnboundedSender<JobInsertNotification>,

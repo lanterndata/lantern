@@ -2,6 +2,7 @@ use core::ffi::CStr;
 use pgrx::{prelude::*, GucContext, GucFlags, GucRegistry, GucSetting};
 
 pgrx::pg_module_magic!();
+pub mod daemon;
 pub mod dotvecs;
 pub mod embeddings;
 pub mod external_index;
@@ -15,6 +16,10 @@ pub static OPENAI_AZURE_API_TOKEN: GucSetting<Option<&'static CStr>> =
 pub static OPENAI_AZURE_ENTRA_TOKEN: GucSetting<Option<&'static CStr>> =
     GucSetting::<Option<&'static CStr>>::new(None);
 pub static COHERE_TOKEN: GucSetting<Option<&'static CStr>> =
+    GucSetting::<Option<&'static CStr>>::new(None);
+pub static ENABLE_DAEMON: GucSetting<bool> = GucSetting::<bool>::new(false);
+
+pub static DAEMON_DATABASES: GucSetting<Option<&'static CStr>> =
     GucSetting::<Option<&'static CStr>>::new(None);
 
 #[allow(non_snake_case)]
@@ -60,7 +65,31 @@ pub unsafe extern "C" fn _PG_init() {
         GucContext::Userset,
         GucFlags::NO_SHOW_ALL,
     );
+    GucRegistry::define_string_guc(
+        "lantern_extras.daemon_databases",
+        "Databases to watch",
+        "Comma separated list of database names to which daemon will be connected",
+        &DAEMON_DATABASES,
+        GucContext::Sighup,
+        GucFlags::NO_SHOW_ALL,
+    );
+    GucRegistry::define_bool_guc(
+        "lantern_extras.enable_daemon",
+        "Enable Lantern Daemon",
+        "Flag to indicate if daemon is enabled or not",
+        &ENABLE_DAEMON,
+        GucContext::Sighup,
+        GucFlags::NO_SHOW_ALL,
+    );
+
+    if ENABLE_DAEMON.get() {
+        warning!("Lantern Daemon in SQL is experimental and can lead to undefined behaviour");
+        // TODO:: Make extension working with shared_preload_libs and start daemon only when
+        // started from shared_preload_libs
+        daemon::start_daemon(true, false, false).unwrap();
+    }
 }
+
 #[cfg(test)]
 pub mod pg_test {
     pub fn setup(_options: Vec<&str>) {
@@ -68,7 +97,6 @@ pub mod pg_test {
     }
 
     pub fn postgresql_conf_options() -> Vec<&'static str> {
-        // return any postgresql.conf settings that are required for your tests
-        vec![]
+        vec!["lantern_extras.enable_daemon=true"]
     }
 }
