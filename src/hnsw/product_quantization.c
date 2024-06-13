@@ -25,7 +25,7 @@ static int get_random_tid(const int max_tid, const int *used_tids, const int use
     int  i;
     bool used = false;
     while(true) {
-#if PG_VERSION_NUM >= 150000
+#if PG_VERSION_NUM >= 150000 && !defined EMSCRIPTEN
         uint32 rand_num = pg_prng_uint32(&pg_global_prng_state);
 #else
         uint32 rand_num = (uint32)random();

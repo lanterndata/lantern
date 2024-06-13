@@ -34,7 +34,7 @@ static int16 hnsw_generate_new_level(size_t connectivity)
     double inverse_log_connectivity = 1.0 / log((double)connectivity);
     // note: RNG is initialized (via srandom or via an updated mechanism) in postmaster.c
     // we want rand_num to be in range [0.0, 1.0)
-#if PG_VERSION_NUM >= 150000
+#if PG_VERSION_NUM >= 150000 && !defined EMSCRIPTEN
     double rand_num = pg_prng_double(&pg_global_prng_state);
 #else
     double rand_num = (double)random() / (double)MAX_RANDOM_VALUE;
