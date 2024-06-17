@@ -60,7 +60,7 @@ autotune = []
 pq = ["dep:gcp_auth", "dep:linfa", "dep:linfa-clustering", "dep:md5", "dep:rayon"]
 cli = []
 external-index = []
-embeddings = []
+embeddings = ["dep:bytes"]
 
 [lib]
 doctest = false
