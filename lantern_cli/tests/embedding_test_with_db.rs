@@ -9,36 +9,42 @@ use std::{
 use lantern_cli::embeddings;
 use lantern_cli::embeddings::cli;
 use lantern_cli::embeddings::core::Runtime;
-use postgres::{Client, NoTls};
+use tokio_postgres::{Client, NoTls};
+use tokio_util::sync::CancellationToken;
 
-fn setup_db_tables(client: &mut Client, table_name: &str) {
+async fn setup_db_tables(client: &mut Client, table_name: &str) {
     client
         .batch_execute(&format!(
             "
     DROP TABLE IF EXISTS {table_name};
     CREATE TABLE {table_name} (id SERIAL PRIMARY KEY, content TEXT);
-    INSERT INTO {table_name} SELECT generate_series(1,1000), 'Hello world!';
+    INSERT INTO {table_name} SELECT generate_series(1,4000), 'Hello world!';
 "
         ))
+        .await
         .expect("Could not create necessarry tables");
 }
 
-fn drop_db_tables(client: &mut Client, table_name: &str) {
+async fn drop_db_tables(client: &mut Client, table_name: &str) {
     client
         .batch_execute(&format!(
             "
         DROP TABLE IF EXISTS {table_name};
     "
         ))
+        .await
         .expect("Could not drop tables");
 }
 
-#[test]
-fn test_embedding_generation_from_db() {
+#[tokio::test]
+async fn test_embedding_generation_from_db() {
     let db_url = env::var("DB_URL").expect("`DB_URL` not specified");
     let table_name = String::from("_embeddings_test");
-    let mut db_client = Client::connect(&db_url, NoTls).expect("Database connection failed");
-    setup_db_tables(&mut db_client, &table_name);
+    let (mut db_client, connection) = tokio_postgres::connect(&db_url, NoTls)
+        .await
+        .expect("Can not connect to database");
+    tokio::spawn(async move { connection.await.unwrap() });
+    setup_db_tables(&mut db_client, &table_name).await;
 
     let final_progress = Arc::new(AtomicU8::new(0));
     let final_progress_r1 = final_progress.clone();
@@ -47,7 +53,7 @@ fn test_embedding_generation_from_db() {
         final_progress_r1.store(progress, Ordering::SeqCst);
     };
 
-    embeddings::create_embeddings_from_db(
+    let (processed_rows, processed_tokens) = embeddings::create_embeddings_from_db(
         cli::EmbeddingArgs {
             model: "BAAI/bge-small-en".to_owned(),
             uri: db_url.clone(),
@@ -66,14 +72,17 @@ fn test_embedding_generation_from_db() {
             runtime: Runtime::Ort,
             runtime_params: "{\"data_path\": \"/tmp/lantern-embeddings-core-test\"}".to_owned(),
             create_column: true,
-            stream: false,
+            stream: true,
         },
         true,
         Some(Box::new(callback)),
-        None,
+        CancellationToken::new(),
         None,
     )
+    .await
     .unwrap();
+    assert_eq!(processed_rows, 4000);
+    assert_eq!(processed_tokens, 20000);
 
     let cnt = db_client
         .query_one(
@@ -82,11 +91,12 @@ fn test_embedding_generation_from_db() {
         ),
             &[],
         )
+        .await
         .unwrap();
 
     let cnt = cnt.get::<usize, i64>(0);
 
-    drop_db_tables(&mut db_client, &table_name);
+    drop_db_tables(&mut db_client, &table_name).await;
 
     assert_eq!(cnt, 0);
     assert_eq!(final_progress.load(Ordering::SeqCst), 100);

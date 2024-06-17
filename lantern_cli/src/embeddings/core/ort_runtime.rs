@@ -12,15 +12,15 @@ use std::{
     collections::HashMap,
     io::Cursor,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::Duration,
 };
 use sysinfo::{System, SystemExt};
 use tokenizers::{PaddingParams, Tokenizer, TruncationParams};
-use tokio::{fs, runtime};
+use tokio::{fs, sync::Mutex};
 use url::Url;
 
-use super::runtime::{EmbeddingResult, EmbeddingRuntime};
+use super::runtime::{EmbeddingResult, EmbeddingRuntimeT};
 use super::utils::{download_file, get_available_memory, percent_gpu_memory_used};
 use super::LoggerFn;
 
@@ -898,13 +898,12 @@ impl<'a> OrtRuntime<'a> {
         }
     }
 
-    fn get_images_parallel(
+    async fn get_images_parallel(
         &self,
         paths_or_urls: &Vec<&str>,
     ) -> Result<Vec<Vec<u8>>, anyhow::Error> {
         let buffers: Arc<Mutex<Vec<Vec<u8>>>> =
             Arc::new(Mutex::new(Vec::with_capacity(paths_or_urls.len())));
-        let threaded_rt = runtime::Runtime::new()?;
         let tasks: Vec<_> = paths_or_urls
             .iter()
             .map(|&path_or_url| self.get_image_buffer(path_or_url))
@@ -916,37 +915,30 @@ impl<'a> OrtRuntime<'a> {
             paths_or_urls.len()
         ));
 
-        let runtime_result = threaded_rt.block_on(async {
-            let mut tasks = futures::stream::iter(tasks).buffered(chunk_size);
-            while let Some(result) = tasks.next().await {
-                let mut buffers = buffers.lock().unwrap();
-                if let Err(e) = result {
-                    eprintln!("{}", e);
-                    buffers.push(Vec::new());
-                } else {
-                    buffers.push(result.unwrap());
-                }
+        let mut tasks = futures::stream::iter(tasks).buffered(chunk_size);
+        while let Some(result) = tasks.next().await {
+            let mut buffers = buffers.lock().await;
+            if let Err(e) = result {
+                eprintln!("{}", e);
+                buffers.push(Vec::new());
+            } else {
+                buffers.push(result.unwrap());
             }
-            Ok::<(), anyhow::Error>(())
-        });
-
-        if let Err(e) = runtime_result {
-            anyhow::bail!("{}", e);
         }
 
         (self.logger)("[*] All images read into buffer");
-        let buffers = buffers.lock().unwrap();
+        let buffers = buffers.lock().await;
         Ok(buffers.clone())
     }
 }
 
-impl<'a> EmbeddingRuntime for OrtRuntime<'a> {
-    fn process(
+impl<'a> EmbeddingRuntimeT for OrtRuntime<'a> {
+    async fn process(
         &self,
         model_name: &str,
         inputs: &Vec<&str>,
     ) -> Result<EmbeddingResult, anyhow::Error> {
-        let mut map = MODEL_INFO_MAP.lock().unwrap();
+        let mut map = MODEL_INFO_MAP.lock().await;
         let download_result = self.check_and_download_files(model_name, &mut map);
 
         if let Err(err) = download_result {
@@ -957,7 +949,7 @@ impl<'a> EmbeddingRuntime for OrtRuntime<'a> {
 
         let result;
         if model_info.encoder_args.visual {
-            let buffers = self.get_images_parallel(inputs)?;
+            let buffers = self.get_images_parallel(inputs).await?;
 
             // If buffer will return error while downloading
             // We will put an empty array instead, to omit that image
@@ -1046,8 +1038,8 @@ impl<'a> EmbeddingRuntime for OrtRuntime<'a> {
         }
     }
 
-    fn get_available_models(&self) -> (String, Vec<(String, bool)>) {
-        let map = MODEL_INFO_MAP.lock().unwrap();
+    async fn get_available_models(&self) -> (String, Vec<(String, bool)>) {
+        let map = MODEL_INFO_MAP.lock().await;
         let mut res = String::new();
         let data_path = &self.data_path;
         let mut models = Vec::with_capacity(map.len());

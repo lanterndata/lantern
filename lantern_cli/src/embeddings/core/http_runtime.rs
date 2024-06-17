@@ -8,7 +8,7 @@ pub trait IHTTPRuntime {
         endpoint: &str,
         model_name: &str,
         inputs: &Vec<&str>,
-    ) -> Result<EmbeddingResult, anyhow::Error>;
+    ) -> impl std::future::Future<Output = Result<EmbeddingResult, anyhow::Error>> + Send;
 }
 
 #[macro_export]
@@ -36,7 +36,7 @@ macro_rules! HTTPRuntime {
                 Ok(client.build()?)
             }
 
-            fn post_request(
+            async fn post_request(
                 &self,
                 endpoint: &str,
                 model_name: &str,
@@ -66,16 +66,14 @@ macro_rules! HTTPRuntime {
 
                 let processed_tokens = Arc::new(AtomicUsize::new(0));
                 let processed_tokens_clone = processed_tokens.clone();
-                let responses = tokio_runtime.block_on(async move {
-                    let mut responses = Vec::with_capacity(inputs.len());
-                    for task in tasks {
-                        let embedding_response = task.await??;
-                        processed_tokens_clone
-                            .fetch_add(embedding_response.processed_tokens, Ordering::SeqCst);
-                        responses.extend(embedding_response.embeddings);
-                    }
-                    Ok::<Vec<Vec<f32>>, anyhow::Error>(responses)
-                })?;
+
+                let mut responses = Vec::with_capacity(inputs.len());
+                for task in tasks {
+                    let embedding_response = task.await??;
+                    processed_tokens_clone
+                        .fetch_add(embedding_response.processed_tokens, Ordering::SeqCst);
+                    responses.extend(embedding_response.embeddings);
+                }
 
                 let processed_tokens = processed_tokens.load(Ordering::SeqCst);
                 Ok(super::runtime::EmbeddingResult {

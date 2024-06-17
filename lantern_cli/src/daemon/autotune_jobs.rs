@@ -1,21 +1,27 @@
-use super::helpers::{cancel_all_jobs, cancellation_handler, db_notification_listener, startup_hook, set_job_handle, collect_pending_index_jobs, index_job_update_processor, remove_job_handle};
-use super::types::{AutotuneJob, JobEvent, JobEventHandlersMap, JobInsertNotification, JobRunArgs, JobUpdateNotification };
+use super::helpers::{
+    cancel_all_jobs, cancellation_handler, collect_pending_index_jobs, db_notification_listener,
+    index_job_update_processor, remove_job_handle, set_job_handle, startup_hook,
+};
+use super::types::{
+    AutotuneJob, JobEvent, JobEventHandlersMap, JobInsertNotification, JobRunArgs,
+    JobUpdateNotification,
+};
 use crate::daemon::helpers::anyhow_wrap_connection;
-use crate::types::*;
-use tokio_util::sync::CancellationToken;
 use crate::external_index::cli::UMetricKind;
 use crate::index_autotune::cli::IndexAutotuneArgs;
 use crate::logger::Logger;
+use crate::types::*;
 use crate::utils::get_full_table_name;
-use tokio::sync::RwLock;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::SystemTime;
+use tokio::sync::RwLock;
 use tokio::sync::{
     mpsc,
     mpsc::{UnboundedReceiver, UnboundedSender},
 };
-use tokio_postgres::{Client,  NoTls};
+use tokio_postgres::{Client, NoTls};
+use tokio_util::sync::CancellationToken;
 
 pub const JOB_TABLE_DEFINITION: &'static str = r#"
 "id" SERIAL PRIMARY KEY,
@@ -103,7 +109,7 @@ async fn autotune_worker(
             let task_logger =
                 Logger::new(&format!("{}|{}", logger.label, job.id), logger.level.clone());
             let job_clone = job.clone();
-            
+
             let (event_tx, mut event_rx) = mpsc::channel(1);
             let event_tx_clone = event_tx.clone();
 
@@ -158,7 +164,7 @@ async fn autotune_worker(
             });
 
             set_job_handle(&jobs_map, job.id, event_tx).await?;
-      
+
             match task_handle.await? {
                 Ok(_) => {
                     remove_job_handle(&jobs_map, job.id).await?;
@@ -233,7 +239,11 @@ async fn job_insert_processor(
     Ok(())
 }
 
-pub async fn start(args: JobRunArgs, logger: Arc<Logger>, cancel_token: CancellationToken) -> AnyhowVoidResult {
+pub async fn start(
+    args: JobRunArgs,
+    logger: Arc<Logger>,
+    cancel_token: CancellationToken,
+) -> AnyhowVoidResult {
     logger.info("Starting Autotune Jobs");
 
     let autotune_results_table = String::from("autotune_results");
@@ -253,8 +263,10 @@ pub async fn start(args: JobRunArgs, logger: Arc<Logger>, cancel_token: Cancella
         UnboundedReceiver<JobUpdateNotification>,
     ) = mpsc::unbounded_channel();
 
-    let (job_queue_tx, job_queue_rx): (UnboundedSender<AutotuneJob>, UnboundedReceiver<AutotuneJob>) =
-        mpsc::unbounded_channel();
+    let (job_queue_tx, job_queue_rx): (
+        UnboundedSender<AutotuneJob>,
+        UnboundedReceiver<AutotuneJob>,
+    ) = mpsc::unbounded_channel();
 
     let table = args.table_name;
 
@@ -277,7 +289,7 @@ pub async fn start(args: JobRunArgs, logger: Arc<Logger>, cancel_token: Cancella
     connection_task.abort();
     let (main_db_client, connection) = tokio_postgres::connect(&args.uri, NoTls).await?;
     let main_db_client = Arc::new(main_db_client);
-    
+
     let jobs_map: Arc<JobEventHandlersMap> = Arc::new(RwLock::new(HashMap::new()));
     let jobs_map_clone = jobs_map.clone();
 
@@ -325,10 +337,7 @@ pub async fn start(args: JobRunArgs, logger: Arc<Logger>, cancel_token: Cancella
         cancellation_handler(
             cancel_token.clone(),
             Some(move || async {
-                cancel_all_jobs(
-                    jobs_map_clone,
-                )
-                .await?;
+                cancel_all_jobs(jobs_map_clone).await?;
 
                 Ok::<(), anyhow::Error>(())
             })

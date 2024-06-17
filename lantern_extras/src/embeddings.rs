@@ -1,5 +1,5 @@
 use lantern_cli::embeddings::core::{
-    cohere_runtime::CohereRuntimeParams, get_runtime, openai_runtime::OpenAiRuntimeParams,
+    cohere_runtime::CohereRuntimeParams, openai_runtime::OpenAiRuntimeParams, EmbeddingRuntime,
     LoggerFn, Runtime,
 };
 use pgrx::prelude::*;
@@ -24,12 +24,15 @@ fn get_dummy_runtime_params(runtime: &Runtime) -> String {
 
 #[pg_extern(immutable, parallel_safe)]
 fn text_embedding<'a>(model_name: &'a str, text: &'a str) -> Result<Vec<f32>, anyhow::Error> {
-    let runtime = get_runtime(
+    let runtime = EmbeddingRuntime::new(
         &Runtime::Ort,
         Some(&(notice_fn as LoggerFn)),
         &ORT_RUNTIME_PARAMS,
     )?;
-    let mut res = runtime.process(model_name, &vec![text])?;
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let mut res = rt.block_on(runtime.process(model_name, &vec![text]))?;
     Ok(res.embeddings.pop().unwrap())
 }
 
@@ -89,12 +92,16 @@ fn openai_embedding<'a>(
         azure_entra_token,
     })?;
 
-    let runtime = get_runtime(
+    let runtime = EmbeddingRuntime::new(
         &Runtime::OpenAi,
         Some(&(notice_fn as LoggerFn)),
         &runtime_params,
     )?;
-    let mut res = runtime.process(model_name, &vec![text])?;
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let mut res = rt.block_on(runtime.process(model_name, &vec![text]))?;
     Ok(res.embeddings.pop().unwrap())
 }
 
@@ -112,12 +119,15 @@ fn cohere_embedding<'a>(
         input_type: Some(input_type.to_owned()),
     })?;
 
-    let runtime = get_runtime(
+    let runtime = EmbeddingRuntime::new(
         &Runtime::Cohere,
         Some(&(notice_fn as LoggerFn)),
         &runtime_params,
     )?;
-    let mut res = runtime.process(model_name, &vec![text])?;
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let mut res = rt.block_on(runtime.process(model_name, &vec![text]))?;
     Ok(res.embeddings.pop().unwrap())
 }
 
@@ -143,12 +153,15 @@ fn clip_image<'a>(path_or_url: &'a str) -> Result<Vec<f32>, anyhow::Error> {
 fn get_available_models<'a>(runtime: default!(&'a str, "'ort'")) -> Result<String, anyhow::Error> {
     let runtime_name = Runtime::try_from(runtime)?;
     let runtime_params = get_dummy_runtime_params(&runtime_name);
-    let runtime = get_runtime(
+    let runtime = EmbeddingRuntime::new(
         &runtime_name,
         Some(&(notice_fn as LoggerFn)),
         &runtime_params,
     )?;
-    return Ok(runtime.get_available_models().0);
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    return Ok(rt.block_on(runtime.get_available_models()).0);
 }
 
 #[pg_extern(immutable, parallel_safe, create_or_replace)]

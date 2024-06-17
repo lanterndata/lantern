@@ -1,8 +1,9 @@
 use std::{cmp, time::Instant};
 
-use super::core::{get_runtime, Runtime};
+use super::core::{EmbeddingRuntime, Runtime};
 use crate::logger::{LogLevel, Logger};
-use postgres::{Client, NoTls};
+use postgres::NoTls;
+use tokio_util::sync::CancellationToken;
 
 use super::cli::MeasureModelSpeedArgs;
 use crate::types::*;
@@ -14,7 +15,7 @@ static OUT_COLUMN_NAME: &'static str = "title_emb";
 static PK_NAME: &'static str = "id";
 static LOREM_TEXT: &'static str = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer efficitur sem dui, at ultricies velit congue nec. Aenean in neque nunc. Fusce a auctor elit. Proin convallis fringilla mauris ut congue. Donec pretium, justo lobortis pharetra finibus, nulla elit pretium magna, et elementum nisl turpis vitae arcu. Nam vitae enim non magna porttitor tristique. Suspendisse ac dapibus massa. Proin pulvinar felis sed lobortis sagittis. Etiam efficitur leo ut eros mollis, vel tempus justo faucibus. Integer iaculis sed elit vel blandit. Sed maximus libero tortor. Nam vitae dui euismod urna egestas tincidunt. Suspendisse ante felis, feugiat in metus ut, mollis consequat mi. Mauris quis augue vitae mi auctor rutrum. Nulla commodo pharetra erat, ac lacinia leo euismod a. Ut consequat mollis enim, id tristique metus vehicula vitae. Phasellus venenatis faucibus dolor. Morbi a metus odio. Aenean gravida eleifend ante. Proin at mi tristique, varius risus a, porttitor ligula. Vestibulum hendrerit pellentesque risus eu semper. Proin eu condimentum enim.";
 
-fn measure_model_speed(
+async fn measure_model_speed(
     runtime: &Runtime,
     runtime_params: &String,
     model_name: &str,
@@ -49,8 +50,14 @@ fn measure_model_speed(
             filter: None,
         };
         let start = Instant::now();
-        let (processed, _) =
-            super::create_embeddings_from_db(args, false, None, None, Some(logger))?;
+        let (processed, _) = super::create_embeddings_from_db(
+            args,
+            false,
+            None,
+            CancellationToken::new(),
+            Some(logger),
+        )
+        .await?;
         let elapsed = start.elapsed();
 
         if i == 0 {
@@ -69,12 +76,17 @@ fn measure_model_speed(
     return Ok(speed.try_into()?);
 }
 
-pub fn start_speed_test(args: &MeasureModelSpeedArgs, logger: Option<Logger>) -> AnyhowVoidResult {
+pub async fn start_speed_test(
+    args: &MeasureModelSpeedArgs,
+    logger: Option<Logger>,
+) -> AnyhowVoidResult {
     // connect to database
     let table_name_small = format!("{TABLE_NAME}_min");
     let table_name_large = format!("{TABLE_NAME}_max");
 
-    let mut client = Client::connect(&args.uri, NoTls)?;
+    let (client, connection) = tokio_postgres::connect(&args.uri, NoTls).await?;
+
+    tokio::spawn(async move { connection.await });
     client.batch_execute(&format!("
        DROP SCHEMA IF EXISTS {SCHEMA_NAME} CASCADE;
        CREATE SCHEMA {SCHEMA_NAME};
@@ -83,7 +95,7 @@ pub fn start_speed_test(args: &MeasureModelSpeedArgs, logger: Option<Logger>) ->
        CREATE TABLE {table_name_large} ({PK_NAME} SERIAL PRIMARY KEY, {COLUMN_NAME} TEXT, {OUT_COLUMN_NAME} REAL[]);
        INSERT INTO {table_name_small} SELECT generate_series(0, 5000), 'My small title text!';
        INSERT INTO {table_name_large} SELECT generate_series(0, 5000), 'title';
-    "))?;
+    ")).await?;
 
     let mut text = LOREM_TEXT.to_owned();
     let word_count = LOREM_TEXT.split(" ").collect::<Vec<_>>().len();
@@ -93,15 +105,18 @@ pub fn start_speed_test(args: &MeasureModelSpeedArgs, logger: Option<Logger>) ->
         text = LOREM_TEXT.repeat(repeat_cnt);
     }
 
-    client.execute(
-        &format!("UPDATE {table_name_large} SET {COLUMN_NAME}=$1;"),
-        &[&text],
-    )?;
+    client
+        .execute(
+            &format!("UPDATE {table_name_large} SET {COLUMN_NAME}=$1;"),
+            &[&text],
+        )
+        .await?;
 
-    let runtime = get_runtime(&args.runtime, None, &args.runtime_params)?;
+    let runtime = EmbeddingRuntime::new(&args.runtime, None, &args.runtime_params)?;
 
     let models: Vec<_> = runtime
         .get_available_models()
+        .await
         .1
         .iter()
         .filter_map(|el| {
@@ -131,7 +146,8 @@ pub fn start_speed_test(args: &MeasureModelSpeedArgs, logger: Option<Logger>) ->
             &table_name_small,
             args.initial_limit,
             args.batch_size,
-        )?;
+        )
+        .await?;
         let speed_min = measure_model_speed(
             &args.runtime,
             &args.runtime_params,
@@ -140,13 +156,16 @@ pub fn start_speed_test(args: &MeasureModelSpeedArgs, logger: Option<Logger>) ->
             &table_name_large,
             args.initial_limit,
             args.batch_size,
-        )?;
+        )
+        .await?;
         let speed_avg = (speed_min + speed_max) / 2;
 
         logger.info(&format!("{model_name} max speed - {speed_max} emb/s"));
         logger.info(&format!("{model_name} min speed - {speed_min} emb/s"));
         logger.info(&format!("{model_name} avg speed - {speed_avg} emb/s"));
     }
-    client.execute(&format!("DROP SCHEMA {SCHEMA_NAME} CASCADE"), &[])?;
+    client
+        .execute(&format!("DROP SCHEMA {SCHEMA_NAME} CASCADE"), &[])
+        .await?;
     Ok(())
 }

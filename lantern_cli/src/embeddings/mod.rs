@@ -1,16 +1,20 @@
 use crate::logger::{LogLevel, Logger};
 use crate::types::*;
 use crate::utils::{append_params_to_uri, get_full_table_name, quote_ident};
-use core::{get_available_runtimes, get_runtime};
+use bytes::BytesMut;
+use core::get_available_runtimes;
 use csv::Writer;
+use futures::SinkExt;
 use rand::Rng;
-use std::io::Write;
-use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{mpsc, Arc, RwLock};
-use std::thread::JoinHandle;
+use std::sync::Arc;
 use std::time::Instant;
+use tokio::sync::mpsc::{self, Receiver, Sender};
+use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 
-use postgres::{Client, NoTls, Row};
+use tokio_postgres::{Client, NoTls, Row};
+
+use self::core::EmbeddingRuntime;
 
 pub mod cli;
 pub mod core;
@@ -28,117 +32,79 @@ fn calculate_progress(total: i64, processed: usize) -> u8 {
 
     return ((processed as f64 / total as f64) * 100.0) as u8;
 }
+
+async fn estimate_count(
+    client: &mut Client,
+    full_table_name: &str,
+    filter_sql: &str,
+    limit_sql: &str,
+    logger: Arc<Logger>,
+) -> Result<i64, anyhow::Error> {
+    let transaction = client.transaction().await?;
+
+    let rows = transaction
+        .query(
+            &format!("SELECT COUNT(*) FROM {full_table_name} {filter_sql} {limit_sql};"),
+            &[],
+        )
+        .await;
+
+    if let Err(e) = rows {
+        anyhow::bail!("{e}");
+    }
+
+    let rows = rows.unwrap();
+
+    let count: i64 = rows[0].get(0);
+
+    if count > 0 {
+        logger.info(&format!(
+            "Found approximately {} items in table \"{}\"",
+            count, full_table_name,
+        ));
+    }
+
+    Ok(count)
+}
+
 // This function will do the following
 // 1. Get approximate number of rows from pg_class (this is just for info logging)
 // 2. Create transaction portal which will poll data from database of batch size provided via args
 // 3. Send the rows over the channel
-fn producer_worker(
-    args: Arc<cli::EmbeddingArgs>,
+async fn producer_worker(
+    client: &mut Client,
+    pk: &str,
+    column: &str,
+    full_table_name: &str,
+    filter_sql: &str,
+    limit_sql: &str,
     batch_size: usize,
     tx: Sender<Vec<Row>>,
-    estimate_count: bool,
-    logger: Arc<Logger>,
-) -> Result<(JoinHandle<AnyhowVoidResult>, i64), anyhow::Error> {
-    let mut item_count = 0;
-    let (count_tx, count_rx): (Sender<i64>, Receiver<i64>) = mpsc::channel();
-
-    let handle = std::thread::spawn(move || {
-        let column = &args.column;
-        let schema = &args.schema;
-        let table = &args.table;
-        let pk = &args.pk;
-        let full_table_name = get_full_table_name(schema, table);
-
-        let filter_sql = if args.filter.is_some() {
-            format!("WHERE {}", args.filter.as_ref().unwrap())
-        } else {
-            format!("WHERE {column} IS NOT NULL", column = quote_ident(column))
-        };
-
-        let limit_sql = if args.limit.is_some() {
-            format!("LIMIT {}", args.limit.as_ref().unwrap())
-        } else {
-            "".to_owned()
-        };
-
-        let uri = append_params_to_uri(&args.uri, CONNECTION_PARAMS);
-        let client = Client::connect(&uri, NoTls);
-
-        // we are excplicity checking for error here
-        // because the item_count atomic should be update
-        // as we have a while loop waiting for it
-        // if before updating the variable there will be error the while
-        // loop will never exit
-
-        if let Err(e) = client {
-            count_tx.send(0)?;
-            anyhow::bail!("{e}");
-        }
-        let mut client = client.unwrap();
-
-        let mut transaction = client.transaction()?;
-
-        if estimate_count {
-            let rows = transaction.query(
-                &format!("SELECT COUNT(*) FROM {full_table_name} {filter_sql} {limit_sql};"),
-                &[],
-            );
-
-            if let Err(e) = rows {
-                count_tx.send(0)?;
-                anyhow::bail!("{e}");
-            }
-
-            let rows = rows.unwrap();
-
-            let count: i64 = rows[0].get(0);
-            count_tx.send(count)?;
-            if count > 0 {
-                logger.info(&format!(
-                    "Found approximately {} items in table \"{}\"",
-                    count, table,
-                ));
-            }
-        } else {
-            count_tx.send(0)?;
-        }
-
-        // With portal we can execute a query and poll values from it in chunks
-        let portal = transaction.bind(
+) -> AnyhowVoidResult {
+    let transaction = client.transaction().await?;
+    // With portal we can execute a query and poll values from it in chunks
+    let portal = transaction.bind(
             &format!(
                 "SELECT {pk}::text, {column}::text FROM {full_table_name} {filter_sql} {limit_sql};",
-                column = quote_ident(column),
-                pk = quote_ident(pk)
+                column = quote_ident(&column),
+                pk = quote_ident(&pk)
             ),
             &[],
-        )?;
+        ).await?;
 
-        loop {
-            // poll batch_size rows from portal and send it to embedding thread via channel
-            let rows = transaction.query_portal(&portal, batch_size as i32)?;
+    loop {
+        // poll batch_size rows from portal and send it to embedding thread via channel
+        let rows = transaction.query_portal(&portal, batch_size as i32).await?;
 
-            if rows.len() == 0 {
-                break;
-            }
-
-            if tx.send(rows).is_err() {
-                break;
-            }
+        if rows.len() == 0 {
+            break;
         }
-        drop(tx);
-        Ok(())
-    });
 
-    // If we have filter or limit we are not going to fetch
-    // the item count and progress anyway, so we won't lock the process waiting
-    // for thread
-    // Wait for the other thread to release the lock
-    while let Ok(count) = count_rx.recv() {
-        item_count = count;
-        break;
+        if tx.send(rows).await.is_err() {
+            break;
+        }
     }
-
-    return Ok((handle, item_count));
+    Ok(())
 }
 
 // Embedding worker will listen to the producer channel
@@ -146,92 +112,92 @@ fn producer_worker(
 // we will here map each vector to it's row id before sending the results over channel
 // So we will get Vec<Row<String, String> and output Vec<(String, Vec<f32>)> the output will
 // contain generated embeddings for the text. If text will be null we will skip that row
-fn embedding_worker(
+async fn embedding_worker(
     args: Arc<cli::EmbeddingArgs>,
-    rx: Receiver<Vec<Row>>,
+    mut rx: Receiver<Vec<Row>>,
     tx: Sender<Vec<EmbeddingRecord>>,
-    is_canceled: Option<Arc<RwLock<bool>>>,
+    cancel_token: CancellationToken,
     logger: Arc<Logger>,
-) -> Result<JoinHandle<AnyhowUsizeResult>, anyhow::Error> {
-    let handle = std::thread::spawn(move || {
-        let mut count: usize = 0;
-        let mut processed_tokens: usize = 0;
-        let model = &args.model;
-        let mut start = Instant::now();
-        let runtime = get_runtime(&args.runtime, None, &args.runtime_params)?;
+) -> AnyhowUsizeResult {
+    let mut count: usize = 0;
+    let mut processed_tokens: usize = 0;
+    let model = &args.model;
+    let mut start = Instant::now();
+    let runtime = EmbeddingRuntime::new(&args.runtime, None, &args.runtime_params)?;
 
-        while let Ok(rows) = rx.recv() {
-            if is_canceled.is_some() && *is_canceled.as_ref().unwrap().read().unwrap() {
-                // This variable will be changed from outside to gracefully
-                // exit job on next chunk
-                anyhow::bail!(JOB_CANCELLED_MESSAGE);
-            }
+    loop {
+        tokio::select! {
+            msg = rx.recv() => {
+                if msg.is_none() {
+                    break;
+                }
+                let rows = msg.unwrap();
+                if count == 0 {
+                    // mark exact start time
+                    start = Instant::now();
+                }
 
-            if count == 0 {
-                // mark exact start time
-                start = Instant::now();
-            }
+                let mut input_vectors: Vec<&str> = Vec::with_capacity(rows.len());
+                let mut input_ids: Vec<String> = Vec::with_capacity(rows.len());
 
-            let mut input_vectors: Vec<&str> = Vec::with_capacity(rows.len());
-            let mut input_ids: Vec<String> = Vec::with_capacity(rows.len());
-
-            for row in &rows {
-                if let Ok(Some(src_data)) = row.try_get::<usize, Option<&str>>(1) {
-                    if src_data.trim() != "" {
-                        input_vectors.push(src_data);
-                        input_ids.push(row.get::<usize, String>(0));
+                for row in &rows {
+                    if let Ok(Some(src_data)) = row.try_get::<usize, Option<&str>>(1) {
+                        if src_data.trim() != "" {
+                            input_vectors.push(src_data);
+                            input_ids.push(row.get::<usize, String>(0));
+                        }
                     }
                 }
-            }
 
-            if input_vectors.len() == 0 {
-                continue;
-            }
+                if input_vectors.len() == 0 {
+                    continue;
+                }
 
-            let embedding_response = runtime.process(&model, &input_vectors);
+                let embedding_response = runtime.process(&model, &input_vectors).await;
 
-            if let Err(e) = embedding_response {
-                anyhow::bail!("{}", e);
-            }
+                if let Err(e) = embedding_response {
+                    anyhow::bail!("{}", e);
+                }
 
-            let embedding_response = embedding_response.unwrap();
+                let embedding_response = embedding_response.unwrap();
 
-            processed_tokens += embedding_response.processed_tokens;
-            let mut embeddings = embedding_response.embeddings;
+                processed_tokens += embedding_response.processed_tokens;
+                let mut embeddings = embedding_response.embeddings;
 
-            count += embeddings.len();
+                count += embeddings.len();
 
-            let duration = start.elapsed().as_secs();
-            // avoid division by zero error
-            let duration = if duration > 0 { duration } else { 1 };
-            logger.debug(&format!(
-                "Generated {} embeddings - speed {} emb/s",
-                count,
-                count / duration as usize
-            ));
+                let duration = start.elapsed().as_secs();
+                // avoid division by zero error
+                let duration = if duration > 0 { duration } else { 1 };
+                logger.debug(&format!(
+                    "Generated {} embeddings - speed {} emb/s",
+                    count,
+                    count / duration as usize
+                ));
 
-            let mut response_data = Vec::with_capacity(rows.len());
+                let mut response_data = Vec::with_capacity(rows.len());
 
-            for _ in 0..embeddings.len() {
-                response_data.push((input_ids.pop().unwrap(), embeddings.pop().unwrap()));
-            }
+                for _ in 0..embeddings.len() {
+                    response_data.push((input_ids.pop().unwrap(), embeddings.pop().unwrap()));
+                }
 
-            if tx.send(response_data).is_err() {
-                // Error occured in exporter worker and channel has been closed
-                break;
+                if tx.send(response_data).await.is_err() {
+                    // Error occured in exporter worker and channel has been closed
+                    break;
+                }
+            },
+            _ = cancel_token.cancelled() => {
+               anyhow::bail!(JOB_CANCELLED_MESSAGE);
             }
         }
+    }
 
-        if count > 0 {
-            logger.info("Embedding generation finished, waiting to export results...");
-        } else {
-            logger.warn("No data to generate embeddings");
-        }
-        drop(tx);
-        Ok(processed_tokens)
-    });
-
-    return Ok(handle);
+    if count > 0 {
+        logger.info("Embedding generation finished, waiting to export results...");
+    } else {
+        logger.warn("No data to generate embeddings");
+    }
+    Ok(processed_tokens)
 }
 
 // DB exporter worker will create temp table with name _lantern_tmp_${rand(0,1000)}
@@ -240,61 +206,70 @@ fn embedding_worker(
 // And write them using writer instance
 // At the end we will flush the writer commit the transaction and UPDATE destination table
 // Using our TEMP table data
-fn db_exporter_worker(
+async fn db_exporter_worker(
+    uri: &str,
     args: Arc<cli::EmbeddingArgs>,
-    rx: Receiver<Vec<EmbeddingRecord>>,
+    mut rx: Receiver<Vec<EmbeddingRecord>>,
     item_count: i64,
     progress_cb: Option<ProgressCbFn>,
     logger: Arc<Logger>,
 ) -> Result<JoinHandle<AnyhowUsizeResult>, anyhow::Error> {
-    let handle = std::thread::spawn(move || {
-        let uri = args.out_uri.as_ref().unwrap_or(&args.uri);
-        let column = &args.out_column;
-        let table = args.out_table.as_ref().unwrap_or(&args.table);
-        let schema = &args.schema;
-        let pk = &args.pk;
-        let full_table_name = get_full_table_name(schema, table);
+    let (mut client, connection) = tokio_postgres::connect(&uri, NoTls).await?;
+    tokio::spawn(async move { connection.await });
+    let transaction = client.transaction().await?;
+    let temp_table_name = format!("_lantern_tmp_{}", rand::thread_rng().gen_range(0..1000));
 
-        let uri = append_params_to_uri(uri, CONNECTION_PARAMS);
+    let column = args.out_column.clone();
+    let table = args.out_table.clone().unwrap_or(args.table.clone());
+    let schema = args.schema.clone();
+    let pk = args.pk.clone();
+    let stream = args.stream;
+    let full_table_name = get_full_table_name(&schema, &table);
 
-        let mut client = Client::connect(&uri, NoTls)?;
-        let mut transaction = client.transaction()?;
-        let mut rng = rand::thread_rng();
-        let temp_table_name = format!("_lantern_tmp_{}", rng.gen_range(0..1000));
-
-        if args.create_column {
-            transaction.execute(
+    if args.create_column {
+        transaction
+            .execute(
                 &format!(
                     "ALTER TABLE {full_table_name} ADD COLUMN IF NOT EXISTS {column} REAL[]",
-                    column = quote_ident(column)
+                    column = quote_ident(&column)
                 ),
                 &[],
-            )?;
-        }
+            )
+            .await?;
+    }
 
-        // Try to check if user has write permissions to table
-        let res = transaction.query("SELECT grantee FROM information_schema.column_privileges WHERE table_schema=$1 AND table_name=$2 AND column_name=$3 AND privilege_type='UPDATE' AND grantee=current_user UNION SELECT usename from pg_user where usename = CURRENT_USER AND usesuper=true;", &[schema, table, column])?;
+    // Try to check if user has write permissions to table
+    let res = transaction.query("SELECT grantee FROM information_schema.column_privileges WHERE table_schema=$1 AND table_name=$2 AND column_name=$3 AND privilege_type='UPDATE' AND grantee=current_user UNION SELECT usename from pg_user where usename = CURRENT_USER AND usesuper=true;", &[&schema, &table, &column]).await?;
 
-        if res.get(0).is_none() {
-            anyhow::bail!("User does not have write permissions to target table");
-        }
+    if res.get(0).is_none() {
+        anyhow::bail!("User does not have write permissions to target table");
+    }
 
+    transaction.commit().await?;
+    let handle = tokio::spawn(async move {
+        let transaction = client.transaction().await?;
         transaction
             .execute(
                 &format!(
                     "CREATE TEMPORARY TABLE {temp_table_name} AS SELECT {pk}, '{{}}'::REAL[] AS {column} FROM {full_table_name} LIMIT 0",
-                    pk=quote_ident(pk),
-                    column=quote_ident(column)
+                    pk=quote_ident(&pk),
+                    column=quote_ident(&column)
                 ),
                 &[],
-            )?;
-        transaction.commit()?;
+            ).await?;
+        transaction.commit().await?;
 
-        let mut transaction = client.transaction()?;
-        let mut writer = transaction.copy_in(&format!(
-            "COPY {temp_table_name} FROM stdin WITH NULL AS 'NULL'"
-        ))?;
-        let update_sql = &format!("UPDATE {full_table_name} dest SET {column} = src.{column} FROM {temp_table_name} src WHERE src.{pk} = dest.{pk}", column=quote_ident(column), temp_table_name=quote_ident(&temp_table_name), pk=quote_ident(pk));
+        let mut transaction = client.transaction().await?;
+        let mut writer_sink = Box::pin(
+            transaction
+                .copy_in(&format!(
+                    "COPY {temp_table_name} FROM stdin WITH NULL AS 'NULL'"
+                ))
+                .await?,
+        );
+        let chunk_size = 1024 * 1024 * 10; // 10 MB
+        let mut buf = BytesMut::with_capacity(chunk_size * 2);
+        let update_sql = &format!("UPDATE {full_table_name} dest SET {column} = src.{column} FROM {temp_table_name} src WHERE src.{pk} = dest.{pk}", column=quote_ident(&column), temp_table_name=quote_ident(&temp_table_name), pk=quote_ident(&pk));
 
         let flush_interval = 10;
         let min_flush_rows = 50;
@@ -304,21 +279,25 @@ fn db_exporter_worker(
         let mut processed_row_cnt = 0;
         let mut old_progress = 0;
 
-        while let Ok(rows) = rx.recv() {
+        while let Some(rows) = rx.recv().await {
             for row in &rows {
-                writer.write(row.0.as_bytes())?;
-                writer.write("\t".as_bytes())?;
+                buf.extend_from_slice(row.0.as_bytes());
+                buf.extend_from_slice("\t".as_bytes());
                 if row.1.len() > 0 {
-                    writer.write("{".as_bytes())?;
+                    buf.extend_from_slice("{".as_bytes());
                     let row_str: String = row.1.iter().map(|&x| x.to_string() + ",").collect();
-                    writer.write(row_str[0..row_str.len() - 1].as_bytes())?;
+                    buf.extend_from_slice(row_str[0..row_str.len() - 1].as_bytes());
                     drop(row_str);
-                    writer.write("}".as_bytes())?;
+                    buf.extend_from_slice("}".as_bytes());
                 } else {
-                    writer.write("NULL".as_bytes())?;
+                    buf.extend_from_slice("NULL".as_bytes());
                 }
-                writer.write("\n".as_bytes())?;
+                buf.extend_from_slice("\n".as_bytes());
                 collected_row_cnt += 1;
+            }
+
+            if buf.len() > chunk_size {
+                writer_sink.send(buf.split().freeze()).await?
             }
 
             processed_row_cnt += rows.len();
@@ -335,7 +314,7 @@ fn db_exporter_worker(
 
             drop(rows);
 
-            if !args.stream {
+            if !stream {
                 continue;
             }
 
@@ -346,17 +325,25 @@ fn db_exporter_worker(
                 // if job is run in streaming mode
                 // it will write results to target table each 10 seconds (if collected rows are
                 // more than 50) or if collected row count is more than 1000 rows
-                writer.flush()?;
-                writer.finish()?;
-                transaction.batch_execute(&format!(
-                    "
+                if !buf.is_empty() {
+                    writer_sink.send(buf.split().freeze()).await?;
+                }
+                writer_sink.as_mut().finish().await?;
+                transaction
+                    .batch_execute(&format!(
+                        "
                     {update_sql};
                     TRUNCATE TABLE {temp_table_name};
                 "
-                ))?;
-                transaction.commit()?;
-                transaction = client.transaction()?;
-                writer = transaction.copy_in(&format!("COPY {temp_table_name} FROM stdin"))?;
+                    ))
+                    .await?;
+                transaction.commit().await?;
+                transaction = client.transaction().await?;
+                writer_sink = Box::pin(
+                    transaction
+                        .copy_in(&format!("COPY {temp_table_name} FROM stdin"))
+                        .await?,
+                );
                 collected_row_cnt = 0;
                 start = Instant::now();
             }
@@ -379,30 +366,33 @@ fn db_exporter_worker(
             return Ok(processed_row_cnt);
         }
 
-        writer.flush()?;
-        writer.finish()?;
-        transaction.execute(update_sql, &[])?;
-        transaction.commit()?;
+        if !buf.is_empty() {
+            writer_sink.send(buf.split().freeze()).await?
+        }
+        writer_sink.as_mut().finish().await?;
+        transaction.execute(update_sql, &[]).await?;
+        transaction.commit().await?;
         logger.info(&format!(
             "Embeddings exported to table {} under column {}",
             &table, &column
         ));
+
         Ok(processed_row_cnt)
     });
 
-    return Ok(handle);
+    Ok(handle)
 }
 
-fn csv_exporter_worker(
+async fn csv_exporter_worker(
     args: Arc<cli::EmbeddingArgs>,
-    rx: Receiver<Vec<EmbeddingRecord>>,
+    mut rx: Receiver<Vec<EmbeddingRecord>>,
     logger: Arc<Logger>,
 ) -> Result<JoinHandle<AnyhowUsizeResult>, anyhow::Error> {
-    let handle = std::thread::spawn(move || {
+    let handle = tokio::spawn(async move {
         let csv_path = args.out_csv.as_ref().unwrap();
         let mut wtr = Writer::from_path(&csv_path).unwrap();
         let mut processed_row_cnt = 0;
-        while let Ok(rows) = rx.recv() {
+        while let Some(rows) = rx.recv().await {
             for row in &rows {
                 let vector_string = &format!(
                     "{{{}}}",
@@ -421,8 +411,7 @@ fn csv_exporter_worker(
         logger.info(&format!("Embeddings exported to {}", &csv_path));
         Ok(processed_row_cnt)
     });
-
-    return Ok(handle);
+    Ok(handle)
 }
 
 pub fn get_default_batch_size(model: &str) -> usize {
@@ -457,11 +446,11 @@ pub fn get_default_batch_size(model: &str) -> usize {
     }
 }
 
-pub fn create_embeddings_from_db(
+pub async fn create_embeddings_from_db(
     args: cli::EmbeddingArgs,
     track_progress: bool,
     progress_cb: Option<ProgressCbFn>,
-    is_canceled: Option<Arc<RwLock<bool>>>,
+    cancel_token: CancellationToken,
     logger: Option<Logger>,
 ) -> Result<(usize, usize), anyhow::Error> {
     let logger = Arc::new(logger.unwrap_or(Logger::new("Lantern Embeddings", LogLevel::Debug)));
@@ -476,87 +465,97 @@ pub fn create_embeddings_from_db(
         args.model, args.visual, batch_size
     ));
 
+    let column = args.column.clone();
+    let schema = args.schema.clone();
+    let table = args.table.clone();
+    let full_table_name = get_full_table_name(&schema, &table);
+
+    let filter_sql = if args.filter.is_some() {
+        format!("WHERE {}", args.filter.as_ref().unwrap())
+    } else {
+        format!("WHERE {column} IS NOT NULL", column = quote_ident(&column))
+    };
+
+    let limit_sql = if args.limit.is_some() {
+        format!("LIMIT {}", args.limit.as_ref().unwrap())
+    } else {
+        "".to_owned()
+    };
+
+    let uri = append_params_to_uri(&args.uri, CONNECTION_PARAMS);
+    let (mut client, connection) = tokio_postgres::connect(&uri, NoTls).await?;
+
+    tokio::spawn(async move { connection.await });
+
+    let mut item_cnt = 0;
+    if track_progress {
+        item_cnt = estimate_count(
+            &mut client,
+            &full_table_name,
+            &filter_sql,
+            &limit_sql,
+            logger.clone(),
+        )
+        .await?;
+    }
     // Create channel that will send the database rows to embedding worker
-    let (producer_tx, producer_rx): (Sender<Vec<Row>>, Receiver<Vec<Row>>) = mpsc::channel();
+    let (producer_tx, producer_rx): (Sender<Vec<Row>>, Receiver<Vec<Row>>) = mpsc::channel(1);
     let (embedding_tx, embedding_rx): (
         Sender<Vec<EmbeddingRecord>>,
         Receiver<Vec<EmbeddingRecord>>,
-    ) = mpsc::channel();
-
-    let (producer_handle, item_cnt) = producer_worker(
-        args.clone(),
-        batch_size,
-        producer_tx,
-        track_progress,
-        logger.clone(),
-    )?;
+    ) = mpsc::channel(1);
 
     // Create exporter based on provided args
     // For now we only have csv and db exporters
     let exporter_handle = if args.out_csv.is_some() {
-        csv_exporter_worker(args.clone(), embedding_rx, logger.clone())?
+        csv_exporter_worker(args.clone(), embedding_rx, logger.clone()).await?
     } else {
         db_exporter_worker(
+            &uri,
             args.clone(),
             embedding_rx,
             item_cnt,
             progress_cb,
             logger.clone(),
-        )?
+        )
+        .await?
     };
 
-    let embedding_handle = embedding_worker(
-        args.clone(),
-        producer_rx,
-        embedding_tx,
-        is_canceled,
-        logger.clone(),
-    )?;
-    // Collect the thread handles in a vector to wait them
-    let handles = vec![producer_handle];
+    let (exporter_result, embedding_result, producer_result) = tokio::join!(
+        exporter_handle,
+        embedding_worker(
+            args.clone(),
+            producer_rx,
+            embedding_tx,
+            cancel_token,
+            logger.clone(),
+        ),
+        producer_worker(
+            &mut client,
+            &args.pk,
+            &args.column,
+            &full_table_name,
+            &filter_sql,
+            &limit_sql,
+            batch_size,
+            producer_tx,
+        ),
+    );
 
-    for handle in handles {
-        match handle.join() {
-            Err(e) => {
-                logger.error(&format!("{:?}", e));
-                anyhow::bail!("{:?}", e);
-            }
-            Ok(res) => {
-                if let Err(e) = res {
-                    logger.error(&format!("{:?}", e));
-                    anyhow::bail!("{:?}", e);
-                }
-            }
-        }
-    }
-
-    let processed_tokens = match embedding_handle.join() {
-        Err(e) => {
-            logger.error(&format!("{:?}", e));
-            anyhow::bail!("{:?}", e);
-        }
-        Ok(res) => res?,
-    };
-
-    let processed_rows = match exporter_handle.join() {
-        Err(e) => {
-            logger.error(&format!("{:?}", e));
-            anyhow::bail!("{:?}", e);
-        }
-        Ok(res) => res?,
-    };
-
+    producer_result?;
+    let processed_tokens = embedding_result?;
+    let processed_rows = exporter_result??;
     Ok((processed_rows, processed_tokens))
 }
 
-pub fn show_available_models(
+pub async fn show_available_models(
     args: &cli::ShowModelsArgs,
     logger: Option<Logger>,
 ) -> AnyhowVoidResult {
     let logger = logger.unwrap_or(Logger::new("Lantern Embeddings", LogLevel::Info));
     logger.info("Available Models\n");
-    let runtime = get_runtime(&args.runtime, None, &args.runtime_params)?;
-    logger.print_raw(&runtime.get_available_models().0);
+    let runtime = EmbeddingRuntime::new(&args.runtime, None, &args.runtime_params)?;
+    logger.print_raw(&runtime.get_available_models().await.0);
     Ok(())
 }
 

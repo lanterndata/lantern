@@ -1,5 +1,6 @@
 use crate::logger::Logger;
 use crate::utils::{get_full_table_name, quote_ident};
+use postgres::{Client, NoTls, Transaction};
 use rand::Rng;
 use rayon::prelude::*;
 use std::cmp;
@@ -8,10 +9,10 @@ use std::io::Write;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
-use postgres::{Client, NoTls, Transaction};
 
-use super::{set_and_report_progress, report_progress, AnyhowVoidResult, DatasetItem, ProgressCbFn};
-
+use super::{
+    report_progress, set_and_report_progress, AnyhowVoidResult, DatasetItem, ProgressCbFn,
+};
 
 fn l2sq_dist(a: &[f32], b: &[f32]) -> f32 {
     a.iter()
@@ -39,7 +40,7 @@ fn get_closest_centroid(centroids: &Vec<Vec<f32>>, subvector: &[f32]) -> u8 {
 // Will parallel iterate over the dataset
 // Then iterate over each subvector of the vector and return
 // closest centroid id for that subvector
-// Result will be vector with row id and quantized vector 
+// Result will be vector with row id and quantized vector
 pub fn quantize_vectors(
     dataset: &Vec<DatasetItem>,
     vector_dim: usize,
@@ -154,29 +155,32 @@ pub fn write_quantized_rows<'a>(
 // This function is intended to be run on batch job
 // It is optimized for parallel runs
 // The data read/write will be done in parallel using rayon
-// It can operate over range of data from the whole table, 
+// It can operate over range of data from the whole table,
 // so it can be split over multiple vm instances to speed up quantization times
 pub struct QuantizeAndWriteVectorArgs<'a> {
-   pub codebook_table_name: &'a str,
-   pub full_table_name: &'a str,
-   pub db_uri: &'a str,
-   pub schema: &'a str,
-   pub table: &'a str,
-   pub column: &'a str,
-   pub pq_column_name: &'a str,
-   pub pk: &'a str,
-   pub splits: usize,
-   pub total_row_count: usize,
-   pub total_task_count: &'a Option<usize>,
-   pub parallel_task_count: &'a Option<usize>,
-   pub quantization_task_id: &'a Option<usize>,
-   pub max_connections: usize,
-   pub main_progress: &'a AtomicU8,
-   pub progress_cb: &'a Option<super::ProgressCbFn>,
-   pub logger: &'a Logger,
+    pub codebook_table_name: &'a str,
+    pub full_table_name: &'a str,
+    pub db_uri: &'a str,
+    pub schema: &'a str,
+    pub table: &'a str,
+    pub column: &'a str,
+    pub pq_column_name: &'a str,
+    pub pk: &'a str,
+    pub splits: usize,
+    pub total_row_count: usize,
+    pub total_task_count: &'a Option<usize>,
+    pub parallel_task_count: &'a Option<usize>,
+    pub quantization_task_id: &'a Option<usize>,
+    pub max_connections: usize,
+    pub main_progress: &'a AtomicU8,
+    pub progress_cb: &'a Option<super::ProgressCbFn>,
+    pub logger: &'a Logger,
 }
 
-pub fn quantize_and_write_vectors(args: QuantizeAndWriteVectorArgs, mut client: Client) -> super::AnyhowVoidResult {
+pub fn quantize_and_write_vectors(
+    args: QuantizeAndWriteVectorArgs,
+    mut client: Client,
+) -> super::AnyhowVoidResult {
     let mut transaction = client.transaction()?;
     let logger = args.logger;
     let db_uri = args.db_uri;
@@ -184,13 +188,13 @@ pub fn quantize_and_write_vectors(args: QuantizeAndWriteVectorArgs, mut client: 
     let full_codebook_table_name = args.codebook_table_name;
     let column = args.column;
     let splits = args.splits;
-    let schema =  args.schema;
-    let table =  args.table;
+    let schema = args.schema;
+    let table = args.table;
     let pq_column_name = args.pq_column_name;
     let pk = args.pk;
     let main_progress = args.main_progress;
-    let progress_cb =  args.progress_cb;
-    
+    let progress_cb = args.progress_cb;
+
     let mut limit_start = 0;
     let mut limit_end = args.total_row_count;
 
@@ -198,13 +202,19 @@ pub fn quantize_and_write_vectors(args: QuantizeAndWriteVectorArgs, mut client: 
     // Here we will determine the range from the task id
     if let Some(quantization_task_id) = args.quantization_task_id {
         if args.total_task_count.is_none() {
-            anyhow::bail!("Please provide --total-task-count when providing --quantization-task-id");
+            anyhow::bail!(
+                "Please provide --total-task-count when providing --quantization-task-id"
+            );
         }
         let quantization_task_count = args.total_task_count.as_ref().unwrap();
-        
+
         let chunk_per_task = limit_end / quantization_task_count;
         limit_start = chunk_per_task * quantization_task_id;
-        limit_end = if *quantization_task_id == quantization_task_count - 1 { limit_end + 1 } else { limit_start + chunk_per_task };
+        limit_end = if *quantization_task_id == quantization_task_count - 1 {
+            limit_end + 1
+        } else {
+            limit_start + chunk_per_task
+        };
     }
 
     // Read all codebook and create a hashmap from it
@@ -220,7 +230,10 @@ pub fn quantize_and_write_vectors(args: QuantizeAndWriteVectorArgs, mut client: 
         anyhow::bail!("Codebook does not contain any entries");
     }
 
-    logger.debug(&format!("Coedbook fetched in {}s", codebook_read_start.elapsed().as_secs()));
+    logger.debug(&format!(
+        "Coedbook fetched in {}s",
+        codebook_read_start.elapsed().as_secs()
+    ));
 
     let mut codebooks_hashmap: HashMap<usize, Vec<Vec<f32>>> = HashMap::new();
     let cluster_count = codebook_rows.len() / splits;
@@ -247,26 +260,33 @@ pub fn quantize_and_write_vectors(args: QuantizeAndWriteVectorArgs, mut client: 
         );
     }
 
-    logger.debug(&format!("Coedbook hashmap created in {}s", codebook_hashmap_creation_start.elapsed().as_secs()));
+    logger.debug(&format!(
+        "Coedbook hashmap created in {}s",
+        codebook_hashmap_creation_start.elapsed().as_secs()
+    ));
     set_and_report_progress(progress_cb, logger, main_progress, 10);
 
     let codebooks_hashmap = Arc::new(RwLock::new(codebooks_hashmap));
- 
+
     // Here we will read the range of data for this chunk in parallel
     // Based on total task count and machine CPU count
     // Then we will quantize the range chunk and write to database
     let range_row_count = limit_end - limit_start;
     let num_cores: usize = std::thread::available_parallelism().unwrap().into();
-    let  num_connections: usize = if args.quantization_task_id.is_some() {
+    let num_connections: usize = if args.quantization_task_id.is_some() {
         // This will never fail as it is checked on start to be specified if task id is present
-        let parallel_task_count = args.parallel_task_count.as_ref().unwrap_or(args.total_task_count.as_ref().unwrap());
+        let parallel_task_count = args
+            .parallel_task_count
+            .as_ref()
+            .unwrap_or(args.total_task_count.as_ref().unwrap());
         // If there's quantization task id we expect this to be batch job
         // So each task will get (max_connections / parallel task count) connection pool
         // But it won't be higher than cpu count
         cmp::min(num_cores, (args.max_connections - 2) / parallel_task_count)
     } else {
         // In this case as this will be only task running we can use whole connection pool
-        let active_connections = transaction.query_one("SELECT COUNT(DISTINCT pid) FROM pg_stat_activity", &[])?;
+        let active_connections =
+            transaction.query_one("SELECT COUNT(DISTINCT pid) FROM pg_stat_activity", &[])?;
         let active_connections = active_connections.get::<usize, i64>(0) as usize;
         cmp::min(num_cores, args.max_connections - active_connections)
     };
@@ -274,11 +294,11 @@ pub fn quantize_and_write_vectors(args: QuantizeAndWriteVectorArgs, mut client: 
     // Avoid division by zero error
     let num_connections = cmp::max(num_connections, 1);
     let chunk_size = range_row_count / num_connections;
- 
+
     logger.debug(&format!("max_connections: {}, num_cores: {num_cores}, num_connections: {num_connections}, chunk_count: {chunk_size}", args.max_connections));
 
     let quantization_and_write_start_time = Instant::now();
-    
+
     let results = (0..num_connections)
         .into_par_iter()
         .map_with(codebooks_hashmap, |map, i| {
@@ -301,7 +321,7 @@ pub fn quantize_and_write_vectors(args: QuantizeAndWriteVectorArgs, mut client: 
                     rows.len(),
                     fetch_start_time.elapsed().as_secs()
                 ));
-            
+
             let rows = rows
                 .iter()
                 .filter_map(|r| {
@@ -312,7 +332,7 @@ pub fn quantize_and_write_vectors(args: QuantizeAndWriteVectorArgs, mut client: 
                     Some(DatasetItem {
                     id: r.get::<usize, String>(0),
                     vec: v
-                    
+
                 })
                     } else {
                         None
@@ -329,7 +349,7 @@ pub fn quantize_and_write_vectors(args: QuantizeAndWriteVectorArgs, mut client: 
                 map.clone(),
                 &logger,
             )?;
-            
+
             write_quantized_rows(
                 &mut transaction,
                 &rows,
@@ -347,10 +367,13 @@ pub fn quantize_and_write_vectors(args: QuantizeAndWriteVectorArgs, mut client: 
         }).collect::<Vec<Result<(), anyhow::Error>>>();
 
     for result in results {
-       result?;
+        result?;
     }
 
-    logger.debug(&format!("Vectors quantized and exported in {}s", quantization_and_write_start_time.elapsed().as_secs()));
+    logger.debug(&format!(
+        "Vectors quantized and exported in {}s",
+        quantization_and_write_start_time.elapsed().as_secs()
+    ));
     transaction.commit()?;
     Ok(())
 }

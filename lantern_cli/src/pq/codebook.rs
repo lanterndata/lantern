@@ -1,5 +1,6 @@
 use crate::logger::Logger;
 use crate::utils::quote_ident;
+use postgres::{Client, NoTls, Transaction};
 use rayon::prelude::*;
 use std::cmp;
 use std::collections::HashMap;
@@ -7,9 +8,8 @@ use std::io::Write;
 use std::sync::atomic::AtomicU8;
 use std::sync::Arc;
 use std::time::Instant;
-use postgres::{Client, NoTls, Transaction};
 
-use super::{set_and_report_progress, report_progress, DatasetItem};
+use super::{report_progress, set_and_report_progress, DatasetItem};
 use linfa::traits::Fit;
 use linfa::DatasetBase;
 use linfa_clustering::KMeans;
@@ -68,29 +68,29 @@ pub fn create_codebook_for_subset(
 }
 
 pub struct CreateCodebookArgs<'a> {
-   pub logger: &'a Logger,
-   pub main_progress: &'a AtomicU8,
-   pub progress_cb: &'a Option<super::ProgressCbFn>,
-   pub db_uri: &'a str,
-   pub pk: &'a str,
-   pub column: &'a str,
-   pub full_table_name: &'a str,
-   pub codebook_table_name: &'a str,
-   pub total_row_count: usize,
-   pub max_connections: usize,
-   pub splits: usize,
-   pub vector_dim: usize,
-   pub subvector_dim: usize,
-   pub cluster_count: usize,
-   pub start_offset_id: usize,
-   pub subvector_id: &'a Option<usize>,
-   pub parallel_task_count: &'a Option<usize>,
+    pub logger: &'a Logger,
+    pub main_progress: &'a AtomicU8,
+    pub progress_cb: &'a Option<super::ProgressCbFn>,
+    pub db_uri: &'a str,
+    pub pk: &'a str,
+    pub column: &'a str,
+    pub full_table_name: &'a str,
+    pub codebook_table_name: &'a str,
+    pub total_row_count: usize,
+    pub max_connections: usize,
+    pub splits: usize,
+    pub vector_dim: usize,
+    pub subvector_dim: usize,
+    pub cluster_count: usize,
+    pub start_offset_id: usize,
+    pub subvector_id: &'a Option<usize>,
+    pub parallel_task_count: &'a Option<usize>,
 }
 
-pub fn create_codebook<'a> (
-    args: CreateCodebookArgs, transaction: &mut Transaction<'a>)
- -> Result<(HashMap<usize, Vec<Vec<f32>>>, Arc<Vec<DatasetItem>>), anyhow::Error> {
-
+pub fn create_codebook<'a>(
+    args: CreateCodebookArgs,
+    transaction: &mut Transaction<'a>,
+) -> Result<(HashMap<usize, Vec<Vec<f32>>>, Arc<Vec<DatasetItem>>), anyhow::Error> {
     let logger = args.logger;
     let cluster_count = args.cluster_count;
     let progress_cb = args.progress_cb;
@@ -108,7 +108,7 @@ pub fn create_codebook<'a> (
     let max_connections = args.max_connections;
     let vector_dim = args.vector_dim;
     let start_offset_id = args.start_offset_id;
-    
+
     let mut subvector_start_idx = 0;
     let mut subvector_end_idx = args.vector_dim;
 
@@ -135,14 +135,15 @@ pub fn create_codebook<'a> (
     logger.debug(&format!("Splits: {}, Subvector ID: {:?} Vector dim: {}, Subvector dim: {}, Subvector: vector[{subvector_start_idx}:{subvector_end_idx}]", splits, subvector_id, vector_dim, subvector_dim ));
 
     let num_cores: usize = std::thread::available_parallelism().unwrap().into();
-    let  num_connections: usize = if subvector_id.is_some() {
+    let num_connections: usize = if subvector_id.is_some() {
         // If there's subvector id we expect this to be batch job
         // So each task will get max_connections / split connection pool
         // Be it won't be higher than cpu count
         cmp::min(num_cores, (max_connections - 2) / parallel_task_count)
     } else {
         // In this case as this will be only task running we can use whole connection pool
-        let active_connections = transaction.query_one("SELECT COUNT(DISTINCT pid) FROM pg_stat_activity", &[])?;
+        let active_connections =
+            transaction.query_one("SELECT COUNT(DISTINCT pid) FROM pg_stat_activity", &[])?;
         let mut active_connections = active_connections.get::<usize, i64>(0) as usize;
 
         if max_connections < active_connections {
@@ -163,7 +164,7 @@ pub fn create_codebook<'a> (
     // But if no subvector_id is provided whole vector will be selected
     // (the indices will be 0;vector_dim)
     // Data will be fetched in parallel and then merged to speed up the fetch time
-    
+
     let rows = (0..num_connections)
         .into_par_iter()
         .map(|i| {
@@ -183,13 +184,13 @@ pub fn create_codebook<'a> (
                 ),
                 &[],
             )?;
-   
+
             logger.info(&format!(
                 "Fetched {} items in {}s",
                 rows.len(),
                 fetch_start_time.elapsed().as_secs()
             ));
-            
+
             let rows = rows
                 .iter()
                 .filter_map(|r| {
@@ -205,23 +206,23 @@ pub fn create_codebook<'a> (
                     }
                 })
                 .collect::<Vec<DatasetItem>>();
-            
+
             Ok::<Vec<DatasetItem>, anyhow::Error>(rows)
         }).collect::<Vec<Result<Vec<DatasetItem>, anyhow::Error>>>();
 
-        let mut dataset: Vec<DatasetItem> = Vec::with_capacity(total_row_count);
+    let mut dataset: Vec<DatasetItem> = Vec::with_capacity(total_row_count);
 
-        for row in rows {
-            for item in row? {
-                dataset.push(item);
-            }
+    for row in rows {
+        for item in row? {
+            dataset.push(item);
         }
-        
-        logger.info(&format!(
-            "Fetched {} items in {}s",
-            dataset.len(),
-            total_fetch_start_time.elapsed().as_secs()
-        ));
+    }
+
+    logger.info(&format!(
+        "Fetched {} items in {}s",
+        dataset.len(),
+        total_fetch_start_time.elapsed().as_secs()
+    ));
 
     // progress indicator is: 5% load, 70% codebook, 15% quantization, 10% export
     report_progress(&progress_cb, &logger, &args.main_progress, 5);
@@ -233,7 +234,7 @@ pub fn create_codebook<'a> (
         cluster_count = cluster_count,
         splits = splits
     ));
- 
+
     let dataset = Arc::new(dataset);
     let dataset_clone = dataset.clone();
 
@@ -242,7 +243,6 @@ pub fn create_codebook<'a> (
     let subvector_range_start = subvector_start_idx / subvector_dim;
     let subvector_range_end = subvector_end_idx / subvector_dim;
     let subvector_count = subvector_range_end - subvector_range_start;
-
 
     let progress_per_chunk = 70.0 / (subvector_count) as f32;
     let all_centroids: Vec<(usize, Vec<Vec<f32>>)> = (subvector_range_start..subvector_range_end)
@@ -259,7 +259,8 @@ pub fn create_codebook<'a> (
                 .collect::<Vec<&[f32]>>();
             // Prallel iterate over the subvectors and run kmeans returning centroids
             let centroids =
-                create_codebook_for_subset(subset_dataset, cluster_count, subvector_id, &logger).unwrap();
+                create_codebook_for_subset(subset_dataset, cluster_count, subvector_id, &logger)
+                    .unwrap();
 
             logger.debug(&format!(
                 "Subset {subvector_id} training duration: {}s",
@@ -276,16 +277,14 @@ pub fn create_codebook<'a> (
         })
         .collect();
 
-    set_and_report_progress(
-        &progress_cb,
-        &logger,
-        &main_progress,
-        75 as u8,
-    );
+    set_and_report_progress(&progress_cb, &logger, &main_progress, 75 as u8);
     let codebook_write_time_start = Instant::now();
- 
+
     // Write the generated centroids in codebook table
-    let mut writer = transaction.copy_in(&format!("COPY {codebook_table_name} FROM stdin", codebook_table_name = codebook_table_name))?;
+    let mut writer = transaction.copy_in(&format!(
+        "COPY {codebook_table_name} FROM stdin",
+        codebook_table_name = codebook_table_name
+    ))?;
     for (subvector_id, centroids) in all_centroids {
         for (centroid_id, centroid) in centroids.iter().enumerate() {
             writer.write(subvector_id.to_string().as_bytes())?;
@@ -300,10 +299,10 @@ pub fn create_codebook<'a> (
             codebooks_hashmap.insert(subvector_id, centroids.clone());
         }
     }
-    
+
     writer.flush()?;
     writer.finish()?;
- 
+
     logger.debug(&format!(
         "Codebook write duration: {}s",
         codebook_write_time_start.elapsed().as_secs()

@@ -422,9 +422,9 @@ async fn embedding_worker(
                 },
                 false,
                 None,
-                None,
+                CancellationToken::new(),
                 Some(task_logger),
-            );
+            ).await;
 
             match result {
                 Ok((processed_rows, processed_tokens)) => {
@@ -808,8 +808,7 @@ async fn job_update_processor(
             tokio::spawn(async move { connection.await });
             let full_table_name =  get_full_table_name(&schema, &table);
             let id = notification.id;
-            // TODO:: Select pk here
-            let row = client.query_one(&format!("SELECT dst_column, src_column as \"column\", \"table\", \"schema\", canceled_at, init_finished_at FROM {0} WHERE id=$1", &full_table_name), &[&id]).await?;
+            let row = client.query_one(&format!("SELECT pk, dst_column, src_column as \"column\", \"table\", \"schema\", canceled_at, init_finished_at FROM {0} WHERE id=$1", &full_table_name), &[&id]).await?;
             let src_column = row.get::<&str, String>("column").to_owned();
             let out_column = row.get::<&str, String>("dst_column").to_owned();
 
@@ -821,7 +820,7 @@ async fn job_update_processor(
             }
 
             if init_finished_at.is_some() {
-              toggle_client_job(client_jobs_map.clone(), id, db_uri.clone(), "id".to_owned(), row.get::<&str, String>("column").to_owned(), row.get::<&str, String>("dst_column").to_owned(), row.get::<&str, String>("table").to_owned(), row.get::<&str, String>("schema").to_owned(), logger.level.clone(), &logger.label, Some(job_insert_queue_tx.clone()), canceled_at.is_none()).await?;
+              toggle_client_job(client_jobs_map.clone(), id, db_uri.clone(), row.get::<&str, String>("pk").to_owned(), row.get::<&str, String>("column").to_owned(), row.get::<&str, String>("dst_column").to_owned(), row.get::<&str, String>("table").to_owned(), row.get::<&str, String>("schema").to_owned(), logger.level.clone(), &logger.label, Some(job_insert_queue_tx.clone()), canceled_at.is_none()).await?;
             } else if canceled_at.is_some() {
                 // Cancel ongoing job
                 let jobs = jobs_map.read().await;

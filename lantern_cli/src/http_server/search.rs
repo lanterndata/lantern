@@ -44,7 +44,7 @@ pub struct SearchResponse {
         examples (
          ("Search by vector" = (value = json!(r#"{ "column": "vector", "query_vector": [1,0,1], "metric": "cosine", "select": "id,metadata", "k": 10, "ef": 64 }"#) )),
          ("Search with model" = (value = json!(r#"{ "column": "vector", "query_text": "User query text", "query_model": "BAAI/bge-small-en", "metric": "l2sq", "select": "id,metadata", "k": 10, "ef": 64 }"#) ))
-            
+
         ),
     ),
     responses(

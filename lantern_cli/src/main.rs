@@ -21,18 +21,26 @@ async fn main() {
         cli::Commands::CreateEmbeddings(args) => {
             let logger = Logger::new("Lantern Embeddings", LogLevel::Debug);
             _main_logger = Some(logger.clone());
-            let res = embeddings::create_embeddings_from_db(args, true, None, None, Some(logger));
-            // Handle error here as this call does not return void as others
-            let logger = _main_logger.as_ref().unwrap();
+            let res = embeddings::create_embeddings_from_db(
+                args,
+                true,
+                None,
+                CancellationToken::new(),
+                Some(logger),
+            )
+            .await;
+
             if let Err(e) = res {
+                let logger = _main_logger.as_ref().unwrap();
                 logger.error(&e.to_string());
+                process::exit(1);
             }
             Ok(())
         }
         cli::Commands::ShowModels(args) => {
             let logger = Logger::new("Lantern Embeddings", LogLevel::Debug);
             _main_logger = Some(logger.clone());
-            embeddings::show_available_models(&args, Some(logger))
+            embeddings::show_available_models(&args, Some(logger)).await
         }
         cli::Commands::ShowRuntimes => {
             let logger = Logger::new("Lantern Embeddings", LogLevel::Debug);
@@ -42,7 +50,7 @@ async fn main() {
         cli::Commands::MeasureModelSpeed(args) => {
             let logger = Logger::new("Lantern Embeddings", LogLevel::Info);
             _main_logger = Some(logger.clone());
-            embeddings::measure_speed::start_speed_test(&args, Some(logger))
+            embeddings::measure_speed::start_speed_test(&args, Some(logger)).await
         }
         cli::Commands::AutotuneIndex(args) => {
             let logger = Logger::new("Lantern Index Autotune", LogLevel::Debug);

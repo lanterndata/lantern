@@ -1,17 +1,23 @@
-use super::helpers::{cancel_all_jobs, cancellation_handler, collect_pending_index_jobs, db_notification_listener, index_job_update_processor, startup_hook};
+use super::helpers::{
+    cancel_all_jobs, cancellation_handler, collect_pending_index_jobs, db_notification_listener,
+    index_job_update_processor, startup_hook,
+};
+use super::types::{
+    ExternalIndexJob, JobEvent, JobEventHandlersMap, JobInsertNotification, JobRunArgs,
+    JobTaskEventTx, JobUpdateNotification,
+};
 use crate::daemon::helpers::anyhow_wrap_connection;
-use crate::types::*;
-use super::types::{ExternalIndexJob, JobEvent, JobEventHandlersMap, JobInsertNotification, JobRunArgs, JobTaskEventTx, JobUpdateNotification};
 use crate::external_index::cli::{CreateIndexArgs, UMetricKind};
-use crate::logger::{Logger, LogLevel};
+use crate::logger::{LogLevel, Logger};
+use crate::types::*;
 use crate::utils::get_full_table_name;
-use tokio::sync::RwLock;
-use tokio_util::sync::CancellationToken;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::SystemTime;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use tokio::sync::RwLock;
 use tokio_postgres::{Client, NoTls};
+use tokio_util::sync::CancellationToken;
 
 pub const JOB_TABLE_DEFINITION: &'static str = r#"
 "id" SERIAL PRIMARY KEY,
@@ -33,7 +39,11 @@ pub const JOB_TABLE_DEFINITION: &'static str = r#"
 "progress" INT2 DEFAULT 0
 "#;
 
-async fn set_job_handle(jobs_map: Arc<JobEventHandlersMap>, job_id: i32, handle: JobTaskEventTx) -> AnyhowVoidResult {
+async fn set_job_handle(
+    jobs_map: Arc<JobEventHandlersMap>,
+    job_id: i32,
+    handle: JobTaskEventTx,
+) -> AnyhowVoidResult {
     let mut jobs = jobs_map.write().await;
     jobs.insert(job_id, handle);
     Ok(())
@@ -86,13 +96,13 @@ async fn external_index_worker(
                 }
             };
 
-            let progress_callback = 
+            let progress_callback =
                 Some(Box::new(progress_callback) as ProgressCbFn);
 
             let task_logger =
                 Logger::new(&format!("{}|{}", logger.label, job.id), LogLevel::Info);
             let job_clone = job.clone();
-            
+
             let (event_tx, mut event_rx) = mpsc::channel(1);
             let event_tx_clone = event_tx.clone();
 
@@ -145,7 +155,7 @@ async fn external_index_worker(
             });
 
             set_job_handle(jobs_map.clone(), job.id, event_tx).await?;
-      
+
             match task_handle.await? {
                 Ok(_) => {
                     remove_job_handle(jobs_map.clone(), job.id).await?;
@@ -165,7 +175,6 @@ async fn external_index_worker(
     .await??;
     Ok(())
 }
-
 
 async fn job_insert_processor(
     client: Arc<Client>,
@@ -220,7 +229,11 @@ async fn job_insert_processor(
     Ok(())
 }
 
-pub async fn start(args: JobRunArgs, logger: Arc<Logger>, cancel_token: CancellationToken) -> AnyhowVoidResult {
+pub async fn start(
+    args: JobRunArgs,
+    logger: Arc<Logger>,
+    cancel_token: CancellationToken,
+) -> AnyhowVoidResult {
     logger.info("Starting External Index Jobs");
 
     let (mut main_db_client, connection) = tokio_postgres::connect(&args.uri, NoTls).await?;
@@ -238,8 +251,10 @@ pub async fn start(args: JobRunArgs, logger: Arc<Logger>, cancel_token: Cancella
         UnboundedReceiver<JobUpdateNotification>,
     ) = mpsc::unbounded_channel();
 
-    let (job_queue_tx, job_queue_rx): (UnboundedSender<ExternalIndexJob>, UnboundedReceiver<ExternalIndexJob>) =
-        mpsc::unbounded_channel();
+    let (job_queue_tx, job_queue_rx): (
+        UnboundedSender<ExternalIndexJob>,
+        UnboundedReceiver<ExternalIndexJob>,
+    ) = mpsc::unbounded_channel();
 
     let table = args.table_name;
 
@@ -308,10 +323,7 @@ pub async fn start(args: JobRunArgs, logger: Arc<Logger>, cancel_token: Cancella
         cancellation_handler(
             cancel_token.clone(),
             Some(move || async {
-                cancel_all_jobs(
-                    jobs_map_clone,
-                )
-                .await?;
+                cancel_all_jobs(jobs_map_clone).await?;
 
                 Ok::<(), anyhow::Error>(())
             })

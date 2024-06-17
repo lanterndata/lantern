@@ -11,7 +11,9 @@ use strum::{EnumIter, IntoEnumIterator};
 use cohere_runtime::CohereRuntime;
 use openai_runtime::OpenAiRuntime;
 use ort_runtime::OrtRuntime;
-use runtime::EmbeddingRuntime;
+use runtime::EmbeddingRuntimeT;
+
+use self::runtime::EmbeddingResult;
 
 fn default_logger(text: &str) {
     println!("{}", text);
@@ -54,25 +56,53 @@ impl ToString for Runtime {
     }
 }
 
-pub fn get_runtime<'a>(
-    runtime: &Runtime,
-    logger: Option<&'a LoggerFn>,
-    params: &'a str,
-) -> Result<Box<dyn EmbeddingRuntime + 'a>, anyhow::Error> {
-    Ok(match runtime {
-        Runtime::Ort => Box::new(OrtRuntime::new(
-            logger.unwrap_or(&(default_logger as LoggerFn)),
-            params,
-        )?),
-        Runtime::OpenAi => Box::new(OpenAiRuntime::new(
-            logger.unwrap_or(&(default_logger as LoggerFn)),
-            params,
-        )?),
-        Runtime::Cohere => Box::new(CohereRuntime::new(
-            logger.unwrap_or(&(default_logger as LoggerFn)),
-            params,
-        )?),
-    })
+pub enum EmbeddingRuntime<'a> {
+    Cohere(cohere_runtime::CohereRuntime<'a>),
+    OpenAi(openai_runtime::OpenAiRuntime<'a>),
+    Ort(ort_runtime::OrtRuntime<'a>),
+}
+
+impl<'a> EmbeddingRuntime<'a> {
+    pub fn new(
+        runtime: &Runtime,
+        logger: Option<&'a LoggerFn>,
+        params: &'a str,
+    ) -> Result<EmbeddingRuntime<'a>, anyhow::Error> {
+        Ok(match runtime {
+            Runtime::Ort => EmbeddingRuntime::Ort(OrtRuntime::new(
+                logger.unwrap_or(&(default_logger as LoggerFn)),
+                params,
+            )?),
+            Runtime::OpenAi => EmbeddingRuntime::OpenAi(OpenAiRuntime::new(
+                logger.unwrap_or(&(default_logger as LoggerFn)),
+                params,
+            )?),
+            Runtime::Cohere => EmbeddingRuntime::Cohere(CohereRuntime::new(
+                logger.unwrap_or(&(default_logger as LoggerFn)),
+                params,
+            )?),
+        })
+    }
+
+    pub async fn process(
+        &self,
+        model_name: &str,
+        inputs: &Vec<&str>,
+    ) -> Result<EmbeddingResult, anyhow::Error> {
+        match self {
+            EmbeddingRuntime::Cohere(runtime) => runtime.process(model_name, inputs).await,
+            EmbeddingRuntime::OpenAi(runtime) => runtime.process(model_name, inputs).await,
+            EmbeddingRuntime::Ort(runtime) => runtime.process(model_name, inputs).await,
+        }
+    }
+
+    pub async fn get_available_models(&self) -> (String, Vec<(String, bool)>) {
+        match self {
+            EmbeddingRuntime::Cohere(runtime) => runtime.get_available_models().await,
+            EmbeddingRuntime::OpenAi(runtime) => runtime.get_available_models().await,
+            EmbeddingRuntime::Ort(runtime) => runtime.get_available_models().await,
+        }
+    }
 }
 
 pub fn get_available_runtimes() -> Vec<String> {

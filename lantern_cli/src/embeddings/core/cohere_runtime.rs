@@ -2,7 +2,7 @@ use itertools::Itertools;
 use std::{collections::HashMap, sync::RwLock};
 
 use super::{
-    runtime::{EmbeddingResult, EmbeddingRuntime},
+    runtime::{EmbeddingResult, EmbeddingRuntimeT},
     LoggerFn,
 };
 use crate::HTTPRuntime;
@@ -207,16 +207,16 @@ impl<'a> CohereRuntime<'a> {
     }
 }
 
-impl<'a> EmbeddingRuntime for CohereRuntime<'a> {
-    fn process(
+impl<'a> EmbeddingRuntimeT for CohereRuntime<'a> {
+    async fn process(
         &self,
         model_name: &str,
         inputs: &Vec<&str>,
     ) -> Result<EmbeddingResult, anyhow::Error> {
-        self.post_request("/v1/embed", model_name, inputs)
+        self.post_request("/v1/embed", model_name, inputs).await
     }
 
-    fn get_available_models(&self) -> (String, Vec<(String, bool)>) {
+    async fn get_available_models(&self) -> (String, Vec<(String, bool)>) {
         let map = MODEL_INFO_MAP.read().unwrap();
         let mut res = String::new();
         let mut models = Vec::with_capacity(map.len());

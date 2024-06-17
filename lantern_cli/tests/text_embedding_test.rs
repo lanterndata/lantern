@@ -1,4 +1,4 @@
-use lantern_cli::embeddings::core::{get_runtime, Runtime};
+use lantern_cli::embeddings::core::{EmbeddingRuntime, Runtime};
 
 static HELLO_WORLD_TEXT: &'static str = "Hello world!";
 #[rustfmt::skip]
@@ -71,15 +71,15 @@ fn cosine_similarity(v1: &[f32], v2: &[f32]) -> f32 {
 macro_rules! text_embedding_test {
     ($($name:ident: $value:expr,)*) => {
     $(
-        #[test]
-        fn $name() {
-            let runtime = get_runtime(&Runtime::Ort, None, r#"{"data_path": "/tmp/lantern-embeddings-core-test"}"#).unwrap();
+        #[tokio::test]
+        async fn $name() {
+            let runtime = EmbeddingRuntime::new(&Runtime::Ort, None, r#"{"data_path": "/tmp/lantern-embeddings-core-test"}"#).unwrap();
             let (model, input, expected, batch_size, token_count, tolerance) = $value;
             let inputs = itertools::repeat_n(input, batch_size).collect();
             let output = runtime.process(
                 model,
                 &inputs,
-            ).unwrap();
+            ).await.unwrap();
 
             let embeddings = output.embeddings;
             let expected_output: Vec<Vec<f32>> =
@@ -98,9 +98,9 @@ macro_rules! text_embedding_test {
 macro_rules! text_embedding_test_multiple {
     ($($name:ident: $value:expr,)*) => {
     $(
-        #[test]
-        fn $name() {
-            let runtime = get_runtime(&Runtime::Ort, None, r#"{"data_path": "/tmp/lantern-embeddings-core-test"}"#).unwrap();
+        #[tokio::test]
+        async fn $name() {
+            let runtime = EmbeddingRuntime::new(&Runtime::Ort, None, r#"{"data_path": "/tmp/lantern-embeddings-core-test"}"#).unwrap();
             let (model, input1, input2, expected1, expected2, batch_size, token_count, tolerance) = $value;
             let mut inputs = Vec::with_capacity(batch_size);
             let mut expected_output = Vec::with_capacity(batch_size);
@@ -118,7 +118,7 @@ macro_rules! text_embedding_test_multiple {
             let output = runtime.process(
                 model,
                 &inputs,
-            ).unwrap();
+            ).await.unwrap();
 
             let embeddings = output.embeddings;
 
