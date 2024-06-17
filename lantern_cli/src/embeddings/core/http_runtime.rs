@@ -20,7 +20,6 @@ macro_rules! HTTPRuntime {
         use isahc::{config::RedirectPolicy, prelude::*, HttpClient};
         use std::sync::atomic::{AtomicUsize, Ordering};
         use std::sync::Arc;
-        use tokio::runtime::Runtime;
         use url::Url;
 
         impl<'a> IHTTPRuntime for $a<'a> {
@@ -42,34 +41,19 @@ macro_rules! HTTPRuntime {
                 model_name: &str,
                 inputs: &Vec<&str>,
             ) -> Result<super::runtime::EmbeddingResult, anyhow::Error> {
-                let tokio_runtime = Runtime::new()?;
                 let client = Arc::new(self.get_client()?);
-                let mut tasks = Vec::new();
                 let url = Url::parse(&self.base_url)?.join(endpoint)?.to_string();
+
+                let mut responses = Vec::with_capacity(inputs.len());
+                let processed_tokens = Arc::new(AtomicUsize::new(0));
+                let processed_tokens_clone = processed_tokens.clone();
 
                 for request_body in self.chunk_inputs(model_name, inputs)? {
                     let client = client.clone();
                     let url = url.clone();
-                    let task = tokio_runtime.spawn(async move {
-                        let embedding_response = post_with_retries(
-                            client,
-                            url,
-                            request_body,
-                            Box::new($a::get_response),
-                            5,
-                        )
-                        .await?;
-                        Ok::<EmbeddingResult, anyhow::Error>(embedding_response)
-                    });
-                    tasks.push(task);
-                }
-
-                let processed_tokens = Arc::new(AtomicUsize::new(0));
-                let processed_tokens_clone = processed_tokens.clone();
-
-                let mut responses = Vec::with_capacity(inputs.len());
-                for task in tasks {
-                    let embedding_response = task.await??;
+                    let embedding_response =
+                        post_with_retries(client, url, request_body, Box::new($a::get_response), 5)
+                            .await?;
                     processed_tokens_clone
                         .fetch_add(embedding_response.processed_tokens, Ordering::SeqCst);
                     responses.extend(embedding_response.embeddings);
