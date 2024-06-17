@@ -520,7 +520,13 @@ impl EncoderService {
                     .map(|v| Value::from_array(session.allocator(), &v).unwrap())
                     .collect();
 
-                let outputs = session.run(inputs).unwrap();
+                let result = session.run(inputs);
+
+                if let Err(e) = result {
+                    anyhow::bail!(e);
+                }
+
+                let outputs = result.unwrap();
 
                 let binding = outputs[0].try_extract()?;
                 let embeddings = binding.view();

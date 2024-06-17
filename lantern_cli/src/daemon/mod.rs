@@ -197,12 +197,33 @@ async fn db_change_listener(
     let (client, mut connection) =
         tokio_postgres::connect(args.master_db.as_ref().unwrap(), NoTls).await?;
 
+    let client = Arc::new(client);
+    let client_ref = client.clone();
+    let cancel_token_clone = cancel_token.clone();
     let logger_clone = logger.clone();
+    let ping_logger = logger.clone();
+
     let full_table_name = get_full_table_name(&args.master_db_schema, &args.databases_table);
     let insert_trigger_name = "_lantern_daemon_insert_trigger";
     let delete_trigger_name = "_lantern_daemon_delete_trigger";
     let insert_function_name = "_lantern_daemon_insert_trigger_notify";
     let delete_function_name = "_lantern_daemon_delete_trigger_notify";
+
+    let healthcheck_task = tokio::spawn(async move {
+        ping_logger.debug(&format!("Sending ping queries to master db each 30s"));
+
+        loop {
+            match client_ref.query_one("SELECT 1", &[]).await {
+                Ok(_) => {}
+                Err(e) => {
+                    ping_logger.error(&format!("Ping query failed with {e}. Exitting"));
+                    cancel_token_clone.cancel();
+                    break;
+                }
+            };
+            tokio::time::sleep(Duration::from_secs(30)).await;
+        }
+    });
 
     let task = tokio::spawn(async move {
         // Poll messages from connection and forward it to stream
@@ -287,7 +308,11 @@ async fn db_change_listener(
       LISTEN {NOTIFICATION_CHANNEL};
     ", channel = NOTIFICATION_CHANNEL)).await?;
 
-    task.await?;
+    tokio::select! {
+        _ = healthcheck_task => {}
+        _ = task => {},
+    }
+
     Ok(())
 }
 
