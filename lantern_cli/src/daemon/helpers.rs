@@ -39,6 +39,27 @@ pub async fn db_notification_listener(
 
     let client = Arc::new(client);
     let client_ref = client.clone();
+    let ping_logger = logger.clone();
+    let cancel_token_clone = cancel_token.clone();
+
+    let healthcheck_task = tokio::spawn(async move {
+        ping_logger.debug(&format!(
+            "Sending ping queries for channel {notification_channel} each 30s"
+        ));
+
+        loop {
+            match client_ref.query_one("SELECT 1", &[]).await {
+                Ok(_) => {}
+                Err(e) => {
+                    ping_logger.error(&format!("Ping query failed with {e}. Exitting"));
+                    cancel_token_clone.cancel();
+                    break;
+                }
+            };
+            tokio::time::sleep(Duration::from_secs(30)).await;
+        }
+    });
+
     // spawn new task to handle notifications
     let task = tokio::spawn(async move {
         let mut stream = futures::stream::poll_fn(move |cx| connection.poll_message(cx));
@@ -102,14 +123,16 @@ pub async fn db_notification_listener(
                }
             }
         }
-        drop(client_ref);
     });
 
     client
         .batch_execute(&format!("LISTEN {notification_channel};"))
         .await?;
 
-    task.await?;
+    tokio::select! {
+        _ = healthcheck_task => {}
+        _ = task => {},
+    }
 
     Ok(())
 }
