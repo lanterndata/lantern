@@ -4,8 +4,8 @@ use super::helpers::{
     remove_job_handle, schedule_job_retry, set_job_handle, startup_hook,
 };
 use super::types::{
-    ClientJobsMap, EmbeddingJob, JobBatchingHashMap, JobEvent, JobEventHandlersMap,
-    JobInsertNotification, JobLabelsMap, JobRunArgs, JobUpdateNotification,
+    ClientJobsMap, EmbeddingJob, EmbeddingProcessorArgs, JobBatchingHashMap, JobEvent,
+    JobEventHandlersMap, JobInsertNotification, JobLabelsMap, JobRunArgs, JobUpdateNotification,
 };
 use crate::daemon::helpers::anyhow_wrap_connection;
 use crate::embeddings::cli::EmbeddingArgs;
@@ -151,6 +151,36 @@ async fn unlock_rows(
             row_ids
         ));
     }
+}
+
+pub async fn embedding_job_processor(
+    mut rx: Receiver<EmbeddingProcessorArgs>,
+    cancel_token: CancellationToken,
+) -> AnyhowVoidResult {
+    loop {
+        tokio::select! {
+            msg = rx.recv() => {
+                if msg.is_none() {
+                    break
+                }
+
+                let (embedding_args, response_tx, task_logger) = msg.unwrap();
+                let result = crate::embeddings::create_embeddings_from_db(
+                    embedding_args,
+                    false,
+                    None,
+                    CancellationToken::new(),
+                    Some(task_logger),
+                ).await;
+                response_tx.send(result).await?;
+            },
+            _ = cancel_token.cancelled() => {
+                break;
+            }
+        }
+    }
+
+    Ok(())
 }
 
 async fn stream_job(
@@ -372,6 +402,7 @@ async fn stream_job(
 async fn embedding_worker(
     mut job_queue_rx: Receiver<EmbeddingJob>,
     job_queue_tx: Sender<EmbeddingJob>,
+    embedding_processor_tx: Sender<EmbeddingProcessorArgs>,
     db_uri: String,
     schema: String,
     table: String,
@@ -399,7 +430,9 @@ async fn embedding_worker(
             );
             let job_clone = job.clone();
 
-            let result = crate::embeddings::create_embeddings_from_db(
+            let (tx, mut rx) = mpsc::channel(1);
+            embedding_processor_tx.send(
+                (
                 EmbeddingArgs {
                     pk: job.pk.clone(),
                     model: job_clone.model.clone(),
@@ -420,13 +453,18 @@ async fn embedding_worker(
                     filter: job_clone.filter.clone(),
                     limit: None,
                 },
-                false,
-                None,
-                CancellationToken::new(),
-                Some(task_logger),
-            ).await;
+                tx,
+                task_logger
+                )
+            ).await?;
 
-            match result {
+            let result = rx.recv().await;
+
+            if result.is_none() {
+                logger.error(&format!("No result received for job {}", job.id));
+            }
+
+            match result.unwrap() {
                 Ok((processed_rows, processed_tokens)) => {
                     if processed_tokens > 0 {
                         let res = client_ref
@@ -928,6 +966,7 @@ async fn stop_all_client_jobs(
 
 pub async fn start(
     args: JobRunArgs,
+    embedding_processor_tx: Sender<EmbeddingProcessorArgs>,
     logger: Arc<Logger>,
     cancel_token: CancellationToken,
 ) -> AnyhowVoidResult {
@@ -1022,6 +1061,7 @@ pub async fn start(
         embedding_worker(
             job_queue_rx,
             job_queue_tx.clone(),
+            embedding_processor_tx,
             main_db_uri.clone(),
             schema.clone(),
             table.clone(),

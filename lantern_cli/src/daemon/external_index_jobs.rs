@@ -3,8 +3,8 @@ use super::helpers::{
     index_job_update_processor, startup_hook,
 };
 use super::types::{
-    ExternalIndexJob, JobEvent, JobEventHandlersMap, JobInsertNotification, JobRunArgs,
-    JobTaskEventTx, JobUpdateNotification,
+    ExternalIndexJob, ExternalIndexProcessorArgs, JobEvent, JobEventHandlersMap,
+    JobInsertNotification, JobRunArgs, JobTaskEventTx, JobUpdateNotification,
 };
 use crate::daemon::helpers::anyhow_wrap_connection;
 use crate::external_index::cli::{CreateIndexArgs, UMetricKind};
@@ -14,7 +14,7 @@ use crate::utils::get_full_table_name;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::SystemTime;
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{self, Receiver, Sender, UnboundedReceiver, UnboundedSender};
 use tokio::sync::RwLock;
 use tokio_postgres::{Client, NoTls};
 use tokio_util::sync::CancellationToken;
@@ -55,8 +55,35 @@ async fn remove_job_handle(jobs_map: Arc<JobEventHandlersMap>, job_id: i32) -> A
     Ok(())
 }
 
+pub async fn external_index_job_processor(
+    mut rx: Receiver<ExternalIndexProcessorArgs>,
+    cancel_token: CancellationToken,
+) -> AnyhowVoidResult {
+    loop {
+        tokio::select! {
+            msg = rx.recv() => {
+                if msg.is_none() {
+                    break
+                }
+
+                let (external_index_args, response_tx, event_tx, progress_callback, is_canceled, task_logger) = msg.unwrap();
+                    let result = tokio::task::spawn_blocking(move || crate::external_index::create_usearch_index(&external_index_args,
+                     progress_callback, Some(is_canceled), Some(task_logger))).await?;
+                     event_tx.send(JobEvent::Done).await?;
+                    response_tx.send(result).await?;
+            },
+            _ = cancel_token.cancelled() => {
+                break;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 async fn external_index_worker(
     mut job_queue_rx: UnboundedReceiver<ExternalIndexJob>,
+    external_index_processor_tx: Sender<ExternalIndexProcessorArgs>,
     client: Arc<Client>,
     schema: String,
     table: String,
@@ -104,7 +131,6 @@ async fn external_index_worker(
             let job_clone = job.clone();
 
             let (event_tx, mut event_rx) = mpsc::channel(1);
-            let event_tx_clone = event_tx.clone();
 
             // We will spawn 2 tasks
             // The first one will run index creation job and as soon as it finish
@@ -115,14 +141,14 @@ async fn external_index_worker(
             // We will keep the cancel_tx in static hashmap, so we can cancel the job if
             // canceled_at will be changed to true
 
-            let task_handle = tokio::spawn(async move {
                 let is_canceled = Arc::new(std::sync::RwLock::new(false));
                 let is_canceled_clone = is_canceled.clone();
                 let metric_kind = UMetricKind::from_ops(&job_clone.operator_class)?;
-                let task = tokio::task::spawn_blocking(move || {
                     let val: u32  = rand::random();
                     let index_path = format!("/tmp/daemon-index-{val}.usearch");
-                    let result = crate::external_index::create_usearch_index(&CreateIndexArgs {
+            let (tx, mut rx) = mpsc::channel(1);
+            external_index_processor_tx.send((
+                CreateIndexArgs {
                         schema: job_clone.schema.clone(),
                         uri: job_clone.db_uri.clone(),
                         table: job_clone.table.clone(),
@@ -137,11 +163,15 @@ async fn external_index_worker(
                         out: index_path,
                         remote_database: true,
                         pq: false,
-                    }, progress_callback, Some(is_canceled_clone), Some(task_logger));
-                    futures::executor::block_on(event_tx_clone.send(JobEvent::Done))?;
-                    result
-                });
+                },
+                tx,
+                event_tx.clone(),
+                progress_callback,
+                is_canceled_clone,
+                task_logger
+            )).await?;
 
+            set_job_handle(jobs_map.clone(), job.id, event_tx).await?;
                 while let Some(event) = event_rx.recv().await {
                     if let JobEvent::Errored(msg) = event {
                         if msg == JOB_CANCELLED_MESSAGE.to_owned() {
@@ -151,12 +181,15 @@ async fn external_index_worker(
                     break;
                 }
 
-                task.await?
-            });
 
-            set_job_handle(jobs_map.clone(), job.id, event_tx).await?;
+            let result = rx.recv().await;
 
-            match task_handle.await? {
+            if result.is_none() {
+                logger.error(&format!("No result received for job {}", job.id));
+            }
+
+
+            match result.unwrap() {
                 Ok(_) => {
                     remove_job_handle(jobs_map.clone(), job.id).await?;
                     // mark success
@@ -231,6 +264,7 @@ async fn job_insert_processor(
 
 pub async fn start(
     args: JobRunArgs,
+    external_index_processor_tx: Sender<ExternalIndexProcessorArgs>,
     logger: Arc<Logger>,
     cancel_token: CancellationToken,
 ) -> AnyhowVoidResult {
@@ -309,6 +343,7 @@ pub async fn start(
         ),
         external_index_worker(
             job_queue_rx,
+            external_index_processor_tx,
             main_db_client.clone(),
             args.schema.clone(),
             table.clone(),

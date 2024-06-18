@@ -3,8 +3,8 @@ use super::helpers::{
     index_job_update_processor, remove_job_handle, set_job_handle, startup_hook,
 };
 use super::types::{
-    AutotuneJob, JobEvent, JobEventHandlersMap, JobInsertNotification, JobRunArgs,
-    JobUpdateNotification,
+    AutotuneJob, AutotuneProcessorArgs, JobEvent, JobEventHandlersMap, JobInsertNotification,
+    JobRunArgs, JobUpdateNotification,
 };
 use crate::daemon::helpers::anyhow_wrap_connection;
 use crate::external_index::cli::UMetricKind;
@@ -18,7 +18,7 @@ use std::time::SystemTime;
 use tokio::sync::RwLock;
 use tokio::sync::{
     mpsc,
-    mpsc::{UnboundedReceiver, UnboundedSender},
+    mpsc::{Receiver, Sender, UnboundedReceiver, UnboundedSender},
 };
 use tokio_postgres::{Client, NoTls};
 use tokio_util::sync::CancellationToken;
@@ -55,8 +55,35 @@ latency DOUBLE PRECISION NOT NULL,
 build_time DOUBLE PRECISION NULL
 "#;
 
+pub async fn autotune_job_processor(
+    mut rx: Receiver<AutotuneProcessorArgs>,
+    cancel_token: CancellationToken,
+) -> AnyhowVoidResult {
+    loop {
+        tokio::select! {
+            msg = rx.recv() => {
+                if msg.is_none() {
+                    break
+                }
+
+                let (autotune_args, response_tx, event_tx, progress_callback, is_canceled, task_logger) = msg.unwrap();
+                    let result = tokio::task::spawn_blocking(move || crate::index_autotune::autotune_index(&autotune_args,
+                     progress_callback, Some(is_canceled), Some(task_logger))).await?;
+                    event_tx.send(JobEvent::Done).await?;
+                    response_tx.send(result).await?;
+            },
+            _ = cancel_token.cancelled() => {
+                break;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 async fn autotune_worker(
     mut job_queue_rx: UnboundedReceiver<AutotuneJob>,
+    autotune_processor_tx: Sender<AutotuneProcessorArgs>,
     client: Arc<Client>,
     export_db_uri: String,
     schema: String,
@@ -111,8 +138,6 @@ async fn autotune_worker(
             let job_clone = job.clone();
 
             let (event_tx, mut event_rx) = mpsc::channel(1);
-            let event_tx_clone = event_tx.clone();
-
             // We will spawn 2 tasks
             // The first one will run autotune job and as soon as it finish
             // It will send the result via job_tx channel
@@ -125,47 +150,53 @@ async fn autotune_worker(
             let schema = schema.clone();
             let table = table.clone();
             let results_table = autotune_results_table.clone();
-            let task_handle = tokio::spawn(async move {
-                let is_canceled = Arc::new(std::sync::RwLock::new(false));
-                let is_canceled_clone = is_canceled.clone();
-                let task = tokio::task::spawn_blocking(move || {
-                    let result = crate::index_autotune::autotune_index(&IndexAutotuneArgs {
-                        job_id: Some(job_clone.id),
-                        model_name: job_clone.model_name.clone(),
-                        schema: job_clone.schema.clone(),
-                        uri: job_clone.db_uri.clone(),
-                        export_db_uri: Some(export_db_uri),
-                        export_schema_name: schema.to_string(),
-                        job_schema_name: schema.to_string(),
-                        export_table_name: Some(results_table.to_string()),
-                        job_table_name: Some(table.to_string()),
-                        table: job_clone.table.clone(),
-                        column: job_clone.column.clone(),
-                        test_data_size: job_clone.sample_size,
-                        create_index: job_clone.create_index,
-                        k: job_clone.k,
-                        recall: job_clone.recall,
-                        metric_kind: UMetricKind::from_ops(&job_clone.metric_kind)?
-                    }, progress_callback, Some(is_canceled_clone), Some(task_logger));
-                    futures::executor::block_on(event_tx_clone.send(JobEvent::Done))?;
-                    result
-                });
-
-                while let Some(event) = event_rx.recv().await {
-                    if let JobEvent::Errored(msg) = event {
-                        if msg == JOB_CANCELLED_MESSAGE.to_owned() {
-                            *is_canceled.write().unwrap() = true;
-                        }
-                    }
-                    break;
-                }
-
-                task.await?
-            });
+            let is_canceled = Arc::new(std::sync::RwLock::new(false));
+            let is_canceled_clone = is_canceled.clone();
+            let (tx, mut rx) = mpsc::channel(1);
+            autotune_processor_tx.send((
+                IndexAutotuneArgs {
+                    job_id: Some(job_clone.id),
+                    model_name: job_clone.model_name.clone(),
+                    schema: job_clone.schema.clone(),
+                    uri: job_clone.db_uri.clone(),
+                    export_db_uri: Some(export_db_uri),
+                    export_schema_name: schema.to_string(),
+                    job_schema_name: schema.to_string(),
+                    export_table_name: Some(results_table.to_string()),
+                    job_table_name: Some(table.to_string()),
+                    table: job_clone.table.clone(),
+                    column: job_clone.column.clone(),
+                    test_data_size: job_clone.sample_size,
+                    create_index: job_clone.create_index,
+                    k: job_clone.k,
+                    recall: job_clone.recall,
+                    metric_kind: UMetricKind::from_ops(&job_clone.metric_kind)?
+                },
+                tx,
+                event_tx.clone(),
+                progress_callback,
+                is_canceled_clone,
+                task_logger
+            )).await?;
 
             set_job_handle(&jobs_map, job.id, event_tx).await?;
 
-            match task_handle.await? {
+            while let Some(event) = event_rx.recv().await {
+                if let JobEvent::Errored(msg) = event {
+                    if msg == JOB_CANCELLED_MESSAGE.to_owned() {
+                        *is_canceled.write().unwrap() = true;
+                    }
+                }
+                break;
+            }
+
+            let result = rx.recv().await;
+
+            if result.is_none() {
+                logger.error(&format!("No result received for job {}", job.id));
+            }
+
+            match result.unwrap() {
                 Ok(_) => {
                     remove_job_handle(&jobs_map, job.id).await?;
                     // mark success
@@ -241,6 +272,7 @@ async fn job_insert_processor(
 
 pub async fn start(
     args: JobRunArgs,
+    autotune_processor_tx: Sender<AutotuneProcessorArgs>,
     logger: Arc<Logger>,
     cancel_token: CancellationToken,
 ) -> AnyhowVoidResult {
@@ -321,6 +353,7 @@ pub async fn start(
         ),
         autotune_worker(
             job_queue_rx,
+            autotune_processor_tx,
             main_db_client.clone(),
             args.uri.clone(),
             args.schema.clone(),

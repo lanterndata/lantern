@@ -1,7 +1,13 @@
-use crate::embeddings::cli::Runtime;
+use crate::embeddings::cli::{EmbeddingArgs, Runtime};
+use crate::external_index::cli::CreateIndexArgs;
+use crate::index_autotune::cli::IndexAutotuneArgs;
+use crate::logger::Logger;
+use crate::pq::ProgressCbFn;
+use crate::types::AnyhowVoidResult;
 use crate::utils::get_common_embedding_ignore_filters;
 use itertools::Itertools;
 use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::sync::{
     mpsc::{Sender, UnboundedSender},
     Mutex, RwLock,
@@ -239,8 +245,32 @@ pub enum ClientJobSignal {
     Restart,
 }
 
+pub type EmbeddingProcessorArgs = (
+    EmbeddingArgs,
+    Sender<Result<(usize, usize), anyhow::Error>>,
+    Logger,
+);
+
+pub type AutotuneProcessorArgs = (
+    IndexAutotuneArgs,
+    Sender<AnyhowVoidResult>,
+    JobTaskEventTx,
+    Option<ProgressCbFn>,
+    Arc<std::sync::RwLock<bool>>,
+    Logger,
+);
+
+pub type ExternalIndexProcessorArgs = (
+    CreateIndexArgs,
+    Sender<AnyhowVoidResult>,
+    JobTaskEventTx,
+    Option<ProgressCbFn>,
+    Arc<std::sync::RwLock<bool>>,
+    Logger,
+);
+
 pub enum JobType {
-    Embeddings,
-    ExternalIndex,
-    Autotune,
+    Embeddings(Sender<EmbeddingProcessorArgs>),
+    ExternalIndex(Sender<ExternalIndexProcessorArgs>),
+    Autotune(Sender<AutotuneProcessorArgs>),
 }

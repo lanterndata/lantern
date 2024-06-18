@@ -10,7 +10,10 @@ use futures::StreamExt;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::RwLock;
+use tokio::sync::{
+    mpsc::{self, Receiver, Sender},
+    RwLock,
+};
 use tokio_postgres::{AsyncMessage, NoTls};
 use tokio_util::sync::CancellationToken;
 
@@ -18,7 +21,10 @@ use crate::types::AnyhowVoidResult;
 use crate::{logger::Logger, utils::get_full_table_name};
 use types::{DaemonJobHandlerMap, JobRunArgs, TargetDB};
 
-use self::types::JobType;
+use autotune_jobs::autotune_job_processor;
+use embedding_jobs::embedding_job_processor;
+use external_index_jobs::external_index_job_processor;
+use types::{AutotuneProcessorArgs, EmbeddingProcessorArgs, ExternalIndexProcessorArgs, JobType};
 
 lazy_static! {
     static ref JOBS: DaemonJobHandlerMap = RwLock::new(HashMap::new());
@@ -79,9 +85,9 @@ async fn spawn_job(
     let mut retry_interval = 5;
 
     let log_label = match job_type {
-        JobType::Embeddings => "embeddings",
-        JobType::Autotune => "autotune",
-        JobType::ExternalIndex => "indexing",
+        JobType::Embeddings(_) => "embeddings",
+        JobType::Autotune(_) => "autotune",
+        JobType::ExternalIndex(_) => "indexing",
     };
 
     let logger = Arc::new(Logger::new(
@@ -92,8 +98,8 @@ async fn spawn_job(
     let mut last_retry = Instant::now();
 
     loop {
-        let result = match job_type {
-            JobType::Embeddings => {
+        let result = match &job_type {
+            JobType::Embeddings(processor_tx) => {
                 embedding_jobs::start(
                     JobRunArgs {
                         label: args.label.clone(),
@@ -102,12 +108,13 @@ async fn spawn_job(
                         log_level: args.log_level.value(),
                         table_name: "embedding_generation_jobs".to_owned(),
                     },
+                    processor_tx.clone(),
                     logger.clone(),
                     cancel_token.clone(),
                 )
                 .await
             }
-            JobType::ExternalIndex => {
+            JobType::ExternalIndex(processor_tx) => {
                 external_index_jobs::start(
                     JobRunArgs {
                         label: args.label.clone(),
@@ -116,12 +123,13 @@ async fn spawn_job(
                         log_level: args.log_level.value(),
                         table_name: "external_index_jobs".to_owned(),
                     },
+                    processor_tx.clone(),
                     logger.clone(),
                     cancel_token.clone(),
                 )
                 .await
             }
-            JobType::Autotune => {
+            JobType::Autotune(processor_tx) => {
                 autotune_jobs::start(
                     JobRunArgs {
                         label: args.label.clone(),
@@ -130,6 +138,7 @@ async fn spawn_job(
                         log_level: args.log_level.value(),
                         table_name: "autotune_jobs".to_owned(),
                     },
+                    processor_tx.clone(),
                     logger.clone(),
                     cancel_token.clone(),
                 )
@@ -154,7 +163,13 @@ async fn spawn_job(
     }
 }
 
-async fn spawn_jobs(target_db: TargetDB, args: Arc<cli::DaemonArgs>) {
+async fn spawn_jobs(
+    target_db: TargetDB,
+    args: Arc<cli::DaemonArgs>,
+    embedding_tx: Sender<EmbeddingProcessorArgs>,
+    autotune_tx: Sender<AutotuneProcessorArgs>,
+    external_index_tx: Sender<ExternalIndexProcessorArgs>,
+) {
     let mut jobs = JOBS.write().await;
     let cancel_token = CancellationToken::new();
     let target_db = Arc::new(target_db);
@@ -165,7 +180,7 @@ async fn spawn_jobs(target_db: TargetDB, args: Arc<cli::DaemonArgs>) {
             target_db.clone(),
             args.clone(),
             cancel_token.clone(),
-            JobType::Embeddings,
+            JobType::Embeddings(embedding_tx),
         ));
     }
 
@@ -174,7 +189,7 @@ async fn spawn_jobs(target_db: TargetDB, args: Arc<cli::DaemonArgs>) {
             target_db.clone(),
             args.clone(),
             cancel_token.clone(),
-            JobType::ExternalIndex,
+            JobType::ExternalIndex(external_index_tx),
         ));
     }
 
@@ -183,13 +198,16 @@ async fn spawn_jobs(target_db: TargetDB, args: Arc<cli::DaemonArgs>) {
             target_db.clone(),
             args.clone(),
             cancel_token.clone(),
-            JobType::Autotune,
+            JobType::Autotune(autotune_tx),
         ));
     }
 }
 
 async fn db_change_listener(
     args: Arc<cli::DaemonArgs>,
+    embedding_tx: Sender<EmbeddingProcessorArgs>,
+    autotune_tx: Sender<AutotuneProcessorArgs>,
+    external_index_tx: Sender<ExternalIndexProcessorArgs>,
     logger: Arc<Logger>,
     cancel_token: CancellationToken,
 ) -> AnyhowVoidResult {
@@ -267,7 +285,7 @@ async fn db_change_listener(
                             destroy_jobs(&target_db, logger.clone()).await;
                         }
                         "insert" => {
-                            spawn_jobs(target_db, args.clone()).await;
+                            spawn_jobs(target_db, args.clone(), embedding_tx.clone(), autotune_tx.clone(), external_index_tx.clone()).await;
                         }
                         _ => logger.error(&format!("Invalid action received: {action}")),
                     }
@@ -327,12 +345,55 @@ pub async fn start(
 
     let args_arc = Arc::new(args);
     let args_arc_clone = args_arc.clone();
+    let (embedding_tx, embedding_rx): (
+        Sender<EmbeddingProcessorArgs>,
+        Receiver<EmbeddingProcessorArgs>,
+    ) = mpsc::channel(1);
+    let (autotune_tx, autotune_rx): (
+        Sender<AutotuneProcessorArgs>,
+        Receiver<AutotuneProcessorArgs>,
+    ) = mpsc::channel(1);
+    let (external_index_tx, external_index_rx): (
+        Sender<ExternalIndexProcessorArgs>,
+        Receiver<ExternalIndexProcessorArgs>,
+    ) = mpsc::channel(1);
+
+    if args_arc.embeddings {
+        tokio::spawn(embedding_job_processor(embedding_rx, cancel_token.clone()));
+    }
+
+    if args_arc.autotune {
+        tokio::spawn(autotune_job_processor(autotune_rx, cancel_token.clone()));
+    }
+
+    if args_arc.external_index {
+        tokio::spawn(external_index_job_processor(
+            external_index_rx,
+            cancel_token.clone(),
+        ));
+    }
+
     for target_db in target_databases {
-        spawn_jobs(target_db, args_arc_clone.clone()).await;
+        spawn_jobs(
+            target_db,
+            args_arc_clone.clone(),
+            embedding_tx.clone(),
+            autotune_tx.clone(),
+            external_index_tx.clone(),
+        )
+        .await;
     }
 
     if args_arc.master_db.is_some() {
-        db_change_listener(args_arc.clone(), logger.clone(), cancel_token.clone()).await?;
+        db_change_listener(
+            args_arc.clone(),
+            embedding_tx.clone(),
+            autotune_tx.clone(),
+            external_index_tx.clone(),
+            logger.clone(),
+            cancel_token.clone(),
+        )
+        .await?;
     }
 
     cancel_token.cancelled().await;
