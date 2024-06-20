@@ -29,7 +29,7 @@ DIST_OPS = {
 # configure testgres logging
 logging.basicConfig(filename="/tmp/testgres.log")
 # uncomment below to see all postgres logs
-# testgres.configure_testgres(use_python_logging=True)
+testgres.configure_testgres(use_python_logging=True)
 
 
 # Fixture to create a testgres node, scoped to the session
@@ -55,9 +55,10 @@ def primary():
     # Run SQL scripts
     node.safe_psql(dbname="testdb", filename="./utils/small_world_array.sql")
     node.safe_psql(dbname="testdb", filename="./utils/sift1k_array.sql")
-    # delete from sift_base1k if id > 100
-    node.execute("testdb", "DELETE FROM sift_Base1k WHERE id > 100")
+    # # delete from sift_base1k if id > 100
+    # node.execute("testdb", "DELETE FROM sift_Base1k WHERE id > 100")
 
+    node.execute("DROP EXTENSION IF EXISTS lantern", dbname="testdb")
     node.execute("CREATE EXTENSION lantern", dbname="testdb")
 
     yield node
@@ -533,6 +534,99 @@ def test_unlogged_table_on_crashes(source_table, request):
             "testdb",
             f"INSERT INTO {table_name} (id, v) VALUES (4444, (SELECT v FROM {source_table} WHERE id = 44)) ON CONFLICT(id) DO NOTHING",
         )
+
+
+# create table that is a copy of sift_base1k, but  add a column that is a random boolean with 10 percent probability of being true
+# then create a hnsw index on the table and run a vector search query with a filter for the boolean value is true
+
+
+def test_vector_search_with_filter(primary, source_table):
+    table_name = f"{source_table}_with_random"
+    primary.execute(
+        "testdb",
+        f"CREATE TABLE IF NOT EXISTS {table_name} AS SELECT *, random() < 0.01 AS random_bool FROM {source_table}",
+    )
+    primary.execute("testdb", f"ALTER TABLE {table_name} ADD PRIMARY KEY (id)")
+    # note: when M is too low, the streaming search below might return fewer results since the bottom layer of hnsw is less connected
+    primary.execute(
+        "testdb",
+        f"CREATE INDEX idx_hnsw_{table_name} ON {table_name} USING lantern_hnsw (v dist_l2sq_ops) WITH (dim=128, M=10, quant_bits = 32)",
+    )
+
+    limit = 1000
+    query_id = 44
+    vec_from_id_query = lambda id: f"(SELECT v FROM {table_name} WHERE id = {id})"
+
+    generic_query = (
+        lambda filter_val: f"""
+    SELECT *, v <-> ({vec_from_id_query(query_id)}) as dist FROM {table_name}
+    WHERE random_bool = {filter_val}
+    ORDER BY v <-> ({vec_from_id_query(query_id)})
+    LIMIT {limit}
+    """
+    )
+
+    for streaming_search in [0, 1]:
+        primary.execute(
+            "testdb",
+            f"ALTER DATABASE testdb SET lantern_hnsw.streaming_search = {streaming_search}",
+        )
+        LOGGER.info(f"running streaming search {streaming_search}")
+        for filter_val in [True, False]:
+            query = generic_query("TRUE" if filter_val else "FALSE")
+            plan = primary.execute("testdb", f"EXPLAIN {query}")
+            assert f"Index Scan using idx_hnsw_{table_name}" in str(
+                plan
+            ), f"Failed for {plan}"
+            res = primary.execute("testdb", query)
+            ids = [row[0] for row in res]
+
+            groundtruth = primary.execute(
+                "testdb",
+                f"SELECT id FROM {table_name} WHERE random_bool = {filter_val}",
+            )
+            # db returns each row in a tuple, let's unpack them into a flat list
+            groundtruth = [row[0] for row in groundtruth]
+
+            assert len(res) == min(len(groundtruth), limit), (
+                "Expected LIMIT to be hit or result set to be less than the limit."
+                + f"Some of missing ids: {list(set(groundtruth) - set(ids))[:10]}"
+            )
+            distances = [row[-1] for row in res]
+            # when not doing streaing search, it is possible to return duplicates since
+            # we do not track what has been returned
+            # Duplicates happen when a wider search returns an element that would be closer to the query
+            # than earlier returned eleemnts, so it gets sorted into a position that has already been consumed
+            # As a result, an element from a consumed position gets pushed to a non-conusmed position
+            if streaming_search == 1:
+                assert len(ids) == len(set(ids)), "Expected all results to be unique."
+
+            # If we are filtering for the subset containing the query vector id, assert query vector id is the first result
+            if (
+                primary.execute(
+                    "testdb",
+                    f"SELECT random_bool FROM {table_name} WHERE id = {query_id}",
+                )[0][0]
+                == filter_val
+            ):
+                assert res[0][0] == query_id, (
+                    "Expected first result to be the query vector since it satisfies the filter and is closest to itself"
+                    + f" first 10 (id,distance)[:10]={[(id, round(dist, 2)) for id, dist in zip(ids, distances)][:10 ]}"
+                )
+            else:
+                assert (
+                    query_id not in ids
+                ), "Expected query vector to not be in the results since it does not satisfy the filter"
+
+            # assert (
+            #     res[0][0] == 44
+            # ), "First result in exact query result should be the query vector"
+
+            # check that all results have random_bool == True
+            for row in res:
+                assert (
+                    row[2] == filter_val
+                ), f"Expected all results to have random_bool == {filter_val}"
 
 
 if __name__ == "__main__":
