@@ -230,7 +230,7 @@ async fn stream_job(
 
         let connection_logger = logger.clone();
 
-        let (mut job_client, connection) = tokio_postgres::connect(&job.db_uri, NoTls).await?;
+        let (job_client, connection) = tokio_postgres::connect(&job.db_uri, NoTls).await?;
         let job_id = job.id;
 
         let job_clone = job.clone();
@@ -270,12 +270,7 @@ async fn stream_job(
             common_filter = get_common_embedding_ignore_filters(&quote_ident(column)),
         );
 
-        let transaction = job_client.transaction().await?;
-
-        transaction
-            .execute("SET idle_in_transaction_session_timeout=3600000", &[])
-            .await?;
-        let total_rows = transaction
+        let total_rows = job_client
             .query_one(
                 &format!("SELECT COUNT(*) FROM {full_table_name} {filter_sql};"),
                 &[],
@@ -286,35 +281,42 @@ async fn stream_job(
 
         if total_rows == 0 {
             if job.is_init {
-                transaction.execute(
+                job_client.execute(
                   &format!(
                       "UPDATE {jobs_table_name} SET init_finished_at=NOW(), updated_at=NOW(), init_progress=100 WHERE id=$1"
                   ),
                   &[&job.id],
                 )
                 .await?;
-                transaction.commit().await?;
             }
 
             return Ok(());
         }
 
-        let portal = transaction
-            .bind(
-                &format!(
-                    "SELECT {pk}::text FROM {full_table_name} {filter_sql};",
-                    pk = quote_ident(&job.pk)
-                ),
-                &[],
-            )
-            .await?;
+        logger.info(&format!(
+            "Found {total_rows} rows to stream for job {job_id}"
+        ));
+
         let mut progress = 0;
         let mut processed_rows = 0;
 
         let batch_size = embeddings::get_default_batch_size(&job.model) as i32;
         loop {
             // poll batch_size rows from portal and send it to embedding thread via channel
-            let rows = transaction.query_portal(&portal, batch_size).await?;
+            let result_rows = job_client
+                .query(
+                    &format!(
+                        "SELECT {pk}::text FROM {full_table_name} {filter_sql} LIMIT {batch_size};",
+                        pk = quote_ident(&job.pk)
+                    ),
+                    &[],
+                )
+                .await?;
+
+            // slice rows to not process more than total_rows (the row count got at the beginning)
+            // because all new rows would be picked by updates processors
+            // so there's no need to process newly inserted rows here
+            let rows = &result_rows[0..(total_rows - processed_rows).min(result_rows.len())];
 
             if rows.len() == 0 {
                 break;

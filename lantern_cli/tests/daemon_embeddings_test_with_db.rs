@@ -789,3 +789,74 @@ async fn test_daemon_job_labels() {
 
     cancel_token.cancel();
 }
+
+#[tokio::test]
+async fn test_daemon_embedding_init_job_streaming_large() {
+    let (new_connection_uri, mut new_db_client) =
+        setup_test("test_daemon_embedding_init_job_streaming_large")
+            .await
+            .unwrap();
+    new_db_client
+        .batch_execute(&format!(
+            r#"
+    INSERT INTO _lantern_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model)
+    VALUES (14, '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', 'BAAI/bge-small-en');
+
+    INSERT INTO {CLIENT_TABLE_NAME} (title) SELECT 'Test' ||  n as title FROM generate_series(1, 2000) as n;
+     "#
+        ))
+        .await
+        .unwrap();
+    let cancel_token = CancellationToken::new();
+    let cancel_token_clone = cancel_token.clone();
+
+    tokio::spawn(async {
+        daemon::start(
+            DaemonArgs {
+                label: None,
+                master_db: None,
+                master_db_schema: String::new(),
+                embeddings: true,
+                autotune: false,
+                external_index: false,
+                databases_table: String::new(),
+                schema: "_lantern_internal".to_owned(),
+                target_db: Some(vec![new_connection_uri]),
+                log_level: LogLevel::Debug,
+            },
+            None,
+            cancel_token_clone,
+        )
+        .await
+        .unwrap();
+    });
+
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
+    new_db_client
+        .batch_execute(&format!(
+            r#"
+            INSERT INTO {CLIENT_TABLE_NAME} (title) SELECT 'Test' ||  n as title FROM generate_series(2001, 2500) as n;
+            "#
+        ))
+        .await
+        .unwrap();
+
+    wait_for_completion(
+        &mut new_db_client,
+        &format!("SELECT COUNT(*)=1 FROM _lantern_internal.embedding_generation_jobs WHERE id=14 AND init_started_at IS NOT NULL AND init_finished_at IS NOT NULL AND init_progress=100"),
+        60,
+    )
+    .await
+    .unwrap();
+
+    wait_for_completion(
+        &mut new_db_client,
+        &format!("SELECT COUNT(*)=2500 FROM {CLIENT_TABLE_NAME} WHERE title_embedding IS NOT NULL"),
+        120,
+    )
+    .await
+    .unwrap();
+
+    cancel_token.cancel();
+}
