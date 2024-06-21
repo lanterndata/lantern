@@ -16,7 +16,11 @@ async fn main() {
         cli::Commands::CreateIndex(args) => {
             let logger = Logger::new("Lantern Index", LogLevel::Debug);
             _main_logger = Some(logger.clone());
-            external_index::create_usearch_index(&args, None, None, Some(logger))
+            tokio::task::spawn_blocking(move || {
+                external_index::create_usearch_index(&args, None, None, Some(logger))
+            })
+            .await
+            .unwrap()
         }
         cli::Commands::CreateEmbeddings(args) => {
             let logger = Logger::new("Lantern Embeddings", LogLevel::Debug);
@@ -55,12 +59,18 @@ async fn main() {
         cli::Commands::AutotuneIndex(args) => {
             let logger = Logger::new("Lantern Index Autotune", LogLevel::Debug);
             _main_logger = Some(logger.clone());
-            index_autotune::autotune_index(&args, None, None, Some(logger))
+            tokio::task::spawn_blocking(move || {
+                index_autotune::autotune_index(&args, None, None, Some(logger))
+            })
+            .await
+            .unwrap()
         }
         cli::Commands::PQTable(args) => {
             let logger = Logger::new("Lantern PQ", LogLevel::Debug);
             _main_logger = Some(logger.clone());
-            pq::quantize_table(args, None, None, Some(logger))
+            tokio::task::spawn_blocking(move || pq::quantize_table(args, None, None, Some(logger)))
+                .await
+                .unwrap()
         }
         cli::Commands::StartDaemon(args) => {
             let logger = Logger::new("Lantern Daemon", args.log_level.value());
