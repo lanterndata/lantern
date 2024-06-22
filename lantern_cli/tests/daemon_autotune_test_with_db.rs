@@ -25,7 +25,7 @@ async fn test_daemon_autotune_with_create_index() {
            ('Test4', '{{0,0,3}}'),
            ('Test5', '{{0,0,4}}');
 
-    INSERT INTO _lantern_internal.autotune_jobs ("id", "table", "column", "operator", target_recall, k, n, create_index)
+    INSERT INTO _lantern_extras_internal.autotune_jobs ("id", "table", "column", "operator", target_recall, k, n, create_index)
     VALUES (1, '{CLIENT_TABLE_NAME}', 'title_embedding', 'dist_cos_ops', 95.0, 10, 1000, true);
      "#
         ))
@@ -44,7 +44,7 @@ async fn test_daemon_autotune_with_create_index() {
                 autotune: true,
                 external_index: false,
                 databases_table: String::new(),
-                schema: "_lantern_internal".to_owned(),
+                schema: "_lantern_extras_internal".to_owned(),
                 target_db: Some(vec![new_connection_uri]),
                 log_level: LogLevel::Debug,
             },

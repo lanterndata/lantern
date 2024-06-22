@@ -15,7 +15,7 @@ pub mod cli;
 
 type GroundTruth = Vec<(Vec<f32>, Vec<String>)>;
 
-static INTERNAL_SCHEMA_NAME: &'static str = "lantern_cli";
+static INTERNAL_SCHEMA_NAME: &'static str = "_lantern_extras_internal";
 static CONNECTION_PARAMS: &'static str = "connect_timeout=10";
 
 #[derive(Debug)]

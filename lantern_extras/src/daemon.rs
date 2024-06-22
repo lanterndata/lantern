@@ -75,7 +75,7 @@ pub fn start_daemon(
                     databases_table: String::new(),
                     master_db: None,
                     master_db_schema: String::new(),
-                    schema: String::from("_lantern_internal"),
+                    schema: String::from("_lantern_extras_internal"),
                     target_db: Some(target_dbs.clone()),
                 },
                 Some(logger.clone()),
@@ -114,7 +114,7 @@ fn add_embedding_job<'a>(
         &format!(
             r#"
           ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {dst_column} REAL[];
-          INSERT INTO _lantern_internal.embedding_generation_jobs ("table", "schema", pk, src_column, dst_column, embedding_model, runtime, runtime_params) VALUES
+          INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("table", "schema", pk, src_column, dst_column, embedding_model, runtime, runtime_params) VALUES
           ($1, $2, $3, $4, $5, $6, $7, $8::jsonb) RETURNING id;
         "#,
             table = get_full_table_name(schema, table),
@@ -161,7 +161,7 @@ fn get_embedding_job_status<'a>(
           END AS status,
           init_progress as progress,
           init_failure_reason as error
-          FROM _lantern_internal.embedding_generation_jobs
+          FROM _lantern_extras_internal.embedding_generation_jobs
           WHERE id=$1;
         "#,
         vec![(PgBuiltInOids::INT4OID.oid(), job_id.into_datum())],
@@ -178,7 +178,7 @@ fn get_embedding_job_status<'a>(
 fn cancel_embedding_job<'a>(job_id: i32) -> AnyhowVoidResult {
     Spi::run_with_args(
         r#"
-          UPDATE _lantern_internal.embedding_generation_jobs
+          UPDATE _lantern_extras_internal.embedding_generation_jobs
           SET canceled_at=NOW()
           WHERE id=$1;
         "#,
@@ -192,7 +192,7 @@ fn cancel_embedding_job<'a>(job_id: i32) -> AnyhowVoidResult {
 fn resume_embedding_job<'a>(job_id: i32) -> AnyhowVoidResult {
     Spi::run_with_args(
         r#"
-          UPDATE _lantern_internal.embedding_generation_jobs
+          UPDATE _lantern_extras_internal.embedding_generation_jobs
           SET canceled_at=NULL
           WHERE id=$1;
         "#,
@@ -260,7 +260,7 @@ pub mod tests {
 
             // Failed
 
-            client.update("UPDATE _lantern_internal.embedding_generation_jobs SET init_failed_at=NOW(), init_failure_reason='test';", None, None)?;
+            client.update("UPDATE _lantern_extras_internal.embedding_generation_jobs SET init_failed_at=NOW(), init_failure_reason='test';", None, None)?;
             let rows = client.select("SELECT status, progress, error FROM get_embedding_job_status($1)", None, Some(vec![(PgBuiltInOids::INT4OID.oid(), id.into_datum())]))?;
             let job = rows.first();
 
@@ -273,7 +273,7 @@ pub mod tests {
             assert_eq!(error, "test");
 
             // In progress
-            client.update("UPDATE _lantern_internal.embedding_generation_jobs SET init_failed_at=NULL, init_failure_reason=NULL, init_progress=60, init_started_at=NOW();", None, None)?;
+            client.update("UPDATE _lantern_extras_internal.embedding_generation_jobs SET init_failed_at=NULL, init_failure_reason=NULL, init_progress=60, init_started_at=NOW();", None, None)?;
             let rows = client.select("SELECT status, progress, error FROM get_embedding_job_status($1)", None, Some(vec![(PgBuiltInOids::INT4OID.oid(), id.into_datum())]))?;
             let job = rows.first();
 
@@ -286,7 +286,7 @@ pub mod tests {
             assert_eq!(error, None);
 
             // Canceled
-            client.update("UPDATE _lantern_internal.embedding_generation_jobs SET init_failed_at=NULL, init_failure_reason=NULL, init_progress=0, init_started_at=NULL, canceled_at=NOW();", None, None)?;
+            client.update("UPDATE _lantern_extras_internal.embedding_generation_jobs SET init_failed_at=NULL, init_failure_reason=NULL, init_progress=0, init_started_at=NULL, canceled_at=NOW();", None, None)?;
             let rows = client.select("SELECT status, progress, error FROM get_embedding_job_status($1)", None, Some(vec![(PgBuiltInOids::INT4OID.oid(), id.into_datum())]))?;
             let job = rows.first();
 
@@ -299,7 +299,7 @@ pub mod tests {
             assert_eq!(error, None);
 
             // Enabled
-            client.update("UPDATE _lantern_internal.embedding_generation_jobs SET init_failed_at=NULL, init_failure_reason=NULL, init_progress=100, init_started_at=NULL, canceled_at=NULL, init_finished_at=NOW();", None, None)?;
+            client.update("UPDATE _lantern_extras_internal.embedding_generation_jobs SET init_failed_at=NULL, init_failure_reason=NULL, init_progress=100, init_started_at=NULL, canceled_at=NULL, init_finished_at=NOW();", None, None)?;
             let rows = client.select("SELECT status, progress, error FROM get_embedding_job_status($1)", None, Some(vec![(PgBuiltInOids::INT4OID.oid(), id.into_datum())]))?;
             let job = rows.first();
 

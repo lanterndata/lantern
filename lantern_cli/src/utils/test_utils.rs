@@ -44,6 +44,7 @@ pub mod daemon_test_utils {
             .batch_execute(&format!(
                 r#"
     CREATE EXTENSION IF NOT EXISTS lantern;
+    CREATE SCHEMA IF NOT EXISTS _lantern_extras_internal;
 
     CREATE TABLE {CLIENT_TABLE_NAME} (
        id SERIAL PRIMARY KEY,
@@ -51,9 +52,9 @@ pub mod daemon_test_utils {
        title_embedding REAL[]
     );
 
-    CREATE TABLE _lantern_internal.embedding_generation_jobs ({embedding_job_table_def});
-    CREATE TABLE _lantern_internal.autotune_jobs ({autotune_job_table_def});
-    CREATE TABLE _lantern_internal.external_index_jobs ({indexing_job_table_def});
+    CREATE TABLE _lantern_extras_internal.embedding_generation_jobs ({embedding_job_table_def});
+    CREATE TABLE _lantern_extras_internal.autotune_jobs ({autotune_job_table_def});
+    CREATE TABLE _lantern_extras_internal.external_index_jobs ({indexing_job_table_def});
     
      "#,
                 embedding_job_table_def = daemon::embedding_jobs::JOB_TABLE_DEFINITION,

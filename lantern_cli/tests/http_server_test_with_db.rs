@@ -22,7 +22,7 @@ async fn drop_db_tables(client: &mut Client) {
         .batch_execute(&format!(
             "
         DROP TABLE IF EXISTS {TEST_COLLECTION_NAME};
-        DROP TABLE IF EXISTS _lantern_internal.http_collections;
+        DROP TABLE IF EXISTS _lantern_extras_internal.http_collections;
         DROP TABLE IF EXISTS _lantern_internal.pq_{TEST_COLLECTION_NAME}_v;
     "
         ))

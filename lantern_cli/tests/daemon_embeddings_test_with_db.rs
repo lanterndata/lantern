@@ -24,7 +24,7 @@ async fn test_daemon_embedding_init_job() {
            ('Test4'),
            ('Test5');
 
-    INSERT INTO _lantern_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model)
+    INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model)
     VALUES (1, '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', 'BAAI/bge-small-en');
      "#
         ))
@@ -43,7 +43,7 @@ async fn test_daemon_embedding_init_job() {
                 autotune: false,
                 external_index: false,
                 databases_table: String::new(),
-                schema: "_lantern_internal".to_owned(),
+                schema: "_lantern_extras_internal".to_owned(),
                 target_db: Some(vec![new_connection_uri]),
                 log_level: LogLevel::Debug,
             },
@@ -74,7 +74,7 @@ async fn test_daemon_embedding_job_client_insert_listener() {
     new_db_client
         .batch_execute(&format!(
             r#"
-    INSERT INTO _lantern_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model)
+    INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model)
     VALUES (2, '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', 'BAAI/bge-small-en');
      "#
         ))
@@ -93,7 +93,7 @@ async fn test_daemon_embedding_job_client_insert_listener() {
                 autotune: false,
                 external_index: false,
                 databases_table: String::new(),
-                schema: "_lantern_internal".to_owned(),
+                schema: "_lantern_extras_internal".to_owned(),
                 target_db: Some(vec![new_connection_uri]),
                 log_level: LogLevel::Debug,
             },
@@ -139,7 +139,7 @@ async fn test_daemon_embedding_job_client_update_listener() {
     new_db_client
         .batch_execute(&format!(
             r#"
-    INSERT INTO _lantern_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model)
+    INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model)
     VALUES (3, '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', 'BAAI/bge-small-en');
 
     INSERT INTO {CLIENT_TABLE_NAME} (id, title)
@@ -165,7 +165,7 @@ async fn test_daemon_embedding_job_client_update_listener() {
                 autotune: false,
                 external_index: false,
                 databases_table: String::new(),
-                schema: "_lantern_internal".to_owned(),
+                schema: "_lantern_extras_internal".to_owned(),
                 target_db: Some(vec![new_connection_uri]),
                 log_level: LogLevel::Debug,
             },
@@ -217,7 +217,7 @@ async fn test_daemon_embedding_job_resume() {
            ('Test4'),
            ('Test5');
 
-    INSERT INTO _lantern_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model, canceled_at)
+    INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model, canceled_at)
     VALUES (4, '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', 'BAAI/bge-small-en', NOW());
      "#
         ))
@@ -236,7 +236,7 @@ async fn test_daemon_embedding_job_resume() {
                 autotune: false,
                 external_index: false,
                 databases_table: String::new(),
-                schema: "_lantern_internal".to_owned(),
+                schema: "_lantern_extras_internal".to_owned(),
                 target_db: Some(vec![new_connection_uri]),
                 log_level: LogLevel::Debug,
             },
@@ -251,7 +251,7 @@ async fn test_daemon_embedding_job_resume() {
 
     new_db_client
         .execute(
-            "UPDATE _lantern_internal.embedding_generation_jobs SET canceled_at=NULL",
+            "UPDATE _lantern_extras_internal.embedding_generation_jobs SET canceled_at=NULL",
             &[],
         )
         .await
@@ -277,7 +277,7 @@ async fn test_daemon_embedding_finished_job_listener() {
     new_db_client
         .batch_execute(&format!(
             r#"
-    INSERT INTO _lantern_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model, init_finished_at)
+    INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model, init_finished_at)
     VALUES (5, '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', 'BAAI/bge-small-en', NOW());
      "#
         ))
@@ -296,7 +296,7 @@ async fn test_daemon_embedding_finished_job_listener() {
                 autotune: false,
                 external_index: false,
                 databases_table: String::new(),
-                schema: "_lantern_internal".to_owned(),
+                schema: "_lantern_extras_internal".to_owned(),
                 target_db: Some(vec![new_connection_uri]),
                 log_level: LogLevel::Debug,
             },
@@ -337,9 +337,9 @@ async fn test_daemon_embedding_multiple_jobs_listener() {
         .batch_execute(&format!(
             r#"
     CREATE TABLE {CLIENT_TABLE_NAME_2} AS TABLE {CLIENT_TABLE_NAME};
-    INSERT INTO _lantern_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model, init_finished_at)
+    INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model, init_finished_at)
     VALUES (6, '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', 'BAAI/bge-small-en', NOW());
-    INSERT INTO _lantern_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model, init_finished_at)
+    INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model, init_finished_at)
     VALUES (7, '{CLIENT_TABLE_NAME_2}', 'title', 'title_embedding', 'BAAI/bge-small-en', NOW());
 
     INSERT INTO {CLIENT_TABLE_NAME} (id, title)
@@ -372,7 +372,7 @@ async fn test_daemon_embedding_multiple_jobs_listener() {
                 autotune: false,
                 external_index: false,
                 databases_table: String::new(),
-                schema: "_lantern_internal".to_owned(),
+                schema: "_lantern_extras_internal".to_owned(),
                 target_db: Some(vec![new_connection_uri]),
                 log_level: LogLevel::Debug,
             },
@@ -424,9 +424,9 @@ async fn test_daemon_embedding_multiple_new_jobs_streaming() {
         .batch_execute(&format!(
             r#"
     CREATE TABLE {CLIENT_TABLE_NAME_2} AS TABLE {CLIENT_TABLE_NAME};
-    INSERT INTO _lantern_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model)
+    INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model)
     VALUES (8, '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', 'BAAI/bge-small-en');
-    INSERT INTO _lantern_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model)
+    INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model)
     VALUES (9, '{CLIENT_TABLE_NAME_2}', 'title', 'title_embedding', 'BAAI/bge-small-en');
 
     INSERT INTO {CLIENT_TABLE_NAME} (id, title)
@@ -459,7 +459,7 @@ async fn test_daemon_embedding_multiple_new_jobs_streaming() {
                 autotune: false,
                 external_index: false,
                 databases_table: String::new(),
-                schema: "_lantern_internal".to_owned(),
+                schema: "_lantern_extras_internal".to_owned(),
                 target_db: Some(vec![new_connection_uri]),
                 log_level: LogLevel::Debug,
             },
@@ -500,7 +500,7 @@ async fn test_daemon_embedding_multiple_new_jobs_streaming() {
 
     wait_for_completion(
         &mut new_db_client,
-        &format!("SELECT COUNT(*)=2 FROM _lantern_internal.embedding_generation_jobs WHERE id IN (8, 9) AND init_started_at IS NOT NULL AND init_finished_at IS NOT NULL AND init_progress=100"),
+        &format!("SELECT COUNT(*)=2 FROM _lantern_extras_internal.embedding_generation_jobs WHERE id IN (8, 9) AND init_started_at IS NOT NULL AND init_finished_at IS NOT NULL AND init_progress=100"),
         60,
     )
     .await
@@ -519,9 +519,9 @@ async fn test_daemon_embedding_multiple_new_jobs_with_failure() {
         .batch_execute(&format!(
             r#"
     CREATE TABLE {CLIENT_TABLE_NAME_2} AS TABLE {CLIENT_TABLE_NAME};
-    INSERT INTO _lantern_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model)
+    INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model)
     VALUES (10, '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', 'BAAI/bge-small-en');
-    INSERT INTO _lantern_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model)
+    INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model)
     VALUES (11, '{CLIENT_TABLE_NAME_2}', 'title', 'title_embedding', 'BAAI/bge-small-en2');
 
     INSERT INTO {CLIENT_TABLE_NAME} (id, title)
@@ -554,7 +554,7 @@ async fn test_daemon_embedding_multiple_new_jobs_with_failure() {
                 autotune: false,
                 external_index: false,
                 databases_table: String::new(),
-                schema: "_lantern_internal".to_owned(),
+                schema: "_lantern_extras_internal".to_owned(),
                 target_db: Some(vec![new_connection_uri]),
                 log_level: LogLevel::Debug,
             },
@@ -587,7 +587,7 @@ async fn test_daemon_embedding_multiple_new_jobs_with_failure() {
 
     wait_for_completion(
         &mut new_db_client,
-        &format!("SELECT SUM(tokens)=32 FROM _lantern_internal.embedding_usage_info WHERE job_id=10 AND failed=FALSE GROUP BY job_id"),
+        &format!("SELECT SUM(tokens)=32 FROM _lantern_extras_internal.embedding_usage_info WHERE job_id=10 AND failed=FALSE GROUP BY job_id"),
         1,
     )
     .await
@@ -595,7 +595,7 @@ async fn test_daemon_embedding_multiple_new_jobs_with_failure() {
 
     wait_for_completion(
         &mut new_db_client,
-        &format!("SELECT SUM(rows)=8 FROM _lantern_internal.embedding_usage_info WHERE job_id=10 AND failed=FALSE GROUP BY job_id"),
+        &format!("SELECT SUM(rows)=8 FROM _lantern_extras_internal.embedding_usage_info WHERE job_id=10 AND failed=FALSE GROUP BY job_id"),
         1,
     )
     .await
@@ -603,7 +603,7 @@ async fn test_daemon_embedding_multiple_new_jobs_with_failure() {
 
     wait_for_completion(
         &mut new_db_client,
-        &format!("SELECT COUNT(*)=1 FROM _lantern_internal.embedding_generation_jobs WHERE id=11 AND init_failure_reason IS NOT NULL"),
+        &format!("SELECT COUNT(*)=1 FROM _lantern_extras_internal.embedding_generation_jobs WHERE id=11 AND init_failure_reason IS NOT NULL"),
         60,
     )
     .await
@@ -621,7 +621,7 @@ async fn test_daemon_embedding_jobs_streaming_with_failure() {
     new_db_client
         .batch_execute(&format!(
             r#"
-    INSERT INTO _lantern_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model)
+    INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model)
     VALUES (10, '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', 'BAAI/bge-small-en');
 
     INSERT INTO {CLIENT_TABLE_NAME} (id, title)
@@ -647,7 +647,7 @@ async fn test_daemon_embedding_jobs_streaming_with_failure() {
                 autotune: false,
                 external_index: false,
                 databases_table: String::new(),
-                schema: "_lantern_internal".to_owned(),
+                schema: "_lantern_extras_internal".to_owned(),
                 target_db: Some(vec![new_connection_uri]),
                 log_level: LogLevel::Debug,
             },
@@ -663,7 +663,7 @@ async fn test_daemon_embedding_jobs_streaming_with_failure() {
     new_db_client
         .batch_execute(&format!(
             r#"
-            UPDATE _lantern_internal.embedding_generation_jobs SET embedding_model='test';
+            UPDATE _lantern_extras_internal.embedding_generation_jobs SET embedding_model='test';
             INSERT INTO {CLIENT_TABLE_NAME} (id, title) VALUES (6, 'Test6'), (7, 'Test7'), (8, 'Test8');
             "#
         ))
@@ -680,7 +680,7 @@ async fn test_daemon_embedding_jobs_streaming_with_failure() {
 
     wait_for_completion(
         &mut new_db_client,
-        &format!("SELECT SUM(rows)=5 FROM _lantern_internal.embedding_usage_info WHERE job_id=10 AND failed=FALSE GROUP BY job_id"),
+        &format!("SELECT SUM(rows)=5 FROM _lantern_extras_internal.embedding_usage_info WHERE job_id=10 AND failed=FALSE GROUP BY job_id"),
         1,
     )
     .await
@@ -688,7 +688,7 @@ async fn test_daemon_embedding_jobs_streaming_with_failure() {
 
     wait_for_completion(
         &mut new_db_client,
-        &format!("SELECT SUM(tokens)=20 FROM _lantern_internal.embedding_usage_info WHERE job_id=10 AND failed=FALSE GROUP BY job_id"),
+        &format!("SELECT SUM(tokens)=20 FROM _lantern_extras_internal.embedding_usage_info WHERE job_id=10 AND failed=FALSE GROUP BY job_id"),
         1,
     )
     .await
@@ -696,7 +696,7 @@ async fn test_daemon_embedding_jobs_streaming_with_failure() {
 
     wait_for_completion(
         &mut new_db_client,
-        &format!("SELECT SUM(rows)=3 FROM _lantern_internal.embedding_usage_info WHERE job_id=10 AND failed=TRUE GROUP BY job_id"),
+        &format!("SELECT SUM(rows)=3 FROM _lantern_extras_internal.embedding_usage_info WHERE job_id=10 AND failed=TRUE GROUP BY job_id"),
         20,
     )
     .await
@@ -712,7 +712,7 @@ async fn test_daemon_job_labels() {
     new_db_client
         .batch_execute(&format!(
             r#"
-    INSERT INTO _lantern_internal.embedding_generation_jobs ("id", "label", "table", src_column, dst_column, embedding_model)
+    INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("id", "label", "table", src_column, dst_column, embedding_model)
     VALUES (13, 'test-label', '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', 'BAAI/bge-small-en');
      "#
         ))
@@ -733,7 +733,7 @@ async fn test_daemon_job_labels() {
                 autotune: false,
                 external_index: false,
                 databases_table: String::new(),
-                schema: "_lantern_internal".to_owned(),
+                schema: "_lantern_extras_internal".to_owned(),
                 target_db: Some(vec![connection_uri]),
                 log_level: LogLevel::Debug,
             },
@@ -748,7 +748,7 @@ async fn test_daemon_job_labels() {
 
     wait_for_completion(
         &mut new_db_client,
-        &format!("SELECT COUNT(*)=1 FROM _lantern_internal.embedding_generation_jobs WHERE init_started_at IS NULL"),
+        &format!("SELECT COUNT(*)=1 FROM _lantern_extras_internal.embedding_generation_jobs WHERE init_started_at IS NULL"),
         1,
     )
     .await
@@ -768,7 +768,7 @@ async fn test_daemon_job_labels() {
                 autotune: false,
                 external_index: false,
                 databases_table: String::new(),
-                schema: "_lantern_internal".to_owned(),
+                schema: "_lantern_extras_internal".to_owned(),
                 target_db: Some(vec![new_connection_uri]),
                 log_level: LogLevel::Debug,
             },
@@ -781,7 +781,7 @@ async fn test_daemon_job_labels() {
 
     wait_for_completion(
         &mut new_db_client,
-        &format!("SELECT COUNT(*)=1 FROM _lantern_internal.embedding_generation_jobs WHERE init_started_at IS NOT NULL AND init_finished_at IS NOT NULL"),
+        &format!("SELECT COUNT(*)=1 FROM _lantern_extras_internal.embedding_generation_jobs WHERE init_started_at IS NOT NULL AND init_finished_at IS NOT NULL"),
         20,
     )
     .await
@@ -799,7 +799,7 @@ async fn test_daemon_embedding_init_job_streaming_large() {
     new_db_client
         .batch_execute(&format!(
             r#"
-    INSERT INTO _lantern_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model)
+    INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model)
     VALUES (14, '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', 'BAAI/bge-small-en');
 
     INSERT INTO {CLIENT_TABLE_NAME} (title) SELECT 'Test' ||  n as title FROM generate_series(1, 2000) as n;
@@ -820,7 +820,7 @@ async fn test_daemon_embedding_init_job_streaming_large() {
                 autotune: false,
                 external_index: false,
                 databases_table: String::new(),
-                schema: "_lantern_internal".to_owned(),
+                schema: "_lantern_extras_internal".to_owned(),
                 target_db: Some(vec![new_connection_uri]),
                 log_level: LogLevel::Debug,
             },
@@ -844,7 +844,7 @@ async fn test_daemon_embedding_init_job_streaming_large() {
 
     wait_for_completion(
         &mut new_db_client,
-        &format!("SELECT COUNT(*)=1 FROM _lantern_internal.embedding_generation_jobs WHERE id=14 AND init_started_at IS NOT NULL AND init_finished_at IS NOT NULL AND init_progress=100"),
+        &format!("SELECT COUNT(*)=1 FROM _lantern_extras_internal.embedding_generation_jobs WHERE id=14 AND init_started_at IS NOT NULL AND init_finished_at IS NOT NULL AND init_progress=100"),
         60,
     )
     .await

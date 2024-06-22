@@ -24,7 +24,7 @@ async fn test_daemon_external_index_create() {
            ('Test4', '{{0,0,3}}'),
            ('Test5', '{{0,0,4}}');
 
-    INSERT INTO _lantern_internal.external_index_jobs ("id", "table", "column", "operator", "index", efc, ef, m)
+    INSERT INTO _lantern_extras_internal.external_index_jobs ("id", "table", "column", "operator", "index", efc, ef, m)
     VALUES (1, '{CLIENT_TABLE_NAME}', 'title_embedding', 'dist_cos_ops', 'test_idx1', 32, 32, 10);
      "#
         ))
@@ -43,7 +43,7 @@ async fn test_daemon_external_index_create() {
                 autotune: false,
                 external_index: true,
                 databases_table: String::new(),
-                schema: "_lantern_internal".to_owned(),
+                schema: "_lantern_extras_internal".to_owned(),
                 target_db: Some(vec![new_connection_uri]),
                 log_level: LogLevel::Debug,
             },

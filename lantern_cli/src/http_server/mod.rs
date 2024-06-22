@@ -21,7 +21,7 @@ mod setup;
 
 type PoolClient = deadpool::managed::Object<Manager>;
 
-pub const COLLECTION_TABLE_NAME: &str = "_lantern_internal.http_collections";
+pub const COLLECTION_TABLE_NAME: &str = "_lantern_extras_internal.http_collections";
 
 struct AppPool {
     inner: Pool,

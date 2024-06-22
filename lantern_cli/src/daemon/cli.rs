@@ -60,7 +60,7 @@ pub struct DaemonArgs {
     pub external_index: bool,
 
     /// Schema name
-    #[arg(short, long, default_value = "_lantern_internal")]
+    #[arg(short, long, default_value = "_lantern_extras_internal")]
     pub schema: String,
 
     /// Label which will be matched against embedding job label
