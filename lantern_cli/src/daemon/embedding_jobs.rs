@@ -191,6 +191,7 @@ async fn stream_job(
     notifications_tx: UnboundedSender<JobInsertNotification>,
     jobs_table_name: String,
     _lock_table_name: String,
+    schema: String,
     jobs_map: Arc<JobEventHandlersMap>,
     job: EmbeddingJob,
 ) -> AnyhowVoidResult {
@@ -201,6 +202,9 @@ async fn stream_job(
     let jobs_map_clone = jobs_map.clone();
     let client_jobs_map_clone = client_jobs_map.clone();
     let jobs_table_name_clone = jobs_table_name.clone();
+
+    let tmp_table_name = get_full_table_name(&schema, &format!("job_init_{job_id}"));
+    let tmp_table_name_clone = tmp_table_name.clone();
 
     let task = tokio::spawn(async move {
         logger.info(&format!("Start streaming job {}", job.id));
@@ -270,26 +274,23 @@ async fn stream_job(
             common_filter = get_common_embedding_ignore_filters(&quote_ident(column)),
         );
 
-        let total_rows = job_client
-            .query_one(
-                &format!("SELECT COUNT(*) FROM {full_table_name} {filter_sql};"),
-                &[],
+        job_client
+            .batch_execute(
+                &format!("
+                  DROP TABLE IF EXISTS {tmp_table_name};
+                  CREATE UNLOGGED TABLE {tmp_table_name} AS (SELECT {pk} FROM {full_table_name} {filter_sql});
+                  CREATE INDEX ON {tmp_table_name} ({pk});
+                ", pk = quote_ident(&job.pk)),
             )
             .await?;
+        let total_rows = job_client
+            .query_one(&format!("SELECT COUNT(*) FROM {tmp_table_name}"), &[])
+            .await?;
+
         let total_rows: i64 = total_rows.get(0);
         let total_rows = total_rows as usize;
 
         if total_rows == 0 {
-            if job.is_init {
-                job_client.execute(
-                  &format!(
-                      "UPDATE {jobs_table_name} SET init_finished_at=NOW(), updated_at=NOW(), init_progress=100 WHERE id=$1"
-                  ),
-                  &[&job.id],
-                )
-                .await?;
-            }
-
             return Ok(());
         }
 
@@ -303,20 +304,15 @@ async fn stream_job(
         let batch_size = embeddings::get_default_batch_size(&job.model) as i32;
         loop {
             // poll batch_size rows from portal and send it to embedding thread via channel
-            let result_rows = job_client
+            let rows = job_client
                 .query(
                     &format!(
-                        "SELECT {pk}::text FROM {full_table_name} {filter_sql} LIMIT {batch_size};",
+                        "DELETE FROM {tmp_table_name} WHERE ctid IN (SELECT ctid FROM {tmp_table_name} LIMIT {batch_size}) RETURNING {pk}::text;",
                         pk = quote_ident(&job.pk)
                     ),
                     &[],
                 )
                 .await?;
-
-            // slice rows to not process more than total_rows (the row count got at the beginning)
-            // because all new rows would be picked by updates processors
-            // so there's no need to process newly inserted rows here
-            let rows = &result_rows[0..(total_rows - processed_rows).min(result_rows.len())];
 
             if rows.len() == 0 {
                 break;
@@ -348,20 +344,6 @@ async fn stream_job(
 
             streamed_job.set_id_filter(&row_ids);
 
-            processed_rows += row_ids.len();
-            if job.is_init {
-                let new_progress = ((processed_rows as f32 / total_rows as f32) * 100.0) as u8;
-
-                if new_progress > progress {
-                    progress = new_progress;
-                    streamed_job.set_report_progress(progress);
-                }
-            }
-
-            if processed_rows == total_rows {
-                streamed_job.set_is_last_chunk(true);
-            }
-
             job_queue_tx.send(streamed_job).await?;
 
             // Wait for response from embedding worker
@@ -369,15 +351,34 @@ async fn stream_job(
                 if let JobEvent::Errored(err) = msg {
                     anyhow::bail!(err);
                 }
+
+                if job.is_init {
+                    processed_rows += row_ids.len();
+                    let new_progress = ((processed_rows as f32 / total_rows as f32) * 100.0) as u8;
+
+                    if new_progress > progress {
+                        progress = new_progress;
+
+                        job_client
+                            .execute(
+                                &format!(
+                                    "UPDATE {jobs_table_name} SET init_progress={progress} WHERE id=$1"
+                                ),
+                                &[&job.id],
+                            )
+                            .await?;
+                    }
+                }
             }
         }
 
         Ok(())
     });
 
+    remove_job_handle(&jobs_map_clone, job_id).await?;
+
     if let Err(e) = task.await? {
         top_logger.error(&format!("Error while streaming job {job_id}: {e}"));
-        remove_job_handle(&jobs_map_clone, job_id).await?;
         if job_clone.is_init {
             main_client.execute(&format!("UPDATE {jobs_table_name_clone} SET init_failed_at=NOW(), updated_at=NOW(), init_failure_reason=$1 WHERE id=$2 AND init_finished_at IS NULL"), &[&e.to_string(), &job_id]).await?;
             toggle_client_job(
@@ -396,7 +397,13 @@ async fn stream_job(
             )
             .await?;
         }
+    } else if job_clone.is_init {
+        main_client.execute(&format!("UPDATE {jobs_table_name_clone} SET init_finished_at=NOW(), init_progress=100 WHERE id=$1"), &[&job_id]).await?;
     }
+
+    main_client
+        .execute(&format!("DROP TABLE IF EXISTS {tmp_table_name_clone}"), &[])
+        .await?;
 
     Ok(())
 }
@@ -407,13 +414,10 @@ async fn embedding_worker(
     embedding_processor_tx: Sender<EmbeddingProcessorArgs>,
     db_uri: String,
     schema: String,
-    table: String,
     jobs_map: Arc<JobEventHandlersMap>,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
     let schema = Arc::new(schema);
-    let table = Arc::new(table);
-    let jobs_table_name = Arc::new(get_full_table_name(&schema, &table));
     let usage_table_name = get_full_table_name(&schema, EMB_USAGE_TABLE_NAME);
 
     tokio::spawn(async move {
@@ -486,29 +490,8 @@ async fn embedding_worker(
                         }
                     }
 
-                    if let Some(progress) = job.report_progress {
-                        let update_statement = if job.is_last_chunk {
-                            "init_finished_at=NOW(), updated_at=NOW(), init_progress=100".to_owned()
-                        } else {
-                            format!("init_progress={progress}")
-                        };
-
-                        client_ref
-                            .execute(
-                                &format!(
-                                    "UPDATE {jobs_table_name} SET {update_statement} WHERE id=$1"
-                                ),
-                                &[&job.id],
-                            )
-                            .await?;
-                    }
-
                     // Send done event via channel
                     notify_job(jobs_map.clone(), job.id, JobEvent::Done).await;
-
-                    if job.is_last_chunk {
-                        remove_job_handle(&jobs_map, job.id).await?;
-                    }
                 }
                 Err(e) => {
                     logger.error(&format!(
@@ -747,6 +730,7 @@ async fn job_insert_processor(
                     notifications_tx.clone(),
                     full_table_name_r1.to_string(),
                     lock_table_name.to_string(),
+                    schema.clone(),
                     jobs_map.clone(),
                     job,
                 ));
@@ -1066,7 +1050,6 @@ pub async fn start(
             embedding_processor_tx,
             main_db_uri.clone(),
             schema.clone(),
-            table.clone(),
             jobs_map.clone(),
             logger.clone(),
         ),

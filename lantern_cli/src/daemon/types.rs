@@ -69,8 +69,6 @@ pub struct EmbeddingJob {
     pub runtime: Runtime,
     pub batch_size: Option<usize>,
     pub row_ids: Option<Vec<String>>,
-    pub report_progress: Option<u8>,
-    pub is_last_chunk: bool,
 }
 
 impl EmbeddingJob {
@@ -99,8 +97,6 @@ impl EmbeddingJob {
             row_ids: None,
             is_init: true,
             batch_size: None,
-            report_progress: None,
-            is_last_chunk: false,
         })
     }
 
@@ -114,14 +110,6 @@ impl EmbeddingJob {
 
     pub fn set_row_ids(&mut self, row_ids: Vec<String>) {
         self.row_ids = Some(row_ids);
-    }
-
-    pub fn set_report_progress(&mut self, progress: u8) {
-        self.report_progress = Some(progress);
-    }
-
-    pub fn set_is_last_chunk(&mut self, status: bool) {
-        self.is_last_chunk = status;
     }
 
     #[allow(dead_code)]
