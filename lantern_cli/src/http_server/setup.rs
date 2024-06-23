@@ -7,10 +7,11 @@ pub async fn setup_tables(pool: &Pool) -> AnyhowVoidResult {
 
     client
         .batch_execute(&format!(
-            "CREATE TABLE IF NOT EXISTS {COLLECTION_TABLE_NAME} (
+            "CREATE SCHEMA IF NOT EXISTS _lantern_extras_internal;
+             CREATE TABLE IF NOT EXISTS {COLLECTION_TABLE_NAME} (
          id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
          name NAME
-        )",
+        );",
         ))
         .await?;
     Ok(())
