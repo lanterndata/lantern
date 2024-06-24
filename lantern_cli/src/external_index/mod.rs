@@ -258,6 +258,12 @@ pub fn create_usearch_index(
     let (progress_tx, progress_rx): (Sender<u8>, Receiver<u8>) = mpsc::channel();
     let progress_logger = logger.clone();
     let should_create_index = args.import;
+    // reserve 20% progress for index import
+    let count_for_progress = if should_create_index {
+        (count as f64 * 1.2) as i64
+    } else {
+        count
+    };
 
     std::thread::spawn(move || -> AnyhowVoidResult {
         let mut prev_progress = 0;
@@ -309,14 +315,10 @@ pub fn create_usearch_index(
                 }
 
                 let rows = rows.unwrap();
-                let rows_cnt = rows.len();
+                let rows_cnt = rows.len() as u64;
                 index_chunk(rows, index_ref.clone())?;
-                let all_count = processed_cnt.fetch_add(rows_cnt as u64, Ordering::SeqCst);
-                let mut progress = (all_count as f64 / count as f64 * 100.0) as u8;
-                if should_create_index {
-                    // reserve 20% progress for index import
-                    progress = if progress > 20 { progress - 20 } else { 0 };
-                }
+                let all_count = processed_cnt.fetch_add(rows_cnt, Ordering::SeqCst) + rows_cnt;
+                let progress = (all_count as f64 / count_for_progress as f64 * 100.0) as u8;
 
                 if progress > 0 {
                     progress_tx.send(progress)?;
