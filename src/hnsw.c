@@ -33,9 +33,9 @@
 #include "commands/progress.h"
 #endif
 
-#ifndef EMSCRIPTEN
+// #ifndef EMSCRIPTEN
 PG_MODULE_MAGIC;
-#endif
+// #endif
 
 /*
  * Get the name of index build phase

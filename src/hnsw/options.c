@@ -157,11 +157,11 @@ bytea *ldb_amoptions(Datum reloptions, bool validate)
 /*
  * Initialize index options and variables
  */
-#ifdef EMSCRIPTEN
-void _PG_init_lantern(void)
-#else
+// #ifdef EMSCRIPTEN
+// void _PG_init_lantern(void)
+// #else
 void _PG_init(void)
-#endif
+// #endif
 {
     if(process_shared_preload_libraries_in_progress) {
         elog(WARNING,
@@ -297,11 +297,11 @@ void _PG_init(void)
                              NULL,
                              NULL);
 
-    #if PG_VERSION_NUM >= 150000 && !defined EMSCRIPTEN
-        MarkGUCPrefixReserved("lantern");
-        MarkGUCPrefixReserved("lantern_hnsw");
-        MarkGUCPrefixReserved("_lantern_internal");
-    #endif
+#if PG_VERSION_NUM >= 150000 && !defined EMSCRIPTEN
+    MarkGUCPrefixReserved("lantern");
+    MarkGUCPrefixReserved("lantern_hnsw");
+    MarkGUCPrefixReserved("_lantern_internal");
+#endif
 
     // Print a warning with helpful info
     (void)VersionsMatch();
