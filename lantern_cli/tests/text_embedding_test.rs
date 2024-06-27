@@ -147,12 +147,12 @@ text_embedding_test! {
   generate_jina_base_embeddings_small_text_batch: ("jinaai/jina-embeddings-v2-base-en", WEATHER_TEXT, WEATHER_JINA_BASE_EMB.to_vec(), 30, 240, 0.01),
   generate_naver_spladev3_embeddings_small_text_single: ("naver/splade-v3", WEATHER_TEXT, create_sparse_vector(NAVER_SPLADE_WEATHER_SPARSE_EMB, 30522), 1, 8, 0.03),
   generate_naver_spladev3_embeddings_small_text_batch: ("naver/splade-v3", WEATHER_TEXT, create_sparse_vector(NAVER_SPLADE_WEATHER_SPARSE_EMB, 30522), 30, 240, 0.03),
-  generate_naver_spladev3_embeddings_large_text_single: ("naver/splade-v3", PATIENT_EMB_TEXT, create_sparse_vector(NAVER_SPLADE_PATIENT_SPARSE_EMB, 30522), 1, 128, 0.03),
-  generate_naver_spladev3_embeddings_large_text_batch: ("naver/splade-v3", PATIENT_EMB_TEXT, create_sparse_vector(NAVER_SPLADE_PATIENT_SPARSE_EMB, 30522), 30, 3840, 0.03),
+  generate_naver_spladev3_embeddings_large_text_single: ("naver/splade-v3", PATIENT_EMB_TEXT, create_sparse_vector(NAVER_SPLADE_PATIENT_SPARSE_EMB, 30522), 1, 138, 0.03),
+  generate_naver_spladev3_embeddings_large_text_batch: ("naver/splade-v3", PATIENT_EMB_TEXT, create_sparse_vector(NAVER_SPLADE_PATIENT_SPARSE_EMB, 30522), 30, 4140, 0.03),
 }
 
 text_embedding_test_multiple! {
   generate_jina_base_embeddings_large_text_batch_multiple: ("jinaai/jina-embeddings-v2-base-en", PATIENT_EMB_TEXT, WEATHER_TEXT, PATIENT_JINA_BASE_EMB.to_vec(), WEATHER_JINA_BASE_EMB.to_vec(), 10, 1380, 0.01),
   generate_bge_m3_embeddings_large_text_batch_multiple: ("BAAI/bge-m3", PATIENT_EMB_TEXT, WEATHER_TEXT, PATIENT_BGE_M3_EMB.to_vec(), BGE_M3_WEATHER_EMB.to_vec(), 10, 1430, 0.01),
-  generate_naver_spladev3_embeddings_large_text_batch_multiple: ("naver/splade-v3", PATIENT_EMB_TEXT, WEATHER_TEXT, create_sparse_vector(NAVER_SPLADE_PATIENT_SPARSE_EMB, 30522), create_sparse_vector(NAVER_SPLADE_WEATHER_SPARSE_EMB, 30522), 10, 1280, 0.03),
+  generate_naver_spladev3_embeddings_large_text_batch_multiple: ("naver/splade-v3", PATIENT_EMB_TEXT, WEATHER_TEXT, create_sparse_vector(NAVER_SPLADE_PATIENT_SPARSE_EMB, 30522), create_sparse_vector(NAVER_SPLADE_WEATHER_SPARSE_EMB, 30522), 10, 1380, 0.03),
 }
