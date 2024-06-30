@@ -76,7 +76,12 @@ async fn destroy_jobs(target_db: &TargetDB, logger: Arc<Logger>) {
     cancel_token.cancel();
 }
 
-async fn spawn_job(target_db: Arc<TargetDB>, args: Arc<cli::DaemonArgs>, job_type: JobType) {
+async fn spawn_job(
+    target_db: Arc<TargetDB>,
+    args: Arc<cli::DaemonArgs>,
+    job_type: JobType,
+    parent_cancel_token: CancellationToken,
+) {
     let mut retry_interval = 5;
 
     let log_label = match job_type {
@@ -93,7 +98,7 @@ async fn spawn_job(target_db: Arc<TargetDB>, args: Arc<cli::DaemonArgs>, job_typ
     let mut last_retry = Instant::now();
 
     loop {
-        let cancel_token = CancellationToken::new();
+        let cancel_token = parent_cancel_token.child_token();
         let mut jobs = JOBS.write().await;
         jobs.insert(target_db.name.clone(), cancel_token.clone());
         drop(jobs);
@@ -171,6 +176,7 @@ async fn spawn_jobs(
     embedding_tx: Sender<EmbeddingProcessorArgs>,
     autotune_tx: Sender<AutotuneProcessorArgs>,
     external_index_tx: Sender<ExternalIndexProcessorArgs>,
+    cancel_token: CancellationToken,
 ) {
     let target_db = Arc::new(target_db);
 
@@ -179,6 +185,7 @@ async fn spawn_jobs(
             target_db.clone(),
             args.clone(),
             JobType::Embeddings(embedding_tx),
+            cancel_token.clone(),
         ));
     }
 
@@ -187,6 +194,7 @@ async fn spawn_jobs(
             target_db.clone(),
             args.clone(),
             JobType::ExternalIndex(external_index_tx),
+            cancel_token.clone(),
         ));
     }
 
@@ -195,6 +203,7 @@ async fn spawn_jobs(
             target_db.clone(),
             args.clone(),
             JobType::Autotune(autotune_tx),
+            cancel_token.clone(),
         ));
     }
 }
@@ -281,7 +290,7 @@ async fn db_change_listener(
                             destroy_jobs(&target_db, logger.clone()).await;
                         }
                         "insert" => {
-                            spawn_jobs(target_db, args.clone(), embedding_tx.clone(), autotune_tx.clone(), external_index_tx.clone()).await;
+                            spawn_jobs(target_db, args.clone(), embedding_tx.clone(), autotune_tx.clone(), external_index_tx.clone(), cancel_token.clone()).await;
                         }
                         _ => logger.error(&format!("Invalid action received: {action}")),
                     }
@@ -376,6 +385,7 @@ pub async fn start(
             embedding_tx.clone(),
             autotune_tx.clone(),
             external_index_tx.clone(),
+            cancel_token.clone(),
         )
         .await;
     }
