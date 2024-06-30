@@ -76,12 +76,7 @@ async fn destroy_jobs(target_db: &TargetDB, logger: Arc<Logger>) {
     cancel_token.cancel();
 }
 
-async fn spawn_job(
-    target_db: Arc<TargetDB>,
-    args: Arc<cli::DaemonArgs>,
-    cancel_token: CancellationToken,
-    job_type: JobType,
-) {
+async fn spawn_job(target_db: Arc<TargetDB>, args: Arc<cli::DaemonArgs>, job_type: JobType) {
     let mut retry_interval = 5;
 
     let log_label = match job_type {
@@ -98,6 +93,11 @@ async fn spawn_job(
     let mut last_retry = Instant::now();
 
     loop {
+        let cancel_token = CancellationToken::new();
+        let mut jobs = JOBS.write().await;
+        jobs.insert(target_db.name.clone(), cancel_token.clone());
+        drop(jobs);
+
         let result = match &job_type {
             JobType::Embeddings(processor_tx) => {
                 embedding_jobs::start(
@@ -146,13 +146,15 @@ async fn spawn_job(
             }
         };
 
+        cancel_token.cancel();
         if let Err(e) = result {
-            logger.error(&format!("Error from job: {e}"));
-
-            if last_retry.elapsed().as_secs() > retry_interval * 2 {
+            if last_retry.elapsed().as_secs() > 30 {
                 // reset retry exponential backoff time if job was not failing constantly
                 retry_interval = 10;
             }
+            logger.error(&format!(
+                "Error from job: {e} (retry after {retry_interval}s)"
+            ));
             tokio::time::sleep(Duration::from_secs(retry_interval)).await;
             retry_interval *= 2;
             last_retry = Instant::now();
@@ -170,16 +172,12 @@ async fn spawn_jobs(
     autotune_tx: Sender<AutotuneProcessorArgs>,
     external_index_tx: Sender<ExternalIndexProcessorArgs>,
 ) {
-    let mut jobs = JOBS.write().await;
-    let cancel_token = CancellationToken::new();
     let target_db = Arc::new(target_db);
-    jobs.insert(target_db.name.clone(), cancel_token.clone());
 
     if args.embeddings {
         tokio::spawn(spawn_job(
             target_db.clone(),
             args.clone(),
-            cancel_token.clone(),
             JobType::Embeddings(embedding_tx),
         ));
     }
@@ -188,7 +186,6 @@ async fn spawn_jobs(
         tokio::spawn(spawn_job(
             target_db.clone(),
             args.clone(),
-            cancel_token.clone(),
             JobType::ExternalIndex(external_index_tx),
         ));
     }
@@ -197,7 +194,6 @@ async fn spawn_jobs(
         tokio::spawn(spawn_job(
             target_db.clone(),
             args.clone(),
-            cancel_token.clone(),
             JobType::Autotune(autotune_tx),
         ));
     }

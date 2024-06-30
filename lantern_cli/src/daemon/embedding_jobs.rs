@@ -598,6 +598,7 @@ async fn job_insert_processor(
     job_batching_hashmap: Arc<JobBatchingHashMap>,
     client_jobs_map: Arc<ClientJobsMap>,
     job_labels_map: Arc<JobLabelsMap>,
+    cancel_token: CancellationToken,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
     // This function will have 2 running tasks
@@ -628,10 +629,16 @@ async fn job_insert_processor(
     let job_batching_hashmap_r1 = job_batching_hashmap.clone();
     let job_labels_map_r1 = job_labels_map.clone();
 
+    let (insert_client, connection) = tokio_postgres::connect(&db_uri_r1, NoTls).await?;
+    let insert_client = Arc::new(insert_client);
+    let insert_connection_task = tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            anyhow::bail!(e)
+        }
+        Ok(())
+    });
+
     let insert_processor_task = tokio::spawn(async move {
-        let (insert_client, connection) = tokio_postgres::connect(&db_uri_r1, NoTls).await?;
-        let insert_client = Arc::new(insert_client);
-        tokio::spawn(async move { connection.await });
         while let Some(notification) = notifications_rx.recv().await {
             let id = notification.id;
 
@@ -744,10 +751,17 @@ async fn job_insert_processor(
         Ok(()) as AnyhowVoidResult
     });
 
+    let (batch_client, connection) = tokio_postgres::connect(&db_uri, NoTls).await?;
+    let batch_connection_task = tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            anyhow::bail!(e)
+        }
+        Ok(())
+    });
+
     let job_batching_hashmap = job_batching_hashmap.clone();
+    let cancel_token_clone = cancel_token.clone();
     let batch_collector_task = tokio::spawn(async move {
-        let (batch_client, connection) = tokio_postgres::connect(&db_uri, NoTls).await?;
-        tokio::spawn(async move { connection.await });
         loop {
             let mut job_map = job_batching_hashmap.lock().await;
             let jobs: Vec<(i32, Vec<String>)> = job_map.drain().collect();
@@ -803,16 +817,21 @@ async fn job_insert_processor(
             }
 
             // collect jobs every 10 seconds
-            tokio::time::sleep(Duration::from_secs(10)).await;
+            tokio::select! {
+                _ = cancel_token_clone.cancelled() => break,
+                _ = tokio::time::sleep(Duration::from_secs(10)) => {}
+            }
         }
-        #[allow(unreachable_code)]
         Ok::<(), anyhow::Error>(())
     });
 
-    let (r1, _) = tokio::try_join!(insert_processor_task, batch_collector_task)?;
-    r1?;
-
-    Ok(())
+    tokio::select! {
+        _ = cancel_token.cancelled() => Ok(()),
+       r = insert_connection_task => r?,
+       r = insert_processor_task => r?,
+       r = batch_connection_task => r?,
+       r = batch_collector_task => r?,
+    }
 }
 
 async fn job_update_processor(
@@ -824,13 +843,19 @@ async fn job_update_processor(
     jobs_map: Arc<JobEventHandlersMap>,
     job_batching_hashmap: Arc<JobBatchingHashMap>,
     client_jobs_map: Arc<ClientJobsMap>,
+    cancel_token: CancellationToken,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
-    tokio::spawn(async move {
+    let (client, connection) = tokio_postgres::connect(&db_uri, NoTls).await?;
+    let connection_task = tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            anyhow::bail!(e)
+        }
+        Ok(())
+    });
+    let update_processor_task = tokio::spawn(async move {
         while let Some(notification) = update_queue_rx.recv().await {
-            let (client, connection) = tokio_postgres::connect(&db_uri, NoTls).await?;
-            tokio::spawn(async move { connection.await });
-            let full_table_name =  get_full_table_name(&schema, &table);
+            let full_table_name = get_full_table_name(&schema, &table);
             let id = notification.id;
             let row = client.query_one(&format!("SELECT pk, dst_column, src_column as \"column\", \"table\", \"schema\", canceled_at, init_finished_at FROM {0} WHERE id=$1", &full_table_name), &[&id]).await?;
             let src_column = row.get::<&str, String>("column").to_owned();
@@ -840,18 +865,36 @@ async fn job_update_processor(
             let init_finished_at: Option<SystemTime> = row.get("init_finished_at");
 
             if !notification.generate_missing {
-              logger.debug(&format!("Update job {id}: is_canceled: {}", canceled_at.is_some()));
+                logger.debug(&format!(
+                    "Update job {id}: is_canceled: {}",
+                    canceled_at.is_some()
+                ));
             }
 
             if init_finished_at.is_some() {
-              toggle_client_job(client_jobs_map.clone(), id, db_uri.clone(), row.get::<&str, String>("pk").to_owned(), row.get::<&str, String>("column").to_owned(), row.get::<&str, String>("dst_column").to_owned(), row.get::<&str, String>("table").to_owned(), row.get::<&str, String>("schema").to_owned(), logger.level.clone(), &logger.label, Some(job_insert_queue_tx.clone()), canceled_at.is_none()).await?;
+                toggle_client_job(
+                    client_jobs_map.clone(),
+                    id,
+                    db_uri.clone(),
+                    row.get::<&str, String>("pk").to_owned(),
+                    row.get::<&str, String>("column").to_owned(),
+                    row.get::<&str, String>("dst_column").to_owned(),
+                    row.get::<&str, String>("table").to_owned(),
+                    row.get::<&str, String>("schema").to_owned(),
+                    logger.level.clone(),
+                    &logger.label,
+                    Some(job_insert_queue_tx.clone()),
+                    canceled_at.is_none(),
+                )
+                .await?;
             } else if canceled_at.is_some() {
                 // Cancel ongoing job
                 let jobs = jobs_map.read().await;
                 let job = jobs.get(&id);
 
                 if let Some(tx) = job {
-                   tx.send(JobEvent::Errored(JOB_CANCELLED_MESSAGE.to_string())).await?;
+                    tx.send(JobEvent::Errored(JOB_CANCELLED_MESSAGE.to_string()))
+                        .await?;
                 }
                 drop(jobs);
 
@@ -864,13 +907,23 @@ async fn job_update_processor(
             if canceled_at.is_none() && notification.generate_missing {
                 // this will be on startup to generate embeddings for rows that might be inserted
                 // while daemon is offline
-                job_insert_queue_tx.send(JobInsertNotification { id, generate_missing: true, filter: Some(get_missing_rows_filter(&src_column, &out_column)), limit: None, row_id: None })?;
+                job_insert_queue_tx.send(JobInsertNotification {
+                    id,
+                    generate_missing: true,
+                    filter: Some(get_missing_rows_filter(&src_column, &out_column)),
+                    limit: None,
+                    row_id: None,
+                })?;
             }
         }
         Ok(()) as AnyhowVoidResult
-    })
-    .await??;
-    Ok(())
+    });
+
+    tokio::select! {
+        _ = cancel_token.cancelled() => Ok(()),
+       r = connection_task => r?,
+       r = update_processor_task => r?,
+    }
 }
 
 async fn create_data_path(logger: Arc<Logger>) -> Result<&'static str, anyhow::Error> {
@@ -909,27 +962,22 @@ async fn create_data_path(logger: Arc<Logger>) -> Result<&'static str, anyhow::E
 }
 
 async fn stop_all_client_jobs(
-    client: Arc<Client>,
     logger: Arc<Logger>,
     client_jobs_map: Arc<ClientJobsMap>,
     db_uri: String,
     schema: String,
-    jobs_table_name: String,
 ) -> AnyhowVoidResult {
-    let rows = client
-        .query(
-            &format!("SELECT id, runtime, \"table\" FROM {jobs_table_name} WHERE init_finished_at IS NOT NULL AND canceled_at IS NULL ORDER BY id"),
-            &[],
-        )
-        .await?;
+    let job_ids: Vec<i32> = client_jobs_map
+        .read()
+        .await
+        .keys()
+        .into_iter()
+        .map(|el| *el)
+        .collect();
 
-    for row in rows {
-        let job_id = row.get::<&str, i32>("id").to_owned();
-        let job_runtime = row.get::<&str, &str>("runtime").to_owned();
-        let job_table = row.get::<&str, &str>("table").to_owned();
-
+    for job_id in job_ids {
         let task_logger = Arc::new(Logger::new(
-            &format!("{}|{}|{:?}", logger.label, job_id, job_runtime),
+            &format!("{}|{}", logger.label, job_id),
             logger.level.clone(),
         ));
 
@@ -938,7 +986,7 @@ async fn stop_all_client_jobs(
             client_jobs_map.clone(),
             &db_uri,
             job_id,
-            &job_table,
+            "",
             &schema,
             false,
         )
@@ -1008,6 +1056,24 @@ pub async fn start(
 
     let job_batching_hashmap: Arc<JobBatchingHashMap> = Arc::new(Mutex::new(HashMap::new()));
 
+    let main_db_uri_clone = main_db_uri.clone();
+    let schema_clone = schema.clone();
+    let client_jobs_map_clone = client_jobs_map.clone();
+    tokio::spawn(cancellation_handler(
+        cancel_token.clone(),
+        Some(move || async {
+            stop_all_client_jobs(
+                logger_clone,
+                client_jobs_map_clone,
+                main_db_uri_clone,
+                schema_clone,
+            )
+            .await?;
+
+            Ok::<(), anyhow::Error>(())
+        }),
+    ));
+
     tokio::try_join!(
         anyhow_wrap_connection::<NoTls>(connection),
         db_notification_listener(
@@ -1031,6 +1097,7 @@ pub async fn start(
             job_batching_hashmap.clone(),
             client_jobs_map.clone(),
             job_labels_map,
+            cancel_token.clone(),
             logger.clone(),
         ),
         job_update_processor(
@@ -1042,6 +1109,7 @@ pub async fn start(
             jobs_map.clone(),
             job_batching_hashmap.clone(),
             client_jobs_map.clone(),
+            cancel_token.clone(),
             logger.clone(),
         ),
         embedding_worker(
@@ -1058,22 +1126,6 @@ pub async fn start(
             update_notification_queue_tx.clone(),
             jobs_table_name.clone(),
         ),
-        cancellation_handler(
-            cancel_token.clone(),
-            Some(move || async {
-                stop_all_client_jobs(
-                    main_db_client,
-                    logger_clone,
-                    client_jobs_map,
-                    main_db_uri,
-                    schema,
-                    jobs_table_name,
-                )
-                .await?;
-
-                Ok::<(), anyhow::Error>(())
-            })
-        )
     )?;
 
     Ok(())
