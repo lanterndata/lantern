@@ -40,8 +40,7 @@ strum = { version = "0.25", features = ["derive"] }
 tiktoken-rs = "0.5.8"
 regex = "1.10.3"
 postgres-types = { version = "0.2.6", features = ["derive"] }
-usearch = { git = "https://github.com/Ngalstyan4/usearch.git", rev = "2be73436c696c53b8c72449d5f802f7f4fc3132d" } # old lantern storage <= 0.2.7
-# usearch = { git = "https://github.com/Ngalstyan4/usearch.git", branch = "main-lantern" } # new lantern storage > 0.2.7
+usearch = { git = "https://github.com/Ngalstyan4/usearch.git", rev = "de8580c7e4f8d43d878905a7c81ec65fe0d5a2db" }
 actix-web = { version = "4.5.1", optional = true }
 env_logger = { version = "0.11.2", optional = true }
 deadpool-postgres = { version = "0.12.1", optional = true }
