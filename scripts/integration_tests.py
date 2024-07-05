@@ -269,44 +269,50 @@ def test_selects(db, setup_copy_table_with_index, distance_metric, quant_bits, r
 # todo:: something is off with inserts and 1-bit quantization
 @pytest.mark.parametrize("distance_metric", ["l2sq", "cos"], scope="session")
 @pytest.mark.parametrize("quant_bits", [32, 16, 8], scope="session")
-@pytest.mark.parametrize("db", ["primary", "replica"], scope="session")
-def test_inserts(db, setup_copy_table_with_index, distance_metric, quant_bits, request):
-    db = request.getfixturevalue(db)
+# @pytest.mark.parametrize("db", ["primary", "replica"], scope="session")
+def test_inserts(setup_copy_table_with_index, distance_metric, quant_bits, request):
     primary = request.getfixturevalue("primary")
     replica = request.getfixturevalue("replica")
     table_name = setup_copy_table_with_index
-    if db.name == "replica":
-        db.catchup()
-    else:
-        # catch up the replica to make sure the base relation is synced
-        replica.catchup()
-        replica.stop()
-        primary.execute(
-            "testdb",
-            f"INSERT INTO {table_name} (id, v) VALUES (4444, (SELECT v FROM {table_name} WHERE id = 44)) ON CONFLICT(id) DO NOTHING",
-        )
-        primary.execute(
-            "testdb",
-            f"INSERT INTO {table_name} (id, v) VALUES (4445, (SELECT v FROM {table_name} WHERE id = 44)) ON CONFLICT(id) DO NOTHING",
-        )
+    replica.catchup()
 
-        # verify that the rows inserted in the primary do not yet exist on the replica
-        primary.stop()
-        replica.start()
-        assert (
-            replica.execute(
-                "testdb", f"SELECT EXISTS (SELECT 1 FROM {table_name} WHERE id = 4444)"
-            )[0][0]
-            == False
-        ), "Expected vector with id 4444 to not exist in the table"
-        assert (
-            replica.execute(
-                "testdb", f"SELECT EXISTS (SELECT 1 FROM {table_name} WHERE id = 4445)"
-            )[0][0]
-            == False
-        ), "Expected vector with id 4445 to not exist in the table"
-        primary.start()
+    ################################################## INSERTS ON PRIMARY ##################################################
+    # catch up the replica to make sure the base relation is synced
+    replica.stop()
+    primary.execute(
+        "testdb",
+        f"INSERT INTO {table_name} (id, v) VALUES (4444, (SELECT v FROM {table_name} WHERE id = 44)) ON CONFLICT(id) DO NOTHING",
+    )
+    primary.execute(
+        "testdb",
+        f"INSERT INTO {table_name} (id, v) VALUES (4445, (SELECT v FROM {table_name} WHERE id = 44)) ON CONFLICT(id) DO NOTHING",
+    )
 
+    assert primary.execute(
+        "testdb",
+        f"SELECT EXISTS (SELECT 1 FROM {table_name} WHERE id = {4444})",
+    )[0][0], f"Expected vector with id 4444 to exist in the table"
+    # sleep 2 seconds
+    primary.execute("SELECT pg_sleep(2)")
+
+    # verify that the rows inserted in the primary do not yet exist on the replica
+    primary.stop()
+    replica.start()
+    assert (
+        replica.execute(
+            "testdb", f"SELECT EXISTS (SELECT 1 FROM {table_name} WHERE id = 4444)"
+        )[0][0]
+        == False
+    ), "Expected vector with id 4444 to not exist in the table"
+    assert (
+        replica.execute(
+            "testdb", f"SELECT EXISTS (SELECT 1 FROM {table_name} WHERE id = 4445)"
+        )[0][0]
+        == False
+    ), "Expected vector with id 4445 to not exist in the table"
+    primary.start()
+
+    # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ INSERTS ON PRIMARY ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     DISTANCE_TOLERANCE_PERCENT = 10 if quant_bits <= 8 else 0
 
     inserted_ids = [12, 4444, 4445, 44]
@@ -316,12 +322,20 @@ def test_inserts(db, setup_copy_table_with_index, distance_metric, quant_bits, r
         4445: [4444, 4445, 44],
         12: [12],
     }
+
+    replica.catchup()
+
     for q_vec_id in inserted_ids:
         # assert that a vector with id 4444 exists
-        assert db.execute(
+        assert primary.execute(
             "testdb",
             f"SELECT EXISTS (SELECT 1 FROM {table_name} WHERE id = {q_vec_id})",
         )[0][0], f"Expected vector with id 4444 to exist in the table"
+        for db in [primary, replica]:
+            assert db.execute(
+                "testdb",
+                f"SELECT EXISTS (SELECT 1 FROM {table_name} WHERE id = {q_vec_id})",
+            )[0][0], f"Expected vector with id 4444 to exist in the table"
 
         exact_query = generic_vector_query(
             table_name, distance_metric, "exact", query_vector_id=q_vec_id
@@ -334,58 +348,61 @@ def test_inserts(db, setup_copy_table_with_index, distance_metric, quant_bits, r
         )
 
         exact_explain_query = f"EXPLAIN {exact_query}"
-        exact_plan = db.execute("testdb", exact_explain_query)
-        assert f"Index Scan using idx_{table_name}" not in str(
-            exact_plan
-        ), f"Exact scan query should not use the vector index. got plan {exact_plan}"
+        for db in [primary, replica]:
+            exact_plan = db.execute("testdb", exact_explain_query)
+            assert f"Index Scan using idx_{table_name}" not in str(
+                exact_plan
+            ), f"Exact scan query should not use the vector index. got plan {exact_plan}"
 
-        exact_res = db.execute("testdb", exact_query)
-        assert len(exact_res) > 0, "Expected at least the query vector in the result"
-        assert (
-            exact_res[0][0] in inserted_vector_orig_ids[q_vec_id]
-        ), "First result in exact query result should be the query vector"
+            exact_res = db.execute("testdb", exact_query)
+            assert (
+                len(exact_res) > 0
+            ), "Expected at least the query vector in the result"
+            assert (
+                exact_res[0][0] in inserted_vector_orig_ids[q_vec_id]
+            ), "First result in exact query result should be the query vector"
 
-        for query in [generic_op_query, concrete_op_query]:
-            explain_query = f"EXPLAIN {query}"
-            plan = db.execute("testdb", explain_query)
-            assert f"Index Scan using idx_{table_name}" in str(
-                plan
-            ), f"Failed for {plan}"
+            for query in [generic_op_query, concrete_op_query]:
+                explain_query = f"EXPLAIN {query}"
+                plan = db.execute("testdb", explain_query)
+                assert f"Index Scan using idx_{table_name}" in str(
+                    plan
+                ), f"Failed for {plan}"
 
-            approx_res = db.execute("testdb", query)
-            approx_ids = [row[0] for row in approx_res]
-            LOGGER.info(f"running query")
-            highest_dist = float("-inf")
+                approx_res = db.execute("testdb", query)
+                approx_ids = [row[0] for row in approx_res]
+                LOGGER.info(f"running query")
+                highest_dist = float("-inf")
 
-            assert len(approx_res) == len(
-                exact_res
-            ), f"Exact(={len(exact_res)}and approximate ({len(approx_res)}) queries returned different number of results"
-            for i, row in enumerate(approx_res):
-                id, vec, dist, op_dist = row
-                if i == 0:
-                    if quant_bits == 1:
-                        assert (
-                            id in approx_ids
-                        ), f"First result {id} should appear in returned results in bit quantization. result ids: {approx_ids}"
-                    else:
-                        assert (
-                            id in inserted_vector_orig_ids[id]
-                        ), f"First result {id} should be the query vector id {inserted_vector_orig_ids[id]}. result ids: {approx_ids}"
-                assert (
-                    dist == op_dist
-                ), "Distances returned by the operator are not consistent with those of distance function"
+                assert len(approx_res) == len(
+                    exact_res
+                ), f"Exact({len(exact_res)}) and approximate ({len(approx_res)}) queries returned different number of results"
+                for i, row in enumerate(approx_res):
+                    id, vec, dist, op_dist = row
+                    if i == 0:
+                        if quant_bits == 1:
+                            assert (
+                                id in approx_ids
+                            ), f"First result {id} should appear in returned results in bit quantization. result ids: {approx_ids}"
+                        else:
+                            assert (
+                                id in inserted_vector_orig_ids[id]
+                            ), f"First result {id} should be the query vector id {inserted_vector_orig_ids[id]}. result ids: {approx_ids}"
+                    assert (
+                        dist == op_dist
+                    ), "Distances returned by the operator are not consistent with those of distance function"
 
-                if quant_bits < 32 and dist < highest_dist:
-                    warnings.warn(
-                        f"Returned distance order flipped: {highest_dist} returned before {dist}. Ensure this is a quantization issue"
-                    )
+                    if quant_bits < 32 and dist < highest_dist:
+                        warnings.warn(
+                            f"Returned distance order flipped: {highest_dist} returned before {dist}. Ensure this is a quantization issue"
+                        )
 
-            # assert that all ids equal to the query vector appear in results
+                # assert that all ids equal to the query vector appear in results
 
-            for id in inserted_vector_orig_ids[q_vec_id]:
-                assert (
-                    id in approx_ids
-                ), f"Expected id {id} to be in the results: {approx_ids}"
+                for id in inserted_vector_orig_ids[q_vec_id]:
+                    assert (
+                        id in approx_ids
+                    ), f"Expected id {id} to be in the results: {approx_ids}"
 
 
 def test_insert_vs_create():
