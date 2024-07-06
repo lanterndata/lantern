@@ -429,7 +429,7 @@ pub fn get_default_batch_size(model: &str) -> usize {
         "thenlper/gte-base" => 1000,
         "thenlper/gte-large" => 800,
         "microsoft/all-MiniLM-L12-v2" => 1000,
-        "naver/splade-v3" => 100,
+        "naver/splade-v3" => 30,
         "microsoft/all-mpnet-base-v2" => 400,
         "transformers/multi-qa-mpnet-base-dot-v1" => 300,
         "openai/text-embedding-ada-002" => 500,

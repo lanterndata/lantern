@@ -5,6 +5,11 @@ pub fn quote_ident(str: &str) -> String {
     format!("\"{}\"", str.replace("\"", "\"\""))
 }
 
+pub fn quote_literal(str: &str) -> String {
+    let replaced = str.replace("'", "''");
+    format!("'{}'", replaced)
+}
+
 pub fn get_full_table_name(schema: &str, table: &str) -> String {
     let schema = quote_ident(schema);
     let table = quote_ident(table);

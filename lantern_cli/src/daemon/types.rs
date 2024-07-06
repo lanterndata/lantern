@@ -3,7 +3,7 @@ use crate::external_index::cli::CreateIndexArgs;
 use crate::index_autotune::cli::IndexAutotuneArgs;
 use crate::logger::Logger;
 use crate::types::{AnyhowVoidResult, ProgressCbFn};
-use crate::utils::get_common_embedding_ignore_filters;
+use crate::utils::{get_common_embedding_ignore_filters, quote_literal};
 use itertools::Itertools;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -127,7 +127,7 @@ impl EmbeddingJob {
     }
 
     pub fn set_id_filter(&mut self, row_ids: &Vec<String>) {
-        let row_ctids_str = row_ids.iter().join(",");
+        let row_ctids_str = row_ids.iter().map(|s| quote_literal(s)).join(",");
         self.set_filter(&format!(
             "id IN ({row_ctids_str}) AND {common_filter}",
             common_filter = get_common_embedding_ignore_filters(&self.column)

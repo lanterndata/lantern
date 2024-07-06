@@ -860,3 +860,117 @@ async fn test_daemon_embedding_init_job_streaming_large() {
 
     cancel_token.cancel();
 }
+
+#[tokio::test]
+async fn test_daemon_embedding_job_text_pk() {
+    let (new_connection_uri, mut new_db_client) = setup_test("test_daemon_embedding_job_text_pk")
+        .await
+        .unwrap();
+    new_db_client
+        .batch_execute(&format!(
+            r#"
+    CREATE TABLE {CLIENT_TABLE_NAME_2} (id TEXT PRIMARY KEY, title TEXT, title_embedding REAL[]);
+    INSERT INTO {CLIENT_TABLE_NAME_2} (id, title)
+    VALUES ('id1', 'Test1'),
+           ('id2','Test2'),
+           ('id3','Test3'),
+           ('id4','Test4'),
+           ('id5','Test5');
+
+    INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model)
+    VALUES (15, '{CLIENT_TABLE_NAME_2}', 'title', 'title_embedding', 'BAAI/bge-small-en');
+     "#
+        ))
+        .await
+        .unwrap();
+    let cancel_token = CancellationToken::new();
+    let cancel_token_clone = cancel_token.clone();
+
+    tokio::spawn(async {
+        daemon::start(
+            DaemonArgs {
+                label: None,
+                master_db: None,
+                master_db_schema: String::new(),
+                embeddings: true,
+                autotune: false,
+                external_index: false,
+                databases_table: String::new(),
+                schema: "_lantern_extras_internal".to_owned(),
+                target_db: Some(vec![new_connection_uri]),
+                log_level: LogLevel::Debug,
+            },
+            None,
+            cancel_token_clone,
+        )
+        .await
+        .unwrap();
+    });
+
+    wait_for_completion(
+        &mut new_db_client,
+        &format!("SELECT COUNT(*)=5 FROM {CLIENT_TABLE_NAME_2} WHERE title_embedding IS NOT NULL"),
+        30,
+    )
+    .await
+    .unwrap();
+
+    cancel_token.cancel();
+}
+
+#[tokio::test]
+async fn test_daemon_embedding_job_uuid_pk() {
+    let (new_connection_uri, mut new_db_client) = setup_test("test_daemon_embedding_job_uuid_pk")
+        .await
+        .unwrap();
+    new_db_client
+        .batch_execute(&format!(
+            r#"
+    CREATE TABLE {CLIENT_TABLE_NAME_2} (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), title TEXT, title_embedding REAL[]);
+    INSERT INTO {CLIENT_TABLE_NAME_2} (title)
+    VALUES ('Test1'),
+           ('Test2'),
+           ('Test3'),
+           ('Test4'),
+           ('Test5');
+
+    INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model)
+    VALUES (16, '{CLIENT_TABLE_NAME_2}', 'title', 'title_embedding', 'BAAI/bge-small-en');
+     "#
+        ))
+        .await
+        .unwrap();
+    let cancel_token = CancellationToken::new();
+    let cancel_token_clone = cancel_token.clone();
+
+    tokio::spawn(async {
+        daemon::start(
+            DaemonArgs {
+                label: None,
+                master_db: None,
+                master_db_schema: String::new(),
+                embeddings: true,
+                autotune: false,
+                external_index: false,
+                databases_table: String::new(),
+                schema: "_lantern_extras_internal".to_owned(),
+                target_db: Some(vec![new_connection_uri]),
+                log_level: LogLevel::Debug,
+            },
+            None,
+            cancel_token_clone,
+        )
+        .await
+        .unwrap();
+    });
+
+    wait_for_completion(
+        &mut new_db_client,
+        &format!("SELECT COUNT(*)=5 FROM {CLIENT_TABLE_NAME_2} WHERE title_embedding IS NOT NULL"),
+        30,
+    )
+    .await
+    .unwrap();
+
+    cancel_token.cancel();
+}

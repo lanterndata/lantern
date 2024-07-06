@@ -40,10 +40,7 @@ impl PoolingStrategy {
         output_dims: usize,
     ) -> Vec<Vec<f32>> {
         // Apply ReLU: max(0, x)
-        let relu_embeddings = embeddings.mapv(|x| x.max(0.0));
-
-        // Apply log(1 + x)
-        let relu_log_embeddings = relu_embeddings.mapv(|x| (1.0 + x).ln());
+        let relu_log_embeddings = embeddings.mapv(|x| (1.0 + x.max(0.0)).ln());
 
         // Expand attention mask to match embeddings dimensions
         let attention_mask_shape = attention_mask.shape();
