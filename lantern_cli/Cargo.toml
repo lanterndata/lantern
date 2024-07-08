@@ -1,6 +1,6 @@
 [package]
 name = "lantern_cli"
-version = "0.3.11"
+version = "0.3.12"
 edition = "2021"
 
 [[bin]]

@@ -645,8 +645,12 @@ async fn job_insert_processor(
 
             // check if job's label is not matching the label of current daemon instance
             // do not process the row
-            if let Some(label) = job_labels_map.read().await.get(&id) {
-                if label != &daemon_label {
+            if &daemon_label != "" {
+                if let Some(label) = job_labels_map.read().await.get(&id) {
+                    if label != &daemon_label {
+                        continue;
+                    }
+                } else {
                     continue;
                 }
             }
@@ -708,11 +712,15 @@ async fn job_insert_processor(
 
                 let mut job = job.unwrap();
 
-                if let Some(label) = &job.label {
-                    // insert label in cache
-                    job_labels_map.write().await.insert(job.id, label.clone());
+                if &daemon_label != "" {
+                    if let Some(label) = &job.label {
+                        // insert label in cache
+                        job_labels_map.write().await.insert(job.id, label.clone());
 
-                    if label != &daemon_label {
+                        if label != &daemon_label {
+                            continue;
+                        }
+                    } else {
                         continue;
                     }
                 }
@@ -1111,7 +1119,7 @@ pub async fn start(
             main_db_uri.clone(),
             schema.clone(),
             table.clone(),
-            args.label.clone().unwrap_or(String::new()),
+            args.label.clone().unwrap_or(String::from("")),
             data_path,
             jobs_map.clone(),
             job_batching_hashmap.clone(),
