@@ -9,6 +9,7 @@ use super::types::{
 };
 use crate::daemon::helpers::anyhow_wrap_connection;
 use crate::embeddings::cli::EmbeddingArgs;
+use crate::embeddings::get_default_batch_size;
 use crate::logger::Logger;
 use crate::utils::{get_common_embedding_ignore_filters, get_full_table_name, quote_ident};
 use crate::{embeddings, types::*};
@@ -769,6 +770,7 @@ async fn job_insert_processor(
             drop(job_map);
 
             for (job_id, row_ids) in jobs {
+                let mut ids = row_ids;
                 let job_result = batch_client
                     .query_one(
                         &format!("{job_query_sql} WHERE id=$1 AND canceled_at IS NULL"),
@@ -798,10 +800,28 @@ async fn job_insert_processor(
                     job_labels_map_r1.write().await.remove(&job.id);
                 }
 
+                let max_batch_size = get_default_batch_size(&job.model);
+
+                if ids.len() > max_batch_size {
+                    // make sure that updates do not exceed more than
+                    // specified batch size for the model
+                    // there may be a case when large batch will be inserted
+                    // and the update job will block other jobs for a long period of time
+                    let extra_ids = ids.split_off(max_batch_size - 1);
+                    let mut jobs = job_batching_hashmap.lock().await;
+                    let job = jobs.get_mut(&job.id);
+
+                    if let Some(job_vec) = job {
+                        job_vec.extend(extra_ids);
+                    } else {
+                        jobs.insert(job_id, extra_ids);
+                    }
+                }
+
                 job.set_is_init(false);
-                let rows_len = row_ids.len();
-                job.set_id_filter(&row_ids);
-                job.set_row_ids(row_ids);
+                let rows_len = ids.len();
+                job.set_id_filter(&ids);
+                job.set_row_ids(ids);
                 logger.debug(&format!(
                     "Sending batch job {job_id} (len: {rows_len}) to embedding_worker"
                 ));
