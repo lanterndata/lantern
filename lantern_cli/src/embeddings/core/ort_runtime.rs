@@ -40,37 +40,32 @@ impl PoolingStrategy {
         output_dims: usize,
     ) -> Vec<Vec<f32>> {
         // Apply ReLU: max(0, x)
-        let relu_log_embeddings = embeddings.mapv(|x| (1.0 + x.max(0.0)).ln());
+        let mut relu_log_embeddings = embeddings.to_owned();
+        relu_log_embeddings.mapv_inplace(|x| (1.0 + x.max(0.0)).ln());
 
         // Expand attention mask to match embeddings dimensions
         let attention_mask_shape = attention_mask.shape();
-        let input_mask_expanded = attention_mask.clone().insert_axis(Axis(2)).into_owned();
-        let input_mask_expanded = input_mask_expanded
+        let mut attention_mask = attention_mask.clone();
+
+        attention_mask.insert_axis_inplace(Axis(2));
+        let attention_mask = attention_mask
             .broadcast((
                 attention_mask_shape[0],
                 attention_mask_shape[1],
                 output_dims,
             ))
             .unwrap()
-            .to_owned();
-        let input_mask_expanded = input_mask_expanded.mapv(|v| v as f32);
-
+            .mapv(|v| v as f32);
         // Apply attention mask
-        let relu_log_embeddings = relu_log_embeddings.to_owned();
-        let masked_embeddings = &relu_log_embeddings * &input_mask_expanded;
-
-        // Find the maximum value across the sequence dimension (Axis 1)
-        let max_embeddings = masked_embeddings.map_axis(Axis(1), |view| {
-            view.fold(f32::NEG_INFINITY, |a, &b| a.max(b))
-        });
+        relu_log_embeddings *= &attention_mask;
 
         // Convert the resulting max_embeddings to a Vec<Vec<f32>>
-        max_embeddings
-            .iter()
-            .map(|s| *s)
-            .chunks(output_dims)
-            .into_iter()
-            .map(|b| b.collect())
+        relu_log_embeddings
+            .map_axis_mut(Axis(1), |view| {
+                view.fold(f32::NEG_INFINITY, |a, &b| a.max(b))
+            })
+            .outer_iter()
+            .map(|row| row.to_owned().into_raw_vec())
             .collect()
     }
 
@@ -93,30 +88,28 @@ impl PoolingStrategy {
         attention_mask: &SessionInput,
         output_dims: usize,
     ) -> Vec<Vec<f32>> {
+        let mut embeddings = embeddings.to_owned();
         let attention_mask_shape = attention_mask.shape();
-        let input_mask_expanded = attention_mask.clone().insert_axis(Axis(2)).into_owned();
-        let input_mask_expanded = input_mask_expanded
+        let mut attention_mask = attention_mask.clone();
+
+        attention_mask.insert_axis_inplace(Axis(2));
+        let attention_mask = attention_mask
             .broadcast((
                 attention_mask_shape[0],
                 attention_mask_shape[1],
                 output_dims,
             ))
             .unwrap()
-            .to_owned();
-        let input_mask_expanded = input_mask_expanded.mapv(|v| v as f32);
-        let embeddings = embeddings.to_owned();
-        let masked_embeddings = &embeddings * &input_mask_expanded;
+            .mapv(|v| v as f32);
 
-        let mean_embeddings = masked_embeddings.sum_axis(Axis(1));
-        let divider = input_mask_expanded.sum_axis(Axis(1)).mapv(|x| x.max(1e-9));
-        let embeddings = mean_embeddings / divider;
+        embeddings *= &attention_mask;
+
+        let embeddings =
+            embeddings.sum_axis(Axis(1)) / attention_mask.sum_axis(Axis(1)).mapv(|x| x.max(1e-9));
 
         embeddings
-            .iter()
-            .map(|s| *s)
-            .chunks(output_dims)
-            .into_iter()
-            .map(|b| b.collect())
+            .outer_iter()
+            .map(|row| row.to_owned().into_raw_vec())
             .collect()
     }
 
