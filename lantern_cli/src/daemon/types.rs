@@ -220,7 +220,6 @@ pub type JobEventHandlersMap = RwLock<HashMap<i32, JobTaskEventTx>>;
 pub type JobBatchingHashMap = Mutex<HashMap<i32, Vec<String>>>;
 pub type ClientJobsMap = RwLock<HashMap<i32, UnboundedSender<ClientJobSignal>>>;
 pub type DaemonJobHandlerMap = RwLock<HashMap<String, CancellationToken>>;
-pub type JobLabelsMap = RwLock<HashMap<i32, String>>;
 
 pub enum JobEvent {
     Done,

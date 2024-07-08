@@ -5,7 +5,7 @@ use super::helpers::{
 };
 use super::types::{
     ClientJobsMap, EmbeddingJob, EmbeddingProcessorArgs, JobBatchingHashMap, JobEvent,
-    JobEventHandlersMap, JobInsertNotification, JobLabelsMap, JobRunArgs, JobUpdateNotification,
+    JobEventHandlersMap, JobInsertNotification, JobRunArgs, JobUpdateNotification,
 };
 use crate::daemon::helpers::anyhow_wrap_connection;
 use crate::embeddings::cli::EmbeddingArgs;
@@ -598,7 +598,6 @@ async fn job_insert_processor(
     jobs_map: Arc<JobEventHandlersMap>,
     job_batching_hashmap: Arc<JobBatchingHashMap>,
     client_jobs_map: Arc<ClientJobsMap>,
-    job_labels_map: Arc<JobLabelsMap>,
     cancel_token: CancellationToken,
     logger: Arc<Logger>,
 ) -> AnyhowVoidResult {
@@ -628,7 +627,6 @@ async fn job_insert_processor(
     let logger_r1 = logger.clone();
     let lock_table_name = Arc::new(get_full_table_name(&schema, EMB_LOCK_TABLE_NAME));
     let job_batching_hashmap_r1 = job_batching_hashmap.clone();
-    let job_labels_map_r1 = job_labels_map.clone();
 
     let (insert_client, connection) = tokio_postgres::connect(&db_uri_r1, NoTls).await?;
     let insert_client = Arc::new(insert_client);
@@ -642,14 +640,6 @@ async fn job_insert_processor(
     let insert_processor_task = tokio::spawn(async move {
         while let Some(notification) = notifications_rx.recv().await {
             let id = notification.id;
-
-            // check if job's label is not matching the label of current daemon instance
-            // do not process the row
-            if let Some(label) = job_labels_map.read().await.get(&id) {
-                if label != &daemon_label {
-                    continue;
-                }
-            }
 
             if let Some(row_id) = notification.row_id {
                 // Do this in a non-blocking way to not block collecting of updates while locking
@@ -708,17 +698,11 @@ async fn job_insert_processor(
 
                 let mut job = job.unwrap();
 
-                if &daemon_label != "" {
-                    if let Some(label) = &job.label {
-                        // insert label in cache
-                        job_labels_map.write().await.insert(job.id, label.clone());
+                let are_labels_matching = &daemon_label == ""
+                    || (job.label.is_some() && &daemon_label == job.label.as_ref().unwrap());
 
-                        if label != &daemon_label {
-                            continue;
-                        }
-                    } else {
-                        continue;
-                    }
+                if !are_labels_matching {
+                    continue;
                 }
 
                 if is_init {
@@ -794,16 +778,6 @@ async fn job_insert_processor(
                 }
                 let mut job = job.unwrap();
 
-                // update label in cache
-                if let Some(label) = &job.label {
-                    job_labels_map_r1
-                        .write()
-                        .await
-                        .insert(job.id, label.clone());
-                } else {
-                    job_labels_map_r1.write().await.remove(&job.id);
-                }
-
                 let max_batch_size = get_default_batch_size(&job.model);
 
                 if ids.len() > max_batch_size {
@@ -864,6 +838,7 @@ async fn job_update_processor(
     job_insert_queue_tx: UnboundedSender<JobInsertNotification>,
     schema: String,
     table: String,
+    daemon_label: String,
     jobs_map: Arc<JobEventHandlersMap>,
     job_batching_hashmap: Arc<JobBatchingHashMap>,
     client_jobs_map: Arc<ClientJobsMap>,
@@ -877,11 +852,12 @@ async fn job_update_processor(
         }
         Ok(())
     });
+
     let update_processor_task = tokio::spawn(async move {
         while let Some(notification) = update_queue_rx.recv().await {
             let full_table_name = get_full_table_name(&schema, &table);
             let id = notification.id;
-            let row = client.query_one(&format!("SELECT pk, dst_column, src_column as \"column\", \"table\", \"schema\", canceled_at, init_finished_at FROM {0} WHERE id=$1", &full_table_name), &[&id]).await?;
+            let row = client.query_one(&format!("SELECT pk, label, dst_column, src_column as \"column\", \"table\", \"schema\", canceled_at, init_finished_at FROM {0} WHERE id=$1", &full_table_name), &[&id]).await?;
             let src_column = row.get::<&str, String>("column").to_owned();
             let out_column = row.get::<&str, String>("dst_column").to_owned();
 
@@ -895,7 +871,11 @@ async fn job_update_processor(
                 ));
             }
 
-            if init_finished_at.is_some() {
+            let are_labels_matching = &daemon_label == ""
+                || (row.get::<&str, Option<String>>("label").is_some()
+                    && &daemon_label == row.get::<&str, Option<String>>("label").as_ref().unwrap());
+
+            if init_finished_at.is_some() && are_labels_matching {
                 toggle_client_job(
                     client_jobs_map.clone(),
                     id,
@@ -911,7 +891,7 @@ async fn job_update_processor(
                     canceled_at.is_none(),
                 )
                 .await?;
-            } else if canceled_at.is_some() {
+            } else if canceled_at.is_some() || !are_labels_matching {
                 // Cancel ongoing job
                 let jobs = jobs_map.read().await;
                 let job = jobs.get(&id);
@@ -922,13 +902,15 @@ async fn job_update_processor(
                 }
                 drop(jobs);
 
-                // Cancel collected jobs
-                let mut job_map = job_batching_hashmap.lock().await;
-                job_map.remove(&id);
-                drop(job_map);
+                // Cancel collected jobs only if job is canceled
+                if canceled_at.is_some() {
+                    let mut job_map = job_batching_hashmap.lock().await;
+                    job_map.remove(&id);
+                    drop(job_map);
+                }
             }
 
-            if canceled_at.is_none() && notification.generate_missing {
+            if canceled_at.is_none() && notification.generate_missing && are_labels_matching {
                 // this will be on startup to generate embeddings for rows that might be inserted
                 // while daemon is offline
                 job_insert_queue_tx.send(JobInsertNotification {
@@ -1076,7 +1058,6 @@ pub async fn start(
 
     let jobs_map: Arc<JobEventHandlersMap> = Arc::new(RwLock::new(HashMap::new()));
     let client_jobs_map: Arc<ClientJobsMap> = Arc::new(RwLock::new(HashMap::new()));
-    let job_labels_map: Arc<JobLabelsMap> = Arc::new(RwLock::new(HashMap::new()));
 
     let job_batching_hashmap: Arc<JobBatchingHashMap> = Arc::new(Mutex::new(HashMap::new()));
 
@@ -1120,7 +1101,6 @@ pub async fn start(
             jobs_map.clone(),
             job_batching_hashmap.clone(),
             client_jobs_map.clone(),
-            job_labels_map,
             cancel_token.clone(),
             logger.clone(),
         ),
@@ -1130,6 +1110,7 @@ pub async fn start(
             insert_notification_queue_tx.clone(),
             schema.clone(),
             table.clone(),
+            args.label.clone().unwrap_or(String::from("")),
             jobs_map.clone(),
             job_batching_hashmap.clone(),
             client_jobs_map.clone(),

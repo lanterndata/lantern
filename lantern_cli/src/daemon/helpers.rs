@@ -206,6 +206,13 @@ pub async fn startup_hook(
                 THEN
                      PERFORM pg_notify('{channel}', 'update:' || NEW.id::TEXT);
 	            END IF;
+
+                IF to_jsonb(NEW) ? 'label' THEN
+                    IF NEW.label != OLD.label THEN
+                        PERFORM pg_notify('{channel}', 'update:' || NEW.id::TEXT);
+	                END IF;
+	            END IF;
+
                 RETURN NEW;
               END;
             $$ LANGUAGE plpgsql;

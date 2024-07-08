@@ -713,11 +713,11 @@ async fn test_daemon_job_labels_mismatch() {
         .batch_execute(&format!(
             r#"
     INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("id", "label", "table", src_column, dst_column, embedding_model)
-    VALUES (13, NULL, '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', 'BAAI/bge-small-en');
+    VALUES (113, NULL, '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', 'BAAI/bge-small-en');
     INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("id", "label", "table", src_column, dst_column, embedding_model)
-    VALUES (14, 'test-label', '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', 'BAAI/bge-small-en');
+    VALUES (114, 'test-label', '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', 'BAAI/bge-small-en');
     INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("id", "label", "table", src_column, dst_column, embedding_model)
-    VALUES (15, 'test-label2', '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', 'BAAI/bge-small-en');
+    VALUES (115, 'test-label2', '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', 'BAAI/bge-small-en');
      "#
         ))
         .await
@@ -762,6 +762,223 @@ async fn test_daemon_job_labels_mismatch() {
 }
 
 #[tokio::test]
+async fn test_daemon_job_labels_match_insert() {
+    let (new_connection_uri, mut new_db_client) = setup_test("test_daemon_job_labels_match_insert")
+        .await
+        .unwrap();
+
+    let cancel_token = CancellationToken::new();
+    let cancel_token_clone = cancel_token.clone();
+
+    let connection_uri = new_connection_uri.clone();
+    tokio::spawn(async {
+        daemon::start(
+            DaemonArgs {
+                label: Some("test-label".to_owned()),
+                master_db: None,
+                master_db_schema: String::new(),
+                embeddings: true,
+                autotune: false,
+                external_index: false,
+                databases_table: String::new(),
+                schema: "_lantern_extras_internal".to_owned(),
+                target_db: Some(vec![connection_uri]),
+                log_level: LogLevel::Debug,
+            },
+            None,
+            cancel_token_clone,
+        )
+        .await
+        .unwrap();
+    });
+
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    new_db_client
+        .batch_execute(&format!(
+            r#"
+    INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("id", "label", "table", src_column, dst_column, embedding_model)
+    VALUES (123, 'test-label', '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', 'BAAI/bge-small-en');
+     "#
+        ))
+        .await
+        .unwrap();
+
+    wait_for_completion(
+        &mut new_db_client,
+        &format!("SELECT COUNT(*)=0 FROM _lantern_extras_internal.embedding_generation_jobs WHERE init_started_at IS NULL"),
+        5,
+    )
+    .await
+    .unwrap();
+
+    cancel_token.cancel();
+}
+
+#[tokio::test]
+async fn test_daemon_job_label_update() {
+    let (new_connection_uri, mut new_db_client) =
+        setup_test("test_daemon_job_label_update").await.unwrap();
+
+    let cancel_token = CancellationToken::new();
+    let cancel_token_clone = cancel_token.clone();
+
+    new_db_client
+        .batch_execute(&format!(
+            r#"
+    INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("id", "label", "table", src_column, dst_column, embedding_model)
+    VALUES (133, 'test-label', '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', 'BAAI/bge-small-en');
+    INSERT INTO {CLIENT_TABLE_NAME} (title) SELECT 'Test' ||  n as title FROM generate_series(1, 4) as n;
+     "#
+        ))
+        .await
+        .unwrap();
+
+    let connection_uri = new_connection_uri.clone();
+    tokio::spawn(async {
+        daemon::start(
+            DaemonArgs {
+                label: Some("test-label2".to_owned()),
+                master_db: None,
+                master_db_schema: String::new(),
+                embeddings: true,
+                autotune: false,
+                external_index: false,
+                databases_table: String::new(),
+                schema: "_lantern_extras_internal".to_owned(),
+                target_db: Some(vec![connection_uri]),
+                log_level: LogLevel::Debug,
+            },
+            None,
+            cancel_token_clone,
+        )
+        .await
+        .unwrap();
+    });
+
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    wait_for_completion(
+        &mut new_db_client,
+        &format!("SELECT COUNT(*)=1 FROM _lantern_extras_internal.embedding_generation_jobs WHERE init_started_at IS NULL"),
+        5,
+    )
+    .await
+    .unwrap();
+
+    new_db_client
+        .batch_execute(&format!(
+            r#"
+    UPDATE _lantern_extras_internal.embedding_generation_jobs SET label='test-label2';
+     "#
+        ))
+        .await
+        .unwrap();
+
+    new_db_client
+        .batch_execute(&format!(
+            r#"
+    INSERT INTO {CLIENT_TABLE_NAME} (title) SELECT 'Test' ||  n as title FROM generate_series(5, 10) as n;
+     "#
+        ))
+        .await
+        .unwrap();
+
+    wait_for_completion(
+        &mut new_db_client,
+        &format!("SELECT COUNT(*)=10 FROM {CLIENT_TABLE_NAME} WHERE title_embedding IS NOT NULL"),
+        20,
+    )
+    .await
+    .unwrap();
+
+    cancel_token.cancel();
+}
+
+#[tokio::test]
+async fn test_daemon_job_label_update_cancel() {
+    let (new_connection_uri, mut new_db_client) = setup_test("test_daemon_job_label_update_cancel")
+        .await
+        .unwrap();
+
+    let cancel_token = CancellationToken::new();
+    let cancel_token_clone = cancel_token.clone();
+
+    new_db_client
+        .batch_execute(&format!(
+            r#"
+    INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("id", "label", "table", src_column, dst_column, embedding_model)
+    VALUES (143, 'test-label', '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', 'BAAI/bge-small-en');
+    INSERT INTO {CLIENT_TABLE_NAME} (title) SELECT 'Test' ||  n as title FROM generate_series(1, 4) as n;
+     "#
+        ))
+        .await
+        .unwrap();
+
+    let connection_uri = new_connection_uri.clone();
+    tokio::spawn(async {
+        daemon::start(
+            DaemonArgs {
+                label: Some("test-label".to_owned()),
+                master_db: None,
+                master_db_schema: String::new(),
+                embeddings: true,
+                autotune: false,
+                external_index: false,
+                databases_table: String::new(),
+                schema: "_lantern_extras_internal".to_owned(),
+                target_db: Some(vec![connection_uri]),
+                log_level: LogLevel::Debug,
+            },
+            None,
+            cancel_token_clone,
+        )
+        .await
+        .unwrap();
+    });
+
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    wait_for_completion(
+        &mut new_db_client,
+        &format!("SELECT COUNT(*)=0 FROM _lantern_extras_internal.embedding_generation_jobs WHERE init_started_at IS NULL"),
+        5,
+    )
+    .await
+    .unwrap();
+
+    new_db_client
+        .batch_execute(&format!(
+            r#"
+    UPDATE _lantern_extras_internal.embedding_generation_jobs SET label='test-label2';
+     "#
+        ))
+        .await
+        .unwrap();
+
+    new_db_client
+        .batch_execute(&format!(
+            r#"
+    INSERT INTO {CLIENT_TABLE_NAME} (title) SELECT 'Test' ||  n as title FROM generate_series(5, 10) as n;
+     "#
+        ))
+        .await
+        .unwrap();
+
+    tokio::time::sleep(Duration::from_secs(20)).await;
+
+    wait_for_completion(
+        &mut new_db_client,
+        &format!("SELECT COUNT(*)=4 FROM {CLIENT_TABLE_NAME} WHERE title_embedding IS NOT NULL"),
+        1,
+    )
+    .await
+    .unwrap();
+
+    cancel_token.cancel();
+}
+
+#[tokio::test]
 async fn test_daemon_job_labels_match() {
     let (new_connection_uri, mut new_db_client) =
         setup_test("test_daemon_job_labels_match").await.unwrap();
@@ -769,7 +986,7 @@ async fn test_daemon_job_labels_match() {
         .batch_execute(&format!(
             r#"
     INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("id", "label", "table", src_column, dst_column, embedding_model)
-    VALUES (13, 'test-label', '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', 'BAAI/bge-small-en');
+    VALUES (153, 'test-label', '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', 'BAAI/bge-small-en');
      "#
         ))
         .await
