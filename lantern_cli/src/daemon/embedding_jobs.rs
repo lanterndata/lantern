@@ -645,12 +645,8 @@ async fn job_insert_processor(
 
             // check if job's label is not matching the label of current daemon instance
             // do not process the row
-            if &daemon_label != "" {
-                if let Some(label) = job_labels_map.read().await.get(&id) {
-                    if label != &daemon_label {
-                        continue;
-                    }
-                } else {
+            if let Some(label) = job_labels_map.read().await.get(&id) {
+                if label != &daemon_label {
                     continue;
                 }
             }

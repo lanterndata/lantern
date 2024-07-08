@@ -706,9 +706,65 @@ async fn test_daemon_embedding_jobs_streaming_with_failure() {
 }
 
 #[tokio::test]
-async fn test_daemon_job_labels() {
+async fn test_daemon_job_labels_mismatch() {
     let (new_connection_uri, mut new_db_client) =
-        setup_test("test_daemon_job_labels").await.unwrap();
+        setup_test("test_daemon_job_labels_mismatch").await.unwrap();
+    new_db_client
+        .batch_execute(&format!(
+            r#"
+    INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("id", "label", "table", src_column, dst_column, embedding_model)
+    VALUES (13, NULL, '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', 'BAAI/bge-small-en');
+    INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("id", "label", "table", src_column, dst_column, embedding_model)
+    VALUES (14, 'test-label', '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', 'BAAI/bge-small-en');
+    INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("id", "label", "table", src_column, dst_column, embedding_model)
+    VALUES (15, 'test-label2', '{CLIENT_TABLE_NAME}', 'title', 'title_embedding', 'BAAI/bge-small-en');
+     "#
+        ))
+        .await
+        .unwrap();
+
+    let cancel_token = CancellationToken::new();
+    let cancel_token_clone = cancel_token.clone();
+
+    let connection_uri = new_connection_uri.clone();
+    tokio::spawn(async {
+        daemon::start(
+            DaemonArgs {
+                label: Some("test-label".to_owned()),
+                master_db: None,
+                master_db_schema: String::new(),
+                embeddings: true,
+                autotune: false,
+                external_index: false,
+                databases_table: String::new(),
+                schema: "_lantern_extras_internal".to_owned(),
+                target_db: Some(vec![connection_uri]),
+                log_level: LogLevel::Debug,
+            },
+            None,
+            cancel_token_clone,
+        )
+        .await
+        .unwrap();
+    });
+
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    wait_for_completion(
+        &mut new_db_client,
+        &format!("SELECT COUNT(*)=1 FROM _lantern_extras_internal.embedding_generation_jobs WHERE init_started_at IS NOT NULL"),
+        1,
+    )
+    .await
+    .unwrap();
+
+    cancel_token.cancel();
+}
+
+#[tokio::test]
+async fn test_daemon_job_labels_match() {
+    let (new_connection_uri, mut new_db_client) =
+        setup_test("test_daemon_job_labels_match").await.unwrap();
     new_db_client
         .batch_execute(&format!(
             r#"
@@ -748,41 +804,8 @@ async fn test_daemon_job_labels() {
 
     wait_for_completion(
         &mut new_db_client,
-        &format!("SELECT COUNT(*)=1 FROM _lantern_extras_internal.embedding_generation_jobs WHERE init_started_at IS NULL"),
+        &format!("SELECT COUNT(*)=0 FROM _lantern_extras_internal.embedding_generation_jobs WHERE init_started_at IS NULL"),
         1,
-    )
-    .await
-    .unwrap();
-
-    cancel_token.cancel();
-
-    let cancel_token = CancellationToken::new();
-    let cancel_token_clone = cancel_token.clone();
-    tokio::spawn(async {
-        daemon::start(
-            DaemonArgs {
-                label: Some("test-label".to_owned()),
-                master_db: None,
-                master_db_schema: String::new(),
-                embeddings: true,
-                autotune: false,
-                external_index: false,
-                databases_table: String::new(),
-                schema: "_lantern_extras_internal".to_owned(),
-                target_db: Some(vec![new_connection_uri]),
-                log_level: LogLevel::Debug,
-            },
-            None,
-            cancel_token_clone,
-        )
-        .await
-        .unwrap();
-    });
-
-    wait_for_completion(
-        &mut new_db_client,
-        &format!("SELECT COUNT(*)=1 FROM _lantern_extras_internal.embedding_generation_jobs WHERE init_started_at IS NOT NULL AND init_finished_at IS NOT NULL"),
-        20,
     )
     .await
     .unwrap();
