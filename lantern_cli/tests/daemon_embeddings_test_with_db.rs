@@ -999,7 +999,7 @@ async fn test_daemon_job_labels_match() {
     tokio::spawn(async {
         daemon::start(
             DaemonArgs {
-                label: None,
+                label: Some(String::from("test-label")),
                 master_db: None,
                 master_db_schema: String::new(),
                 embeddings: true,

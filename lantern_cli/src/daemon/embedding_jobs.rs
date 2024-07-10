@@ -698,8 +698,8 @@ async fn job_insert_processor(
 
                 let mut job = job.unwrap();
 
-                let are_labels_matching = &daemon_label == ""
-                    || (job.label.is_some() && &daemon_label == job.label.as_ref().unwrap());
+                let are_labels_matching =
+                    job.label.as_ref().unwrap_or(&String::from("")) == &daemon_label;
 
                 if !are_labels_matching {
                     continue;
@@ -871,9 +871,11 @@ async fn job_update_processor(
                 ));
             }
 
-            let are_labels_matching = &daemon_label == ""
-                || (row.get::<&str, Option<String>>("label").is_some()
-                    && &daemon_label == row.get::<&str, Option<String>>("label").as_ref().unwrap());
+            let are_labels_matching = row
+                .get::<&str, Option<String>>("label")
+                .as_ref()
+                .unwrap_or(&String::from(""))
+                == &daemon_label;
 
             if init_finished_at.is_some() && are_labels_matching {
                 toggle_client_job(
