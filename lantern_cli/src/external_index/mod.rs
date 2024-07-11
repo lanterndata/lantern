@@ -260,7 +260,7 @@ pub fn create_usearch_index(
     let should_create_index = args.import;
     // reserve 20% progress for index import
     let count_for_progress = if should_create_index {
-        (count as f64 * 1.2) as i64
+        (count as f64 * 1.2).ceil() as i64
     } else {
         count
     };

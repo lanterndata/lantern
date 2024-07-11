@@ -160,7 +160,7 @@ pub async fn startup_hook(
         .await?;
     // lock to not have conflict among other daemon instances
     transaction
-        .execute("SELECT pg_advisory_lock(1337);", &[])
+        .execute("SELECT pg_advisory_xact_lock(1337);", &[])
         .await?;
     // create schema and table if not exists
     transaction
@@ -271,9 +271,6 @@ pub async fn startup_hook(
             .await?;
     }
 
-    transaction
-        .execute("SELECT pg_advisory_unlock(1337);", &[])
-        .await?;
     transaction.commit().await?;
 
     Ok(())
