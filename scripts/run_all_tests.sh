@@ -89,21 +89,14 @@ lantern_extras_installed=$($PSQL -U $DB_USER -p $DB_PORT -d postgres -c "SELECT 
 REGRESSION=0
 PARALLEL=0
 MISC=0
-C_TESTS=0
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --regression) REGRESSION=1 ;;
         --parallel) PARALLEL=1 ;;
         --misc) MISC=1 ;;
-        --client) C_TESTS=1 ;;
     esac
     shift
 done
-
-if [ "$C_TESTS" -eq 1 ]; then
-    DB_USER=$DB_USER DB_PORT=$DB_PORT REPLICA_PORT=$REPLICA_PORT TEST_DB_NAME=$TESTDB ENABLE_REPLICA=$ENABLE_REPLICA ./bin/lantern_c_tests
-    exit $?
-fi
 
 FIRST_TEST=1
 function print_test {

@@ -42,9 +42,8 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
       - name: Run tests linux
         id: test-linux
-        run: sudo su postgres -c "PG_VERSION=$PG_VERSION RUN_REPLICA_TESTS=$RUN_REPLICA_TESTS ENABLE_COVERAGE=$ENABLE_COVERAGE ./ci/scripts/run-tests-linux.sh"
+        run: sudo su postgres -c "PG_VERSION=$PG_VERSION ENABLE_COVERAGE=$ENABLE_COVERAGE ./ci/scripts/run-tests-linux.sh"
         env:
-          RUN_REPLICA_TESTS: "${{ matrix.postgres == 15 && '1' || '0' }}"
           PG_VERSION: ${{ matrix.postgres }}
           ENABLE_COVERAGE: ${{ (startsWith(matrix.os, 'ubuntu') && matrix.postgres == 15) && '1' || '0' }}
         if: ${{ !startsWith(matrix.os, 'mac') }}
