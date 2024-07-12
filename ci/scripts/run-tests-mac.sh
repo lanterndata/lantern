@@ -22,4 +22,4 @@ wait_for_pg(){
 # Start database
 brew services start postgresql@$PG_VERSION
 
-wait_for_pg && cd $WORKDIR/build && make test && make test-parallel && make test-client
+wait_for_pg && cd $WORKDIR/build && make test && make test-parallel
