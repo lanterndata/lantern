@@ -48,7 +48,7 @@ jobs:
           ENABLE_COVERAGE: ${{ (startsWith(matrix.os, 'ubuntu') && matrix.postgres == 15) && '1' || '0' }}
         if: ${{ !startsWith(matrix.os, 'mac') }}
       # add a step to run integration tests
-      - name: Run integration tests
+      - name: Run integration tests linux
         id: integration-test-linux
         run: |
           # pytest tries to open files with full path and so 'work' home folder must be listable by postgres for it to work
@@ -57,6 +57,7 @@ jobs:
           echo "Done with integration tests"
         env:
           PG_VERSION: ${{ matrix.postgres }}
+        if: ${{ !startsWith(matrix.os, 'mac') }}
       - name: Run update tests linux
         id: update-test-linux
         run: |
@@ -83,6 +84,14 @@ jobs:
         env:
           PG_VERSION: ${{ matrix.postgres }}
         # postgresql@11 seems broken on brew on Ventura used in the runner https://github.com/orgs/Homebrew/discussions/5263
+        if: ${{ startsWith(matrix.os, 'mac') && matrix.postgres != 11 }}
+      - name: Run integration tests mac
+        id: integration-test-mac
+        run: |
+          PATH="/usr/local/opt/postgresql@${PG_VERSION}/bin:$PATH" /tmp/lantern/cienv/bin/python ./scripts/integration_tests.py &&\
+          echo "Done with integration tests"
+        env:
+          PG_VERSION: ${{ matrix.postgres }}
         if: ${{ startsWith(matrix.os, 'mac') && matrix.postgres != 11 }}
       - name: Upload Postgres logs
         if: failure()
