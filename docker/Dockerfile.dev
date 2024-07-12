@@ -55,7 +55,7 @@ COPY . .
 RUN sudo rm -rf build \
     && mkdir build \
     && cd build \
-    && cmake -DCMAKE_BUILD_TYPE=Debug -DBUILD_C_TESTS=ON .. \
+    && cmake -DCMAKE_BUILD_TYPE=Debug .. \
     && make -j install
 
 # Install benchmarking tools in build folder

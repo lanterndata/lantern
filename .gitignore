@@ -24,3 +24,5 @@ sanitizer
 .cache
 .cosine
 .env.rb
+.venv
+__pycache__
