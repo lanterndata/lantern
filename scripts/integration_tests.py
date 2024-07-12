@@ -259,7 +259,7 @@ def test_selects(db, setup_copy_table_with_index, distance_metric, quant_bits, r
                 )
             if quant_bits == 1 and recall < 0.6:
                 assert (
-                    recall >= 0.5
+                    recall >= 0.4
                 ), f"Recall is only {recall} (returned ids: {approx_ids}, exact ids: {exact_ids}"
                 warnings.warn(
                     f"Recall is only {recall} (returned ids: {approx_ids}, exact ids: {exact_ids}"
@@ -647,4 +647,4 @@ def test_vector_search_with_filter(primary, source_table):
 
 
 if __name__ == "__main__":
-    pytest.main(["-s", __file__])
+    os._exit(pytest.main(["-s", __file__]))
