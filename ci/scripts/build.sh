@@ -55,7 +55,7 @@ function setup_postgres() {
 }
 
 function setup_lantern() {
-   LANTERN_VERSION=narek/streaming-hnsw-index-selects
+   LANTERN_VERSION=v0.3.1
     git clone --recursive https://github.com/lanterndata/lantern.git /tmp/lantern 
     pushd /tmp/lantern
       git checkout ${LANTERN_VERSION} && \
