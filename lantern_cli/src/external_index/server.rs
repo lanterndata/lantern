@@ -4,9 +4,10 @@ use rand::Rng;
 use std::fs;
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
+use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::sync::mpsc::{self, Receiver, SyncSender};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 use usearch::ffi::{IndexOptions, ScalarKind};
 use usearch::Index;
@@ -16,10 +17,10 @@ use crate::types::*;
 
 const LABEL_SIZE: usize = 8; // for now we are only using 32bit integers
 const INTEGER_SIZE: usize = 4; // for now we are only using 32bit integers
-const PROTOCOL_HEADER_SIZE: usize = 4;
-const INIT_MSG: u32 = 0x13333337;
-const END_MSG: u32 = 0x31333337;
-const ERR_MSG: u32 = 0x37333337;
+pub const PROTOCOL_HEADER_SIZE: usize = 4;
+pub const INIT_MSG: u32 = 0x13333337;
+pub const END_MSG: u32 = 0x31333337;
+pub const ERR_MSG: u32 = 0x37333337;
 // magic byte + pq + metric_kind + quantization + dim + m + efc + ef + num_centroids +
 // num_subvectors + capacity
 static INDEX_HEADER_LENGTH: usize = INTEGER_SIZE * 11;
@@ -29,6 +30,7 @@ struct ThreadSafeIndex(Index);
 
 unsafe impl Sync for ThreadSafeIndex {}
 unsafe impl Send for ThreadSafeIndex {}
+
 fn parse_index_options(
     logger: Arc<Logger>,
     stream: Arc<Mutex<TcpStream>>,
@@ -57,7 +59,7 @@ fn parse_index_options(
         let mut codebook = Vec::with_capacity(num_centroids as usize);
 
         loop {
-            match read_frame(&mut stream, &mut buf, expected_payload_size)? {
+            match read_frame(&mut stream, &mut buf, expected_payload_size, None)? {
                 ProtocolMessage::Exit => break,
                 ProtocolMessage::Data(buf) => {
                     let mut vec: Vec<f32> = bytes_to_f32_vec_le(&buf);
@@ -113,20 +115,18 @@ fn parse_tuple(buf: &[u8]) -> Result<Row, anyhow::Error> {
     Ok((label, vec))
 }
 
-fn index_chunk(rows: Vec<(u64, Vec<f32>)>, index: Arc<ThreadSafeIndex>) -> AnyhowVoidResult {
-    for row in rows {
-        index.0.add(row.0, &row.1)?;
-    }
-    Ok(())
-}
-
 fn initialize_index(
     logger: Arc<Logger>,
     stream: Arc<Mutex<TcpStream>>,
 ) -> Result<ThreadSafeIndex, anyhow::Error> {
     let mut buf = vec![0 as u8; INDEX_HEADER_LENGTH];
     let mut soc_stream = stream.lock().unwrap();
-    match read_frame(&mut soc_stream, &mut buf, INDEX_HEADER_LENGTH)? {
+    match read_frame(
+        &mut soc_stream,
+        &mut buf,
+        INDEX_HEADER_LENGTH,
+        Some(INIT_MSG),
+    )? {
         ProtocolMessage::Init(buf) => {
             drop(soc_stream);
             let index_options = parse_index_options(
@@ -162,42 +162,33 @@ fn initialize_index(
 fn receive_rows(
     stream: Arc<Mutex<TcpStream>>,
     logger: Arc<Logger>,
-    index: Arc<ThreadSafeIndex>,
-    worker_tx: SyncSender<Vec<Row>>,
+    index: Arc<RwLock<ThreadSafeIndex>>,
+    worker_tx: SyncSender<Row>,
 ) -> AnyhowVoidResult {
-    let mut current_capacity = index.0.capacity();
-    let batch_size = 2000;
-    let mut rows_buf = Vec::with_capacity(batch_size);
+    let mut current_capacity = index.read().unwrap().0.capacity();
     let mut stream = stream.lock().unwrap();
     let mut received_rows = 0;
-    let expected_payload_size = LABEL_SIZE + INTEGER_SIZE * index.0.dimensions();
+    let expected_payload_size = LABEL_SIZE + INTEGER_SIZE * index.read().unwrap().0.dimensions();
     let mut buf = vec![0 as u8; expected_payload_size];
 
     loop {
-        match read_frame(&mut stream, &mut buf, expected_payload_size)? {
+        match read_frame(&mut stream, &mut buf, expected_payload_size, None)? {
             ProtocolMessage::Exit => break,
             ProtocolMessage::Data(buf) => {
                 let row = parse_tuple(&buf)?;
 
-                received_rows += 1;
                 if received_rows == current_capacity {
                     current_capacity *= 2;
+                    index.write().unwrap().0.reserve(current_capacity)?;
                     logger.debug(&format!("Index resized to {current_capacity}"));
-                    index.0.reserve(current_capacity)?;
                 }
 
-                rows_buf.push(row);
+                received_rows += 1;
 
-                if rows_buf.len() == batch_size {
-                    worker_tx.send(rows_buf.drain(..).collect())?;
-                }
+                worker_tx.send(row)?;
             }
             _ => anyhow::bail!("Invalid message received"),
         }
-    }
-
-    if rows_buf.len() > 0 {
-        worker_tx.send(rows_buf)?;
     }
 
     Ok(())
@@ -213,6 +204,7 @@ fn read_frame<'a>(
     stream: &mut TcpStream,
     buf: &'a mut Vec<u8>,
     expected_size: usize,
+    match_header: Option<u32>,
 ) -> Result<ProtocolMessage<'a>, anyhow::Error> {
     let hdr_size = stream.read(buf)?;
     if hdr_size < PROTOCOL_HEADER_SIZE {
@@ -222,6 +214,12 @@ fn read_frame<'a>(
     match LittleEndian::read_u32(&buf[0..PROTOCOL_HEADER_SIZE]) {
         END_MSG => Ok(ProtocolMessage::Exit),
         msg => {
+            if let Some(wanted_hdr) = match_header {
+                if msg != wanted_hdr {
+                    anyhow::bail!("Invalid message header");
+                }
+            }
+
             if expected_size > hdr_size {
                 // if didn't read the necessarry amount of bytes
                 // wait until the buffer will be filled
@@ -249,13 +247,16 @@ pub fn create_streaming_usearch_index(
     stream
         .lock()
         .unwrap()
-        .set_read_timeout(Some(Duration::from_secs(60)))?;
-    let index = Arc::new(initialize_index(logger.clone(), stream.clone())?);
+        .set_read_timeout(Some(Duration::from_secs(30)))?;
+    let index = Arc::new(RwLock::new(initialize_index(
+        logger.clone(),
+        stream.clone(),
+    )?));
 
     // Create a vector to store thread handles
     let mut handles = vec![];
 
-    let (tx, rx): (SyncSender<Vec<Row>>, Receiver<Vec<Row>>) = mpsc::sync_channel(num_cores);
+    let (tx, rx): (SyncSender<Row>, Receiver<Row>) = mpsc::sync_channel(2000);
     let rx_arc = Arc::new(Mutex::new(rx));
 
     for _ in 0..num_cores {
@@ -272,17 +273,18 @@ pub fn create_streaming_usearch_index(
                 }
 
                 let rx = lock.unwrap();
-                let rows = rx.recv();
+                let row_result = rx.recv();
 
                 // release the lock so other threads can take rows
                 drop(rx);
 
-                if rows.is_err() {
+                if let Ok(row) = row_result {
+                    let index = index_ref.read().unwrap();
+                    index.0.add(row.0, &row.1)?;
+                } else {
                     // channel has been closed
                     break;
                 }
-
-                index_chunk(rows.unwrap(), index_ref.clone())?;
             }
             Ok(())
         });
@@ -307,6 +309,7 @@ pub fn create_streaming_usearch_index(
 
     // Send added row count
     let mut stream = stream.lock().unwrap();
+    let index = index.read().unwrap();
     stream.write(&(index.0.size() as u64).to_le_bytes())?;
 
     // Send index file back
@@ -326,12 +329,9 @@ pub fn create_streaming_usearch_index(
 
     let streaming_start = Instant::now();
     let index_file_path = Path::new(&index_path);
-    let mut index_buffer = vec![];
-
-    // TODO:: send index from buffer
-    // index.0.save_to_buffer(index_buffer.as_mut_slice())?;
 
     let mut reader = fs::File::open(index_file_path)?;
+    let mut index_buffer = Vec::with_capacity(reader.metadata()?.size() as usize);
     reader.read_to_end(&mut index_buffer)?;
     logger.debug(&format!(
         "Reading index file took {}s{}ms",
@@ -352,8 +352,7 @@ pub fn create_streaming_usearch_index(
 
     fs::remove_file(index_file_path)?;
 
-    logger.info("Index sent");
-    stream.shutdown(Shutdown::Both).unwrap();
+    let _ = stream.shutdown(Shutdown::Both);
 
     logger.debug(&format!(
         "Total indexing took {}s",
