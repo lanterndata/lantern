@@ -53,6 +53,20 @@ impl UMetricKind {
             _ => anyhow::bail!("Invalid metric {metric_kind}"),
         }
     }
+    pub fn from_u32(metric_kind: u32) -> Result<UMetricKind, anyhow::Error> {
+        match metric_kind {
+            0 => {
+                return Ok(UMetricKind::L2sq);
+            }
+            1 => {
+                return Ok(UMetricKind::Cos);
+            }
+            2 => {
+                return Ok(UMetricKind::Hamming);
+            }
+            _ => anyhow::bail!("Invalid metric {metric_kind}"),
+        }
+    }
     pub fn to_string(&self) -> String {
         match self {
             UMetricKind::L2sq => {
@@ -166,4 +180,15 @@ pub struct CreateIndexArgs {
     /// Index name to use when imporrting index to database
     #[arg(long)]
     pub index_name: Option<String>,
+}
+
+#[derive(Parser, Debug)]
+pub struct IndexServerArgs {
+    /// Host to bind
+    #[arg(long, default_value = "0.0.0.0")]
+    pub host: String,
+
+    /// Port to bind
+    #[arg(long, default_value_t = 8998)]
+    pub port: usize,
 }

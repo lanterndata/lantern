@@ -5,6 +5,7 @@ use super::http_server::cli::HttpServerArgs;
 use super::index_autotune::cli::IndexAutotuneArgs;
 use super::pq::cli::PQArgs;
 use clap::{Parser, Subcommand};
+use lantern_cli::external_index::cli::IndexServerArgs;
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
@@ -26,6 +27,8 @@ pub enum Commands {
     StartDaemon(DaemonArgs),
     /// Start in http mode
     StartServer(HttpServerArgs),
+    /// Start external index server
+    StartIndexingServer(IndexServerArgs),
 }
 
 #[derive(Parser, Debug)]

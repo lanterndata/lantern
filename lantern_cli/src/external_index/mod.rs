@@ -19,6 +19,7 @@ use postgres_types::FromSql;
 
 pub mod cli;
 mod postgres_large_objects;
+pub mod server;
 pub mod utils;
 
 // Used to control chunk size when copying index file to postgres server
