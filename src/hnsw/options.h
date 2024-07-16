@@ -53,6 +53,7 @@ typedef struct ldb_HnswOptions
     int   ef_construction;
     int   ef;
     bool  pq;
+    bool  external;
 
 #if PG_VERSION_NUM >= 130000
     QuantBitsEnum quant_bits;
@@ -68,14 +69,17 @@ int                   ldb_HnswGetEfConstruction(Relation index);
 int                   ldb_HnswGetEf(Relation index);
 char*                 ldb_HnswGetIndexFilePath(Relation index);
 bool                  ldb_HnswGetPq(Relation index);
+bool                  ldb_HnswGetExternal(Relation index);
 usearch_metric_kind_t ldb_HnswGetMetricKind(Relation index);
 usearch_scalar_kind_t ldb_HnswGetScalarKind(Relation index);
 
 bytea* ldb_amoptions(Datum reloptions, bool validate);
 
-extern int  ldb_hnsw_init_k;
-extern int  ldb_hnsw_ef_search;
-extern bool ldb_is_test;
-extern bool ldb_pgvector_compat;
+extern int   ldb_hnsw_init_k;
+extern int   ldb_hnsw_ef_search;
+extern bool  ldb_is_test;
+extern bool  ldb_pgvector_compat;
+extern int   ldb_external_index_port;
+extern char* ldb_external_index_host;
 
 #endif  // LDB_HNSW_OPTIONS_H

@@ -48,8 +48,10 @@ static relopt_enum_elt_def quant_bits_options_relopt[] = {{"1", QUANT_BITS_1},
 };
 #endif
 
-int ldb_hnsw_init_k;
-int ldb_hnsw_ef_search;
+int   ldb_hnsw_init_k;
+int   ldb_hnsw_ef_search;
+int   ldb_external_index_port;
+char *ldb_external_index_host;
 
 // if this variable is set to true
 // our operator rewriting hooks will be disabled
@@ -131,6 +133,13 @@ usearch_metric_kind_t ldb_HnswGetMetricKind(Relation index)
     }
 }
 
+bool ldb_HnswGetExternal(Relation index)
+{
+    ldb_HnswOptions *opts = (ldb_HnswOptions *)index->rd_options;
+    if(opts) return opts->external;
+    return false;
+}
+
 usearch_scalar_kind_t ldb_HnswGetScalarKind(Relation index)
 {
     ldb_HnswOptions *opts = (ldb_HnswOptions *)index->rd_options;
@@ -166,6 +175,7 @@ bytea *ldb_amoptions(Datum reloptions, bool validate)
         {"ef_construction", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, ef_construction)},
         {"ef", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, ef)},
         {"pq", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, pq)},
+        {"external", RELOPT_TYPE_INT, offsetof(ldb_HnswOptions, external)},
 #if PG_VERSION_NUM >= 130000
         {"quant_bits", RELOPT_TYPE_ENUM, offsetof(ldb_HnswOptions, quant_bits)},
 #else
@@ -309,6 +319,15 @@ void _PG_init(void)
                       1,
                       32);
 #endif
+    add_bool_reloption(ldb_hnsw_index_withopts,
+                       "external",
+                       "Whether or not use external indexing protocol",
+                       false
+#if PG_VERSION_NUM >= 130000
+                       ,
+                       AccessExclusiveLock
+#endif
+    );
     DefineCustomIntVariable("lantern_hnsw.init_k",
                             "Number of elements to initially retrieve from the index in a scan",
                             "Valid values are in range [1, 1000]",
@@ -357,6 +376,29 @@ void _PG_init(void)
                              NULL,
                              NULL);
 
+    DefineCustomIntVariable("lantern_hnsw.external_index_port",
+                            "Port for external indexing",
+                            "Change this value if you run lantern daemon on different port",
+                            &ldb_external_index_port,
+                            8998,
+                            80,
+                            65535,
+                            PGC_USERSET,
+                            0,
+                            NULL,
+                            NULL,
+                            NULL);
+
+    DefineCustomStringVariable("lantern_hnsw.external_index_host",
+                               "Host for external indexing",
+                               "Change this value if you run lantern daemon on remote host",
+                               &ldb_external_index_host,
+                               "127.0.0.1",
+                               PGC_USERSET,
+                               0,
+                               NULL,
+                               NULL,
+                               NULL);
 #if PG_VERSION_NUM >= 150000
     MarkGUCPrefixReserved("lantern");
     MarkGUCPrefixReserved("lantern_hnsw");

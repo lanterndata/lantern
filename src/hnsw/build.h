@@ -19,6 +19,8 @@ typedef struct
     int            dimensions;
     HnswColumnType columnType;
     char          *index_file_path;
+    bool           external;
+    int            external_client_fd;
 
     /* Statistics */
     double tuples_indexed;
