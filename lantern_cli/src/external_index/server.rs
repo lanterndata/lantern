@@ -48,7 +48,18 @@ fn parse_index_options(
 
     let pq = pq == 1;
 
-    logger.info(&format!("Index Params - pq: {pq}, metric_kind: {metric_kind}, quantization: {quantization}, dim: {dim}, m: {m}, ef_construction: {ef_construction}, ef: {ef}, num_subvectors: {num_subvectors}, num_centroids: {num_centroids}"));
+    let quantization = match quantization {
+        0..=1 => ScalarKind::F32,
+        2 => ScalarKind::F64,
+        3 => ScalarKind::F16,
+        4 => ScalarKind::I8,
+        5 => ScalarKind::B1,
+        _ => anyhow::bail!("Invalid scalar quantization"),
+    };
+
+    let metric = UMetricKind::from_u32(metric_kind)?.value();
+
+    logger.info(&format!("Index Params - pq: {pq}, metric_kind: {:?}, quantization: {:?}, dim: {dim}, m: {m}, ef_construction: {ef_construction}, ef: {ef}, num_subvectors: {num_subvectors}, num_centroids: {num_centroids}", metric, quantization));
 
     let mut pq_codebook: *const f32 = std::ptr::null();
 
@@ -75,18 +86,9 @@ fn parse_index_options(
         pq_codebook = codebook.as_ptr();
     }
 
-    let quantization = match quantization {
-        0..=1 => ScalarKind::F32,
-        2 => ScalarKind::F64,
-        3 => ScalarKind::F16,
-        4 => ScalarKind::I8,
-        5 => ScalarKind::B1,
-        _ => anyhow::bail!("Invalid scalar quantization"),
-    };
-
     Ok(IndexOptions {
         dimensions: dim as usize,
-        metric: UMetricKind::from_u32(metric_kind)?.value(),
+        metric,
         quantization,
         multi: false,
         connectivity: m as usize,

@@ -55,13 +55,13 @@ impl UMetricKind {
     }
     pub fn from_u32(metric_kind: u32) -> Result<UMetricKind, anyhow::Error> {
         match metric_kind {
-            0 => {
+            3 => {
                 return Ok(UMetricKind::L2sq);
             }
             1 => {
                 return Ok(UMetricKind::Cos);
             }
-            2 => {
+            8 => {
                 return Ok(UMetricKind::Hamming);
             }
             _ => anyhow::bail!("Invalid metric {metric_kind}"),
