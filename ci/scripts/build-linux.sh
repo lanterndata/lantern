@@ -28,6 +28,13 @@ function setup_postgres() {
   echo "shared_preload_libraries = 'pg_cron' " >> /etc/postgresql/$PG_VERSION/main/postgresql.conf
 }
 
+function setup_rust() {
+  curl -k -o /tmp/rustup.sh https://sh.rustup.rs
+  chmod +x /tmp/rustup.sh
+  /tmp/rustup.sh -y
+  . "$HOME/.cargo/env"
+}
+
 function install_platform_specific_dependencies() {
   # Currently lantern_extras binaries are only available for Linux x86_64
   # We won't install onnxruntime as lantern_extras are used only for external index in tests
@@ -54,6 +61,13 @@ function install_platform_specific_dependencies() {
 
     apt install -y ruby-full
     gem install bundler
+
+    # We need lantern-cli only for tests
+    if [[ "$INSTALL_CLI" = "1" ]]
+    then
+      setup_rust
+      ORT_STRATEGY=system cargo install --git https://github.com/lanterndata/lantern_extras.git --branch varik/external-indexing-server --debug --bin lantern-cli --root /tmp
+    fi
 
   popd
 }

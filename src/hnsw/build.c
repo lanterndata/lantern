@@ -90,16 +90,16 @@
 
 typedef struct external_index_params_t
 {
-    bool                  pq;
+    uint32                pq;
     usearch_metric_kind_t metric_kind;
     usearch_scalar_kind_t quantization;
-    uint32_t              dim;
-    uint32_t              m;
-    uint32_t              ef_construction;
-    uint32_t              ef;
-    uint32_t              num_centroids;
-    uint32_t              num_subvectors;
-    uint32_t              estimated_capcity;
+    uint32                dim;
+    uint32                m;
+    uint32                ef_construction;
+    uint32                ef;
+    uint32                num_centroids;
+    uint32                num_subvectors;
+    uint32                estimated_capcity;
 
 } external_index_params_t;
 
