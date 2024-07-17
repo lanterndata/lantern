@@ -75,10 +75,19 @@ fn parse_index_options(
         pq_codebook = codebook.as_ptr();
     }
 
+    let quantization = match quantization {
+        0..=1 => ScalarKind::F32,
+        2 => ScalarKind::F64,
+        3 => ScalarKind::F16,
+        4 => ScalarKind::I8,
+        5 => ScalarKind::B1,
+        _ => anyhow::bail!("Invalid scalar quantization"),
+    };
+
     Ok(IndexOptions {
         dimensions: dim as usize,
         metric: UMetricKind::from_u32(metric_kind)?.value(),
-        quantization: ScalarKind::F32, // TODO:: get from params
+        quantization,
         multi: false,
         connectivity: m as usize,
         expansion_add: ef_construction as usize,
