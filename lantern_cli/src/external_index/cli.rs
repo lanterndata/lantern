@@ -188,6 +188,10 @@ pub struct IndexServerArgs {
     #[arg(long, default_value = "0.0.0.0")]
     pub host: String,
 
+    /// Temp directory to save intermediate files
+    #[arg(long, default_value = "/tmp")]
+    pub tmp_dir: String,
+
     /// Port to bind
     #[arg(long, default_value_t = 8998)]
     pub port: usize,

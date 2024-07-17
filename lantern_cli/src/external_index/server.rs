@@ -250,6 +250,7 @@ fn read_frame<'a>(
 pub fn create_streaming_usearch_index(
     stream: Arc<Mutex<TcpStream>>,
     logger: Arc<Logger>,
+    tmp_dir: Arc<String>,
 ) -> Result<(), anyhow::Error> {
     let start_time = Instant::now();
     let num_cores: usize = std::thread::available_parallelism().unwrap().into();
@@ -327,7 +328,7 @@ pub fn create_streaming_usearch_index(
     logger.info("Start streaming index");
 
     let mut rng = rand::thread_rng();
-    let index_path = format!("ldb-index-{}.usearch", rng.gen_range(0..1000));
+    let index_path = format!("{tmp_dir}/ldb-index-{}.usearch", rng.gen_range(0..1000));
 
     let streaming_start = Instant::now();
     index.0.save(&index_path)?;
@@ -383,6 +384,8 @@ pub fn start_tcp_server(args: IndexServerArgs, logger: Option<Logger>) -> Anyhow
         args.host, args.port,
     ));
 
+    let tmp_dir = Arc::new(args.tmp_dir);
+
     // TODO:: this now accepts only one request at a time
     // As single indexing job consumes whole CPU
     for stream in listener.incoming() {
@@ -390,7 +393,9 @@ pub fn start_tcp_server(args: IndexServerArgs, logger: Option<Logger>) -> Anyhow
             Ok(stream) => {
                 logger.debug(&format!("New connection: {}", stream.peer_addr().unwrap()));
                 let stream = Arc::new(Mutex::new(stream));
-                if let Err(e) = create_streaming_usearch_index(stream.clone(), logger.clone()) {
+                if let Err(e) =
+                    create_streaming_usearch_index(stream.clone(), logger.clone(), tmp_dir.clone())
+                {
                     logger.error(&format!("Indexing error: {e}"));
                     let mut error_text: Vec<u8> = e.to_string().bytes().collect();
                     let error_header: [u8; PROTOCOL_HEADER_SIZE] =

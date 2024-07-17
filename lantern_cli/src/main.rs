@@ -83,7 +83,7 @@ async fn main() {
             http_server::start(args, Some(logger))
         }
         cli::Commands::StartIndexingServer(args) => {
-            let logger = Logger::new("Lantern Streaming Index", LogLevel::Debug);
+            let logger = Logger::new("Lantern External Index", LogLevel::Debug);
             _main_logger = Some(logger.clone());
             external_index::server::start_tcp_server(args, Some(logger))
         }
