@@ -4,6 +4,9 @@ import os
 import signal
 import warnings
 import logging
+import socket
+import subprocess
+import time
 
 # for pry
 import inspect
@@ -645,6 +648,95 @@ def test_vector_search_with_filter(primary, source_table):
                     row[2] == filter_val
                 ), f"Expected all results to have random_bool == {filter_val}"
 
+# fixture to handle external index server setup
+@pytest.fixture
+def external_index(request):
+    cli_path = os.getenv("LANTERN_CLI_PATH")
+    if not cli_path:
+        pytest.skip("pass 'LANTERN_CLI_PATH' environment variable to run external indexing tests")
+        return
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        if s.connect_ex(('127.0.0.1', 8998)) != 0:
+            subprocess.Popen([cli_path, "start-indexing-server", "--host", "127.0.0.1", "--port", "8998"], shell=False,
+             stdin=None, stdout=None, stderr=None, close_fds=True)
+            tries = 1
+            time.sleep(5)
+
+@pytest.mark.parametrize("distance_metric", ["l2sq", "cos"])
+@pytest.mark.parametrize("quant_bits", [32, 16, 8])
+@pytest.mark.external_index
+def test_external_index(external_index, primary, source_table, quant_bits, distance_metric):
+    table_name = f"{source_table}_{quant_bits}_external_index"
+    index_name = f"idx_hnsw_{table_name}_{distance_metric}"
+
+    if not primary.execute(
+        "testdb",
+        f"SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '{table_name}')",
+    )[0][0]:
+        primary.execute(
+            "testdb",
+            f"CREATE TABLE IF NOT EXISTS {table_name} AS SELECT * FROM {source_table}",
+        )
+        primary.execute("testdb", f"ALTER TABLE {table_name} ADD PRIMARY KEY (id)")
+
+    ops = "dist_l2sq_ops" if distance_metric == "l2sq" else "dist_cos_ops"
+    # note: when M is too low, the streaming search below might return fewer results since the bottom layer of hnsw is less connected
+    primary.execute(
+        "testdb",
+        f"CREATE INDEX {index_name} ON {table_name} USING lantern_hnsw (v {ops}) WITH (dim=128, M=10, quant_bits = {quant_bits}, external = true)",
+    )
+
+    limit = 1000
+    query_id = 44
+    vec_from_id_query = lambda id: f"(SELECT v FROM {table_name} WHERE id = {id})"
+
+    op = '<->' if distance_metric == 'l2sq' else '<=>'
+    query = f"""
+    SELECT *, v {op} ({vec_from_id_query(query_id)}) as dist FROM {table_name}
+    ORDER BY v {op} ({vec_from_id_query(query_id)})
+    LIMIT {limit}
+    """
+
+    plan = primary.execute("testdb", f"EXPLAIN {query}")
+    assert f"Index Scan using {index_name}" in str(
+        plan
+    ), f"Failed for {plan}"
+    primary.execute("testdb", f"SELECT _lantern_internal.validate_index('{index_name}')")
+
+
+@pytest.mark.external_index
+def test_external_index_pq(external_index, primary, source_table):
+    table_name = f"{source_table}_external_index_pq"
+    primary.execute(
+        "testdb",
+        f"CREATE TABLE IF NOT EXISTS {table_name} AS SELECT * FROM {source_table}",
+    )
+    primary.execute("testdb", f"ALTER TABLE {table_name} ADD PRIMARY KEY (id)")
+
+    primary.execute("testdb", f"SELECT quantize_table('{table_name}', 'v', 4, 32, 'l2sq')")
+
+    # note: when M is too low, the streaming search below might return fewer results since the bottom layer of hnsw is less connected
+    primary.execute(
+        "testdb",
+        f"CREATE INDEX idx_hnsw_{table_name} ON {table_name} USING lantern_hnsw (v dist_l2sq_ops) WITH (dim=128, M=8, quant_bits = 32, external = true, pq = true)",
+    )
+
+    limit = 1000
+    query_id = 44
+    vec_from_id_query = lambda id: f"(SELECT v FROM {table_name} WHERE id = {id})"
+
+    query = f"""
+    SELECT *, v <-> ({vec_from_id_query(query_id)}) as dist FROM {table_name}
+    ORDER BY v <-> ({vec_from_id_query(query_id)})
+    LIMIT {limit}
+    """
+
+    plan = primary.execute("testdb", f"EXPLAIN {query}")
+    assert f"Index Scan using idx_hnsw_{table_name}" in str(
+        plan
+    ), f"Failed for {plan}"
+    primary.execute("testdb", f"SELECT _lantern_internal.validate_index('idx_hnsw_{table_name}')")
 
 if __name__ == "__main__":
     os._exit(pytest.main(["-s", __file__]))

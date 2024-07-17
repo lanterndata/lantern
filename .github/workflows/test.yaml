@@ -31,7 +31,7 @@ jobs:
           submodules: "recursive"
       - name: Build
         id: build
-        run: sudo sh -c "PG_VERSION=$PG_VERSION USE_SOURCE=1 GITHUB_OUTPUT=$GITHUB_OUTPUT ENABLE_COVERAGE=$ENABLE_COVERAGE ./ci/scripts/build.sh"
+        run: sudo sh -c "PG_VERSION=$PG_VERSION USE_SOURCE=1 GITHUB_OUTPUT=$GITHUB_OUTPUT ENABLE_COVERAGE=$ENABLE_COVERAGE INSTALL_CLI=1 ./ci/scripts/build.sh"
         env:
           PG_VERSION: ${{ matrix.postgres }}
           BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
@@ -47,13 +47,16 @@ jobs:
           PG_VERSION: ${{ matrix.postgres }}
           ENABLE_COVERAGE: ${{ (startsWith(matrix.os, 'ubuntu') && matrix.postgres == 15) && '1' || '0' }}
         if: ${{ !startsWith(matrix.os, 'mac') }}
-      # add a step to run integration tests
+      # integration tests
+      - name: Set LANTERN_CLI_PATH variable
+        run: echo "LANTERN_CLI_PATH=/tmp/bin/lantern-cli" >> $GITHUB_ENV
+        if: ${{ !startsWith(matrix.os, 'mac') }}
       - name: Run integration tests linux
         id: integration-test-linux
         run: |
           # pytest tries to open files with full path and so 'work' home folder must be listable by postgres for it to work
           sudo chmod +x /home/runner && \
-          sudo su postgres -c "/tmp/lantern/cienv/bin/python ./scripts/integration_tests.py" &&\
+          sudo su postgres -c "LANTERN_CLI_PATH=${{ env.LANTERN_CLI_PATH }} /tmp/lantern/cienv/bin/python ./scripts/integration_tests.py" &&\
           echo "Done with integration tests"
         env:
           PG_VERSION: ${{ matrix.postgres }}
