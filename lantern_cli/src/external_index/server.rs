@@ -17,6 +17,7 @@ use crate::types::*;
 
 const LABEL_SIZE: usize = 8; // for now we are only using 32bit integers
 const INTEGER_SIZE: usize = 4; // for now we are only using 32bit integers
+const SOCKET_TIMEOUT: u64 = 5;
 pub const PROTOCOL_HEADER_SIZE: usize = 4;
 pub const INIT_MSG: u32 = 0x13333337;
 pub const END_MSG: u32 = 0x31333337;
@@ -255,11 +256,6 @@ pub fn create_streaming_usearch_index(
     let start_time = Instant::now();
     let num_cores: usize = std::thread::available_parallelism().unwrap().into();
     logger.info(&format!("Number of available CPU cores: {}", num_cores));
-
-    stream
-        .lock()
-        .unwrap()
-        .set_read_timeout(Some(Duration::from_secs(30)))?;
     let index = Arc::new(RwLock::new(initialize_index(
         logger.clone(),
         stream.clone(),
@@ -392,6 +388,9 @@ pub fn start_tcp_server(args: IndexServerArgs, logger: Option<Logger>) -> Anyhow
         match stream {
             Ok(stream) => {
                 logger.debug(&format!("New connection: {}", stream.peer_addr().unwrap()));
+                stream.set_read_timeout(Some(Duration::from_secs(SOCKET_TIMEOUT)))?;
+                stream.set_write_timeout(Some(Duration::from_secs(SOCKET_TIMEOUT)))?;
+
                 let stream = Arc::new(Mutex::new(stream));
                 if let Err(e) =
                     create_streaming_usearch_index(stream.clone(), logger.clone(), tmp_dir.clone())
