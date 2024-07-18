@@ -31,7 +31,7 @@ function setup_postgres() {
 function setup_rust() {
   curl -k -o /tmp/rustup.sh https://sh.rustup.rs
   chmod +x /tmp/rustup.sh
-  /tmp/rustup.sh -y
+  /tmp/rustup.sh -y --default-toolchain=1.78.0
   . "$HOME/.cargo/env"
 }
 
@@ -66,6 +66,7 @@ function install_platform_specific_dependencies() {
     if [[ "$INSTALL_CLI" = "1" ]]
     then
       setup_rust
+      # TODO:: change branch after PR merge
       ORT_STRATEGY=system cargo install --git https://github.com/lanterndata/lantern_extras.git --branch varik/external-indexing-server --debug --bin lantern-cli --root /tmp
     fi
 

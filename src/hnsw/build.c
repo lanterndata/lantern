@@ -29,9 +29,6 @@
 #include <utils/palloc.h>
 #include <utils/snapmgr.h>
 #include <utils/syscache.h>
-// sockets
-#include <arpa/inet.h>
-#include <sys/socket.h>
 
 #include "usearch.h"
 
@@ -43,6 +40,7 @@
 
 #include "bench.h"
 #include "external_index.h"
+#include "external_index_socket.h"
 #include "hnsw.h"
 #include "hnsw/pqtable.h"
 #include "hnsw/retriever.h"
@@ -81,154 +79,6 @@
 #define UpdateProgress(index, val) ((void)val)
 #endif
 
-// ============= EXTERNAL INDEXING ============
-#define EXTERNAL_INDEX_MAGIC_MSG_SIZE 4
-#define EXTERNAL_INDEX_INIT_MSG       0x13333337
-#define EXTERNAL_INDEX_END_MSG        0x31333337
-#define EXTERNAL_INDEX_ERR_MSG        0x37333337
-#define BUFFER_SIZE                   1024 * 1024 * 10  // 10MB
-
-typedef struct external_index_params_t
-{
-    uint32                pq;
-    usearch_metric_kind_t metric_kind;
-    usearch_scalar_kind_t quantization;
-    uint32                dim;
-    uint32                m;
-    uint32                ef_construction;
-    uint32                ef;
-    uint32                num_centroids;
-    uint32                num_subvectors;
-    uint32                estimated_capcity;
-
-} external_index_params_t;
-
-static bool is_little_endian()
-{
-    int i = 1;
-
-    return *((char *)&i) == 1;
-}
-
-#define BYTES_TO_UINT32(bytes) \
-    ((uint32)(bytes[ 0 ]) + ((uint32)(bytes[ 1 ]) << 8) + ((uint32)(bytes[ 2 ]) << 16) + ((uint32)(bytes[ 3 ]) << 24))
-
-#define BYTES_TO_UINT64(bytes)                                                                                        \
-    ((uint64)(bytes[ 0 ]) + ((uint64)(bytes[ 1 ]) << 8) + ((uint64)(bytes[ 2 ]) << 16) + ((uint64)(bytes[ 3 ]) << 24) \
-     + ((uint64)(bytes[ 4 ]) << 32) + ((uint64)(bytes[ 5 ]) << 40) + ((uint64)(bytes[ 6 ]) << 48)                     \
-     + ((uint64)(bytes[ 7 ]) << 56))
-
-void check_external_index_response_error(uint32 client_fd, unsigned char *buffer, int32 size)
-{
-    if(size < 0) {
-        close(client_fd);
-        // elog(ERROR, "external index socket send failed with %s", strerror(errno));
-        elog(ERROR, "external index socket read failed");
-    }
-
-    if(size < sizeof(uint32)) return;
-
-    uint8 *bytes = (uint8 *)(buffer);
-    uint32 hdr = BYTES_TO_UINT32(bytes);
-
-    if(hdr != EXTERNAL_INDEX_ERR_MSG) return;
-
-    // append nullbyte
-    buffer[ size ] = '\0';
-    shutdown(client_fd, SHUT_RDWR);
-    close(client_fd);
-    elog(ERROR, "external index error: %s", buffer + EXTERNAL_INDEX_MAGIC_MSG_SIZE);
-}
-
-void check_external_index_request_error(uint32 client_fd, int32 bytes_written)
-{
-    if(bytes_written > 0) return;
-
-    shutdown(client_fd, SHUT_RDWR);
-    close(client_fd);
-    elog(ERROR, "external index socket send failed");
-}
-
-static void external_index_send_codebook(
-    uint32 client_fd, float *codebook, uint32 dimensions, uint32 num_centroids, uint32 num_subvectors)
-{
-    int           data_size = dimensions * sizeof(float);
-    int           bytes_written = -1;
-    unsigned char buf[ data_size ];
-
-    for(int i = 0; i < num_centroids; i++) {
-        memcpy(buf, &codebook[ i * dimensions ], data_size);
-        bytes_written = send(client_fd, buf, data_size, 0);
-        check_external_index_request_error(client_fd, bytes_written);
-    }
-
-    uint32 end_msg = EXTERNAL_INDEX_END_MSG;
-    bytes_written = send(client_fd, &end_msg, EXTERNAL_INDEX_MAGIC_MSG_SIZE, 0);
-
-    check_external_index_request_error(client_fd, bytes_written);
-}
-
-static int create_external_index_session(const char                   *host,
-                                         int                           port,
-                                         const usearch_init_options_t *params,
-                                         const ldb_HnswBuildState     *buildstate,
-                                         uint32                        estimated_row_count)
-{
-    int                client_fd, status;
-    unsigned char      init_buf[ sizeof(external_index_params_t) + EXTERNAL_INDEX_MAGIC_MSG_SIZE ];
-    struct sockaddr_in serv_addr;
-    unsigned char      init_response[ 1024 ] = {0};
-
-    if((client_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        elog(ERROR, "external index: socket creation failed");
-    }
-
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(port);
-
-    if(inet_pton(AF_INET, host, &serv_addr.sin_addr) <= 0) {
-        elog(ERROR, "external index: invalid address");
-    }
-
-    if((status = connect(client_fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr))) < 0) {
-        elog(ERROR, "external index: connection with server failed");
-    }
-
-    external_index_params_t index_params = {
-        .pq = params->pq,
-        .metric_kind = params->metric_kind,
-        .quantization = params->quantization,
-        .dim = params->dimensions,
-        .m = params->connectivity,
-        .ef_construction = params->expansion_add,
-        .ef = params->expansion_search,
-        .num_centroids = params->num_centroids,
-        .num_subvectors = params->num_subvectors,
-        .estimated_capcity = estimated_row_count,
-    };
-
-    uint32 hdr_msg = EXTERNAL_INDEX_INIT_MSG;
-    memcpy(init_buf, &hdr_msg, EXTERNAL_INDEX_MAGIC_MSG_SIZE);
-    memcpy(init_buf + EXTERNAL_INDEX_MAGIC_MSG_SIZE, &index_params, sizeof(external_index_params_t));
-    uint32 bytes_written
-        = send(client_fd, init_buf, sizeof(external_index_params_t) + EXTERNAL_INDEX_MAGIC_MSG_SIZE, 0);
-
-    check_external_index_request_error(client_fd, bytes_written);
-
-    if(params->pq) {
-        external_index_send_codebook(
-            client_fd, buildstate->pq_codebook, params->dimensions, params->num_centroids, params->num_subvectors);
-    }
-
-    uint32 buf_size = read(client_fd, &init_response, 1024);
-
-    check_external_index_response_error(client_fd, init_response, buf_size);
-
-    return client_fd;
-}
-
-// ============= EXTERNAL INDEXING END ============
-
 static void AddTupleToUsearchIndex(ItemPointer         tid,
                                    Datum               detoasted_vector,
                                    ldb_HnswBuildState *buildstate,
@@ -237,9 +87,6 @@ static void AddTupleToUsearchIndex(ItemPointer         tid,
     usearch_error_t       error = NULL;
     usearch_scalar_kind_t usearch_scalar;
     uint8                 scalar_bits = 32;
-    uint32                tuple_size, bytes_written;
-    // maximum tuple size can be 8kb (8192 byte) + 8 byte label
-    unsigned char tuple[ 8200 ];
 
     void *vector = DatumGetSizedArray(detoasted_vector, buildstate->columnType, buildstate->dimensions, false);
     switch(buildstate->columnType) {
@@ -262,11 +109,7 @@ static void AddTupleToUsearchIndex(ItemPointer         tid,
 
     if(buildstate->external_client_fd) {
         // send tuple over socket if this is external indexing
-        tuple_size = sizeof(usearch_label_t) + buildstate->dimensions * (scalar_bits / 8);
-        memcpy(tuple, &label, sizeof(usearch_label_t));
-        memcpy(tuple + sizeof(usearch_label_t), vector, tuple_size - sizeof(usearch_label_t));
-        bytes_written = send(buildstate->external_client_fd, tuple, tuple_size, 0);
-        check_external_index_request_error(buildstate->external_client_fd, bytes_written);
+        external_index_send_tuple(buildstate->external_client_fd, &label, vector, scalar_bits, buildstate->dimensions);
     } else if(buildstate->usearch_index != NULL) {
         size_t capacity = usearch_capacity(buildstate->usearch_index, &error);
         if(capacity == usearch_size(buildstate->usearch_index, &error)) {
@@ -677,11 +520,6 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
                  "maintenance_work_mem");
 
         if(buildstate->external) {
-            assert(is_little_endian());
-            elog(INFO,
-                 "connecting to external indexing daemon on %s:%d",
-                 ldb_external_index_host,
-                 ldb_external_index_port);
             buildstate->external_client_fd = create_external_index_session(
                 ldb_external_index_host, ldb_external_index_port, &opts, buildstate, estimated_row_count);
             assert(buildstate->external_client_fd > 0);
@@ -712,46 +550,7 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
     if(buildstate->index_file_path) {
         index_file_fd = open(buildstate->index_file_path, O_RDONLY);
     } else if(buildstate->external) {
-        uint32        end_msg = EXTERNAL_INDEX_END_MSG;
-        unsigned char buffer[ sizeof(uint64_t) ];
-        int32         bytes_read, bytes_written;
-        uint64        index_size = 0, total_received = 0;
-
-        // send message indicating that we have finished streaming tuples
-        bytes_written = send(buildstate->external_client_fd, &end_msg, EXTERNAL_INDEX_MAGIC_MSG_SIZE, 0);
-        check_external_index_request_error(buildstate->external_client_fd, bytes_written);
-
-        // read how many tuples have been indexed
-        bytes_read = read(buildstate->external_client_fd, buffer, sizeof(uint64));
-        check_external_index_response_error(buildstate->external_client_fd, buffer, bytes_read);
-        num_added_vectors = BYTES_TO_UINT64(buffer);
-
-        // read index file size
-        bytes_read = read(buildstate->external_client_fd, buffer, sizeof(uint64));
-        check_external_index_response_error(buildstate->external_client_fd, buffer, bytes_read);
-        index_size = BYTES_TO_UINT64(buffer);
-
-        result_buf = palloc0(index_size);
-
-        assert(result_buf != NULL);
-
-        // start reading index into buffer
-        while(total_received < index_size) {
-            bytes_read = read(buildstate->external_client_fd, result_buf + total_received, BUFFER_SIZE);
-
-            // Check for CTRL-C interrupts
-            CHECK_FOR_INTERRUPTS();
-
-            check_external_index_response_error(
-                buildstate->external_client_fd, (unsigned char *)result_buf + total_received, bytes_read);
-
-            if(bytes_read == 0) {
-                break;
-            }
-
-            total_received += bytes_read;
-        }
-
+        external_index_receive_index_file(buildstate->external_client_fd, &num_added_vectors, &result_buf);
     } else {
         // Save index into temporary file
         // To later mmap it into memory
@@ -782,7 +581,9 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
     if(!buildstate->external) {
         fstat(index_file_fd, &index_file_stat);
         result_buf = mmap(NULL, index_file_stat.st_size, PROT_READ, MAP_PRIVATE, index_file_fd, 0);
-        assert(result_buf != MAP_FAILED);
+        if(result_buf == MAP_FAILED) {
+            elog(ERROR, "failed to mmap index file");
+        }
     }
     //****************************** mmap index to memory END ******************************//
 
@@ -796,7 +597,6 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
     close(index_file_fd);
 
     if(buildstate->external) {
-        shutdown(buildstate->external_client_fd, SHUT_RDWR);
         close(buildstate->external_client_fd);
     }
 
