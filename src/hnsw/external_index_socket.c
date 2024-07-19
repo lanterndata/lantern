@@ -39,6 +39,80 @@ static void set_write_timeout(uint32 client_fd, uint32 seconds)
     }
 }
 
+static int connect_with_timeout(int sockfd, const struct sockaddr *addr, socklen_t addrlen, int timeout)
+{
+    // Set the socket to non-blocking mode
+    int flags = fcntl(sockfd, F_GETFL, 0);
+    if(flags == -1) {
+        perror("fcntl F_GETFL");
+        return -1;
+    }
+    if(fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) == -1) {
+        perror("fcntl F_SETFL");
+        return -1;
+    }
+
+    // Attempt to connect
+    int result = connect(sockfd, addr, addrlen);
+    if(result == -1 && errno != EINPROGRESS) {
+        perror("connect");
+        return -1;
+    }
+
+    if(result == 0) {
+        // Connection succeeded immediately
+        return 0;
+    }
+
+    // Wait for the socket to become writable within the timeout period
+    fd_set writefds;
+    FD_ZERO(&writefds);
+    FD_SET(sockfd, &writefds);
+
+    struct timeval tv;
+    tv.tv_sec = timeout;
+    tv.tv_usec = 0;
+
+    result = select(sockfd + 1, NULL, &writefds, NULL, &tv);
+    if(result == -1) {
+        perror("select");
+        return -1;
+    } else if(result == 0) {
+        // Timeout occurred
+        errno = ETIMEDOUT;
+        return -1;
+    } else {
+        // Socket is writable, check for errors
+        int       err;
+        socklen_t len = sizeof(err);
+        if(getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &err, &len) == -1) {
+            perror("getsockopt");
+            return -1;
+        }
+        if(err) {
+            errno = err;
+            return -1;
+        }
+    }
+
+    // Restore the socket to blocking mode
+    if(fcntl(sockfd, F_SETFL, flags) == -1) {
+        perror("fcntl F_SETFL");
+        return -1;
+    }
+
+    return 0;
+}
+
+/**
+ * Check for error received from socket response
+ * This function will return void or elog(ERROR) and exit process
+ * Error conditions are the following:
+ *  - read size is less then zero. (this can happen on network errors, or when the server will be closed)
+ *  - packet starts with EXTERNAL_INDEX_ERR_MSG bytes. (this will be send from the server indicating that something gone
+ *    wrong in the server and the following bytes will be error message and will be interpreted as string in
+ *    elog(ERROR))
+ */
 void check_external_index_response_error(uint32 client_fd, unsigned char *buffer, int32 size)
 {
     uint32 hdr;
@@ -116,8 +190,9 @@ int create_external_index_session(const char                   *host,
     set_write_timeout(client_fd, EXTERNAL_INDEX_SOCKET_TIMEOUT);
     set_read_timeout(client_fd, EXTERNAL_INDEX_SOCKET_TIMEOUT);
 
-    // TODO:: connect timeout
-    if((status = connect(client_fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr))) < 0) {
+    if((status = connect_with_timeout(
+            client_fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr), EXTERNAL_INDEX_SOCKET_TIMEOUT))
+       < 0) {
         elog(ERROR, "external index: connection with server failed");
     }
 
@@ -188,18 +263,11 @@ void external_index_receive_index_file(uint32 external_client_fd, uint64 *num_ad
     while(total_received < index_size) {
         bytes_read = read(external_client_fd, *result_buf + total_received, EXTERNAL_INDEX_FILE_BUFFER_SIZE);
 
-        // Using try/catch to close the socket on interrupt
-        PG_TRY();
-        {
-            // Check for CTRL-C interrupts
-            CHECK_FOR_INTERRUPTS();
-        }
-        PG_CATCH();
-        {
+        // Check for CTRL-C interrupts
+        if(INTERRUPTS_PENDING_CONDITION()) {
             close(external_client_fd);
-            PG_RE_THROW();
+            ProcessInterrupts();
         }
-        PG_END_TRY();
 
         check_external_index_response_error(
             external_client_fd, (unsigned char *)*result_buf + total_received, bytes_read);
