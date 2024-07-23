@@ -11,6 +11,12 @@ CREATE INDEX ON sift_base1k USING lantern_hnsw (v) WITH (dim=128, M=8);
 SELECT * FROM ldb_get_indexes('sift_base1k');
 SELECT _lantern_internal.validate_index('sift_base1k_v_idx', false);
 
+-- Validate that creating a hamming index works
+CREATE TABLE sift_base1k_int as SELECT id, v::INT[] FROM sift_base1k;
+CREATE INDEX ON sift_base1k_int USING lantern_hnsw (v dist_hamming_ops) WITH (M=8);
+SELECT * FROM ldb_get_indexes('sift_base1k_int');
+SELECT _lantern_internal.validate_index('sift_base1k_int_v_idx', false);
+
 -- Validate that index creation works with a larger number of vectors
 \ir utils/sift10k_array.sql
 SET lantern.pgvector_compat=FALSE;

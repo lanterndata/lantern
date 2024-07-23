@@ -285,8 +285,17 @@ void external_index_send_tuple(
 {
     unsigned char tuple[ EXTERNAL_INDEX_MAX_TUPLE_SIZE ];
     uint32        tuple_size, bytes_written;
+    uint32        vector_size;
+    uint32        dims = dimensions;
+
+    if(scalar_bits < CHAR_BIT) {
+        dims = dimensions * (sizeof(uint32) * CHAR_BIT);
+        vector_size = (dims + CHAR_BIT - 1) / CHAR_BIT;  // ceiling division
+        tuple_size = sizeof(usearch_label_t) + vector_size;
+    } else {
+        tuple_size = sizeof(usearch_label_t) + dimensions * (scalar_bits / CHAR_BIT);
+    }
     // send tuple over socket if this is external indexing
-    tuple_size = sizeof(usearch_label_t) + dimensions * (scalar_bits / 8);
     memcpy(tuple, label, sizeof(usearch_label_t));
     memcpy(tuple + sizeof(usearch_label_t), vector, tuple_size - sizeof(usearch_label_t));
     bytes_written = send(external_client_fd, tuple, tuple_size, 0);
