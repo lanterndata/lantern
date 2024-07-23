@@ -1,5 +1,7 @@
 use super::cli::{IndexServerArgs, UMetricKind};
+use bitvec::prelude::*;
 use byteorder::{ByteOrder, LittleEndian};
+use itertools::Itertools;
 use rand::Rng;
 use std::fs;
 use std::io::{Read, Write};
@@ -9,14 +11,15 @@ use std::path::Path;
 use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
-use usearch::ffi::{IndexOptions, ScalarKind};
+use usearch::ffi::{IndexOptions, MetricKind, ScalarKind};
 use usearch::Index;
 
 use crate::logger::{LogLevel, Logger};
 use crate::types::*;
 
-const LABEL_SIZE: usize = 8; // for now we are only using 32bit integers
-const INTEGER_SIZE: usize = 4; // for now we are only using 32bit integers
+const CHAR_BITS: usize = 8;
+const LABEL_SIZE: usize = 8;
+const INTEGER_SIZE: usize = 4;
 const SOCKET_TIMEOUT: u64 = 5;
 pub const PROTOCOL_HEADER_SIZE: usize = 4;
 pub const INIT_MSG: u32 = 0x13333337;
@@ -25,7 +28,13 @@ pub const ERR_MSG: u32 = 0x37333337;
 // magic byte + pq + metric_kind + quantization + dim + m + efc + ef + num_centroids +
 // num_subvectors + capacity
 static INDEX_HEADER_LENGTH: usize = INTEGER_SIZE * 11;
-type Row = (u64, Vec<f32>);
+
+enum VectorType {
+    F32(Vec<f32>),
+    I8(Vec<i8>),
+}
+
+type Row = (u64, VectorType);
 
 struct ThreadSafeIndex(Index);
 
@@ -120,9 +129,22 @@ fn bytes_to_f32_vec_le(bytes: &[u8]) -> Vec<f32> {
     float_vec
 }
 
-fn parse_tuple(buf: &[u8]) -> Result<Row, anyhow::Error> {
+fn parse_tuple(buf: &[u8], element_bits: usize) -> Result<Row, anyhow::Error> {
     let label = u64::from_le_bytes(buf[..LABEL_SIZE].try_into()?);
-    let vec: Vec<f32> = bytes_to_f32_vec_le(&buf[LABEL_SIZE..]);
+    let vec: VectorType = match element_bits {
+        1 => VectorType::I8(
+            buf[LABEL_SIZE..]
+                .iter()
+                .map(|e| {
+                    BitSlice::<_, Lsb0>::from_element(e)
+                        .iter()
+                        .map(|n| if *n.as_ref() { 0 } else { 1 })
+                        .collect::<Vec<i8>>()
+                })
+                .concat(),
+        ),
+        _ => VectorType::F32(bytes_to_f32_vec_le(&buf[LABEL_SIZE..])),
+    };
 
     Ok((label, vec))
 }
@@ -130,7 +152,7 @@ fn parse_tuple(buf: &[u8]) -> Result<Row, anyhow::Error> {
 fn initialize_index(
     logger: Arc<Logger>,
     stream: Arc<Mutex<TcpStream>>,
-) -> Result<ThreadSafeIndex, anyhow::Error> {
+) -> Result<(usize, ThreadSafeIndex), anyhow::Error> {
     let mut buf = vec![0 as u8; INDEX_HEADER_LENGTH];
     let mut soc_stream = stream.lock().unwrap();
     match read_frame(
@@ -165,7 +187,13 @@ fn initialize_index(
             let mut soc_stream = stream.lock().unwrap();
             // send success code
             soc_stream.write(&[0]).unwrap();
-            Ok(ThreadSafeIndex(index))
+
+            let element_bits = match index_options.metric {
+                MetricKind::Hamming => 1,
+                _ => INTEGER_SIZE * CHAR_BITS,
+            };
+
+            Ok((element_bits, ThreadSafeIndex(index)))
         }
         _ => anyhow::bail!("send init message first"),
     }
@@ -176,18 +204,28 @@ fn receive_rows(
     logger: Arc<Logger>,
     index: Arc<RwLock<ThreadSafeIndex>>,
     worker_tx: SyncSender<Row>,
+    element_bits: usize,
 ) -> AnyhowVoidResult {
-    let mut current_capacity = index.read().unwrap().0.capacity();
+    let idx = index.read().unwrap();
+    let mut current_capacity = idx.0.capacity();
     let mut stream = stream.lock().unwrap();
     let mut received_rows = 0;
-    let expected_payload_size = LABEL_SIZE + INTEGER_SIZE * index.read().unwrap().0.dimensions();
+
+    let expected_payload_size = if element_bits < CHAR_BITS {
+        LABEL_SIZE + idx.0.dimensions().div_ceil(CHAR_BITS)
+    } else {
+        LABEL_SIZE + idx.0.dimensions() * (element_bits / CHAR_BITS)
+    };
+
     let mut buf = vec![0 as u8; expected_payload_size];
+
+    drop(idx);
 
     loop {
         match read_frame(&mut stream, &mut buf, expected_payload_size, None)? {
             ProtocolMessage::Exit => break,
             ProtocolMessage::Data(buf) => {
-                let row = parse_tuple(&buf)?;
+                let row = parse_tuple(&buf, element_bits)?;
 
                 if received_rows == current_capacity {
                     current_capacity *= 2;
@@ -256,10 +294,8 @@ pub fn create_streaming_usearch_index(
     let start_time = Instant::now();
     let num_cores: usize = std::thread::available_parallelism().unwrap().into();
     logger.info(&format!("Number of available CPU cores: {}", num_cores));
-    let index = Arc::new(RwLock::new(initialize_index(
-        logger.clone(),
-        stream.clone(),
-    )?));
+    let (element_bits, index) = initialize_index(logger.clone(), stream.clone())?;
+    let index = Arc::new(RwLock::new(index));
 
     // Create a vector to store thread handles
     let mut handles = vec![];
@@ -288,7 +324,10 @@ pub fn create_streaming_usearch_index(
 
                 if let Ok(row) = row_result {
                     let index = index_ref.read().unwrap();
-                    index.0.add(row.0, &row.1)?;
+                    match row.1 {
+                        VectorType::F32(vec) => index.0.add(row.0, &vec)?,
+                        VectorType::I8(vec) => index.0.add(row.0, &vec)?,
+                    }
                 } else {
                     // channel has been closed
                     break;
@@ -300,7 +339,13 @@ pub fn create_streaming_usearch_index(
         handles.push(handle);
     }
 
-    receive_rows(stream.clone(), logger.clone(), index.clone(), tx)?;
+    receive_rows(
+        stream.clone(),
+        logger.clone(),
+        index.clone(),
+        tx,
+        element_bits,
+    )?;
 
     // Wait for all threads to finish processing
     for handle in handles {
