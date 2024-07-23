@@ -663,12 +663,14 @@ def external_index(request):
             tries = 1
             time.sleep(5)
 
-@pytest.mark.parametrize("distance_metric", ["l2sq", "cos"])
-@pytest.mark.parametrize("quant_bits", [32, 16, 8])
+@pytest.mark.parametrize("distance_metric", ["l2sq", "cos", "hamming"])
+@pytest.mark.parametrize("quant_bits", [32, 16, 8, 1])
 @pytest.mark.external_index
 def test_external_index(external_index, primary, source_table, quant_bits, distance_metric):
-    table_name = f"{source_table}_{quant_bits}_external_index"
+    table_name = f"{source_table}_{quant_bits}_{distance_metric}_external_index"
     index_name = f"idx_hnsw_{table_name}_{distance_metric}"
+
+    data_type = 'INT[]' if distance_metric == 'hamming' else 'REAL[]'
 
     if not primary.execute(
         "testdb",
@@ -676,11 +678,11 @@ def test_external_index(external_index, primary, source_table, quant_bits, dista
     )[0][0]:
         primary.execute(
             "testdb",
-            f"CREATE TABLE IF NOT EXISTS {table_name} AS SELECT * FROM {source_table}",
+            f"CREATE TABLE IF NOT EXISTS {table_name} AS SELECT id, v::{data_type} FROM {source_table}",
         )
         primary.execute("testdb", f"ALTER TABLE {table_name} ADD PRIMARY KEY (id)")
 
-    ops = "dist_l2sq_ops" if distance_metric == "l2sq" else "dist_cos_ops"
+    ops = { 'l2sq': 'dist_l2sq_ops', 'cos': 'dist_cos_ops', 'hamming': 'dist_hamming_ops'}[distance_metric]
     # note: when M is too low, the streaming search below might return fewer results since the bottom layer of hnsw is less connected
     primary.execute(
         "testdb",
@@ -691,7 +693,7 @@ def test_external_index(external_index, primary, source_table, quant_bits, dista
     query_id = 44
     vec_from_id_query = lambda id: f"(SELECT v FROM {table_name} WHERE id = {id})"
 
-    op = '<->' if distance_metric == 'l2sq' else '<=>'
+    op = { 'l2sq': '<->', 'cos': '<=>', 'hamming': '<+>'}[distance_metric]
     query = f"""
     SELECT *, v {op} ({vec_from_id_query(query_id)}) as dist FROM {table_name}
     ORDER BY v {op} ({vec_from_id_query(query_id)})

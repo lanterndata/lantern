@@ -121,6 +121,7 @@ void StoreExternalIndex(Relation                index,
                         ForkNumber              forkNum,
                         char                   *data,
                         usearch_init_options_t *opts,
+                        uint32                  pg_dimension,
                         size_t                  num_added_vectors);
 
 // add the fully constructed index tuple to the index via wal

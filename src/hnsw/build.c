@@ -589,7 +589,7 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
 
     // save the index to WAL
     UpdateProgress(PROGRESS_CREATEIDX_PHASE, LDB_PROGRESS_HNSW_PHASE_LOAD);
-    StoreExternalIndex(index, &metadata, MAIN_FORKNUM, result_buf, &opts, num_added_vectors);
+    StoreExternalIndex(index, &metadata, MAIN_FORKNUM, result_buf, &opts, buildstate->dimensions, num_added_vectors);
 
     munmap_ret = munmap(result_buf, index_file_stat.st_size);
     assert(munmap_ret == 0);

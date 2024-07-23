@@ -42,7 +42,8 @@ void StoreExternalIndexNodes(Relation             index,
                              ForkNumber           forkNum,
                              char                *data,
                              uint64              *progress,
-                             int                  dimension,
+                             uint32               pg_dimension,
+                             uint32               usearch_dimension,
                              uint32               first_node_index,
                              uint32               num_added_vectors,
                              ItemPointerData     *item_pointers)
@@ -89,13 +90,13 @@ void StoreExternalIndexNodes(Relation             index,
 
         // note: even if the condition is true, nodepage may be too large
         // as the condition does not take into account the flexible array component
-        while(PageGetFreeSpace(page) > sizeof(HnswIndexTuple) + dimension * sizeof(float)) {
+        while(PageGetFreeSpace(page) > sizeof(HnswIndexTuple) + pg_dimension * sizeof(float)) {
             if(node_id >= first_node_index + num_added_vectors) break;
             memset(bufferpage, 0, BLCKSZ);
             /************* extract node from usearch index************/
             node = data + *progress;
             node_level = level_from_node(node);
-            node_size = node_tuple_size(node, dimension, metadata);
+            node_size = node_tuple_size(node, usearch_dimension, metadata);
 
             bufferpage->seqid = node_id;
             bufferpage->size = node_size;
@@ -202,6 +203,7 @@ void StoreExternalIndex(Relation                index,
                         ForkNumber              forkNum,
                         char                   *data,
                         usearch_init_options_t *opts,
+                        uint32                  pg_dimensions,
                         size_t                  num_added_vectors)
 {
     Buffer header_buf = ReadBufferExtended(index, forkNum, P_NEW, RBM_NORMAL, NULL);
@@ -244,7 +246,7 @@ void StoreExternalIndex(Relation                index,
         const int num_clusters = 256;
         // total bytes for num_clusters clusters = num_clusters * vector_size_in_bytes
         // total pages for codebook = bytes / page_size
-        for(int i = 0; i < ceil((float)(num_clusters)*opts->dimensions * sizeof(float) / BLCKSZ); i++) {
+        for(int i = 0; i < ceil((float)(num_clusters)*pg_dimensions * sizeof(float) / BLCKSZ); i++) {
             Buffer cluster_buf = ReadBufferExtended(index, forkNum, P_NEW, RBM_NORMAL, NULL);
             LockBuffer(cluster_buf, BUFFER_LOCK_EXCLUSIVE);
             Page page = BufferGetPage(cluster_buf);
@@ -265,6 +267,7 @@ void StoreExternalIndex(Relation                index,
                             forkNum,
                             data,
                             &progress,
+                            pg_dimensions,
                             opts->dimensions,
                             0,
                             num_added_vectors,
