@@ -81,11 +81,7 @@ bool ldb_aminsert(Relation         index,
     LDB_UNUSED(indexUnchanged);
 #endif
 
-    if(!VersionsMatch()) {
-        elog(WARNING,
-             "Attempting to insert into lantern index, but the SQL version and binary version do not match. This can "
-             "cause errors. Please run `ALTER EXTENSION lantern UPDATE and reconnect");
-    }
+    (void)CheckExtensionVersions();
 
     HnswInsertState *insertstate = palloc0(sizeof(HnswInsertState));
 

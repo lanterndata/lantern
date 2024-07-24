@@ -13,7 +13,7 @@ void                  PopulateUsearchOpts(Relation index, usearch_init_options_t
 usearch_label_t       ItemPointer2Label(ItemPointer itemPtr);
 void                  label2ItemPointer(usearch_label_t label, ItemPointer itemPtr);
 float4               *ToFloat4Array(ArrayType *arr, int *dim_out);
-bool                  VersionsMatch();
+void                  CheckExtensionVersions();
 uint32                EstimateRowCount(Relation heap);
 int32                 GetColumnAttributeNumber(Relation rel, const char *columnName);
 usearch_metric_kind_t GetMetricKindFromStr(char *metric_kind_str);

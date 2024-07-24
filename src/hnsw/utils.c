@@ -3,13 +3,18 @@
 #include "utils.h"
 
 #include <assert.h>
+#include <catalog/namespace.h>
+#include <catalog/pg_proc.h>
 #include <catalog/pg_type_d.h>
 #include <executor/spi.h>
+#include <fmgr.h>
+#include <funcapi.h>
 #include <math.h>
 #include <miscadmin.h>
 #include <regex.h>
 #include <string.h>
 #include <utils/builtins.h>
+#include <utils/syscache.h>
 
 #if PG_VERSION_NUM >= 130000
 #include <utils/memutils.h>
@@ -22,8 +27,11 @@
 #include "usearch_storage.hpp"
 #include "version.h"
 
-bool versions_match = false;
-bool version_checked = false;
+bool  version_checked = false;
+bool  version_mismatch = false;
+char *catalog_version = "unknown";
+
+static const char *COMPATIBLE_VERSIONS[ LDB_COMPATIBLE_VERSIONS_COUNT ] = LDB_COMPATIBLE_VERSIONS;
 
 void LogUsearchOptions(usearch_init_options_t *opts)
 {
@@ -125,7 +133,7 @@ float4 *ToFloat4Array(ArrayType *arr, int *dim_out)
 
 // Check if the binary version matches the schema version caching the result after the first check
 // This is used to prevent interacting with the index when the two don't match
-bool VersionsMatch()
+void CheckExtensionVersions()
 {
     // If a parallel worker runs as a result of query execution, executing the SQL query below will lead to the
     // error "ERROR:  cannot execute SQL without an outer snapshot or portal." Instead of loading in a snapshot, we
@@ -134,78 +142,90 @@ bool VersionsMatch()
     // this function, invoked by _PG_init). We return true so that we suppress any version mismatch messages from
     // callers of this function
     if(!ActiveSnapshotSet()) {
-        version_checked = versions_match = false;
-        return true;
+        version_checked = false;
+        version_mismatch = false;
+        return;
     }
 
     if(likely(version_checked)) {
-        return versions_match;
-    } else {
-        const char *query;
-        const char *version;
-        bool        isnull;
-        int         version_length;
-        int         spi_result;
-        int         comparison;
-        Datum       val;
-        text       *version_text;
-
-        if(SPI_connect() != SPI_OK_CONNECT) {
-            elog(ERROR, "could not connect to executor to check binary version");
+        if(likely(!version_mismatch)) {
+            return;
         }
 
-        query = "SELECT extversion FROM pg_extension WHERE extname = 'lantern'";
-
-        // Execute the query to figure out what version of lantern is in use in SQL
-        spi_result = SPI_execute(query, true, 0);
-        if(spi_result != SPI_OK_SELECT) {
-            elog(ERROR, "SPI_execute returned %s for %s", SPI_result_code_string(spi_result), query);
-        }
-
-        // Global containing the number of rows processed, should be just 1
-        if(SPI_processed != 1) {
-            elog(ERROR, "SQL version query did not return any values");
-        }
-
-        // SPI_tuptable is a global populated by SPI_execute
-        val = SPI_getbinval(SPI_tuptable->vals[ 0 ], SPI_tuptable->tupdesc, 1, &isnull);
-
-        if(isnull) {
-            elog(ERROR, "Version query returned null");
-        }
-
-        // Grab the result and check that it matches the version in the generated header
-        version_text = DatumGetTextP(val);
-        version = text_to_cstring(version_text);
-        version_length = strlen(version);
-        if(sizeof(LDB_BINARY_VERSION) < (unsigned)version_length) {
-            version_length = sizeof(LDB_BINARY_VERSION);
-        }
-
-        comparison = strncmp(version, LDB_BINARY_VERSION, version_length);
-
-        if(comparison == 0) {
-            versions_match = true;
-        }
-        version_checked = true;
-
-        if(!versions_match) {
-            if(!version) {
-                version = "[NULL]";
-            }
-
-            elog(WARNING,
-                 "LanternDB binary version (%s) does not match the version in SQL (%s). This can cause errors as the "
-                 "two "
-                 "APIs may "
-                 "differ. Please run `ALTER EXTENSION lantern UPDATE` and reconnect before attempting to work with "
-                 "indices",
-                 LDB_BINARY_VERSION,
-                 version);
-        }
-        SPI_finish();
-        return versions_match;
+        elog(ERROR,
+             "LanternDB binary version (%s) does not match the version in SQL (%s). This can cause errors as the "
+             "two "
+             "APIs may "
+             "differ. Please install correct binary version",
+             LDB_BINARY_VERSION,
+             catalog_version);
     }
+
+    const char *query;
+    const char *version;
+    bool        isnull;
+    int         version_length;
+    int         spi_result;
+    Datum       val;
+    text       *version_text;
+
+    if(SPI_connect() != SPI_OK_CONNECT) {
+        elog(ERROR, "could not connect to executor to check binary version");
+    }
+
+    query = "SELECT extversion FROM pg_extension WHERE extname = 'lantern'";
+
+    // Execute the query to figure out what version of lantern is in use in SQL
+    spi_result = SPI_execute(query, true, 0);
+    if(spi_result != SPI_OK_SELECT) {
+        elog(ERROR, "SPI_execute returned %s for %s", SPI_result_code_string(spi_result), query);
+    }
+
+    // Global containing the number of rows processed, should be just 1
+    if(SPI_processed != 1) {
+        elog(ERROR, "SQL version query did not return any values");
+    }
+
+    // SPI_tuptable is a global populated by SPI_execute
+    val = SPI_getbinval(SPI_tuptable->vals[ 0 ], SPI_tuptable->tupdesc, 1, &isnull);
+
+    if(isnull) {
+        elog(ERROR, "SQL version query returned null");
+    }
+
+    // Grab the result and check that it matches the version in the generated header
+    version_text = DatumGetTextP(val);
+    catalog_version = text_to_cstring(version_text);
+    SPI_finish();
+
+    if(strlen(catalog_version) == 0) {
+        return;
+    }
+
+    if(strcmp(catalog_version, LDB_BINARY_VERSION) == 0) {
+        version_mismatch = false;
+        version_checked = true;
+        return;
+    }
+
+    for(int i = 0; i < LDB_COMPATIBLE_VERSIONS_COUNT; i++) {
+        if(strcmp(catalog_version, COMPATIBLE_VERSIONS[ i ]) == 0) {
+            version_mismatch = false;
+            version_checked = true;
+            return;
+        }
+    }
+
+    version_mismatch = true;
+    version_checked = true;
+
+    elog(ERROR,
+         "LanternDB binary version (%s) does not match the version in SQL (%s). This can cause errors as the "
+         "two "
+         "APIs may "
+         "differ. Please install correct binary version",
+         LDB_BINARY_VERSION,
+         catalog_version);
 }
 
 uint32 EstimateRowCount(Relation heap)
