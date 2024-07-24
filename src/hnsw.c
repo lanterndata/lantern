@@ -14,6 +14,8 @@
 #include <utils/selfuncs.h>
 #include <utils/spccache.h>
 
+#include "version.h"
+
 #if PG_VERSION_NUM <= 120000
 #include <access/htup_details.h>
 #endif
@@ -500,3 +502,6 @@ void *DatumGetSizedArray(Datum datum, HnswColumnType type, int dimensions, bool 
         elog(ERROR, "Unsupported type");
     }
 }
+
+PGDLLEXPORT PG_FUNCTION_INFO_V1(lantern_internal_get_binary_version);
+Datum lantern_internal_get_binary_version(PG_FUNCTION_ARGS) { PG_RETURN_TEXT_P(cstring_to_text(LDB_BINARY_VERSION)); }

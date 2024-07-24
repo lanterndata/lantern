@@ -666,11 +666,7 @@ IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInf
     ldb_HnswBuildState buildstate;
     memset(&buildstate, 0, sizeof(ldb_HnswBuildState));
 
-    if(!VersionsMatch()) {
-        elog(WARNING,
-             "Attempting to build lantern index, but the SQL version and binary version do not match. This can cause "
-             "errors. Please run `ALTER EXTENSION lantern UPDATE and reconnect");
-    }
+    (void)CheckExtensionVersions();
 
     BuildIndex(heap, index, indexInfo, &buildstate);
 

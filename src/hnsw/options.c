@@ -229,6 +229,9 @@ static void ldb_wait_for_gdb(int sig)
  */
 void _PG_init(void)
 {
+    // Print a warning with helpful info
+    (void)CheckExtensionVersions();
+
     if(process_shared_preload_libraries_in_progress) {
         elog(WARNING,
              "LanternDB HNSW index extension loaded inside shared_preload_libraries."
@@ -416,9 +419,6 @@ void _PG_init(void)
     MarkGUCPrefixReserved("lantern_hnsw");
     MarkGUCPrefixReserved("_lantern_internal");
 #endif
-
-    // Print a warning with helpful info
-    (void)VersionsMatch();
 
     original_post_parse_analyze_hook = post_parse_analyze_hook;
     original_ExecutorStart_hook = ExecutorStart_hook;

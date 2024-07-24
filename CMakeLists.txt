@@ -275,6 +275,24 @@ EXECUTE_PROCESS(
 # OPTIONS
 set(BUILD_ID "latest-${GIT_HASH}")
 
+# Set compatible extension versions
+set(COMPATIBLE_VERSIONS_LIST "")
+
+foreach(file ${_update_files})
+  # Extract the first version part from the file name
+  string(REGEX MATCH "([0-9]+\\.[0-9]+\\.[0-9]+)--" version ${file})
+  list(APPEND COMPATIBLE_VERSIONS_LIST ${CMAKE_MATCH_1})
+endforeach()
+
+# Convert the list to a C array
+set(COMPATIBLE_VERSIONS_ARRAY "")
+foreach(version ${COMPATIBLE_VERSIONS_LIST})
+  set(COMPATIBLE_VERSIONS_ARRAY "${COMPATIBLE_VERSIONS_ARRAY}\"${version}\", ")
+endforeach()
+string(REGEX REPLACE ", $|,$" "" COMPATIBLE_VERSIONS_ARRAY "${COMPATIBLE_VERSIONS_ARRAY}")
+set(COMPATIBLE_VERSIONS_ARRAY "{ ${COMPATIBLE_VERSIONS_ARRAY} }")
+list(LENGTH COMPATIBLE_VERSIONS_LIST COMPATIBLE_VERSIONS_COUNT)
+
 add_custom_command(
   OUTPUT ${CMAKE_BINARY_DIR}/${_script_file}
   COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/sql/lantern.sql ${CMAKE_BINARY_DIR}/${_script_file}
