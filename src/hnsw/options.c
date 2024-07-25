@@ -229,7 +229,6 @@ static void ldb_wait_for_gdb(int sig)
  */
 void _PG_init(void)
 {
-    // Print a warning with helpful info
     (void)CheckExtensionVersions();
 
     if(process_shared_preload_libraries_in_progress) {
