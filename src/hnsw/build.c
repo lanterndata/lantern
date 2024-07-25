@@ -591,9 +591,12 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
     UpdateProgress(PROGRESS_CREATEIDX_PHASE, LDB_PROGRESS_HNSW_PHASE_LOAD);
     StoreExternalIndex(index, &metadata, MAIN_FORKNUM, result_buf, &opts, buildstate->dimensions, num_added_vectors);
 
-    munmap_ret = munmap(result_buf, index_file_stat.st_size);
-    assert(munmap_ret == 0);
-    LDB_UNUSED(munmap_ret);
+    if(!buildstate->external) {
+        munmap_ret = munmap(result_buf, index_file_stat.st_size);
+        assert(munmap_ret == 0);
+        LDB_UNUSED(munmap_ret);
+    }
+
     close(index_file_fd);
 
     if(buildstate->external) {
