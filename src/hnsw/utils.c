@@ -3,18 +3,13 @@
 #include "utils.h"
 
 #include <assert.h>
-#include <catalog/namespace.h>
-#include <catalog/pg_proc.h>
 #include <catalog/pg_type_d.h>
 #include <executor/spi.h>
-#include <fmgr.h>
-#include <funcapi.h>
 #include <math.h>
 #include <miscadmin.h>
 #include <regex.h>
 #include <string.h>
 #include <utils/builtins.h>
-#include <utils/syscache.h>
 
 #if PG_VERSION_NUM >= 130000
 #include <utils/memutils.h>
@@ -28,7 +23,7 @@
 #include "version.h"
 
 bool  version_checked = false;
-bool  version_mismatch = false;
+bool  versions_match = true;
 char *catalog_version = "unknown";
 
 static const char *COMPATIBLE_VERSIONS[ LDB_COMPATIBLE_VERSIONS_COUNT ] = LDB_COMPATIBLE_VERSIONS;
@@ -142,13 +137,12 @@ void CheckExtensionVersions()
     // this function, invoked by _PG_init). We return true so that we suppress any version mismatch messages from
     // callers of this function
     if(!ActiveSnapshotSet()) {
-        version_checked = false;
-        version_mismatch = false;
+        version_checked = versions_match = false;
         return;
     }
 
     if(likely(version_checked)) {
-        if(likely(!version_mismatch)) {
+        if(likely(versions_match)) {
             return;
         }
 
@@ -203,7 +197,7 @@ void CheckExtensionVersions()
     }
 
     if(strcmp(catalog_version, LDB_BINARY_VERSION) == 0) {
-        version_mismatch = false;
+        versions_match = true;
         version_checked = true;
         SPI_finish();
         return;
@@ -211,14 +205,14 @@ void CheckExtensionVersions()
 
     for(int i = 0; i < LDB_COMPATIBLE_VERSIONS_COUNT; i++) {
         if(strcmp(catalog_version, COMPATIBLE_VERSIONS[ i ]) == 0) {
-            version_mismatch = false;
+            versions_match = true;
             version_checked = true;
             SPI_finish();
             return;
         }
     }
 
-    version_mismatch = true;
+    versions_match = false;
     version_checked = true;
 
     SPI_finish();

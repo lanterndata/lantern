@@ -502,6 +502,3 @@ void *DatumGetSizedArray(Datum datum, HnswColumnType type, int dimensions, bool 
         elog(ERROR, "Unsupported type");
     }
 }
-
-PGDLLEXPORT PG_FUNCTION_INFO_V1(lantern_internal_get_binary_version);
-Datum lantern_internal_get_binary_version(PG_FUNCTION_ARGS) { PG_RETURN_TEXT_P(cstring_to_text(LDB_BINARY_VERSION)); }
