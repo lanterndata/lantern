@@ -66,8 +66,7 @@ function install_platform_specific_dependencies() {
     if [[ "$INSTALL_CLI" = "1" ]]
     then
       setup_rust
-      # TODO:: change branch after PR merge
-      ORT_STRATEGY=system cargo install --git https://github.com/lanterndata/lantern_extras.git --branch varik/external-indexing-server --debug --bin lantern-cli --root /tmp
+      ORT_STRATEGY=system cargo install --git https://github.com/lanterndata/lantern_extras.git --branch main --debug --bin lantern-cli --root /tmp
     fi
 
   popd
