@@ -196,15 +196,16 @@ void CheckExtensionVersions()
     // Grab the result and check that it matches the version in the generated header
     version_text = DatumGetTextP(val);
     catalog_version = text_to_cstring(version_text);
-    SPI_finish();
 
     if(strlen(catalog_version) == 0) {
+        SPI_finish();
         return;
     }
 
     if(strcmp(catalog_version, LDB_BINARY_VERSION) == 0) {
         version_mismatch = false;
         version_checked = true;
+        SPI_finish();
         return;
     }
 
@@ -212,6 +213,7 @@ void CheckExtensionVersions()
         if(strcmp(catalog_version, COMPATIBLE_VERSIONS[ i ]) == 0) {
             version_mismatch = false;
             version_checked = true;
+            SPI_finish();
             return;
         }
     }
@@ -219,6 +221,7 @@ void CheckExtensionVersions()
     version_mismatch = true;
     version_checked = true;
 
+    SPI_finish();
     elog(ERROR,
          "LanternDB binary version (%s) does not match the version in SQL (%s). This can cause errors as the "
          "two "
