@@ -39,6 +39,13 @@ static void set_write_timeout(uint32 client_fd, uint32 seconds)
     }
 }
 
+/*
+ * We will try to create a non-blocking socket and use select syscall with specified timeout
+ * After the select will return we will check if socket is writable convert it back to blocking mode and return 0 if so
+ * else we will return -1 to indicate that connection attempt was failed.
+ * We are using this approach because the process hangs waiting for blocking socket
+ * when trying to connect for example to non-routable ip address
+ * */
 static int connect_with_timeout(int sockfd, const struct sockaddr *addr, socklen_t addrlen, int timeout)
 {
     // Set the socket to non-blocking mode
@@ -55,7 +62,6 @@ static int connect_with_timeout(int sockfd, const struct sockaddr *addr, socklen
     // Attempt to connect
     int result = connect(sockfd, addr, addrlen);
     if(result == -1 && errno != EINPROGRESS) {
-        perror("connect");
         return -1;
     }
 
@@ -75,7 +81,6 @@ static int connect_with_timeout(int sockfd, const struct sockaddr *addr, socklen
 
     result = select(sockfd + 1, NULL, &writefds, NULL, &tv);
     if(result == -1) {
-        perror("select");
         return -1;
     } else if(result == 0) {
         // Timeout occurred
@@ -86,9 +91,9 @@ static int connect_with_timeout(int sockfd, const struct sockaddr *addr, socklen
         int       err;
         socklen_t len = sizeof(err);
         if(getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &err, &len) == -1) {
-            perror("getsockopt");
             return -1;
         }
+
         if(err) {
             errno = err;
             return -1;
@@ -97,7 +102,6 @@ static int connect_with_timeout(int sockfd, const struct sockaddr *addr, socklen
 
     // Restore the socket to blocking mode
     if(fcntl(sockfd, F_SETFL, flags) == -1) {
-        perror("fcntl F_SETFL");
         return -1;
     }
 
