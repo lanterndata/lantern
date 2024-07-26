@@ -32,7 +32,10 @@ lazy_static! {
 
 static NOTIFICATION_CHANNEL: &'static str = "_lantern_daemon_updates";
 
-async fn get_target_databases(args: &cli::DaemonArgs) -> Result<Vec<TargetDB>, anyhow::Error> {
+async fn get_target_databases(
+    args: &cli::DaemonArgs,
+    logger: Arc<Logger>,
+) -> Result<Vec<TargetDB>, anyhow::Error> {
     if args.target_db.is_none() && args.master_db.is_none() {
         anyhow::bail!("Please pass `--master-db` or `--target-db` to operate");
     }
@@ -58,7 +61,15 @@ async fn get_target_databases(args: &cli::DaemonArgs) -> Result<Vec<TargetDB>, a
         )
         .await?
         .iter()
-        .map(|r| TargetDB::from_uri(r.get::<&str, &str>("db_uri")).unwrap())
+        .filter_map(
+            |r| match TargetDB::from_uri(r.get::<&str, &str>("db_uri")) {
+                Err(e) => {
+                    logger.error(&e.to_string());
+                    None
+                }
+                Ok(uri) => Some(uri),
+            },
+        )
         .collect::<Vec<TargetDB>>())
 }
 
@@ -281,7 +292,6 @@ async fn db_change_listener(
                     if let Err(e) = &target_db {
                          logger.error(&format!("Failed to parse db uri: {e}"));
                          return;
-
                         }
                         let target_db = target_db.unwrap();
 
@@ -346,7 +356,7 @@ pub async fn start(
 ) -> AnyhowVoidResult {
     let logger = Arc::new(logger.unwrap_or(Logger::new("Lantern Daemon", args.log_level.value())));
 
-    let target_databases: Vec<TargetDB> = get_target_databases(&args).await?;
+    let target_databases: Vec<TargetDB> = get_target_databases(&args, logger.clone()).await?;
 
     let args_arc = Arc::new(args);
     let args_arc_clone = args_arc.clone();

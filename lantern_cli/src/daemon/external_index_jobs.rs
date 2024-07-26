@@ -141,11 +141,19 @@ async fn external_index_worker(
             // We will keep the cancel_tx in static hashmap, so we can cancel the job if
             // canceled_at will be changed to true
 
-                let is_canceled = Arc::new(std::sync::RwLock::new(false));
-                let is_canceled_clone = is_canceled.clone();
-                let metric_kind = UMetricKind::from_ops(&job_clone.operator_class)?;
-                    let val: u32  = rand::random();
-                    let index_path = format!("/tmp/daemon-index-{val}.usearch");
+            let is_canceled = Arc::new(std::sync::RwLock::new(false));
+            let is_canceled_clone = is_canceled.clone();
+            let metric_kind = UMetricKind::from_ops(&job_clone.operator_class);
+
+            if let Err(e) = &metric_kind {
+                // update failure reason
+                client_ref.execute(&format!("UPDATE {jobs_table_name} SET failed_at=NOW(), updated_at=NOW(), failure_reason=$1 WHERE id=$2"), &[&e.to_string(), &job.id]).await?;
+                continue;
+            }
+
+            let metric_kind = metric_kind.unwrap();
+            let val: u32  = rand::random();
+            let index_path = format!("/tmp/daemon-index-{val}.usearch");
             let (tx, mut rx) = mpsc::channel(1);
             external_index_processor_tx.send((
                 CreateIndexArgs {
@@ -172,14 +180,15 @@ async fn external_index_worker(
             )).await?;
 
             set_job_handle(jobs_map.clone(), job.id, event_tx).await?;
-                while let Some(event) = event_rx.recv().await {
-                    if let JobEvent::Errored(msg) = event {
-                        if msg == JOB_CANCELLED_MESSAGE.to_owned() {
-                            *is_canceled.write().unwrap() = true;
-                        }
+
+            while let Some(event) = event_rx.recv().await {
+                if let JobEvent::Errored(msg) = event {
+                    if msg == JOB_CANCELLED_MESSAGE.to_owned() {
+                        *is_canceled.write().unwrap() = true;
                     }
-                    break;
                 }
+                break;
+            }
 
 
             let result = rx.recv().await;
