@@ -108,6 +108,24 @@ static int connect_with_timeout(int sockfd, const struct sockaddr *addr, socklen
     return 0;
 }
 
+int sendall(int client_fd, const unsigned char *buf, uint32 len, int flags)
+{
+    int total = 0;
+    int bytesleft = len;
+    int n;
+
+    while(total < len) {
+        n = send(client_fd, buf + total, bytesleft, flags);
+        if(n == -1 || n == 0) {
+            return n;
+        }
+        total += n;
+        bytesleft -= n;
+    }
+
+    return total;
+}
+
 /**
  * Check for error received from socket response
  * This function will return void or elog(ERROR) and exit process
@@ -154,12 +172,12 @@ void external_index_send_codebook(
 
     for(int i = 0; i < num_centroids; i++) {
         memcpy(buf, &codebook[ i * dimensions ], data_size);
-        bytes_written = send(client_fd, buf, data_size, 0);
+        bytes_written = sendall(client_fd, buf, data_size, 0);
         check_external_index_request_error(client_fd, bytes_written);
     }
 
     uint32 end_msg = EXTERNAL_INDEX_END_MSG;
-    bytes_written = send(client_fd, &end_msg, EXTERNAL_INDEX_MAGIC_MSG_SIZE, 0);
+    bytes_written = sendall(client_fd, (unsigned char *)&end_msg, EXTERNAL_INDEX_MAGIC_MSG_SIZE, 0);
 
     check_external_index_request_error(client_fd, bytes_written);
 }
@@ -217,7 +235,7 @@ int create_external_index_session(const char                   *host,
     memcpy(init_buf, &hdr_msg, EXTERNAL_INDEX_MAGIC_MSG_SIZE);
     memcpy(init_buf + EXTERNAL_INDEX_MAGIC_MSG_SIZE, &index_params, sizeof(external_index_params_t));
     uint32 bytes_written
-        = send(client_fd, init_buf, sizeof(external_index_params_t) + EXTERNAL_INDEX_MAGIC_MSG_SIZE, 0);
+        = sendall(client_fd, init_buf, sizeof(external_index_params_t) + EXTERNAL_INDEX_MAGIC_MSG_SIZE, 0);
 
     check_external_index_request_error(client_fd, bytes_written);
 
@@ -243,7 +261,7 @@ void external_index_receive_index_file(uint32 external_client_fd, uint64 *num_ad
     // disable read timeout while indexing is in progress
     set_read_timeout(external_client_fd, 0);
     // send message indicating that we have finished streaming tuples
-    bytes_written = send(external_client_fd, &end_msg, EXTERNAL_INDEX_MAGIC_MSG_SIZE, 0);
+    bytes_written = sendall(external_client_fd, (unsigned char *)&end_msg, EXTERNAL_INDEX_MAGIC_MSG_SIZE, 0);
     check_external_index_request_error(external_client_fd, bytes_written);
 
     // read how many tuples have been indexed
@@ -302,6 +320,6 @@ void external_index_send_tuple(
     // send tuple over socket if this is external indexing
     memcpy(tuple, label, sizeof(usearch_label_t));
     memcpy(tuple + sizeof(usearch_label_t), vector, tuple_size - sizeof(usearch_label_t));
-    bytes_written = send(external_client_fd, tuple, tuple_size, 0);
+    bytes_written = sendall(external_client_fd, tuple, tuple_size, 0);
     check_external_index_request_error(external_client_fd, bytes_written);
 }
