@@ -195,4 +195,12 @@ pub struct IndexServerArgs {
     /// Port to bind
     #[arg(long, default_value_t = 8998)]
     pub port: usize,
+
+    /// SSL Certificate path
+    #[arg(long)]
+    pub cert: Option<String>,
+
+    /// SSL Certificate key path
+    #[arg(long)]
+    pub key: Option<String>,
 }

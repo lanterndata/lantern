@@ -31,7 +31,7 @@ function setup_locale_and_install_packages() {
   echo "LANG=en_US.UTF-8" > /etc/locale.conf
 
   apt update -y
-  apt install -y --no-install-recommends lsb-release wget build-essential ca-certificates zlib1g-dev pkg-config libreadline-dev clang curl gnupg libssl-dev jq
+  apt install -y --no-install-recommends lsb-release wget build-essential ca-certificates zlib1g-dev pkg-config libreadline-dev clang curl gnupg libssl-dev jq clang llvm
 
   locale-gen en_US.UTF-8
   export ARCH=$(dpkg-architecture -q DEB_BUILD_ARCH)
@@ -93,7 +93,7 @@ function package_cli() {
   OUT_DIR=/tmp/${BINARY_NAME}
   BUILD_DIR=${SOURCE_DIR}/target/release/
   
-  cargo build --package lantern_cli --release 
+  CC=$(which clang) cargo build --package lantern_cli --release 
 
   mkdir -p ${OUT_DIR}
   

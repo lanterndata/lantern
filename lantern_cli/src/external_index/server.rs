@@ -3,9 +3,11 @@ use bitvec::prelude::*;
 use byteorder::{ByteOrder, LittleEndian};
 use itertools::Itertools;
 use rand::Rng;
-use std::fs;
-use std::io::{Read, Write};
-use std::net::{Shutdown, TcpListener, TcpStream};
+use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use rustls::{ServerConfig, ServerConnection, StreamOwned};
+use std::fs::{self, File};
+use std::io::{BufReader, Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::sync::mpsc::{self, Receiver, SyncSender};
@@ -43,7 +45,7 @@ unsafe impl Send for ThreadSafeIndex {}
 
 fn parse_index_options(
     logger: Arc<Logger>,
-    stream: Arc<Mutex<TcpStream>>,
+    stream: Arc<Mutex<dyn Connection>>,
     buf: &[u8],
 ) -> Result<IndexOptions, anyhow::Error> {
     let mut params: [u32; 9] = [0; 9];
@@ -75,12 +77,12 @@ fn parse_index_options(
 
     if pq {
         let expected_payload_size = dim as usize * INTEGER_SIZE;
-        let mut buf = vec![0 as u8; expected_payload_size];
         let mut stream = stream.lock().unwrap();
         let mut codebook = Vec::with_capacity(num_centroids as usize);
 
         loop {
-            match read_frame(&mut stream, &mut buf, expected_payload_size, None)? {
+            let buf = vec![0 as u8; expected_payload_size];
+            match read_frame(&mut stream, buf, expected_payload_size, None)? {
                 ProtocolMessage::Exit => break,
                 ProtocolMessage::Data(buf) => {
                     let mut vec: Vec<f32> = bytes_to_f32_vec_le(&buf);
@@ -151,16 +153,11 @@ fn parse_tuple(buf: &[u8], element_bits: usize) -> Result<Row, anyhow::Error> {
 
 fn initialize_index(
     logger: Arc<Logger>,
-    stream: Arc<Mutex<TcpStream>>,
+    stream: Arc<Mutex<dyn Connection>>,
 ) -> Result<(usize, ThreadSafeIndex), anyhow::Error> {
-    let mut buf = vec![0 as u8; INDEX_HEADER_LENGTH];
+    let buf = vec![0 as u8; INDEX_HEADER_LENGTH];
     let mut soc_stream = stream.lock().unwrap();
-    match read_frame(
-        &mut soc_stream,
-        &mut buf,
-        INDEX_HEADER_LENGTH,
-        Some(INIT_MSG),
-    )? {
+    match read_frame(&mut soc_stream, buf, INDEX_HEADER_LENGTH, Some(INIT_MSG))? {
         ProtocolMessage::Init(buf) => {
             drop(soc_stream);
             let index_options = parse_index_options(
@@ -186,7 +183,7 @@ fn initialize_index(
             index.reserve(estimated_capacity as usize)?;
             let mut soc_stream = stream.lock().unwrap();
             // send success code
-            soc_stream.write(&[0]).unwrap();
+            soc_stream.write_data(&[0]).unwrap();
 
             let element_bits = match index_options.metric {
                 MetricKind::Hamming => 1,
@@ -200,7 +197,7 @@ fn initialize_index(
 }
 
 fn receive_rows(
-    stream: Arc<Mutex<TcpStream>>,
+    stream: Arc<Mutex<dyn Connection>>,
     logger: Arc<Logger>,
     index: Arc<RwLock<ThreadSafeIndex>>,
     worker_tx: SyncSender<Row>,
@@ -217,12 +214,11 @@ fn receive_rows(
         LABEL_SIZE + idx.0.dimensions() * (element_bits / CHAR_BITS)
     };
 
-    let mut buf = vec![0 as u8; expected_payload_size];
-
     drop(idx);
 
     loop {
-        match read_frame(&mut stream, &mut buf, expected_payload_size, None)? {
+        let buf = vec![0 as u8; expected_payload_size];
+        match read_frame(&mut stream, buf, expected_payload_size, None)? {
             ProtocolMessage::Exit => break,
             ProtocolMessage::Data(buf) => {
                 let row = parse_tuple(&buf, element_bits)?;
@@ -244,19 +240,19 @@ fn receive_rows(
     Ok(())
 }
 
-enum ProtocolMessage<'a> {
-    Init(&'a mut Vec<u8>),
-    Data(&'a mut Vec<u8>),
+enum ProtocolMessage {
+    Init(Vec<u8>),
+    Data(Vec<u8>),
     Exit,
 }
 
 fn read_frame<'a>(
-    stream: &mut TcpStream,
-    buf: &'a mut Vec<u8>,
+    stream: &mut std::sync::MutexGuard<'a, dyn Connection + 'static>,
+    mut buf: Vec<u8>,
     expected_size: usize,
     match_header: Option<u32>,
-) -> Result<ProtocolMessage<'a>, anyhow::Error> {
-    let hdr_size = stream.read(buf)?;
+) -> Result<ProtocolMessage, anyhow::Error> {
+    let hdr_size = stream.read_data(&mut buf)?;
     if hdr_size < PROTOCOL_HEADER_SIZE {
         anyhow::bail!("Invalid frame received");
     }
@@ -274,7 +270,7 @@ fn read_frame<'a>(
                 // if didn't read the necessarry amount of bytes
                 // wait until the buffer will be filled
                 // we have 1min timeout for socket
-                stream.read_exact(&mut buf[hdr_size..])?;
+                stream.read_data_exact(&mut buf[hdr_size..])?;
             }
 
             if msg == INIT_MSG {
@@ -287,7 +283,7 @@ fn read_frame<'a>(
 }
 
 pub fn create_streaming_usearch_index(
-    stream: Arc<Mutex<TcpStream>>,
+    stream: Arc<Mutex<dyn Connection>>,
     logger: Arc<Logger>,
     tmp_dir: Arc<String>,
 ) -> Result<(), anyhow::Error> {
@@ -363,7 +359,7 @@ pub fn create_streaming_usearch_index(
     // Send added row count
     let mut stream = stream.lock().unwrap();
     let index = index.read().unwrap();
-    stream.write(&(index.0.size() as u64).to_le_bytes())?;
+    stream.write_data(&(index.0.size() as u64).to_le_bytes())?;
 
     // Send index file back
     logger.info("Start streaming index");
@@ -393,10 +389,10 @@ pub fn create_streaming_usearch_index(
     ));
 
     // Send index file size
-    stream.write(&(index_buffer.len() as u64).to_le_bytes())?;
+    stream.write_data(&(index_buffer.len() as u64).to_le_bytes())?;
 
     let streaming_start = Instant::now();
-    stream.write_all(&index_buffer)?;
+    stream.write_data_all(&index_buffer)?;
     logger.debug(&format!(
         "Sending index file took {}s{}ms",
         streaming_start.elapsed().as_secs(),
@@ -404,8 +400,6 @@ pub fn create_streaming_usearch_index(
     ));
 
     fs::remove_file(index_file_path)?;
-
-    let _ = stream.shutdown(Shutdown::Both);
 
     logger.debug(&format!(
         "Total indexing took {}s",
@@ -415,11 +409,85 @@ pub fn create_streaming_usearch_index(
     Ok(())
 }
 
+fn load_certs(path: String) -> Result<Vec<CertificateDer<'static>>, std::io::Error> {
+    let certfile = File::open(path).expect("Cannot open certificate file");
+    let mut reader = BufReader::new(certfile);
+    rustls_pemfile::certs(&mut reader).collect::<Result<Vec<CertificateDer>, _>>()
+}
+
+fn load_private_key(path: String) -> Result<PrivateKeyDer<'static>, anyhow::Error> {
+    Ok(
+        rustls_pemfile::private_key(&mut BufReader::new(&mut File::open(path)?))?
+            .expect("Can not load key file"),
+    )
+}
+
+fn initialize_listener(
+    args: &IndexServerArgs,
+) -> Result<(TcpListener, Option<Arc<ServerConfig>>), anyhow::Error> {
+    let mut config = None;
+    if args.cert.is_some() && args.key.is_some() {
+        // initialize tls socket
+        let cert_path = args.cert.clone().unwrap();
+        let key_path = args.key.clone().unwrap();
+        let certs = load_certs(cert_path)?;
+        let key = load_private_key(key_path)?;
+        // Configure rustls
+        config = Some(Arc::new(
+            ServerConfig::builder()
+                .with_no_client_auth()
+                .with_single_cert(certs, key)?,
+        ));
+    }
+
+    Ok((
+        TcpListener::bind(&format!("{}:{}", args.host, args.port))?,
+        config,
+    ))
+}
+
+pub trait Connection {
+    fn read_data(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error>;
+    fn read_data_exact(&mut self, buf: &mut [u8]) -> Result<(), std::io::Error>;
+    fn write_data(&mut self, buf: &[u8]) -> Result<usize, std::io::Error>;
+    fn write_data_all(&mut self, buf: &[u8]) -> Result<(), std::io::Error>;
+}
+
+impl Connection for TcpStream {
+    fn read_data(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
+        self.read(buf)
+    }
+    fn read_data_exact(&mut self, buf: &mut [u8]) -> Result<(), std::io::Error> {
+        self.read_exact(buf)
+    }
+    fn write_data(&mut self, buf: &[u8]) -> Result<usize, std::io::Error> {
+        self.write(buf)
+    }
+    fn write_data_all(&mut self, buf: &[u8]) -> Result<(), std::io::Error> {
+        self.write_all(buf)
+    }
+}
+
+impl Connection for StreamOwned<ServerConnection, TcpStream> {
+    fn read_data(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
+        self.read(buf)
+    }
+    fn read_data_exact(&mut self, buf: &mut [u8]) -> Result<(), std::io::Error> {
+        self.read_exact(buf)
+    }
+    fn write_data(&mut self, buf: &[u8]) -> Result<usize, std::io::Error> {
+        self.write(buf)
+    }
+    fn write_data_all(&mut self, buf: &[u8]) -> Result<(), std::io::Error> {
+        self.write_all(buf)
+    }
+}
+
 pub fn start_tcp_server(args: IndexServerArgs, logger: Option<Logger>) -> AnyhowVoidResult {
-    let listener = TcpListener::bind(&format!("{}:{}", args.host, args.port))?;
     let logger =
         Arc::new(logger.unwrap_or(Logger::new("Lantern Indexing Server", LogLevel::Debug)));
 
+    let (listener, ssl_config) = initialize_listener(&args)?;
     logger.info(&format!(
         "External Indexing Server started on {}:{}",
         args.host, args.port,
@@ -436,19 +504,29 @@ pub fn start_tcp_server(args: IndexServerArgs, logger: Option<Logger>) -> Anyhow
                 stream.set_read_timeout(Some(Duration::from_secs(SOCKET_TIMEOUT)))?;
                 stream.set_write_timeout(Some(Duration::from_secs(SOCKET_TIMEOUT)))?;
 
-                let stream = Arc::new(Mutex::new(stream));
-                if let Err(e) =
-                    create_streaming_usearch_index(stream.clone(), logger.clone(), tmp_dir.clone())
-                {
+                let connection_stream: Arc<Mutex<dyn Connection>> = if ssl_config.is_some() {
+                    let conn = StreamOwned::new(
+                        rustls::ServerConnection::new(ssl_config.as_ref().unwrap().clone())?,
+                        stream,
+                    );
+                    Arc::new(Mutex::new(conn))
+                } else {
+                    Arc::new(Mutex::new(stream))
+                };
+
+                if let Err(e) = create_streaming_usearch_index(
+                    connection_stream.clone(),
+                    logger.clone(),
+                    tmp_dir.clone(),
+                ) {
                     logger.error(&format!("Indexing error: {e}"));
                     let mut error_text: Vec<u8> = e.to_string().bytes().collect();
                     let error_header: [u8; PROTOCOL_HEADER_SIZE] =
                         unsafe { std::mem::transmute(ERR_MSG.to_le()) };
                     let mut error_header = error_header.to_vec();
                     error_header.append(&mut error_text);
-                    let mut stream = stream.lock().unwrap();
-                    let _ = stream.write(error_header.as_slice());
-                    let _ = stream.shutdown(Shutdown::Both);
+                    let mut stream = connection_stream.lock().unwrap();
+                    let _ = stream.write_data(error_header.as_slice());
                 };
             }
             Err(e) => {

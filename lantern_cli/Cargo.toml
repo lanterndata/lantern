@@ -1,6 +1,6 @@
 [package]
 name = "lantern_cli"
-version = "0.3.19"
+version = "0.3.20"
 edition = "2021"
 
 [[bin]]
@@ -50,17 +50,20 @@ utoipa = { version = "4.2.0", optional = true}
 utoipa-swagger-ui = { version = "6.0.0", features = ["actix-web"], optional = true }
 actix-web-httpauth = { version = "0.8.1", optional = true }
 tokio-util = "0.7.11"
-byteorder = "1.5.0"
-bitvec = "1.0.1"
+byteorder = { version="1.5.0", optional=true }
+bitvec = { version="1.0.1", optional=true }
+rustls = { version="0.23.12", optional=true }
+rustls-pemfile = { version="2.1.2", optional=true }
 
 [features]
-default = ["cli", "daemon", "http-server", "autotune", "pq", "external-index", "embeddings"]
+default = ["cli", "daemon", "http-server", "autotune", "pq", "external-index", "external-index-server", "embeddings"]
 daemon = ["dep:tokio-postgres"]
 http-server = ["dep:deadpool-postgres", "dep:deadpool", "dep:bytes", "dep:utoipa", "dep:utoipa-swagger-ui", "dep:actix-web", "dep:tokio-postgres", "dep:env_logger", "dep:actix-web-httpauth"]
 autotune = []
 pq = ["dep:gcp_auth", "dep:linfa", "dep:linfa-clustering", "dep:md5", "dep:rayon"]
 cli = []
 external-index = []
+external-index-server = ["dep:byteorder", "dep:bitvec", "dep:rustls", "dep:rustls-pemfile"]
 embeddings = ["dep:bytes"]
 
 [lib]

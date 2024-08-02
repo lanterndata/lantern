@@ -19,8 +19,10 @@ use postgres_types::FromSql;
 
 pub mod cli;
 mod postgres_large_objects;
-pub mod server;
 pub mod utils;
+
+#[cfg(feature = "external-index-server")]
+pub mod server;
 
 // Used to control chunk size when copying index file to postgres server
 static COPY_BUFFER_CHUNK_SIZE: usize = 1024 * 1024 * 10; // 10MB

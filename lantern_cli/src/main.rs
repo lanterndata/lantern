@@ -10,6 +10,10 @@ mod cli;
 async fn main() {
     use tokio_util::sync::CancellationToken;
 
+    rustls::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .expect("Failed to install default CryptoProvider");
+
     let cli = cli::Cli::parse();
     let mut _main_logger = None;
     let res = match cli.command {
