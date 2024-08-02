@@ -57,6 +57,7 @@ function install_external_dependencies() {
 }
 
 function build_and_install() {
+  rm -rf /tmp/lantern/build || true 2>/dev/null
   cd /tmp/lantern
   # install ruby dependencies for test_updates
   pushd /tmp/lantern/scripts/test_updates
@@ -71,8 +72,14 @@ function build_and_install() {
   mkdir build
   cd build
 
+  if [ -n "$DISABLE_SSL" ]; then
+    USE_SSL=0
+  else
+    USE_SSL=1
+  fi
+
   flags="-DBUILD_FOR_DISTRIBUTING=YES -DMARCH_NATIVE=OFF -DCMAKE_COMPILE_WARNING_AS_ERROR=ON \
-  -DCMAKE_C_COMPILER=$CC -DCMAKE_CXX_COMPILER=$CXX"
+  -DCMAKE_C_COMPILER=$CC -DCMAKE_CXX_COMPILER=$CXX -DUSE_SSL=$USE_SSL"
 
   if [[ "$ENABLE_COVERAGE" == "1" ]]
   then

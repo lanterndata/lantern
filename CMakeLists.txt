@@ -30,6 +30,7 @@ option(DEV "Developer mode: provide code formatting, get postgres source, etc." 
 option(CODECOVERAGE "Enable code coverage for the build" OFF)
 option(BENCH "Enable benchmarking" OFF)
 option(FAILURE_POINTS "Enable failure points" OFF)
+option(USE_SSL "Enable openssl support for external indexing socket" ON)
 
 if (${BUILD_FOR_DISTRIBUTING})
   set(RELEASE_ID ${LANTERN_VERSION})
@@ -250,10 +251,12 @@ endif()
 # =========================================================================
 
 # ============================ OPENSSL ====================================
-check_symbol_exists(USE_OPENSSL ${PostgreSQL_INCLUDE_DIRS}/pg_config.h PG_USE_OPENSSL)
+if (USE_SSL)
+  check_symbol_exists(USE_OPENSSL ${PostgreSQL_INCLUDE_DIRS}/pg_config.h PG_USE_OPENSSL)
 
-if(PG_USE_OPENSSL)
-  target_compile_definitions(lantern PRIVATE LANTERN_USE_OPENSSL)
+  if(PG_USE_OPENSSL)
+    target_compile_definitions(lantern PRIVATE LANTERN_USE_OPENSSL)
+  endif()
 endif()
 # =========================================================================
 

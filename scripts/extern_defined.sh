@@ -57,7 +57,7 @@ for dependency in $dependencies; do
       continue
    fi
 
-   if grep -q "libm" <<< "$dependency"; then
+   if grep -qE "libm|libssl" <<< "$dependency"; then
       #libm does not use symbol versioning
 	   SED_PATTERN='s/@.*$//p'
    fi
