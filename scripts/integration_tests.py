@@ -1,6 +1,7 @@
 import pytest
 import testgres
 import os
+import sys
 import signal
 import warnings
 import logging
@@ -652,7 +653,7 @@ def test_vector_search_with_filter(primary, source_table):
 @pytest.fixture
 def external_index(request):
     cli_path = os.getenv("LANTERN_CLI_PATH")
-    use_ssl = os.getenv("EXTERNAL_INDEX_SECURE")
+    use_ssl = os.getenv("EXTERNAL_INDEX_SECURE") == "1"
     if not cli_path:
         pytest.skip("pass 'LANTERN_CLI_PATH' environment variable to run external indexing tests")
         return
@@ -748,4 +749,4 @@ def test_external_index_pq(external_index, primary, source_table):
     primary.execute("testdb", f"SELECT _lantern_internal.validate_index('idx_hnsw_{table_name}')")
 
 if __name__ == "__main__":
-    os._exit(pytest.main(["-s", __file__]))
+    os._exit(pytest.main(["-s", __file__, *sys.argv[1:]]))
