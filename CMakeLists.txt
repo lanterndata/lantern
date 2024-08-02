@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.3)
+include(CheckSymbolExists)
 
 set(LANTERN_VERSION 0.3.2)
 
@@ -245,6 +246,14 @@ if(
   )
   install(DIRECTORY ${CMAKE_BINARY_DIR}/bitcode/ DESTINATION ${PostgreSQL_PACKAGE_LIBRARY_DIR}/bitcode)
   message(STATUS "Using clang compiler to emit llvm bytecode")
+endif()
+# =========================================================================
+
+# ============================ OPENSSL ====================================
+check_symbol_exists(USE_OPENSSL ${PostgreSQL_INCLUDE_DIRS}/pg_config.h PG_USE_OPENSSL)
+
+if(PG_USE_OPENSSL)
+  target_compile_definitions(lantern PRIVATE LANTERN_USE_OPENSSL)
 endif()
 # =========================================================================
 

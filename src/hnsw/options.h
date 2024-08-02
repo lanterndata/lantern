@@ -81,5 +81,6 @@ extern bool  ldb_is_test;
 extern bool  ldb_pgvector_compat;
 extern int   ldb_external_index_port;
 extern char* ldb_external_index_host;
+extern bool  ldb_external_index_secure;
 
 #endif  // LDB_HNSW_OPTIONS_H

@@ -8,6 +8,8 @@
 #include "hnsw.h"
 #include "usearch.h"
 
+typedef struct external_index_socket_t external_index_socket_t;
+
 typedef struct
 {
     /* Info */
@@ -16,11 +18,11 @@ typedef struct
     IndexInfo *indexInfo;
 
     /* Settings */
-    int            dimensions;
-    HnswColumnType columnType;
-    char          *index_file_path;
-    bool           external;
-    int            external_client_fd;
+    int                      dimensions;
+    HnswColumnType           columnType;
+    char                    *index_file_path;
+    bool                     external;
+    external_index_socket_t *external_socket;
 
     /* Statistics */
     double tuples_indexed;
