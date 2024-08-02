@@ -56,7 +56,7 @@ jobs:
         run: |
           # pytest tries to open files with full path and so 'work' home folder must be listable by postgres for it to work
           sudo chmod +x /home/runner && \
-          sudo su postgres -c "LANTERN_CLI_PATH=${{ env.LANTERN_CLI_PATH }} /tmp/lantern/cienv/bin/python ./scripts/integration_tests.py" &&\
+          sudo su postgres -c "LANTERN_CLI_PATH=${{ env.LANTERN_CLI_PATH }} EXTERNAL_INDEX_SECURE=1 /tmp/lantern/cienv/bin/python ./scripts/integration_tests.py" &&\
           echo "Done with integration tests"
         env:
           PG_VERSION: ${{ matrix.postgres }}

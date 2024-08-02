@@ -2,8 +2,8 @@
 #define LDB_EXTERNAL_IDX_SOCKET_H
 #include <postgres.h>
 
-#include <hnsw/build.h>
-
+#include "build.h"
+#include "external_index_socket_ssl.h"
 #include "usearch.h"
 
 #define EXTERNAL_INDEX_MAGIC_MSG_SIZE   4
@@ -31,17 +31,46 @@ typedef struct external_index_params_t
 
 } external_index_params_t;
 
-void external_index_send_codebook(
-    uint32 client_fd, float *codebook, uint32 dimensions, uint32 num_centroids, uint32 num_subvectors);
-int  create_external_index_session(const char                   *host,
-                                   int                           port,
-                                   const usearch_init_options_t *params,
-                                   const ldb_HnswBuildState     *buildstate,
-                                   uint32                        estimated_row_count);
-void check_external_index_response_error(uint32 client_fd, unsigned char *buffer, int32 size);
-void external_index_receive_index_file(uint32 external_client_fd, uint64 *num_added_vectors, char **result_buf);
-void check_external_index_request_error(uint32 client_fd, int32 bytes_written);
-void external_index_send_tuple(
-    uint32 external_client_fd, usearch_label_t *label, void *vector, uint8 scalar_bits, uint32 dimensions);
+typedef struct external_index_socket_t
+{
+    uint32   fd;
+    SSL_CTX *ssl_ctx;
+    SSL     *ssl;
+    int (*init)(struct external_index_socket_t *self);
+    int (*read)(struct external_index_socket_t *self, char *buf, uint32 size);
+    int (*send)(struct external_index_socket_t *self, const char *buf, uint32 size, uint32 flags);
+    void (*close)(struct external_index_socket_t *self);
+} external_index_socket_t;
+
+/* PLAIN SOCKET FUNCTIONS */
+int init_plain(external_index_socket_t *socket_con);
+int read_plain(external_index_socket_t *socket_con, char *buf, uint32 size);
+int send_plain(external_index_socket_t *socket_con, const char *buf, uint32 size, uint32 flags);
+int close_plain(external_index_socket_t *socket_con);
+/* ====================== */
+
+/* SSL SOCKET FUNCTIONS */
+int  init_ssl(external_index_socket_t *socket_con);
+int  read_ssl(external_index_socket_t *socket_con, char *buf, uint32 size);
+int  send_ssl(external_index_socket_t *socket_con, const char *buf, uint32 size, uint32 flags);
+void close_ssl(external_index_socket_t *socket_con);
+/* ====================== */
+
+external_index_socket_t *create_external_index_session(const char                   *host,
+                                                       int                           port,
+                                                       bool                          secure,
+                                                       const usearch_init_options_t *params,
+                                                       const ldb_HnswBuildState     *buildstate,
+                                                       uint32                        estimated_row_count);
+void                     external_index_send_codebook(external_index_socket_t *socket_con,
+                                                      float                   *codebook,
+                                                      uint32                   dimensions,
+                                                      uint32                   num_centroids,
+                                                      uint32                   num_subvectors);
+void                     external_index_receive_index_file(external_index_socket_t *socket_con,
+                                                           uint64                  *num_added_vectors,
+                                                           char                   **result_buf);
+void                     external_index_send_tuple(
+                        external_index_socket_t *socket_con, usearch_label_t *label, void *vector, uint8 scalar_bits, uint32 dimensions);
 
 #endif  // LDB_EXTERNAL_IDX_SOCKET_H

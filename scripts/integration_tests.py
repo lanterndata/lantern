@@ -652,13 +652,18 @@ def test_vector_search_with_filter(primary, source_table):
 @pytest.fixture
 def external_index(request):
     cli_path = os.getenv("LANTERN_CLI_PATH")
+    use_ssl = os.getenv("EXTERNAL_INDEX_SECURE")
     if not cli_path:
         pytest.skip("pass 'LANTERN_CLI_PATH' environment variable to run external indexing tests")
         return
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         if s.connect_ex(('127.0.0.1', 8998)) != 0:
-            subprocess.Popen([cli_path, "start-indexing-server", "--host", "127.0.0.1", "--port", "8998"], shell=False,
+            ssl_args = []
+            if use_ssl:
+                subprocess.run(["openssl", "req", "-x509", "-nodes", "-days", "365", "-newkey", "rsa:2048", "-keyout", "/tmp/key.pem", "-out", "/tmp/cert.pem", "-subj", "/C=US/ST=California/L=San Francisco/O=Lantern/CN=lantern.dev"])
+                ssl_args = ["--cert", "/tmp/cert.pem", "--key", "/tmp/key.pem"]
+            subprocess.Popen([cli_path, "start-indexing-server", "--host", "127.0.0.1", "--port", "8998", *ssl_args], shell=False,
              stdin=None, stdout=None, stderr=None, close_fds=True)
             tries = 1
             time.sleep(5)
@@ -669,6 +674,7 @@ def external_index(request):
 def test_external_index(external_index, primary, source_table, quant_bits, distance_metric):
     table_name = f"{source_table}_{quant_bits}_{distance_metric}_external_index"
     index_name = f"idx_hnsw_{table_name}_{distance_metric}"
+    use_ssl =  "ON" if os.getenv("EXTERNAL_INDEX_SECURE") == "1" else "OFF"
 
     data_type = 'INT[]' if distance_metric == 'hamming' else 'REAL[]'
 
@@ -686,7 +692,7 @@ def test_external_index(external_index, primary, source_table, quant_bits, dista
     # note: when M is too low, the streaming search below might return fewer results since the bottom layer of hnsw is less connected
     primary.execute(
         "testdb",
-        f"CREATE INDEX {index_name} ON {table_name} USING lantern_hnsw (v {ops}) WITH (dim=128, M=10, quant_bits = {quant_bits}, external = true)",
+        f"SET lantern.external_index_secure={use_ssl}; CREATE INDEX {index_name} ON {table_name} USING lantern_hnsw (v {ops}) WITH (dim=128, M=10, quant_bits = {quant_bits}, external = true)",
     )
 
     limit = 1000
@@ -710,6 +716,7 @@ def test_external_index(external_index, primary, source_table, quant_bits, dista
 @pytest.mark.external_index
 def test_external_index_pq(external_index, primary, source_table):
     table_name = f"{source_table}_external_index_pq"
+    use_ssl =  "ON" if os.getenv("EXTERNAL_INDEX_SECURE") == "1" else "OFF"
     primary.execute(
         "testdb",
         f"CREATE TABLE IF NOT EXISTS {table_name} AS SELECT * FROM {source_table}",
@@ -721,7 +728,7 @@ def test_external_index_pq(external_index, primary, source_table):
     # note: when M is too low, the streaming search below might return fewer results since the bottom layer of hnsw is less connected
     primary.execute(
         "testdb",
-        f"CREATE INDEX idx_hnsw_{table_name} ON {table_name} USING lantern_hnsw (v dist_l2sq_ops) WITH (dim=128, M=8, quant_bits = 32, external = true, pq = true)",
+        f"SET lantern.external_index_secure={use_ssl}; CREATE INDEX idx_hnsw_{table_name} ON {table_name} USING lantern_hnsw (v dist_l2sq_ops) WITH (dim=128, M=8, quant_bits = 32, external = true, pq = true)",
     )
 
     limit = 1000

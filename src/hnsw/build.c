@@ -107,9 +107,9 @@ static void AddTupleToUsearchIndex(ItemPointer         tid,
     // tid has info about disk location of this item and is 6 bytes long
     usearch_label_t label = ItemPointer2Label(tid);
 
-    if(buildstate->external_client_fd) {
+    if(buildstate->external_socket) {
         // send tuple over socket if this is external indexing
-        external_index_send_tuple(buildstate->external_client_fd, &label, vector, scalar_bits, buildstate->dimensions);
+        external_index_send_tuple(buildstate->external_socket, &label, vector, scalar_bits, buildstate->dimensions);
     } else if(buildstate->usearch_index != NULL) {
         size_t capacity = usearch_capacity(buildstate->usearch_index, &error);
         if(capacity == usearch_size(buildstate->usearch_index, &error)) {
@@ -520,8 +520,12 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
                  "maintenance_work_mem");
 
         if(buildstate->external) {
-            buildstate->external_client_fd = create_external_index_session(
-                ldb_external_index_host, ldb_external_index_port, &opts, buildstate, estimated_row_count);
+            buildstate->external_socket = create_external_index_session(ldb_external_index_host,
+                                                                        ldb_external_index_port,
+                                                                        ldb_external_index_secure,
+                                                                        &opts,
+                                                                        buildstate,
+                                                                        estimated_row_count);
             assert(buildstate->external_client_fd > 0);
         } else {
             usearch_reserve(buildstate->usearch_index, estimated_row_count, &error);
@@ -550,7 +554,7 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
     if(buildstate->index_file_path) {
         index_file_fd = open(buildstate->index_file_path, O_RDONLY);
     } else if(buildstate->external) {
-        external_index_receive_index_file(buildstate->external_client_fd, &num_added_vectors, &result_buf);
+        external_index_receive_index_file(buildstate->external_socket, &num_added_vectors, &result_buf);
     } else {
         // Save index into temporary file
         // To later mmap it into memory
@@ -600,7 +604,7 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
     close(index_file_fd);
 
     if(buildstate->external) {
-        close(buildstate->external_client_fd);
+        buildstate->external_socket->close(buildstate->external_socket);
     }
 
     if(tmp_index_file_path) {

@@ -52,6 +52,7 @@ int   ldb_hnsw_init_k;
 int   ldb_hnsw_ef_search;
 int   ldb_external_index_port;
 char *ldb_external_index_host;
+bool  ldb_external_index_secure;
 
 // if this variable is set to true
 // our operator rewriting hooks will be disabled
@@ -376,7 +377,7 @@ void _PG_init(void)
                              NULL,
                              NULL);
 
-    DefineCustomIntVariable("lantern_hnsw.external_index_port",
+    DefineCustomIntVariable("lantern.external_index_port",
                             "Port for external indexing",
                             "Change this value if you run lantern daemon on different port",
                             &ldb_external_index_port,
@@ -389,7 +390,7 @@ void _PG_init(void)
                             NULL,
                             NULL);
 
-    DefineCustomStringVariable("lantern_hnsw.external_index_host",
+    DefineCustomStringVariable("lantern.external_index_host",
                                "Host for external indexing",
                                "Change this value if you run lantern daemon on remote host",
                                &ldb_external_index_host,
@@ -399,6 +400,17 @@ void _PG_init(void)
                                NULL,
                                NULL,
                                NULL);
+
+    DefineCustomBoolVariable("lantern.external_index_secure",
+                             "Use SSL connection when connecting to external index socket",
+                             "Set this to 0 to disable secure connection",
+                             &ldb_external_index_secure,
+                             true,
+                             PGC_USERSET,
+                             0,
+                             NULL,
+                             NULL,
+                             NULL);
 #if PG_VERSION_NUM >= 150000
     MarkGUCPrefixReserved("lantern");
     MarkGUCPrefixReserved("lantern_hnsw");
