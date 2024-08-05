@@ -5,6 +5,7 @@
 #include <arpa/inet.h>
 #include <hnsw/build.h>
 #include <miscadmin.h>
+#include <netdb.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -205,7 +206,8 @@ external_index_socket_t *create_external_index_session(const char               
     external_index_socket_t *socket_con = palloc0(sizeof(external_index_socket_t));
     int                      client_fd, status;
     char                     init_buf[ sizeof(external_index_params_t) + EXTERNAL_INDEX_MAGIC_MSG_SIZE ];
-    struct sockaddr_in       serv_addr;
+    char                     port_str[ 5 ];
+    struct addrinfo         *serv_addr, hints = {0};
     char                     init_response[ EXTERNAL_INDEX_INIT_BUFFER_SIZE ] = {0};
 
     if(!is_little_endian()) {
@@ -240,19 +242,19 @@ external_index_socket_t *create_external_index_session(const char               
     }
 
     socket_con->fd = client_fd;
+    hints.ai_socktype = SOCK_STREAM;  // TCP socket
+    snprintf(port_str, 5, "%u", port);
+    status = getaddrinfo(host, port_str, &hints, &serv_addr);
 
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(port);
-
-    if(inet_pton(AF_INET, host, &serv_addr.sin_addr) <= 0) {
-        elog(ERROR, "external index: invalid address");
+    if(status != 0) {
+        elog(ERROR, "external index: getaddrinfo %s\n", gai_strerror(status));
     }
 
     set_write_timeout(client_fd, EXTERNAL_INDEX_SOCKET_TIMEOUT);
     set_read_timeout(client_fd, EXTERNAL_INDEX_SOCKET_TIMEOUT);
 
-    if((status = connect_with_timeout(
-            client_fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr), EXTERNAL_INDEX_SOCKET_TIMEOUT))
+    if((status
+        = connect_with_timeout(client_fd, serv_addr->ai_addr, serv_addr->ai_addrlen, EXTERNAL_INDEX_SOCKET_TIMEOUT))
        < 0) {
         elog(ERROR, "external index: connection with server failed");
     }
