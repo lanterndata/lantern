@@ -119,24 +119,6 @@ static int connect_with_timeout(int sockfd, const struct sockaddr *addr, socklen
     return 0;
 }
 
-int sendall(external_index_socket_t *socket_con, const char *buf, uint32 len, int flags)
-{
-    int total = 0;
-    int bytesleft = len;
-    int n;
-
-    while(total < len) {
-        n = socket_con->send(socket_con, buf + total, bytesleft, flags);
-        if(n == -1 || n == 0) {
-            return n;
-        }
-        total += n;
-        bytesleft -= n;
-    }
-
-    return total;
-}
-
 /**
  * Check for error received from socket response
  * This function will return void or elog(ERROR) and exit process
@@ -174,6 +156,22 @@ static void check_external_index_request_error(external_index_socket_t *socket_c
     elog(ERROR, "external index socket send failed");
 }
 
+static int sendall_or_error(external_index_socket_t *socket_con, const char *buf, uint32 len, int flags)
+{
+    uint32 total = 0;
+    uint32 bytesleft = len;
+    int32  n;
+
+    while(total < len) {
+        n = socket_con->send(socket_con, buf + total, bytesleft, flags);
+        check_external_index_request_error(socket_con, n);
+        total += n;
+        bytesleft -= n;
+    }
+
+    return total;
+}
+
 void external_index_send_codebook(external_index_socket_t *socket_con,
                                   float                   *codebook,
                                   uint32                   dimensions,
@@ -186,12 +184,12 @@ void external_index_send_codebook(external_index_socket_t *socket_con,
 
     for(int i = 0; i < num_centroids; i++) {
         memcpy(buf, &codebook[ i * dimensions ], data_size);
-        bytes_written = sendall(socket_con, buf, data_size, 0);
+        bytes_written = sendall_or_error(socket_con, buf, data_size, 0);
         check_external_index_request_error(socket_con, bytes_written);
     }
 
     uint32 end_msg = EXTERNAL_INDEX_END_MSG;
-    bytes_written = sendall(socket_con, (char *)&end_msg, EXTERNAL_INDEX_MAGIC_MSG_SIZE, 0);
+    bytes_written = sendall_or_error(socket_con, (char *)&end_msg, EXTERNAL_INDEX_MAGIC_MSG_SIZE, 0);
 
     check_external_index_request_error(socket_con, bytes_written);
 }
@@ -277,8 +275,8 @@ external_index_socket_t *create_external_index_session(const char               
     uint32 hdr_msg = EXTERNAL_INDEX_INIT_MSG;
     memcpy(init_buf, &hdr_msg, EXTERNAL_INDEX_MAGIC_MSG_SIZE);
     memcpy(init_buf + EXTERNAL_INDEX_MAGIC_MSG_SIZE, &index_params, sizeof(external_index_params_t));
-    uint32 bytes_written
-        = sendall(socket_con, init_buf, sizeof(external_index_params_t) + EXTERNAL_INDEX_MAGIC_MSG_SIZE, 0);
+    int32 bytes_written
+        = sendall_or_error(socket_con, init_buf, sizeof(external_index_params_t) + EXTERNAL_INDEX_MAGIC_MSG_SIZE, 0);
 
     check_external_index_request_error(socket_con, bytes_written);
 
@@ -287,7 +285,7 @@ external_index_socket_t *create_external_index_session(const char               
             socket_con, buildstate->pq_codebook, params->dimensions, params->num_centroids, params->num_subvectors);
     }
 
-    uint32 buf_size = socket_con->read(socket_con, (char *)&init_response, EXTERNAL_INDEX_INIT_BUFFER_SIZE);
+    int32 buf_size = socket_con->read(socket_con, (char *)&init_response, EXTERNAL_INDEX_INIT_BUFFER_SIZE);
 
     check_external_index_response_error(socket_con, (char *)init_response, buf_size);
 
@@ -306,7 +304,7 @@ void external_index_receive_index_file(external_index_socket_t *socket_con,
     // disable read timeout while indexing is in progress
     set_read_timeout(socket_con->fd, 0);
     // send message indicating that we have finished streaming tuples
-    bytes_written = sendall(socket_con, (char *)&end_msg, EXTERNAL_INDEX_MAGIC_MSG_SIZE, 0);
+    bytes_written = sendall_or_error(socket_con, (char *)&end_msg, EXTERNAL_INDEX_MAGIC_MSG_SIZE, 0);
     check_external_index_request_error(socket_con, bytes_written);
 
     // read how many tuples have been indexed
@@ -364,6 +362,6 @@ void external_index_send_tuple(
     // send tuple over socket if this is external indexing
     memcpy(tuple, label, sizeof(usearch_label_t));
     memcpy(tuple + sizeof(usearch_label_t), vector, tuple_size - sizeof(usearch_label_t));
-    bytes_written = sendall(socket_con, tuple, tuple_size, 0);
+    bytes_written = sendall_or_error(socket_con, tuple, tuple_size, 0);
     check_external_index_request_error(socket_con, bytes_written);
 }
