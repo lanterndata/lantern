@@ -22,9 +22,9 @@
 #include "usearch_storage.hpp"
 #include "version.h"
 
-bool  version_checked = false;
-bool  versions_match = true;
-char *catalog_version = "unknown";
+bool version_checked = false;
+bool versions_match = false;
+char catalog_version[ NAMEDATALEN ] = "unknown";
 
 static const char *COMPATIBLE_VERSIONS[ LDB_COMPATIBLE_VERSIONS_COUNT ] = LDB_COMPATIBLE_VERSIONS;
 
@@ -189,12 +189,7 @@ void CheckExtensionVersions()
 
     // Grab the result and check that it matches the version in the generated header
     version_text = DatumGetTextP(val);
-    catalog_version = text_to_cstring(version_text);
-
-    if(strlen(catalog_version) == 0) {
-        SPI_finish();
-        return;
-    }
+    strncpy(catalog_version, text_to_cstring(version_text), NAMEDATALEN);
 
     if(strcmp(catalog_version, LDB_BINARY_VERSION) == 0) {
         versions_match = true;
