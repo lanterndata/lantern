@@ -32,7 +32,7 @@ jobs:
 
       - name: Build without SSL
         id: build_without_ssl
-        run: sudo sh -c "DISABLE_SSL=1 PG_VERSION=$PG_VERSION USE_SOURCE=1 GITHUB_OUTPUT=$GITHUB_OUTPUT INSTALL_CLI=1 ./ci/scripts/build.sh"
+        run: sudo sh -c "USE_SSL=0 PG_VERSION=$PG_VERSION USE_SOURCE=1 GITHUB_OUTPUT=$GITHUB_OUTPUT INSTALL_CLI=1 ./ci/scripts/build.sh"
         env:
           PG_VERSION: ${{ matrix.postgres }}
           BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
@@ -51,7 +51,7 @@ jobs:
         run: |
           # pytest tries to open files with full path and so 'work' home folder must be listable by postgres for it to work
           sudo chmod +x /home/runner && \
-          sudo su postgres -c "LANTERN_CLI_PATH=${{ env.LANTERN_CLI_PATH }} EXTERNAL_INDEX_SECURE=0 /tmp/lantern/cienv/bin/python ./scripts/integration_tests.py -k external_index" &&\
+          sudo su postgres -c "LANTERN_CLI_PATH=${{ env.LANTERN_CLI_PATH }} USE_SSL=0 /tmp/lantern/cienv/bin/python ./scripts/integration_tests.py -k external_index" &&\
           echo "Done with integration tests"
         env:
           PG_VERSION: ${{ matrix.postgres }}
@@ -59,14 +59,14 @@ jobs:
 
       - name: Build
         id: build
-        run: sudo sh -c "PG_VERSION=$PG_VERSION USE_SOURCE=1 GITHUB_OUTPUT=$GITHUB_OUTPUT ENABLE_COVERAGE=$ENABLE_COVERAGE INSTALL_CLI=1 ./ci/scripts/build.sh"
+        run: sudo sh -c "USE_SSL=1 PG_VERSION=$PG_VERSION USE_SOURCE=1 GITHUB_OUTPUT=$GITHUB_OUTPUT ENABLE_COVERAGE=$ENABLE_COVERAGE ./ci/scripts/build.sh"
         env:
           PG_VERSION: ${{ matrix.postgres }}
           BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
           ENABLE_COVERAGE: ${{ (startsWith(matrix.os, 'ubuntu') && matrix.postgres == 15) && '1' || '0' }}
       - name: Run tests linux
         id: test-linux
-        run: sudo su postgres -c "PG_VERSION=$PG_VERSION ENABLE_COVERAGE=$ENABLE_COVERAGE ./ci/scripts/run-tests-linux.sh"
+        run: sudo su postgres -c "PG_VERSION=$PG_VERSION ./ci/scripts/run-tests-linux.sh"
         env:
           PG_VERSION: ${{ matrix.postgres }}
           ENABLE_COVERAGE: ${{ (startsWith(matrix.os, 'ubuntu') && matrix.postgres == 15) && '1' || '0' }}
@@ -81,11 +81,17 @@ jobs:
           # pytest tries to open files with full path and so 'work' home folder must be listable by postgres for it to work
           sudo fuser -k 8998/tcp || true 2>/dev/null # kill previously started cli
           sudo chmod +x /home/runner && \
-          sudo su postgres -c "LANTERN_CLI_PATH=${{ env.LANTERN_CLI_PATH }} EXTERNAL_INDEX_SECURE=1 /tmp/lantern/cienv/bin/python ./scripts/integration_tests.py" &&\
+          sudo su postgres -c "LANTERN_CLI_PATH=${{ env.LANTERN_CLI_PATH }} USE_SSL=1 /tmp/lantern/cienv/bin/python ./scripts/integration_tests.py" &&\
           echo "Done with integration tests"
         env:
           PG_VERSION: ${{ matrix.postgres }}
         if: ${{ !startsWith(matrix.os, 'mac') }}
+
+      - name: Collect coverage files
+        id: collect-cov-files
+        run: sudo su postgres -c "cd /tmp/lantern/build && make cover"
+        if: ${{ startsWith(matrix.os, 'ubuntu') && matrix.postgres == 15 }}
+
       - name: Run update tests linux
         id: update-test-linux
         run: |

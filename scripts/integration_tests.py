@@ -8,6 +8,7 @@ import logging
 import socket
 import subprocess
 import time
+from packaging.version import Version
 
 # for pry
 import inspect
@@ -653,7 +654,7 @@ def test_vector_search_with_filter(primary, source_table):
 @pytest.fixture
 def external_index(request):
     cli_path = os.getenv("LANTERN_CLI_PATH")
-    use_ssl = os.getenv("EXTERNAL_INDEX_SECURE") == "1"
+    use_ssl = os.getenv("USE_SSL") == "1"
     if not cli_path:
         pytest.skip("pass 'LANTERN_CLI_PATH' environment variable to run external indexing tests")
         return
@@ -675,7 +676,7 @@ def external_index(request):
 def test_external_index(external_index, primary, source_table, quant_bits, distance_metric):
     table_name = f"{source_table}_{quant_bits}_{distance_metric}_external_index"
     index_name = f"idx_hnsw_{table_name}_{distance_metric}"
-    use_ssl =  "ON" if os.getenv("EXTERNAL_INDEX_SECURE") == "1" else "OFF"
+    use_ssl =  "ON" if os.getenv("USE_SSL") == "1" else "OFF"
 
     data_type = 'INT[]' if distance_metric == 'hamming' else 'REAL[]'
 
@@ -717,7 +718,7 @@ def test_external_index(external_index, primary, source_table, quant_bits, dista
 @pytest.mark.external_index
 def test_external_index_pq(external_index, primary, source_table):
     table_name = f"{source_table}_external_index_pq"
-    use_ssl =  "ON" if os.getenv("EXTERNAL_INDEX_SECURE") == "1" else "OFF"
+    use_ssl =  "ON" if os.getenv("USE_SSL") == "1" else "OFF"
     primary.execute(
         "testdb",
         f"CREATE TABLE IF NOT EXISTS {table_name} AS SELECT * FROM {source_table}",
@@ -753,9 +754,12 @@ def test_external_index_pq(external_index, primary, source_table):
 @pytest.mark.parametrize("quant_bits", [32])
 @pytest.mark.external_index
 def test_external_index_reindex(external_index, primary, source_table, quant_bits, distance_metric):
+    if primary.version < Version("12.0.0"):
+        pytest.skip("REINDEX is not supported on postgres 11")
+
     table_name = f"{source_table}_{quant_bits}_{distance_metric}_reindx_external_index"
     index_name = f"idx_hnsw_{table_name}_{distance_metric}"
-    use_ssl =  "ON" if os.getenv("EXTERNAL_INDEX_SECURE") == "1" else "OFF"
+    use_ssl =  "ON" if os.getenv("USE_SSL") == "1" else "OFF"
 
     data_type = 'INT[]' if distance_metric == 'hamming' else 'REAL[]'
 
@@ -798,7 +802,9 @@ def test_external_index_reindex(external_index, primary, source_table, quant_bit
     primary.execute("testdb", f"SELECT _lantern_internal.validate_index('{index_name}')")
     primary.execute("testdb", f"REINDEX INDEX {index_name};")
     primary.execute("testdb", f"SELECT _lantern_internal.validate_index('{index_name}')")
+
     primary.safe_psql(dbname="testdb", query=f"REINDEX INDEX CONCURRENTLY {index_name};")
     primary.execute("testdb", f"SELECT _lantern_internal.validate_index('{index_name}')")
+
 if __name__ == "__main__":
     os._exit(pytest.main(["-s", __file__, *sys.argv[1:]]))
