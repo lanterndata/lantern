@@ -748,5 +748,57 @@ def test_external_index_pq(external_index, primary, source_table):
     ), f"Failed for {plan}"
     primary.execute("testdb", f"SELECT _lantern_internal.validate_index('idx_hnsw_{table_name}')")
 
+
+@pytest.mark.parametrize("distance_metric", ["l2sq"])
+@pytest.mark.parametrize("quant_bits", [32])
+@pytest.mark.external_index
+def test_external_index_reindex(external_index, primary, source_table, quant_bits, distance_metric):
+    table_name = f"{source_table}_{quant_bits}_{distance_metric}_reindx_external_index"
+    index_name = f"idx_hnsw_{table_name}_{distance_metric}"
+    use_ssl =  "ON" if os.getenv("EXTERNAL_INDEX_SECURE") == "1" else "OFF"
+
+    data_type = 'INT[]' if distance_metric == 'hamming' else 'REAL[]'
+
+    primary.safe_psql(
+        dbname="testdb",
+        query=f"ALTER DATABASE testdb SET lantern.external_index_secure={use_ssl}",
+    )
+    if not primary.execute(
+        "testdb",
+        f"SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '{table_name}')",
+    )[0][0]:
+        primary.execute(
+            "testdb",
+            f"CREATE TABLE IF NOT EXISTS {table_name} AS SELECT id, v::{data_type} FROM {source_table}",
+        )
+        primary.execute("testdb", f"ALTER TABLE {table_name} ADD PRIMARY KEY (id)")
+
+    ops = { 'l2sq': 'dist_l2sq_ops', 'cos': 'dist_cos_ops', 'hamming': 'dist_hamming_ops'}[distance_metric]
+    # note: when M is too low, the streaming search below might return fewer results since the bottom layer of hnsw is less connected
+    primary.safe_psql(
+        dbname="testdb",
+        query=f"CREATE INDEX CONCURRENTLY {index_name} ON {table_name} USING lantern_hnsw (v {ops}) WITH (dim=128, M=10, quant_bits = {quant_bits}, external = true)",
+    )
+
+    limit = 1000
+    query_id = 44
+    vec_from_id_query = lambda id: f"(SELECT v FROM {table_name} WHERE id = {id})"
+
+    op = { 'l2sq': '<->', 'cos': '<=>', 'hamming': '<+>'}[distance_metric]
+    query = f"""
+    SELECT *, v {op} ({vec_from_id_query(query_id)}) as dist FROM {table_name}
+    ORDER BY v {op} ({vec_from_id_query(query_id)})
+    LIMIT {limit}
+    """
+
+    plan = primary.execute("testdb", f"EXPLAIN {query}")
+    assert f"Index Scan using {index_name}" in str(
+        plan
+    ), f"Failed for {plan}"
+    primary.execute("testdb", f"SELECT _lantern_internal.validate_index('{index_name}')")
+    primary.execute("testdb", f"REINDEX INDEX {index_name};")
+    primary.execute("testdb", f"SELECT _lantern_internal.validate_index('{index_name}')")
+    primary.safe_psql(dbname="testdb", query=f"REINDEX INDEX CONCURRENTLY {index_name};")
+    primary.execute("testdb", f"SELECT _lantern_internal.validate_index('{index_name}')")
 if __name__ == "__main__":
     os._exit(pytest.main(["-s", __file__, *sys.argv[1:]]))
