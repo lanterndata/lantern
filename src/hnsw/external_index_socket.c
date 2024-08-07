@@ -6,7 +6,6 @@
 #include <hnsw/build.h>
 #include <miscadmin.h>
 #include <netdb.h>
-#include <sys/socket.h>
 #include <unistd.h>
 
 static bool is_little_endian()
@@ -43,9 +42,9 @@ static void set_write_timeout(uint32 client_fd, uint32 seconds)
 /* PLAIN SOCKET FUNCTIONS */
 int init_plain(external_index_socket_t *socket_con) { return 0; }
 int read_plain(external_index_socket_t *socket_con, char *buf, uint32 size) { return read(socket_con->fd, buf, size); };
-int send_plain(external_index_socket_t *socket_con, const char *buf, uint32 size, uint32 flags)
+int write_plain(external_index_socket_t *socket_con, const char *buf, uint32 size)
 {
-    return send(socket_con->fd, buf, size, flags);
+    return write(socket_con->fd, buf, size);
 };
 int close_plain(external_index_socket_t *socket_con) { return close(socket_con->fd); };
 /* ====================== */
@@ -156,20 +155,18 @@ static void check_external_index_request_error(external_index_socket_t *socket_c
     elog(ERROR, "external index socket send failed");
 }
 
-static int sendall_or_error(external_index_socket_t *socket_con, const char *buf, uint32 len, int flags)
+static void writeall_or_error(external_index_socket_t *socket_con, const char *buf, uint32 len, int flags)
 {
     uint32 total = 0;
     uint32 bytesleft = len;
     int32  n;
 
     while(total < len) {
-        n = socket_con->send(socket_con, buf + total, bytesleft, flags);
+        n = socket_con->write(socket_con, buf + total, bytesleft);
         check_external_index_request_error(socket_con, n);
         total += n;
         bytesleft -= n;
     }
-
-    return total;
 }
 
 void external_index_send_codebook(external_index_socket_t *socket_con,
@@ -179,19 +176,15 @@ void external_index_send_codebook(external_index_socket_t *socket_con,
                                   uint32                   num_subvectors)
 {
     int  data_size = dimensions * sizeof(float);
-    int  bytes_written = -1;
     char buf[ data_size ];
 
     for(int i = 0; i < num_centroids; i++) {
         memcpy(buf, &codebook[ i * dimensions ], data_size);
-        bytes_written = sendall_or_error(socket_con, buf, data_size, 0);
-        check_external_index_request_error(socket_con, bytes_written);
+        writeall_or_error(socket_con, buf, data_size, 0);
     }
 
     uint32 end_msg = EXTERNAL_INDEX_END_MSG;
-    bytes_written = sendall_or_error(socket_con, (char *)&end_msg, EXTERNAL_INDEX_MAGIC_MSG_SIZE, 0);
-
-    check_external_index_request_error(socket_con, bytes_written);
+    writeall_or_error(socket_con, (char *)&end_msg, EXTERNAL_INDEX_MAGIC_MSG_SIZE, 0);
 }
 
 external_index_socket_t *create_external_index_session(const char                   *host,
@@ -218,7 +211,7 @@ external_index_socket_t *create_external_index_session(const char               
     if(secure) {
         socket_con->init = (void *)init_ssl;
         socket_con->read = (void *)read_ssl;
-        socket_con->send = (void *)send_ssl;
+        socket_con->write = (void *)write_ssl;
         socket_con->close = (void *)close_ssl;
     }
 #else
@@ -231,7 +224,7 @@ external_index_socket_t *create_external_index_session(const char               
     if(!secure) {
         socket_con->init = (void *)init_plain;
         socket_con->read = (void *)read_plain;
-        socket_con->send = (void *)send_plain;
+        socket_con->write = (void *)write_plain;
         socket_con->close = (void *)close_plain;
     }
 
@@ -275,10 +268,7 @@ external_index_socket_t *create_external_index_session(const char               
     uint32 hdr_msg = EXTERNAL_INDEX_INIT_MSG;
     memcpy(init_buf, &hdr_msg, EXTERNAL_INDEX_MAGIC_MSG_SIZE);
     memcpy(init_buf + EXTERNAL_INDEX_MAGIC_MSG_SIZE, &index_params, sizeof(external_index_params_t));
-    int32 bytes_written
-        = sendall_or_error(socket_con, init_buf, sizeof(external_index_params_t) + EXTERNAL_INDEX_MAGIC_MSG_SIZE, 0);
-
-    check_external_index_request_error(socket_con, bytes_written);
+    writeall_or_error(socket_con, init_buf, sizeof(external_index_params_t) + EXTERNAL_INDEX_MAGIC_MSG_SIZE, 0);
 
     if(params->pq) {
         external_index_send_codebook(
@@ -298,14 +288,13 @@ void external_index_receive_index_file(external_index_socket_t *socket_con,
 {
     uint32 end_msg = EXTERNAL_INDEX_END_MSG;
     char   buffer[ sizeof(uint64_t) ];
-    int32  bytes_read, bytes_written;
+    int32  bytes_read;
     uint64 index_size = 0, total_received = 0;
 
     // disable read timeout while indexing is in progress
     set_read_timeout(socket_con->fd, 0);
     // send message indicating that we have finished streaming tuples
-    bytes_written = sendall_or_error(socket_con, (char *)&end_msg, EXTERNAL_INDEX_MAGIC_MSG_SIZE, 0);
-    check_external_index_request_error(socket_con, bytes_written);
+    writeall_or_error(socket_con, (char *)&end_msg, EXTERNAL_INDEX_MAGIC_MSG_SIZE, 0);
 
     // read how many tuples have been indexed
     bytes_read = socket_con->read(socket_con, buffer, sizeof(uint64));
@@ -348,7 +337,7 @@ void external_index_send_tuple(
     external_index_socket_t *socket_con, usearch_label_t *label, void *vector, uint8 scalar_bits, uint32 dimensions)
 {
     char   tuple[ EXTERNAL_INDEX_MAX_TUPLE_SIZE ];
-    uint32 tuple_size, bytes_written;
+    uint32 tuple_size;
     uint32 vector_size;
     uint32 dims = dimensions;
 
@@ -362,6 +351,5 @@ void external_index_send_tuple(
     // send tuple over socket if this is external indexing
     memcpy(tuple, label, sizeof(usearch_label_t));
     memcpy(tuple + sizeof(usearch_label_t), vector, tuple_size - sizeof(usearch_label_t));
-    bytes_written = sendall_or_error(socket_con, tuple, tuple_size, 0);
-    check_external_index_request_error(socket_con, bytes_written);
+    writeall_or_error(socket_con, tuple, tuple_size, 0);
 }
