@@ -33,27 +33,27 @@ typedef struct external_index_params_t
 
 typedef struct external_index_socket_t
 {
-    uint32   fd;
+    int      fd;
     SSL_CTX *ssl_ctx;
     SSL     *ssl;
     int (*init)(struct external_index_socket_t *self);
-    int (*read)(struct external_index_socket_t *self, char *buf, uint32 size);
-    int (*write)(struct external_index_socket_t *self, const char *buf, uint32 size);
+    int64 (*read)(struct external_index_socket_t *self, char *buf, size_t size);
+    int64 (*write)(struct external_index_socket_t *self, const char *buf, size_t size);
     void (*close)(struct external_index_socket_t *self);
 } external_index_socket_t;
 
 /* PLAIN SOCKET FUNCTIONS */
-int init_plain(external_index_socket_t *socket_con);
-int read_plain(external_index_socket_t *socket_con, char *buf, uint32 size);
-int write_plain(external_index_socket_t *socket_con, const char *buf, uint32 size);
-int close_plain(external_index_socket_t *socket_con);
+int   init_plain(external_index_socket_t *socket_con);
+int64 read_plain(external_index_socket_t *socket_con, char *buf, size_t size);
+int64 write_plain(external_index_socket_t *socket_con, const char *buf, size_t size);
+void  close_plain(external_index_socket_t *socket_con);
 /* ====================== */
 
 /* SSL SOCKET FUNCTIONS */
-int  init_ssl(external_index_socket_t *socket_con);
-int  read_ssl(external_index_socket_t *socket_con, char *buf, uint32 size);
-int  write_ssl(external_index_socket_t *socket_con, const char *buf, uint32 size);
-void close_ssl(external_index_socket_t *socket_con);
+int   init_ssl(external_index_socket_t *socket_con);
+int64 read_ssl(external_index_socket_t *socket_con, char *buf, uint32 size);
+int64 write_ssl(external_index_socket_t *socket_con, const char *buf, uint32 size);
+void  close_ssl(external_index_socket_t *socket_con);
 /* ====================== */
 
 external_index_socket_t *create_external_index_session(const char                   *host,

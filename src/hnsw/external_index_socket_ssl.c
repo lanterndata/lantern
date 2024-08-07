@@ -6,7 +6,7 @@
 static SSL_CTX *ssl_ctx_create(void)
 {
     SSL_CTX *ctx;
-    int      options;
+    uint64   options;
 
 #if(OPENSSL_VERSION_NUMBER >= 0x1010000fL)
     /* OpenSSL >= v1.1 */
@@ -62,18 +62,14 @@ int init_ssl(external_index_socket_t *socket)
     return 0;
 }
 
-int write_ssl(external_index_socket_t *socket, const char *buf, uint32 size)
+int64 write_ssl(external_index_socket_t *socket, const char *buf, uint32 size)
 {
-    int ret = SSL_write(socket->ssl, buf, size);
-
-    return ret;
+    return SSL_write(socket->ssl, buf, (int32)size);
 }
 
-int read_ssl(external_index_socket_t *socket, char *buf, uint32 size)
+int64 read_ssl(external_index_socket_t *socket, char *buf, uint32 size)
 {
-    int ret = SSL_read(socket->ssl, buf, size);
-
-    return ret;
+    return SSL_read(socket->ssl, buf, (int32)size);
 }
 
 void close_ssl(external_index_socket_t *socket)
