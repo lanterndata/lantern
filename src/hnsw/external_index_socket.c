@@ -15,7 +15,7 @@ static bool is_little_endian()
     return *((char *)&i) == 1;
 }
 
-static void set_read_timeout(uint32 client_fd, uint32 seconds)
+static void set_read_timeout(int32 client_fd, uint32 seconds)
 {
     struct timeval timeout;
 
@@ -27,7 +27,7 @@ static void set_read_timeout(uint32 client_fd, uint32 seconds)
     }
 }
 
-static void set_write_timeout(uint32 client_fd, uint32 seconds)
+static void set_write_timeout(int32 client_fd, uint32 seconds)
 {
     struct timeval timeout;
 
@@ -40,13 +40,16 @@ static void set_write_timeout(uint32 client_fd, uint32 seconds)
 }
 
 /* PLAIN SOCKET FUNCTIONS */
-int init_plain(external_index_socket_t *socket_con) { return 0; }
-int read_plain(external_index_socket_t *socket_con, char *buf, uint32 size) { return read(socket_con->fd, buf, size); };
-int write_plain(external_index_socket_t *socket_con, const char *buf, uint32 size)
+int   init_plain(external_index_socket_t *socket_con) { return 0; }
+int64 read_plain(external_index_socket_t *socket_con, char *buf, size_t size)
+{
+    return read(socket_con->fd, buf, size);
+};
+int64 write_plain(external_index_socket_t *socket_con, const char *buf, size_t size)
 {
     return write(socket_con->fd, buf, size);
 };
-int close_plain(external_index_socket_t *socket_con) { return close(socket_con->fd); };
+void close_plain(external_index_socket_t *socket_con) { close(socket_con->fd); };
 /* ====================== */
 
 /*
@@ -127,7 +130,7 @@ static int connect_with_timeout(int sockfd, const struct sockaddr *addr, socklen
  *    wrong in the server and the following bytes will be error message and will be interpreted as string in
  *    elog(ERROR))
  */
-static void check_external_index_response_error(external_index_socket_t *socket_con, char *buffer, int32 size)
+static void check_external_index_response_error(external_index_socket_t *socket_con, char *buffer, int64 size)
 {
     uint32 hdr;
     if(size < 0) {
@@ -147,7 +150,7 @@ static void check_external_index_response_error(external_index_socket_t *socket_
     elog(ERROR, "external index error: %s", buffer + EXTERNAL_INDEX_MAGIC_MSG_SIZE);
 }
 
-static void check_external_index_request_error(external_index_socket_t *socket_con, int32 bytes_written)
+static void check_external_index_request_error(external_index_socket_t *socket_con, int64 bytes_written)
 {
     if(bytes_written > 0) return;
 
@@ -157,15 +160,15 @@ static void check_external_index_request_error(external_index_socket_t *socket_c
 
 static void writeall_or_error(external_index_socket_t *socket_con, const char *buf, uint32 len, int flags)
 {
-    uint32 total = 0;
+    int32  total = 0;
     uint32 bytesleft = len;
-    int32  n;
+    int64  n;
 
     while(total < len) {
         n = socket_con->write(socket_con, buf + total, bytesleft);
         check_external_index_request_error(socket_con, n);
         total += n;
-        bytesleft -= n;
+        bytesleft -= (uint32)n;
     }
 }
 
@@ -175,10 +178,10 @@ void external_index_send_codebook(external_index_socket_t *socket_con,
                                   uint32                   num_centroids,
                                   uint32                   num_subvectors)
 {
-    int  data_size = dimensions * sizeof(float);
-    char buf[ data_size ];
+    uint32 data_size = dimensions * sizeof(float);
+    char   buf[ data_size ];
 
-    for(int i = 0; i < num_centroids; i++) {
+    for(uint32 i = 0; i < num_centroids; i++) {
         memcpy(buf, &codebook[ i * dimensions ], data_size);
         writeall_or_error(socket_con, buf, data_size, 0);
     }
@@ -256,12 +259,12 @@ external_index_socket_t *create_external_index_session(const char               
         .pq = params->pq,
         .metric_kind = params->metric_kind,
         .quantization = params->quantization,
-        .dim = params->dimensions,
-        .m = params->connectivity,
-        .ef_construction = params->expansion_add,
-        .ef = params->expansion_search,
-        .num_centroids = params->num_centroids,
-        .num_subvectors = params->num_subvectors,
+        .dim = (uint32)params->dimensions,
+        .m = (uint32)params->connectivity,
+        .ef_construction = (uint32)params->expansion_add,
+        .ef = (uint32)params->expansion_search,
+        .num_centroids = (uint32)params->num_centroids,
+        .num_subvectors = (uint32)params->num_subvectors,
         .estimated_capcity = estimated_row_count,
     };
 
@@ -271,11 +274,14 @@ external_index_socket_t *create_external_index_session(const char               
     writeall_or_error(socket_con, init_buf, sizeof(external_index_params_t) + EXTERNAL_INDEX_MAGIC_MSG_SIZE, 0);
 
     if(params->pq) {
-        external_index_send_codebook(
-            socket_con, buildstate->pq_codebook, params->dimensions, params->num_centroids, params->num_subvectors);
+        external_index_send_codebook(socket_con,
+                                     buildstate->pq_codebook,
+                                     index_params.dim,
+                                     index_params.num_centroids,
+                                     index_params.num_subvectors);
     }
 
-    int32 buf_size = socket_con->read(socket_con, (char *)&init_response, EXTERNAL_INDEX_INIT_BUFFER_SIZE);
+    int64 buf_size = socket_con->read(socket_con, (char *)&init_response, EXTERNAL_INDEX_INIT_BUFFER_SIZE);
 
     check_external_index_response_error(socket_con, (char *)init_response, buf_size);
 
@@ -288,7 +294,7 @@ void external_index_receive_index_file(external_index_socket_t *socket_con,
 {
     uint32 end_msg = EXTERNAL_INDEX_END_MSG;
     char   buffer[ sizeof(uint64_t) ];
-    int32  bytes_read;
+    int64  bytes_read;
     uint64 index_size = 0, total_received = 0;
 
     // disable read timeout while indexing is in progress
@@ -329,7 +335,7 @@ void external_index_receive_index_file(external_index_socket_t *socket_con,
             break;
         }
 
-        total_received += bytes_read;
+        total_received += (uint32)bytes_read;
     }
 }
 
