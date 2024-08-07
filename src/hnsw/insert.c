@@ -138,6 +138,11 @@ bool ldb_aminsert(Relation         index,
         assert(tmp_num_centroids == hdr->num_centroids);
         assert(tmp_num_subvectors == hdr->num_subvectors);
     }
+
+    // use palloc and pfree
+    opts.alloc_func = palloc;
+    opts.free_func = pfree;
+
     // todo:: do usearch init in indexInfo->ii_AmCache
     uidx = usearch_init(&opts, insertstate->pq_codebook, &error);
     if(uidx == NULL) {
