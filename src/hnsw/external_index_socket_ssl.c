@@ -62,7 +62,7 @@ int init_ssl(external_index_socket_t *socket)
     return 0;
 }
 
-int send_ssl(external_index_socket_t *socket, const char *buf, uint32 size, uint32 _flags)
+int write_ssl(external_index_socket_t *socket, const char *buf, uint32 size)
 {
     int ret = SSL_write(socket->ssl, buf, size);
 

@@ -38,21 +38,21 @@ typedef struct external_index_socket_t
     SSL     *ssl;
     int (*init)(struct external_index_socket_t *self);
     int (*read)(struct external_index_socket_t *self, char *buf, uint32 size);
-    int (*send)(struct external_index_socket_t *self, const char *buf, uint32 size, uint32 flags);
+    int (*write)(struct external_index_socket_t *self, const char *buf, uint32 size);
     void (*close)(struct external_index_socket_t *self);
 } external_index_socket_t;
 
 /* PLAIN SOCKET FUNCTIONS */
 int init_plain(external_index_socket_t *socket_con);
 int read_plain(external_index_socket_t *socket_con, char *buf, uint32 size);
-int send_plain(external_index_socket_t *socket_con, const char *buf, uint32 size, uint32 flags);
+int write_plain(external_index_socket_t *socket_con, const char *buf, uint32 size);
 int close_plain(external_index_socket_t *socket_con);
 /* ====================== */
 
 /* SSL SOCKET FUNCTIONS */
 int  init_ssl(external_index_socket_t *socket_con);
 int  read_ssl(external_index_socket_t *socket_con, char *buf, uint32 size);
-int  send_ssl(external_index_socket_t *socket_con, const char *buf, uint32 size, uint32 flags);
+int  write_ssl(external_index_socket_t *socket_con, const char *buf, uint32 size);
 void close_ssl(external_index_socket_t *socket_con);
 /* ====================== */
 
