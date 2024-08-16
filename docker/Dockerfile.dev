@@ -1,5 +1,5 @@
 ARG VERSION=15
-ARG PGVECTOR_VERSION=0.5.1
+ARG PGVECTOR_VERSION=0.6.1
   #fix pg_cron at the latest commit of the time
 ARG PG_CRON_COMMIT_SHA=7e91e72b1bebc5869bb900d9253cc9e92518b33f
 
@@ -31,7 +31,7 @@ RUN gem install pg -- --with-pg-include=/usr/local/pgsql/include/ --with-pg-lib=
 # hack to make sure postgres user has write access to externally mounted volumes
 RUN mkdir /lantern_shared && chown postgres:postgres /lantern_shared
 
-RUN cd /root/postgresql-15.5/contrib && make install -j
+RUN cd /root/postgresql-15.5/contrib && make install
 
 # allow non-root users to install in the container to make it easier to run update-tests
 RUN chmod -R 777 /usr/local/pgsql/lib/ /usr/local/pgsql/share/extension/ /usr/local/pgsql/include/server/
@@ -55,7 +55,7 @@ COPY . .
 RUN sudo rm -rf build \
     && mkdir build \
     && cd build \
-    && cmake -DCMAKE_BUILD_TYPE=Debug .. \
+    && cmake .. \
     && make -j install
 
 # Install benchmarking tools in build folder
@@ -65,7 +65,7 @@ RUN git clone https://github.com/lanterndata/benchmark build/benchmark \
     && pip install -r external/requirements.txt
 
 # Install perf
-RUN sudo apt update && sudo apt install -y linux-tools-common linux-tools-generic linux-tools-`uname -r`
+RUN sudo apt update && sudo apt install -y linux-tools-common linux-tools-generic
 # in host, enable perf_event paranoid via
 # echo -1 | sudo tee /proc/sys/kernel/perf_event_paranoid
 
