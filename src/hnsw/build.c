@@ -526,7 +526,6 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
                                                                         &opts,
                                                                         buildstate,
                                                                         estimated_row_count);
-            assert(buildstate->external_client_fd > 0);
         } else {
             usearch_reserve(buildstate->usearch_index, estimated_row_count, &error);
         }
