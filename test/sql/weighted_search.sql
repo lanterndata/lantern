@@ -120,29 +120,17 @@ SELECT count(*)
   w3=> 0.52, col3=>'v_real'::text, vec3=>:'v444'::vector
 );
 
--- Check if the type 'sparsevec' exists and store the result in a variable
-SELECT EXISTS (
-    SELECT 1
-    FROM pg_type
-    WHERE typname = 'sparsevec'
-) AS exists_sparsevec \gset
-
--- Conditional execution based on the variable
-\if :exists_sparsevec
-    \echo 'The sparsevec type exists. Running commands...'
-    \ir utils/small_world_sparsevec.sql
-    SELECT '{1:0.4,2:0.3,3:0.2}/3' AS s3 \gset
-    SELECT '[-0.5,-0.1,-0.3]' AS v3 \gset
-    SELECT
-      id,
-      0.9 * (s <-> :'s3'::sparsevec) + 0.1 * (v <-> :'v3'::vector) as dist
-    FROM lantern.weighted_vector_search(CAST(NULL as "small_world"), exact => false, ef => 5,
-      w1=> 0.9, col1=>'s'::text, vec1=>:'s3'::sparsevec,
-      w2=> 0.1, col2=>'v'::text, vec2=>:'v3'::vector
-    );
-\else
-    \echo 'The sparsevec type does not exist. Skipping commands...'
-\endif
+-- test sparsevec
+\ir utils/small_world_sparsevec.sql
+SELECT '{1:0.4,2:0.3,3:0.2}/3' AS s3 \gset
+SELECT '[-0.5,-0.1,-0.3]' AS v3 \gset
+SELECT
+  id,
+  0.9 * (s <-> :'s3'::sparsevec) + 0.1 * (v <-> :'v3'::vector) as dist
+FROM lantern.weighted_vector_search(CAST(NULL as "small_world"), exact => false, ef => 5,
+  w1=> 0.9, col1=>'s'::text, vec1=>:'s3'::sparsevec,
+  w2=> 0.1, col2=>'v'::text, vec2=>:'v3'::vector
+);
 
 -- create non superuser and test the function
 SET client_min_messages = WARNING;

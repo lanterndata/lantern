@@ -522,29 +522,42 @@ SELECT count(*)
     15
 (1 row)
 
--- Check if the type 'sparsevec' exists and store the result in a variable
-SELECT EXISTS (
-    SELECT 1
-    FROM pg_type
-    WHERE typname = 'sparsevec'
-) AS exists_sparsevec \gset
--- Conditional execution based on the variable
-\if :exists_sparsevec
-    \echo 'The sparsevec type exists. Running commands...'
-    \ir utils/small_world_sparsevec.sql
-    SELECT '{1:0.4,2:0.3,3:0.2}/3' AS s3 \gset
-    SELECT '[-0.5,-0.1,-0.3]' AS v3 \gset
-    SELECT
-      id,
-      0.9 * (s <-> :'s3'::sparsevec) + 0.1 * (v <-> :'v3'::vector) as dist
-    FROM lantern.weighted_vector_search(CAST(NULL as "small_world"), exact => false, ef => 5,
-      w1=> 0.9, col1=>'s'::text, vec1=>:'s3'::sparsevec,
-      w2=> 0.1, col2=>'v'::text, vec2=>:'v3'::vector
-    );
-\else
-    \echo 'The sparsevec type does not exist. Skipping commands...'
-The sparsevec type does not exist. Skipping commands...
-\endif
+-- test sparsevec
+\ir utils/small_world_sparsevec.sql
+CREATE TABLE small_world (
+    id VARCHAR(3),
+    b BOOLEAN,
+    v VECTOR(3),
+    s SPARSEVEC(3)
+);
+INSERT INTO small_world (id, b, v, s) VALUES
+    ('000', TRUE,  '[0,0,0]', '{}/3'),
+    ('001', TRUE,  '[0,0,1]', '{3:1}/3'),
+    ('010', FALSE, '[0,1,0]' , '{2:1}/3'),
+    ('011', TRUE,  '[0,1,1]', '{2:1,3:1}/3'),
+    ('100', FALSE, '[1,0,0]', '{1:1}/3'),
+    ('101', FALSE, '[1,0,1]', '{1:1,3:1}/3'),
+    ('110', FALSE, '[1,1,0]', '{1:1,2:1}/3'),
+    ('111', TRUE,  '[1,1,1]', '{1:1,2:1,3:1}/3');
+SELECT '{1:0.4,2:0.3,3:0.2}/3' AS s3 \gset
+SELECT '[-0.5,-0.1,-0.3]' AS v3 \gset
+SELECT
+  id,
+  0.9 * (s <-> :'s3'::sparsevec) + 0.1 * (v <-> :'v3'::vector) as dist
+FROM lantern.weighted_vector_search(CAST(NULL as "small_world"), exact => false, ef => 5,
+  w1=> 0.9, col1=>'s'::text, vec1=>:'s3'::sparsevec,
+  w2=> 0.1, col2=>'v'::text, vec2=>:'v3'::vector
+);
+ id  |        dist        
+-----+--------------------
+ 000 | 0.5438256229963183
+ 100 | 0.7832971001877798
+ 010 | 0.8720951452234501
+ 001 | 0.9887007171012123
+ 110 | 1.0374727590416999
+ 011 | 1.1996858765930867
+(6 rows)
+
 -- create non superuser and test the function
 SET client_min_messages = WARNING;
 -- suppress NOTICE:  role "test_user" does not exist, skipping
