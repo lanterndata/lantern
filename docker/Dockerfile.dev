@@ -1,5 +1,5 @@
 ARG VERSION=15
-ARG PGVECTOR_VERSION=0.6.1
+ARG PGVECTOR_VERSION=0.7.3-lanterncloud
   #fix pg_cron at the latest commit of the time
 ARG PG_CRON_COMMIT_SHA=7e91e72b1bebc5869bb900d9253cc9e92518b33f
 
@@ -41,7 +41,7 @@ USER postgres
 RUN pip install GitPython libtmux
 
 # Build & Install pgvector
-RUN wget --quiet -O pgvector.tar.gz https://github.com/pgvector/pgvector/archive/refs/tags/v${PGVECTOR_VERSION}.tar.gz && \
+RUN wget --quiet -O pgvector.tar.gz https://github.com/lanterndata/pgvector/archive/refs/tags/v${PGVECTOR_VERSION}.tar.gz && \
     tar xzf pgvector.tar.gz && \
     (cd pgvector-${PGVECTOR_VERSION} && make -j && make install)
 
