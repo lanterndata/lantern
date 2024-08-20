@@ -552,6 +552,7 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
 
     if(buildstate->index_file_path) {
         index_file_fd = open(buildstate->index_file_path, O_RDONLY);
+        assert(index_file_fd > 0);
     } else if(buildstate->external) {
         external_index_receive_index_file(buildstate->external_socket, &num_added_vectors, &result_buf);
     } else {
@@ -565,9 +566,8 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
         usearch_save(buildstate->usearch_index, tmp_index_file_path, &error);
         assert(error == NULL);
         index_file_fd = open(tmp_index_file_path, O_RDONLY);
+        assert(index_file_fd > 0);
     }
-
-    assert(index_file_fd > 0);
 
     if(!buildstate->external) {
         num_added_vectors = usearch_size(buildstate->usearch_index, &error);
@@ -598,9 +598,8 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
         munmap_ret = munmap(result_buf, index_file_stat.st_size);
         assert(munmap_ret == 0);
         LDB_UNUSED(munmap_ret);
+        close(index_file_fd);
     }
-
-    close(index_file_fd);
 
     if(buildstate->external) {
         buildstate->external_socket->close(buildstate->external_socket);
