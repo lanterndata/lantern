@@ -543,19 +543,19 @@ SELECT '{1:0.4,2:0.3,3:0.2}/3' AS s3 \gset
 SELECT '[-0.5,-0.1,-0.3]' AS v3 \gset
 SELECT
   id,
-  0.9 * (s <-> :'s3'::sparsevec) + 0.1 * (v <-> :'v3'::vector) as dist
+  round(cast(0.9 * (s <-> :'s3'::sparsevec) + 0.1 * (v <-> :'v3'::vector) as numeric), 2) as dist
 FROM lantern.weighted_vector_search(CAST(NULL as "small_world"), exact => false, ef => 5,
   w1=> 0.9, col1=>'s'::text, vec1=>:'s3'::sparsevec,
   w2=> 0.1, col2=>'v'::text, vec2=>:'v3'::vector
 );
- id  |        dist        
------+--------------------
- 000 | 0.5438256229963183
- 100 | 0.7832971001877798
- 010 | 0.8720951452234501
- 001 | 0.9887007171012123
- 110 | 1.0374727590416999
- 011 | 1.1996858765930867
+ id  | dist 
+-----+------
+ 000 | 0.54
+ 100 | 0.78
+ 010 | 0.87
+ 001 | 0.99
+ 110 | 1.04
+ 011 | 1.20
 (6 rows)
 
 -- create non superuser and test the function
