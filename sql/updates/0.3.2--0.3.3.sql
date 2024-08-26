@@ -3,6 +3,25 @@ $weighted_vector_search$
 DECLARE
   pgvector_exists boolean;
   pgvector_sparsevec_exists boolean;
+
+    -- required type exist, v1 input type, v2 input type with defaults, v3 input type with defaults, v1 input type, v2 input type, v3 input type
+  search_inputs text[4][] := ARRAY[
+    ARRAY['vector', 'vector', 'vector = NULL', 'vector = NULL'],
+    ARRAY['sparsevec', 'sparsevec', 'vector', 'vector'],
+    ARRAY['sparsevec', 'vector', 'sparsevec', 'vector'],
+    ARRAY['sparsevec', 'vector', 'vector', 'sparsevec'],
+    ARRAY['sparsevec', 'sparsevec', 'sparsevec', 'vector'],
+    ARRAY['sparsevec', 'sparsevec', 'vector', 'sparsevec = NULL'],
+    ARRAY['sparsevec', 'vector', 'sparsevec', 'sparsevec = NULL'],
+    ARRAY['sparsevec', 'sparsevec', 'sparsevec = NULL', 'sparsevec = NULL']
+  ];
+
+  -- function suffix, function default operator
+  utility_functions text[2][] := ARRAY[
+    ARRAY['', '<->'],
+    ARRAY['_cos', '<->'],
+    ARRAY['_l2sq', '<=>']
+  ];
 BEGIN
   -- Check if the vector type from pgvector exists
   SELECT EXISTS (
@@ -54,10 +73,6 @@ BEGIN
     wc1 text = NULL;
     wc2 text = NULL;
     wc3 text = NULL;
-    is_sparsevec_regex text = '\{\d+:\d+(\.\d+)?(,\d+:\d+(\.\d+)?)*\}/\d+';
-    vec1_string text = NULL;
-    vec2_string text = NULL;
-    vec3_string text = NULL;
     cte_query text;
     maybe_unions_query text;
     final_query text;
@@ -101,38 +116,13 @@ BEGIN
         maybe_analyze := 'ANALYZE, BUFFERS,';
     END IF;
 
-    -- Generate vector strings
-    -- the cast is necessary for cases when the column is not of type vector
-    -- and for some reason in those cases cast does not happen automatically
-    IF vec1 IS NOT NULL THEN
-        IF vec1 ~ is_sparsevec_regex THEN
-            vec1_string := vec1 || '::sparsevec';
-        ELSE
-            vec1_string := vec1 || '::vector';
-        END IF;
-    END IF;
-    IF vec2 IS NOT NULL THEN
-        IF vec2 ~ is_sparsevec_regex THEN
-            vec2_string := vec2 || '::sparsevec';
-        ELSE
-            vec2_string := vec2 || '::vector';
-        END IF;
-    END IF;
-    IF vec3 IS NOT NULL THEN
-        IF vec3 ~ is_sparsevec_regex THEN
-            vec3_string := vec3 || '::sparsevec';
-        ELSE
-            vec3_string := vec3 || '::vector';
-        END IF;
-    END IF;
-
     -- Joint similarity metric condition
-    wc1 := format('(%s * (%I %s %s))', w1, col1, distance_operator, vec1_string);
+    wc1 := format('(%s * (%I %s %s))', w1, col1, distance_operator, vec1);
     IF w2 > 0 AND col2 IS NOT NULL AND vec2 IS NOT NULL THEN
-        wc2 := format(' (%s * (%I %s %s))', w2, col2, distance_operator, vec2_string);
+        wc2 := format(' (%s * (%I %s %s))', w2, col2, distance_operator, vec2);
     END IF;
     IF w3 > 0 AND col3 IS NOT NULL AND vec3 IS NOT NULL THEN
-        wc3 := format(' (%s * (%I %s %s))', w3, col3, distance_operator, vec3_string);
+        wc3 := format(' (%s * (%I %s %s))', w3, col3, distance_operator, vec3);
     END IF;
 
     joint_condition := wc1 || COALESCE('+' || wc2, '') || COALESCE('+' || wc3, '');
@@ -163,7 +153,7 @@ BEGIN
     maybe_unions_query := '';
 
     -- Query 1: Order by first condition's weighted similarity
-    query1 := format('%s ORDER BY %I %s %s LIMIT %L', query_base || query_final_where, col1, distance_operator, vec1_string, ef);
+    query1 := format('%s ORDER BY %I %s %s LIMIT %L', query_base || query_final_where, col1, distance_operator, vec1, ef);
 
     IF debug_output THEN
       EXECUTE format('SELECT count(*) FROM (%s) t', query1) INTO debug_count;
@@ -174,7 +164,7 @@ BEGIN
 
     -- Query 2: Order by other conditions' weighted similarity, if applicable
     IF w2 > 0 AND col2 IS NOT NULL AND vec2 IS NOT NULL THEN
-      query2 := format('%s ORDER BY %I %s %s LIMIT %L', query_base || query_final_where, col2, distance_operator, vec2_string, ef);
+      query2 := format('%s ORDER BY %I %s %s LIMIT %L', query_base || query_final_where, col2, distance_operator, vec2, ef);
       cte_query := cte_query || format(', query2 AS (%s)', query2);
       maybe_unions_query := maybe_unions_query || format(' UNION ALL (SELECT * FROM query2) ');
       IF debug_output THEN
@@ -185,7 +175,7 @@ BEGIN
 
     -- Query 3: Order by third condition's weighted similarity, if applicable
     IF w3 > 0 AND col3 IS NOT NULL AND vec3 IS NOT NULL THEN
-      query3 := format('%s ORDER BY %I %s %s LIMIT %L', query_base || query_final_where, col3, distance_operator, vec3_string, ef);
+      query3 := format('%s ORDER BY %I %s %s LIMIT %L', query_base || query_final_where, col3, distance_operator, vec3, ef);
       cte_query := cte_query || format(', query3 AS (%s)', query3);
       maybe_unions_query := maybe_unions_query || format(' UNION ALL (SELECT * FROM query3) ');
       IF debug_output THEN
@@ -218,636 +208,65 @@ BEGIN
     END
   $$ LANGUAGE plpgsql;
 
-  -- v (v) (v)
-  CREATE OR REPLACE FUNCTION lantern.weighted_vector_search(
-    relation_type anyelement,
-    w1 numeric,
-    col1 text,
-    vec1 vector,
-    w2 numeric = 0,
-    col2 text = NULL,
-    vec2 vector = NULL,
-    w3 numeric = 0,
-    col3 text = NULL,
-    vec3 vector = NULL,
-    ef integer = 100,
-    max_dist numeric = NULL,
-    -- set l2 (pgvector) and l2sq (lantern) as default, as we do for lantern index.
-    distance_operator text = '<->',
-    id_col text = 'id',
-    exact boolean = false,
-    debug_output boolean = false,
-    analyze_output boolean = false
-    )
-    -- N.B. Something seems strange about PL/pgSQL functions that return table with anyelement
-    -- when there is single "anylement column" being returned (e.g. returns table ("row" anylement))
-    -- then that single "column" is properly spread with source table's column names
-    -- but, when returning ("row" anyelement, "anothercol" integer), things fall all over the place
-    -- now, the returned table always has 2 columns one row that is a record of sorts, and one "anothercol"
-    RETURNS TABLE ("row" anyelement) AS
-  $$
-  DECLARE
-    query text;
-  BEGIN
-    query := _lantern_internal.weighted_vector_search_helper(pg_typeof(relation_type), w1, col1, format('%L', vec1), w2, col2, format('%L', vec2), w3, col3, format('%L', vec3), ef, max_dist, distance_operator, id_col, exact, debug_output, analyze_output);
-    RETURN QUERY EXECUTE query;
-  END
-  $$ LANGUAGE plpgsql;
+  FOR i IN 1 .. array_length(search_inputs, 1) LOOP
+    FOR j IN 1 .. array_length(utility_functions, 1) LOOP
+      IF search_inputs[i][1] = 'sparsevec' AND NOT pgvector_sparsevec_exists THEN
+        RAISE NOTICE 'pgvector sparsevec type not found. Skipping lantern weighted vector search setup for sparsevec';
+        CONTINUE;
+      END IF;
 
-  IF NOT pgvector_sparsevec_exists THEN
-    RAISE NOTICE 'pgvector sparsevec type not found. Skipping lantern weighted vector search setup for sparsevec';
-  ELSE
-    -- s v v
-    CREATE OR REPLACE FUNCTION lantern.weighted_vector_search(
-      relation_type anyelement,
-      w1 numeric,
-      col1 text,
-      vec1 sparsevec,
-      w2 numeric,
-      col2 text,
-      vec2 vector,
-      w3 numeric,
-      col3 text,
-      vec3 vector,
-      ef integer = 100,
-      max_dist numeric = NULL,
-      distance_operator text = '<->',
-      id_col text = 'id',
-      exact boolean = false,
-      debug_output boolean = false,
-      analyze_output boolean = false
-      )
-      RETURNS TABLE ("row" anyelement) AS
-    $$
-    DECLARE
-      query text;
-    BEGIN
-      query := _lantern_internal.weighted_vector_search_helper(pg_typeof(relation_type), w1, col1, format('%L', vec1), w2, col2, format('%L', vec2), w3, col3, format('%L', vec3), ef, max_dist, distance_operator, id_col, exact, debug_output, analyze_output);
-      RETURN QUERY EXECUTE query;
-    END
-    $$ LANGUAGE plpgsql;
-
-    -- v s v
-    CREATE OR REPLACE FUNCTION lantern.weighted_vector_search(
-      relation_type anyelement,
-      w1 numeric,
-      col1 text,
-      vec1 vector,
-      w2 numeric,
-      col2 text,
-      vec2 sparsevec,
-      w3 numeric,
-      col3 text,
-      vec3 vector,
-      ef integer = 100,
-      max_dist numeric = NULL,
-      distance_operator text = '<->',
-      id_col text = 'id',
-      exact boolean = false,
-      debug_output boolean = false,
-      analyze_output boolean = false
-      )
-      RETURNS TABLE ("row" anyelement) AS
-    $$
-    DECLARE
-      query text;
-    BEGIN
-      query := _lantern_internal.weighted_vector_search_helper(pg_typeof(relation_type), w1, col1, format('%L', vec1), w2, col2, format('%L', vec2), w3, col3, format('%L', vec3), ef, max_dist, distance_operator, id_col, exact, debug_output, analyze_output);
-      RETURN QUERY EXECUTE query;
-    END
-    $$ LANGUAGE plpgsql;
-
-    -- v v s
-    CREATE OR REPLACE FUNCTION lantern.weighted_vector_search(
-      relation_type anyelement,
-      w1 numeric,
-      col1 text,
-      vec1 vector,
-      w2 numeric,
-      col2 text,
-      vec2 vector,
-      w3 numeric,
-      col3 text,
-      vec3 sparsevec,
-      ef integer = 100,
-      max_dist numeric = NULL,
-      distance_operator text = '<->',
-      id_col text = 'id',
-      exact boolean = false,
-      debug_output boolean = false,
-      analyze_output boolean = false
-      )
-      RETURNS TABLE ("row" anyelement) AS
-    $$
-    DECLARE
-      query text;
-    BEGIN
-      query := _lantern_internal.weighted_vector_search_helper(pg_typeof(relation_type), w1, col1, format('%L', vec1), w2, col2, format('%L', vec2), w3, col3, format('%L', vec3), ef, max_dist, distance_operator, id_col, exact, debug_output, analyze_output);
-      RETURN QUERY EXECUTE query;
-    END
-    $$ LANGUAGE plpgsql;
-
-    -- s s v
-    CREATE OR REPLACE FUNCTION lantern.weighted_vector_search(
-      relation_type anyelement,
-      w1 numeric,
-      col1 text,
-      vec1 sparsevec,
-      w2 numeric,
-      col2 text,
-      vec2 sparsevec,
-      w3 numeric,
-      col3 text,
-      vec3 vector,
-      ef integer = 100,
-      max_dist numeric = NULL,
-      distance_operator text = '<->',
-      id_col text = 'id',
-      exact boolean = false,
-      debug_output boolean = false,
-      analyze_output boolean = false
-      )
-      RETURNS TABLE ("row" anyelement) AS
-    $$
-    DECLARE
-      query text;
-    BEGIN
-      query := _lantern_internal.weighted_vector_search_helper(pg_typeof(relation_type), w1, col1, format('%L', vec1), w2, col2, format('%L', vec2), w3, col3, format('%L', vec3), ef, max_dist, distance_operator, id_col, exact, debug_output, analyze_output);
-      RETURN QUERY EXECUTE query;
-    END
-    $$ LANGUAGE plpgsql;
-
-    -- s v (s)
-    CREATE OR REPLACE FUNCTION lantern.weighted_vector_search(
-      relation_type anyelement,
-      w1 numeric,
-      col1 text,
-      vec1 sparsevec,
-      w2 numeric,
-      col2 text,
-      vec2 vector,
-      w3 numeric = 0,
-      col3 text = NULL,
-      vec3 sparsevec = NULL,
-      ef integer = 100,
-      max_dist numeric = NULL,
-      distance_operator text = '<->',
-      id_col text = 'id',
-      exact boolean = false,
-      debug_output boolean = false,
-      analyze_output boolean = false
-      )
-      RETURNS TABLE ("row" anyelement) AS
-    $$
-    DECLARE
-      query text;
-    BEGIN
-      query := _lantern_internal.weighted_vector_search_helper(pg_typeof(relation_type), w1, col1, format('%L', vec1), w2, col2, format('%L', vec2), w3, col3, format('%L', vec3), ef, max_dist, distance_operator, id_col, exact, debug_output, analyze_output);
-      RETURN QUERY EXECUTE query;
-    END
-    $$ LANGUAGE plpgsql;
-
-    -- v s (s)
-    CREATE OR REPLACE FUNCTION lantern.weighted_vector_search(
-      relation_type anyelement,
-      w1 numeric,
-      col1 text,
-      vec1 vector,
-      w2 numeric,
-      col2 text,
-      vec2 sparsevec,
-      w3 numeric = 0,
-      col3 text = NULL,
-      vec3 sparsevec = NULL,
-      ef integer = 100,
-      max_dist numeric = NULL,
-      distance_operator text = '<->',
-      id_col text = 'id',
-      exact boolean = false,
-      debug_output boolean = false,
-      analyze_output boolean = false
-      )
-      RETURNS TABLE ("row" anyelement) AS
-    $$
-    DECLARE
-      query text;
-    BEGIN
-      query := _lantern_internal.weighted_vector_search_helper(pg_typeof(relation_type), w1, col1, format('%L', vec1), w2, col2, format('%L', vec2), w3, col3, format('%L', vec3), ef, max_dist, distance_operator, id_col, exact, debug_output, analyze_output);
-      RETURN QUERY EXECUTE query;
-    END
-    $$ LANGUAGE plpgsql;
-
-    -- s (s) (s)
-    CREATE OR REPLACE FUNCTION lantern.weighted_vector_search(
-      relation_type anyelement,
-      w1 numeric,
-      col1 text,
-      vec1 sparsevec,
-      w2 numeric = 0,
-      col2 text = NULL,
-      vec2 sparsevec = NULL,
-      w3 numeric = 0,
-      col3 text = NULL,
-      vec3 sparsevec = NULL,
-      ef integer = 100,
-      max_dist numeric = NULL,
-      distance_operator text = '<->',
-      id_col text = 'id',
-      exact boolean = false,
-      debug_output boolean = false,
-      analyze_output boolean = false
-      )
-      RETURNS TABLE ("row" anyelement) AS
-    $$
-    DECLARE
-      query text;
-    BEGIN
-      query := _lantern_internal.weighted_vector_search_helper(pg_typeof(relation_type), w1, col1, format('%L', vec1), w2, col2, format('%L', vec2), w3, col3, format('%L', vec3), ef, max_dist, distance_operator, id_col, exact, debug_output, analyze_output);
-      RETURN QUERY EXECUTE query;
-    END
-    $$ LANGUAGE plpgsql;
-  END IF;
-
-  -- setup Cosine API shortcuts
-
-  -- v (v) (v)
-  CREATE OR REPLACE FUNCTION lantern.weighted_vector_search_cos(
-    relation_type anyelement,
-    w1 numeric,
-    col1 text,
-    vec1 vector,
-    w2 numeric = 0,
-    col2 text = NULL,
-    vec2 vector = NULL,
-    w3 numeric = 0,
-    col3 text = NULL,
-    vec3 vector = NULL,
-    ef integer = 100,
-    max_dist numeric = NULL,
-    id_col text = 'id',
-    exact boolean = false,
-    debug_output boolean = false,
-    analyze_output boolean = false
-  ) RETURNS TABLE ("row" anyelement) AS $$
-  BEGIN
-    RETURN QUERY SELECT * FROM lantern.weighted_vector_search(relation_type, w1, col1, vec1, w2, col2, vec2, w3, col3, vec3, ef, max_dist, '<=>', id_col, exact, debug_output, analyze_output);
-  END $$ LANGUAGE plpgsql;
-
-  IF NOT pgvector_sparsevec_exists THEN
-    RAISE NOTICE 'pgvector sparsevec type not found. Skipping lantern.weighted_vector_search_cos setup for sparsevec';
-  ELSE
-    -- s v v
-    CREATE OR REPLACE FUNCTION lantern.weighted_vector_search_cos(
-      relation_type anyelement,
-      w1 numeric,
-      col1 text,
-      vec1 sparsevec,
-      w2 numeric,
-      col2 text,
-      vec2 vector,
-      w3 numeric,
-      col3 text,
-      vec3 vector,
-      ef integer = 100,
-      max_dist numeric = NULL,
-      id_col text = 'id',
-      exact boolean = false,
-      debug_output boolean = false,
-      analyze_output boolean = false
-    ) RETURNS TABLE ("row" anyelement) AS $$
-    BEGIN
-      RETURN QUERY SELECT * FROM lantern.weighted_vector_search(relation_type, w1, col1, vec1, w2, col2, vec2, w3, col3, vec3, ef, max_dist, '<=>', id_col, exact, debug_output, analyze_output);
-    END $$ LANGUAGE plpgsql;
-
-    -- v s v
-    CREATE OR REPLACE FUNCTION lantern.weighted_vector_search_cos(
-      relation_type anyelement,
-      w1 numeric,
-      col1 text,
-      vec1 vector,
-      w2 numeric,
-      col2 text,
-      vec2 sparsevec,
-      w3 numeric,
-      col3 text,
-      vec3 vector,
-      ef integer = 100,
-      max_dist numeric = NULL,
-      id_col text = 'id',
-      exact boolean = false,
-      debug_output boolean = false,
-      analyze_output boolean = false
-    ) RETURNS TABLE ("row" anyelement) AS $$
-    BEGIN
-      RETURN QUERY SELECT * FROM lantern.weighted_vector_search(relation_type, w1, col1, vec1, w2, col2, vec2, w3, col3, vec3, ef, max_dist, '<=>', id_col, exact, debug_output, analyze_output);
-    END $$ LANGUAGE plpgsql;
-
-    -- v v s
-    CREATE OR REPLACE FUNCTION lantern.weighted_vector_search_cos(
-      relation_type anyelement,
-      w1 numeric,
-      col1 text,
-      vec1 vector,
-      w2 numeric,
-      col2 text,
-      vec2 vector,
-      w3 numeric,
-      col3 text,
-      vec3 sparsevec,
-      ef integer = 100,
-      max_dist numeric = NULL,
-      id_col text = 'id',
-      exact boolean = false,
-      debug_output boolean = false,
-      analyze_output boolean = false
-    ) RETURNS TABLE ("row" anyelement) AS $$
-    BEGIN
-      RETURN QUERY SELECT * FROM lantern.weighted_vector_search(relation_type, w1, col1, vec1, w2, col2, vec2, w3, col3, vec3, ef, max_dist, '<=>', id_col, exact, debug_output, analyze_output);
-    END $$ LANGUAGE plpgsql;
-
-    -- s s v
-    CREATE OR REPLACE FUNCTION lantern.weighted_vector_search_cos(
-      relation_type anyelement,
-      w1 numeric,
-      col1 text,
-      vec1 sparsevec,
-      w2 numeric,
-      col2 text,
-      vec2 sparsevec,
-      w3 numeric,
-      col3 text,
-      vec3 vector,
-      ef integer = 100,
-      max_dist numeric = NULL,
-      id_col text = 'id',
-      exact boolean = false,
-      debug_output boolean = false,
-      analyze_output boolean = false
-    ) RETURNS TABLE ("row" anyelement) AS $$
-    BEGIN
-      RETURN QUERY SELECT * FROM lantern.weighted_vector_search(relation_type, w1, col1, vec1, w2, col2, vec2, w3, col3, vec3, ef, max_dist, '<=>', id_col, exact, debug_output, analyze_output);
-    END $$ LANGUAGE plpgsql;
-
-    -- s v (s)
-    CREATE OR REPLACE FUNCTION lantern.weighted_vector_search_cos(
-      relation_type anyelement,
-      w1 numeric,
-      col1 text,
-      vec1 sparsevec,
-      w2 numeric,
-      col2 text,
-      vec2 vector,
-      w3 numeric = 0,
-      col3 text = NULL,
-      vec3 sparsevec = NULL,
-      ef integer = 100,
-      max_dist numeric = NULL,
-      id_col text = 'id',
-      exact boolean = false,
-      debug_output boolean = false,
-      analyze_output boolean = false
-    ) RETURNS TABLE ("row" anyelement) AS $$
-    BEGIN
-      RETURN QUERY SELECT * FROM lantern.weighted_vector_search(relation_type, w1, col1, vec1, w2, col2, vec2, w3, col3, vec3, ef, max_dist, '<=>', id_col, exact, debug_output, analyze_output);
-    END $$ LANGUAGE plpgsql;
-
-    -- v s (s)
-    CREATE OR REPLACE FUNCTION lantern.weighted_vector_search_cos(
-      relation_type anyelement,
-      w1 numeric,
-      col1 text,
-      vec1 vector,
-      w2 numeric,
-      col2 text,
-      vec2 sparsevec,
-      w3 numeric = 0,
-      col3 text = NULL,
-      vec3 sparsevec = NULL,
-      ef integer = 100,
-      max_dist numeric = NULL,
-      id_col text = 'id',
-      exact boolean = false,
-      debug_output boolean = false,
-      analyze_output boolean = false
-    ) RETURNS TABLE ("row" anyelement) AS $$
-    BEGIN
-      RETURN QUERY SELECT * FROM lantern.weighted_vector_search(relation_type, w1, col1, vec1, w2, col2, vec2, w3, col3, vec3, ef, max_dist, '<=>', id_col, exact, debug_output, analyze_output);
-    END $$ LANGUAGE plpgsql;
-
-    -- s (s) (s)
-    CREATE OR REPLACE FUNCTION lantern.weighted_vector_search_cos(
-      relation_type anyelement,
-      w1 numeric,
-      col1 text,
-      vec1 sparsevec,
-      w2 numeric = 0,
-      col2 text = NULL,
-      vec2 sparsevec = NULL,
-      w3 numeric = 0,
-      col3 text = NULL,
-      vec3 sparsevec = NULL,
-      ef integer = 100,
-      max_dist numeric = NULL,
-      id_col text = 'id',
-      exact boolean = false,
-      debug_output boolean = false,
-      analyze_output boolean = false
-    ) RETURNS TABLE ("row" anyelement) AS $$
-    BEGIN
-      RETURN QUERY SELECT * FROM lantern.weighted_vector_search(relation_type, w1, col1, vec1, w2, col2, vec2, w3, col3, vec3, ef, max_dist, '<=>', id_col, exact, debug_output, analyze_output);
-    END $$ LANGUAGE plpgsql;
-  END IF;
-
-  -- setup L2SQ API shortcuts
-
-  -- v (v) (v)
-  CREATE OR REPLACE FUNCTION lantern.weighted_vector_search_l2sq(
-    relation_type anyelement,
-    w1 numeric,
-    col1 text,
-    vec1 vector,
-    w2 numeric = 0,
-    col2 text = NULL,
-    vec2 vector = NULL,
-    w3 numeric = 0,
-    col3 text = NULL,
-    vec3 vector = NULL,
-    ef integer = 100,
-    max_dist numeric = NULL,
-    id_col text = 'id',
-    exact boolean = false,
-    debug_output boolean = false,
-    analyze_output boolean = false
-  ) RETURNS TABLE ("row" anyelement) AS $$
-  BEGIN
-    RETURN QUERY SELECT * FROM lantern.weighted_vector_search(relation_type, w1, col1, vec1, w2, col2, vec2, w3, col3, vec3, ef, max_dist, '<->', id_col, exact, debug_output, analyze_output);
-  END $$ LANGUAGE plpgsql;
-
-  IF NOT pgvector_sparsevec_exists THEN
-    RAISE NOTICE 'pgvector sparsevec type not found. Skipping lantern.weighted_vector_search_l2sq setup for sparsevec';
-  ELSE
-    -- s v v
-    CREATE OR REPLACE FUNCTION lantern.weighted_vector_search_l2sq(
-      relation_type anyelement,
-      w1 numeric,
-      col1 text,
-      vec1 sparsevec,
-      w2 numeric,
-      col2 text,
-      vec2 vector,
-      w3 numeric,
-      col3 text,
-      vec3 vector,
-      ef integer = 100,
-      max_dist numeric = NULL,
-      id_col text = 'id',
-      exact boolean = false,
-      debug_output boolean = false,
-      analyze_output boolean = false
-    ) RETURNS TABLE ("row" anyelement) AS $$
-    BEGIN
-      RETURN QUERY SELECT * FROM lantern.weighted_vector_search(relation_type, w1, col1, vec1, w2, col2, vec2, w3, col3, vec3, ef, max_dist, '<->', id_col, exact, debug_output, analyze_output);
-    END $$ LANGUAGE plpgsql;
-
-    -- v s v
-    CREATE OR REPLACE FUNCTION lantern.weighted_vector_search_l2sq(
-      relation_type anyelement,
-      w1 numeric,
-      col1 text,
-      vec1 vector,
-      w2 numeric,
-      col2 text,
-      vec2 sparsevec,
-      w3 numeric,
-      col3 text,
-      vec3 vector,
-      ef integer = 100,
-      max_dist numeric = NULL,
-      id_col text = 'id',
-      exact boolean = false,
-      debug_output boolean = false,
-      analyze_output boolean = false
-    ) RETURNS TABLE ("row" anyelement) AS $$
-    BEGIN
-      RETURN QUERY SELECT * FROM lantern.weighted_vector_search(relation_type, w1, col1, vec1, w2, col2, vec2, w3, col3, vec3, ef, max_dist, '<->', id_col, exact, debug_output, analyze_output);
-    END $$ LANGUAGE plpgsql;
-
-    -- v v s
-    CREATE OR REPLACE FUNCTION lantern.weighted_vector_search_l2sq(
-      relation_type anyelement,
-      w1 numeric,
-      col1 text,
-      vec1 vector,
-      w2 numeric,
-      col2 text,
-      vec2 vector,
-      w3 numeric,
-      col3 text,
-      vec3 sparsevec,
-      ef integer = 100,
-      max_dist numeric = NULL,
-      id_col text = 'id',
-      exact boolean = false,
-      debug_output boolean = false,
-      analyze_output boolean = false
-    ) RETURNS TABLE ("row" anyelement) AS $$
-    BEGIN
-      RETURN QUERY SELECT * FROM lantern.weighted_vector_search(relation_type, w1, col1, vec1, w2, col2, vec2, w3, col3, vec3, ef, max_dist, '<->', id_col, exact, debug_output, analyze_output);
-    END $$ LANGUAGE plpgsql;
-
-    -- s s v
-    CREATE OR REPLACE FUNCTION lantern.weighted_vector_search_l2sq(
-      relation_type anyelement,
-      w1 numeric,
-      col1 text,
-      vec1 sparsevec,
-      w2 numeric,
-      col2 text,
-      vec2 sparsevec,
-      w3 numeric,
-      col3 text,
-      vec3 vector,
-      ef integer = 100,
-      max_dist numeric = NULL,
-      id_col text = 'id',
-      exact boolean = false,
-      debug_output boolean = false,
-      analyze_output boolean = false
-    ) RETURNS TABLE ("row" anyelement) AS $$
-    BEGIN
-      RETURN QUERY SELECT * FROM lantern.weighted_vector_search(relation_type, w1, col1, vec1, w2, col2, vec2, w3, col3, vec3, ef, max_dist, '<->', id_col, exact, debug_output, analyze_output);
-    END $$ LANGUAGE plpgsql;
-
-    -- s v (s)
-    CREATE OR REPLACE FUNCTION lantern.weighted_vector_search_l2sq(
-      relation_type anyelement,
-      w1 numeric,
-      col1 text,
-      vec1 sparsevec,
-      w2 numeric,
-      col2 text,
-      vec2 vector,
-      w3 numeric = 0,
-      col3 text = NULL,
-      vec3 sparsevec = NULL,
-      ef integer = 100,
-      max_dist numeric = NULL,
-      id_col text = 'id',
-      exact boolean = false,
-      debug_output boolean = false,
-      analyze_output boolean = false
-    ) RETURNS TABLE ("row" anyelement) AS $$
-    BEGIN
-      RETURN QUERY SELECT * FROM lantern.weighted_vector_search(relation_type, w1, col1, vec1, w2, col2, vec2, w3, col3, vec3, ef, max_dist, '<->', id_col, exact, debug_output, analyze_output);
-    END $$ LANGUAGE plpgsql;
-
-    -- v s (s)
-    CREATE OR REPLACE FUNCTION lantern.weighted_vector_search_l2sq(
-      relation_type anyelement,
-      w1 numeric,
-      col1 text,
-      vec1 vector,
-      w2 numeric,
-      col2 text,
-      vec2 sparsevec,
-      w3 numeric = 0,
-      col3 text = NULL,
-      vec3 sparsevec = NULL,
-      ef integer = 100,
-      max_dist numeric = NULL,
-      id_col text = 'id',
-      exact boolean = false,
-      debug_output boolean = false,
-      analyze_output boolean = false
-    ) RETURNS TABLE ("row" anyelement) AS $$
-    BEGIN
-      RETURN QUERY SELECT * FROM lantern.weighted_vector_search(relation_type, w1, col1, vec1, w2, col2, vec2, w3, col3, vec3, ef, max_dist, '<->', id_col, exact, debug_output, analyze_output);
-    END $$ LANGUAGE plpgsql;
-
-    -- s (s) (s)
-    CREATE OR REPLACE FUNCTION lantern.weighted_vector_search_l2sq(
-      relation_type anyelement,
-      w1 numeric,
-      col1 text,
-      vec1 sparsevec,
-      w2 numeric = 0,
-      col2 text = NULL,
-      vec2 sparsevec = NULL,
-      w3 numeric = 0,
-      col3 text = NULL,
-      vec3 sparsevec = NULL,
-      ef integer = 100,
-      max_dist numeric = NULL,
-      id_col text = 'id',
-      exact boolean = false,
-      debug_output boolean = false,
-      analyze_output boolean = false
-    ) RETURNS TABLE ("row" anyelement) AS $$
-    BEGIN
-      RETURN QUERY SELECT * FROM lantern.weighted_vector_search(relation_type, w1, col1, vec1, w2, col2, vec2, w3, col3, vec3, ef, max_dist, '<->', id_col, exact, debug_output, analyze_output);
-    END $$ LANGUAGE plpgsql;
-  END IF;
-
+      EXECUTE format($create_weighted_vector_search_functions$
+        CREATE OR REPLACE FUNCTION lantern.weighted_vector_search%s(
+          relation_type anyelement,
+          w1 numeric,
+          col1 text,
+          vec1 %s,
+          w2 numeric %s,
+          col2 text %s,
+          vec2 %s,
+          w3 numeric %s,
+          col3 text %s,
+          vec3 %s,
+          ef integer = 100,
+          max_dist numeric = NULL,
+          distance_operator text = %L,
+          id_col text = 'id',
+          exact boolean = false,
+          debug_output boolean = false,
+          analyze_output boolean = false
+          )
+          -- N.B. Something seems strange about PL/pgSQL functions that return table with anyelement
+          -- when there is single "anylement column" being returned (e.g. returns table ("row" anylement))
+          -- then that single "column" is properly spread with source table's column names
+          -- but, when returning ("row" anyelement, "anothercol" integer), things fall all over the place
+          -- now, the returned table always has 2 columns one row that is a record of sorts, and one "anothercol"
+          RETURNS TABLE ("row" anyelement) AS
+        $$
+        DECLARE
+          query text;
+          vec1_string text = CASE WHEN vec1 IS NULL THEN '' ELSE format('%%L::%s', vec1) END;
+          vec2_string text = CASE WHEN vec2 IS NULL THEN '' ELSE format('%%L::%s', vec2) END;
+          vec3_string text = CASE WHEN vec3 IS NULL THEN '' ELSE format('%%L::%s', vec3) END;
+        BEGIN
+          query := _lantern_internal.weighted_vector_search_helper(pg_typeof(relation_type), w1, col1, vec1_string, w2, col2, vec2_string, w3, col3, vec3_string, ef, max_dist, distance_operator, id_col, exact, debug_output, analyze_output);
+          RETURN QUERY EXECUTE query;
+        END
+        $$ LANGUAGE plpgsql;
+      $create_weighted_vector_search_functions$,
+      utility_functions[j][1],
+      search_inputs[i][2],
+      CASE WHEN search_inputs[i][2] LIKE '%NULL' THEN ' = 0' ELSE '' END,
+      CASE WHEN search_inputs[i][2] LIKE '%NULL' THEN ' = NULL' ELSE '' END,
+      search_inputs[i][3],
+      CASE WHEN search_inputs[i][3] LIKE '%NULL' THEN ' = 0' ELSE '' END,
+      CASE WHEN search_inputs[i][3] LIKE '%NULL' THEN ' = NULL' ELSE '' END,
+      search_inputs[i][4],
+      utility_functions[j][2],
+      CASE WHEN search_inputs[i][2] LIKE 'sparsevec%%' THEN 'sparsevec' ELSE 'vector' END,
+      CASE WHEN search_inputs[i][3] LIKE 'sparsevec%%' THEN 'sparsevec' ELSE 'vector' END,
+      CASE WHEN search_inputs[i][4] LIKE 'sparsevec%%' THEN 'sparsevec' ELSE 'vector' END);
+    END LOOP;
+  END LOOP;
 END
 $weighted_vector_search$ LANGUAGE plpgsql;
 
