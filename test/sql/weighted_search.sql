@@ -53,7 +53,6 @@ LIMIT 100) t;
 
 -- when max_dist is not specified, number of returned values dicreases with smaller ef
 
-
 SELECT count(*)
   FROM lantern.weighted_vector_search(CAST(NULL as "sift_base1k"), debug_output => true, exact => true,
   w1=> 0.03, col1=>'v'::text, vec1=>:'v4'::vector,
@@ -121,6 +120,18 @@ SELECT count(*)
   w3=> 0.52, col3=>'v_real'::text, vec3=>:'v444'::vector
 );
 
+-- test sparsevec
+\ir utils/small_world_sparsevec.sql
+SELECT '{1:0.4,2:0.3,3:0.2}/3' AS s3 \gset
+SELECT '[-0.5,-0.1,-0.3]' AS v3 \gset
+SELECT
+  id,
+  round(cast(0.9 * (s <-> :'s3'::sparsevec) + 0.1 * (v <-> :'v3'::vector) as numeric), 2) as dist
+FROM lantern.weighted_vector_search(CAST(NULL as "small_world"), exact => false, ef => 5,
+  w1=> 0.9, col1=>'s'::text, vec1=>:'s3'::sparsevec,
+  w2=> 0.1, col2=>'v'::text, vec2=>:'v3'::vector
+);
+
 -- create non superuser and test the function
 SET client_min_messages = WARNING;
 -- suppress NOTICE:  role "test_user" does not exist, skipping
@@ -138,4 +149,3 @@ SELECT count(*)
   w2=> 0.45, col2=>'v_real'::text, vec2=>:'v44'::vector,
   w3=> 0.52, col3=>'v_real'::text, vec3=>:'v444'::vector
 );
-
