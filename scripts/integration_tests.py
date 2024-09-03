@@ -650,6 +650,7 @@ def test_vector_search_with_filter(primary, source_table):
                     row[2] == filter_val
                 ), f"Expected all results to have random_bool == {filter_val}"
 
+
 # fixture to handle external index server setup
 @pytest.fixture
 def external_index(request):

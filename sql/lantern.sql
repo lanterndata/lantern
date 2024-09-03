@@ -684,8 +684,8 @@ DECLARE
   -- function suffix, function default operator
   utility_functions text[2][] := ARRAY[
     ARRAY['', '<->'],
-    ARRAY['_cos', '<->'],
-    ARRAY['_l2sq', '<=>']
+    ARRAY['_cos', '<=>'],
+    ARRAY['_l2sq', '<->']
   ];
 BEGIN
   -- Check if the vector type from pgvector exists
