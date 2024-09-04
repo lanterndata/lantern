@@ -226,7 +226,14 @@ fn initialize_index(
 
             let element_bits = match index_options.metric {
                 MetricKind::Hamming => 1,
-                _ => INTEGER_SIZE * CHAR_BITS,
+                _ => match index_options.quantization {
+                    ScalarKind::B1 => 1,
+                    ScalarKind::I8 => 8,
+                    ScalarKind::F16 => 16,
+                    ScalarKind::F32 => 32,
+                    ScalarKind::F64 => 64,
+                    _ => anyhow::bail!("unsupported quantization"),
+                },
             };
 
             Ok((element_bits, ThreadSafeIndex(index)))
