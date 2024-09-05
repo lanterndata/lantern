@@ -16,6 +16,13 @@
 // maximum tuple size can be 8kb (8192 byte) + 8 byte label
 #define EXTERNAL_INDEX_MAX_TUPLE_SIZE 8200
 
+typedef enum
+{
+    EXTERNAL_INDEX_NO_ERR = 0,
+    EXTERNAL_INDEX_READ_FAILED,
+    EXTERNAL_INDEX_INDEXING_ERROR,
+} ExternalIndexResponseError;
+
 typedef struct external_index_params_t
 {
     uint32                pq;

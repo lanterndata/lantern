@@ -602,6 +602,7 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
     }
 
     if(buildstate->external) {
+        free(result_buf);
         buildstate->external_socket->close(buildstate->external_socket);
     }
 
