@@ -9,6 +9,7 @@
 #include <storage/bufmgr.h>  // Buffer
 #include <utils/relcache.h>  // Relation
 
+#include "external_index_socket.h"
 #include "extra_dirtied.h"
 #include "fa_cache.h"
 #include "hnsw.h"
@@ -116,13 +117,16 @@ typedef struct
 
 void StoreExternalEmptyIndex(
     Relation index, ForkNumber forkNum, char *data, int dimensions, usearch_init_options_t *opts);
-void StoreExternalIndex(Relation                index,
-                        const metadata_t       *external_index_metadata,
-                        ForkNumber              forkNum,
-                        char                   *data,
-                        usearch_init_options_t *opts,
-                        uint32                  pg_dimension,
-                        size_t                  num_added_vectors);
+void StoreExternalIndex(Relation                 index,
+                        const metadata_t        *external_index_metadata,
+                        ForkNumber               forkNum,
+                        char                    *data,
+                        usearch_init_options_t  *opts,
+                        uint32                   pg_dimension,
+                        size_t                   num_added_vectors,
+                        external_index_socket_t *external_index_socket,
+                        uint64                   index_file_size,
+                        BuildIndexStatus        *status);
 
 // add the fully constructed index tuple to the index via wal
 // hdr is passed in so num_vectors, first_block_no, last_block_no can be updated

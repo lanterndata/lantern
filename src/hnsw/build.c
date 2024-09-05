@@ -109,7 +109,10 @@ static void AddTupleToUsearchIndex(ItemPointer         tid,
 
     if(buildstate->external_socket) {
         // send tuple over socket if this is external indexing
-        external_index_send_tuple(buildstate->external_socket, &label, vector, scalar_bits, buildstate->dimensions);
+        external_index_send_tuple(
+            buildstate->external_socket, &label, vector, scalar_bits, buildstate->dimensions, buildstate->status);
+
+        CheckBuildIndexError(buildstate);
     } else if(buildstate->usearch_index != NULL) {
         size_t capacity = usearch_capacity(buildstate->usearch_index, &error);
         if(capacity == usearch_size(buildstate->usearch_index, &error)) {
@@ -378,6 +381,7 @@ static void InitBuildState(ldb_HnswBuildState *buildstate, Relation heap, Relati
     buildstate->dimensions = GetHnswIndexDimensions(index, indexInfo);
     buildstate->index_file_path = ldb_HnswGetIndexFilePath(index);
     buildstate->external = ldb_HnswGetExternal(index);
+    buildstate->status = palloc0(sizeof(BuildIndexStatus));
 
     // If a dimension wasn't specified try to infer it
     if(heap != NULL && buildstate->dimensions < 1) {
@@ -437,6 +441,29 @@ static void ScanTable(ldb_HnswBuildState *buildstate)
 #endif
 }
 
+void CheckBuildIndexError(ldb_HnswBuildState *buildstate)
+{
+    usearch_error_t error = NULL;
+
+    if(buildstate->status->code == BUILD_INDEX_OK) return;
+
+    if(buildstate->usearch_index) {
+        usearch_free(buildstate->usearch_index, &error);
+    }
+
+    if(buildstate->external_socket) {
+        buildstate->external_socket->close(buildstate->external_socket);
+    }
+
+    if(buildstate->status->code == BUILD_INDEX_FAILED) {
+        elog(ERROR, "%s", buildstate->status->error);
+    }
+
+    if(buildstate->status->code == BUILD_INDEX_INTERRUPT) {
+        ProcessInterrupts();
+    }
+}
+
 /*
  * Build the index, writing to the main fork
  */
@@ -454,6 +481,7 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
     int          munmap_ret;
     metadata_t   metadata;
     uint64       num_added_vectors;
+    uint64       index_file_size = 0;
 
     MemSet(&opts, 0, sizeof(opts));
 
@@ -526,16 +554,17 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
                                                                         &opts,
                                                                         buildstate,
                                                                         estimated_row_count);
+            CheckBuildIndexError(buildstate);
         } else {
             usearch_reserve(buildstate->usearch_index, estimated_row_count, &error);
-        }
 
-        if(error != NULL) {
-            // There's not much we can do if free throws an error, but we want to preserve the contents of the first one
-            // in case it does
-            usearch_error_t local_error = NULL;
-            usearch_free(buildstate->usearch_index, &local_error);
-            elog(ERROR, "Error reserving space for index: %s", error);
+            if(error != NULL) {
+                // There's not much we can do if free throws an error, but we want to preserve the contents of the first
+                // one in case it does
+                usearch_error_t local_error = NULL;
+                usearch_free(buildstate->usearch_index, &local_error);
+                elog(ERROR, "Error reserving space for index: %s", error);
+            }
         }
 
         UpdateProgress(PROGRESS_CREATEIDX_PHASE, LDB_PROGRESS_HNSW_PHASE_IN_MEMORY_INSERT);
@@ -554,7 +583,20 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
         index_file_fd = open(buildstate->index_file_path, O_RDONLY);
         assert(index_file_fd > 0);
     } else if(buildstate->external) {
-        external_index_receive_index_file(buildstate->external_socket, &num_added_vectors, &result_buf);
+        result_buf = palloc(USEARCH_HEADER_SIZE);
+        external_index_receive_metadata(
+            buildstate->external_socket, &num_added_vectors, &index_file_size, buildstate->status);
+        CheckBuildIndexError(buildstate);
+
+        uint32 bytes_read = external_index_receive_index_part(
+            buildstate->external_socket, result_buf, USEARCH_HEADER_SIZE, buildstate->status);
+        CheckBuildIndexError(buildstate);
+
+        if(bytes_read != USEARCH_HEADER_SIZE) {
+            buildstate->status->code = BUILD_INDEX_FAILED;
+            strncpy(buildstate->status->error, "received invalid index header", BUILD_INDEX_MAX_ERROR_SIZE);
+            CheckBuildIndexError(buildstate);
+        }
     } else {
         // Save index into temporary file
         // To later mmap it into memory
@@ -583,16 +625,35 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
 
     if(!buildstate->external) {
         fstat(index_file_fd, &index_file_stat);
+        index_file_size = index_file_stat.st_size;
         result_buf = mmap(NULL, index_file_stat.st_size, PROT_READ, MAP_PRIVATE, index_file_fd, 0);
+
         if(result_buf == MAP_FAILED) {
-            elog(ERROR, "failed to mmap index file");
+            buildstate->status->code = BUILD_INDEX_FAILED;
+            strncpy(buildstate->status->error, "failed to mmap index file", BUILD_INDEX_MAX_ERROR_SIZE);
+            CheckBuildIndexError(buildstate);
         }
     }
     //****************************** mmap index to memory END ******************************//
 
     // save the index to WAL
     UpdateProgress(PROGRESS_CREATEIDX_PHASE, LDB_PROGRESS_HNSW_PHASE_LOAD);
-    StoreExternalIndex(index, &metadata, MAIN_FORKNUM, result_buf, &opts, buildstate->dimensions, num_added_vectors);
+
+    if(num_added_vectors == 0) {
+        StoreExternalEmptyIndex(index, MAIN_FORKNUM, result_buf, buildstate->dimensions, &opts);
+    } else {
+        StoreExternalIndex(index,
+                           &metadata,
+                           MAIN_FORKNUM,
+                           result_buf,
+                           &opts,
+                           buildstate->dimensions,
+                           num_added_vectors,
+                           buildstate->external_socket,
+                           index_file_size,
+                           buildstate->status);
+        CheckBuildIndexError(buildstate);
+    }
 
     if(!buildstate->external) {
         munmap_ret = munmap(result_buf, index_file_stat.st_size);
