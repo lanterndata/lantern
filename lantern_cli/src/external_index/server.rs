@@ -1,10 +1,12 @@
 use super::cli::{IndexServerArgs, UMetricKind};
 use bitvec::prelude::*;
 use byteorder::{ByteOrder, LittleEndian};
+use glob::glob;
 use itertools::Itertools;
 use rand::Rng;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use rustls::{ServerConfig, ServerConnection, StreamOwned};
+use std::cmp;
 use std::fs::{self, File};
 use std::io::{BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -216,6 +218,8 @@ fn receive_rows(
 
     drop(idx);
 
+    let ten_percent = cmp::max((current_capacity as f32 * 0.1) as usize, 100000);
+
     loop {
         let buf = vec![0 as u8; expected_payload_size];
         match read_frame(&mut stream, buf, expected_payload_size, None)? {
@@ -230,6 +234,10 @@ fn receive_rows(
                 }
 
                 received_rows += 1;
+
+                if received_rows % ten_percent == 0 {
+                    logger.debug(&format!("Indexed {received_rows} tuples..."));
+                }
 
                 worker_tx.send(row)?;
             }
@@ -351,15 +359,17 @@ pub fn create_streaming_usearch_index(
         }
     }
 
-    logger.debug(&format!(
-        "Indexing took {}s",
-        start_time.elapsed().as_secs()
-    ));
-
     // Send added row count
     let mut stream = stream.lock().unwrap();
     let index = index.read().unwrap();
-    stream.write_data(&(index.0.size() as u64).to_le_bytes())?;
+
+    let tuple_count = index.0.size() as u64;
+    logger.debug(&format!(
+        "Indexing took {}s, indexed {tuple_count} items",
+        start_time.elapsed().as_secs()
+    ));
+
+    stream.write_data(&tuple_count.to_le_bytes())?;
 
     // Send index file back
     logger.info("Start streaming index");
@@ -398,8 +408,6 @@ pub fn create_streaming_usearch_index(
         streaming_start.elapsed().as_secs(),
         streaming_start.elapsed().subsec_millis()
     ));
-
-    fs::remove_file(index_file_path)?;
 
     logger.debug(&format!(
         "Total indexing took {}s",
@@ -483,6 +491,21 @@ impl Connection for StreamOwned<ServerConnection, TcpStream> {
     }
 }
 
+fn cleanup_tmp_dir(logger: Arc<Logger>, tmp_dir: Arc<String>) {
+    for path in glob(&format!("{tmp_dir}/ldb-index-*.usearch")).unwrap() {
+        match path {
+            Ok(path) => {
+                if let Err(e) = fs::remove_file(path) {
+                    logger.error(&format!("{:?}", e));
+                };
+            }
+            Err(e) => {
+                logger.error(&format!("{:?}", e));
+            }
+        }
+    }
+}
+
 pub fn start_tcp_server(args: IndexServerArgs, logger: Option<Logger>) -> AnyhowVoidResult {
     let logger =
         Arc::new(logger.unwrap_or(Logger::new("Lantern Indexing Server", LogLevel::Debug)));
@@ -528,6 +551,8 @@ pub fn start_tcp_server(args: IndexServerArgs, logger: Option<Logger>) -> Anyhow
                     let mut stream = connection_stream.lock().unwrap();
                     let _ = stream.write_data(error_header.as_slice());
                 };
+
+                cleanup_tmp_dir(logger.clone(), tmp_dir.clone());
             }
             Err(e) => {
                 logger.error(&format!("Connection error: {e}"));
