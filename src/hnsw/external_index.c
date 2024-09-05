@@ -41,109 +41,135 @@ void StoreExternalIndexNodes(Relation             index,
                              HnswIndexHeaderPage *headerp,
                              ForkNumber           forkNum,
                              char                *data,
-                             uint64              *progress,
+                             uint64               buffer_size,
+                             uint64              *progress_bytes,
+                             uint64              *num_added_vectors,
                              uint32               pg_dimension,
                              uint32               usearch_dimension,
                              uint32               first_node_index,
-                             uint32               num_added_vectors,
-                             ItemPointerData     *item_pointers)
+                             ItemPointerData     *item_pointers,
+                             BuildIndexStatus    *status)
 {
+    assert(sizeof(HnswIndexTuple) + pg_dimension * sizeof(float) <= BLCKSZ);
+
     // Now add nodes to data pages
     char  *node = 0;
+    bool   force_create_page = false;
     int    node_size = 0;
     int    node_level = 0;
     uint32 predicted_next_block = InvalidBlockNumber;
-    uint32 last_block = -1;
+    uint32 last_block = InvalidBlockNumber;
+    uint32 node_id = first_node_index;
+    uint64 bytes_written = 0;
 
     HnswIndexTuple *bufferpage = palloc(BLCKSZ);
 
-    /* Add all the vectors to the WAL */
-    for(uint32 node_id = first_node_index; node_id < first_node_index + num_added_vectors;) {
-        // 1. create HnswIndexTuple
+    Buffer                     buf = 0;
+    Buffer                     newbuf;
+    BlockNumber                blockno;
+    OffsetNumber               offsetno;
+    Page                       page;
+    HnswIndexPageSpecialBlock *special;
 
-        // 2. fill header and special
-
-        // 3. while available space is larger than node_size
-        //     3a. add node to page
-
-        // 4. commit buffer
-        Buffer       buf = ReadBufferExtended(index, forkNum, P_NEW, RBM_NORMAL, NULL);
-        BlockNumber  blockno = BufferGetBlockNumber(buf);
-        OffsetNumber offsetno;
+    if(headerp->last_data_block != InvalidBlockNumber) {
+        // reuse last page
+        buf = ReadBufferExtended(index, forkNum, headerp->last_data_block, RBM_NORMAL, GetAccessStrategy(BAS_BULKREAD));
+        blockno = headerp->last_data_block;
+        last_block = blockno;
+        page = BufferGetPage(buf);
+        special = (HnswIndexPageSpecialBlock *)PageGetSpecialPointer(page);
         LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
+    } else {
+        force_create_page = true;
+    }
 
-        Page page = BufferGetPage(buf);
-        PageInit(page, BufferGetPageSize(buf), sizeof(HnswIndexPageSpecialBlock));
-
-        if(predicted_next_block != InvalidBlockNumber) {
-            ldb_invariant(predicted_next_block == BufferGetBlockNumber(buf),
-                          "my block number hypothesis failed. "
-                          "predicted block number %d does not match "
-                          "actual %d",
-                          predicted_next_block,
-                          BufferGetBlockNumber(buf));
-        }
-
-        HnswIndexPageSpecialBlock *special = (HnswIndexPageSpecialBlock *)PageGetSpecialPointer(page);
-        special->firstId = node_id;
-        special->nextblockno = InvalidBlockNumber;
-
+    /* Add all the vectors to the index pages */
+    while(bytes_written < buffer_size) {
         // note: even if the condition is true, nodepage may be too large
         // as the condition does not take into account the flexible array component
-        while(PageGetFreeSpace(page) > sizeof(HnswIndexTuple) + pg_dimension * sizeof(float)) {
-            if(node_id >= first_node_index + num_added_vectors) break;
-            memset(bufferpage, 0, BLCKSZ);
-            /************* extract node from usearch index************/
-            node = data + *progress;
-            node_level = level_from_node(node);
-            node_size = node_tuple_size(node, usearch_dimension, metadata);
+        if(force_create_page || (PageGetFreeSpace(page) < sizeof(HnswIndexTuple) + pg_dimension * sizeof(float))) {
+            // create new page
+            newbuf = ReadBufferExtended(index, forkNum, P_NEW, RBM_NORMAL, NULL);
+            blockno = BufferGetBlockNumber(newbuf);
 
-            bufferpage->seqid = node_id;
-            bufferpage->size = node_size;
-            ldb_invariant(node_level < 100,
-                          "node level is too large. at id %d"
-                          "this is likely a bug in usearch. "
-                          "level: %d",
-                          node_id,
-                          node_level);
-
-            // node should not be larger than the 8k bufferpage
-            // invariant holds because of dimension <2000 check in index creation
-            // once quantization is enabled, we can allow larger overall dims
-            assert(bufferpage + offsetof(HnswIndexTuple, node) + node_size < bufferpage + BLCKSZ);
-            memcpy(bufferpage->node, node, node_size);
-            offsetno = PageAddItem(
-                page, (Item)bufferpage, sizeof(HnswIndexTuple) + node_size, InvalidOffsetNumber, false, false);
-
-            if(offsetno == InvalidOffsetNumber) {
-                // break to get a fresh page
-                break;
+            if(bytes_written > 0) {
+                // fill the last page special info if buffer was modified
+                special->nextblockno = blockno;
+                special->lastId = node_id - 1;
+                MarkBufferDirty(buf);
             }
 
-            // we successfully recorded the node. move to the next one
-            BlockIdSet(&item_pointers[ node_id ].ip_blkid, blockno);
-            item_pointers[ node_id ].ip_posid = offsetno;
-            *progress += node_size;
-            node_id++;
-        }
+            if(buf != 0) {
+                UnlockReleaseBuffer(buf);
+            }
 
-        if(node_id < num_added_vectors + first_node_index) {
-            predicted_next_block = BufferGetBlockNumber(buf) + 1;
-        } else {
+            // initialize new page
+            buf = newbuf;
+            page = BufferGetPage(buf);
+            PageInit(page, BufferGetPageSize(buf), sizeof(HnswIndexPageSpecialBlock));
+            special = (HnswIndexPageSpecialBlock *)PageGetSpecialPointer(page);
+            special->firstId = node_id;
+            special->nextblockno = InvalidBlockNumber;
             last_block = BufferGetBlockNumber(buf);
-            predicted_next_block = InvalidBlockNumber;
+            force_create_page = false;
+
+            LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
         }
-        special->lastId = node_id - 1;
-        special->nextblockno = predicted_next_block;
 
-        MarkBufferDirty(buf);
-        UnlockReleaseBuffer(buf);
+        memset(bufferpage, 0, BLCKSZ);
+        /************* extract node from usearch index************/
+        node = data + bytes_written;
+        node_level = level_from_node(node);
+        node_size = node_tuple_size(node, usearch_dimension, metadata);
 
-        CHECK_FOR_INTERRUPTS();
+        bufferpage->seqid = node_id;
+        bufferpage->size = node_size;
+        ldb_invariant(node_level < 100,
+                      "node level is too large. at id %d"
+                      "this is likely a bug in usearch. "
+                      "level: %d",
+                      node_id,
+                      node_level);
+
+        // node should not be larger than the 8k bufferpage
+        // invariant holds because of dimension <2000 check in index creation
+        // once quantization is enabled, we can allow larger overall dims
+        assert(bufferpage + offsetof(HnswIndexTuple, node) + node_size < bufferpage + BLCKSZ);
+        memcpy(bufferpage->node, node, node_size);
+        offsetno = PageAddItem(
+            page, (Item)bufferpage, sizeof(HnswIndexTuple) + node_size, InvalidOffsetNumber, false, false);
+
+        if(offsetno == InvalidOffsetNumber) {
+            // write failed, continue to get a fresh page
+            force_create_page = true;
+            continue;
+        }
+
+        // we successfully recorded the node. move to the next one
+        BlockIdSet(&item_pointers[ node_id ].ip_blkid, blockno);
+        item_pointers[ node_id ].ip_posid = offsetno;
+        bytes_written += node_size;
+        node_id++;
+
+        if(INTERRUPTS_PENDING_CONDITION()) {
+            UnlockReleaseBuffer(buf);
+            status->code = BUILD_INDEX_INTERRUPT;
+            return;
+        }
     }
+
+    special->lastId = node_id - 1;
+
+    UnlockReleaseBuffer(buf);
+
     headerp->last_data_block = last_block;
 
+    *progress_bytes += bytes_written;
+    *num_added_vectors += (node_id - first_node_index);
+
     LDB_FAILURE_POINT_CRASH_IF_ENABLED("just_before_updating_blockmaps_after_inserting_nodes");
+
+    status->code = BUILD_INDEX_OK;
 }
 
 void StoreExternalEmptyIndex(
@@ -195,16 +221,19 @@ void StoreExternalEmptyIndex(
     // immediately. Otherwise, if a crash occurs before the first postgres checkpoint, postgres can't read the init fork
     // from disc and we will have a corrupted index when postgres attempts recovery. This is also what nbtree access
     // method's implementation does for empty unlogged indexes (ambuildempty implementation).
-    log_newpage_range(index, INIT_FORKNUM, 0, RelationGetNumberOfBlocksInFork(index, INIT_FORKNUM), false);
+    log_newpage_range(index, forkNum, 0, RelationGetNumberOfBlocksInFork(index, forkNum), false);
 }
 
-void StoreExternalIndex(Relation                index,
-                        const metadata_t       *external_index_metadata,
-                        ForkNumber              forkNum,
-                        char                   *data,
-                        usearch_init_options_t *opts,
-                        uint32                  pg_dimensions,
-                        size_t                  num_added_vectors)
+void StoreExternalIndex(Relation                 index,
+                        const metadata_t        *external_index_metadata,
+                        ForkNumber               forkNum,
+                        char                    *data,
+                        usearch_init_options_t  *opts,
+                        uint32                   pg_dimensions,
+                        size_t                   num_added_vectors,
+                        external_index_socket_t *external_index_socket,
+                        uint64                   index_file_size,
+                        BuildIndexStatus        *status)
 {
     Buffer header_buf = ReadBufferExtended(index, forkNum, P_NEW, RBM_NORMAL, NULL);
 
@@ -237,9 +266,6 @@ void StoreExternalIndex(Relation                index,
 
     headerp->last_data_block = InvalidBlockNumber;
 
-    memcpy(headerp->usearch_header, data, USEARCH_HEADER_SIZE);
-    ((PageHeader)header_page)->pd_lower = ((char *)headerp + sizeof(HnswIndexHeaderPage)) - (char *)header_page;
-
     // allocate some pages for pq codebook
     // for now, always add this blocks to make sure all tests run with these and nothing fails
     if(opts->pq) {
@@ -258,21 +284,79 @@ void StoreExternalIndex(Relation                index,
     }
 
     uint64 progress = USEARCH_HEADER_SIZE;
+    uint64 tuples_indexed = 0;
 
     ItemPointerData *item_pointers = palloc(num_added_vectors * sizeof(ItemPointerData));
 
-    StoreExternalIndexNodes(index,
-                            external_index_metadata,
-                            headerp,
-                            forkNum,
-                            data,
-                            &progress,
-                            pg_dimensions,
-                            opts->dimensions,
-                            0,
-                            num_added_vectors,
-                            item_pointers);
+    ((PageHeader)header_page)->pd_lower = ((char *)headerp + sizeof(HnswIndexHeaderPage)) - (char *)header_page;
 
+    memcpy(headerp->usearch_header, data, USEARCH_HEADER_SIZE);
+
+    if(external_index_socket != NULL) {
+        uint64 bytes_read = 0;
+        uint32 external_index_buffer_size = 1024 * 1024 * 10;
+        char  *external_index_data = palloc0(external_index_buffer_size);
+        uint32 buffer_position = 0;
+        uint64 local_progress = 0;
+        uint64 write_limit = 0;
+
+        while(tuples_indexed < num_added_vectors) {
+            local_progress = 0;
+
+            bytes_read = external_index_receive_index_part(external_index_socket,
+                                                           external_index_data + buffer_position,
+                                                           external_index_buffer_size - buffer_position,
+                                                           status);
+
+            if(status->code != BUILD_INDEX_OK) {
+                return;
+            }
+
+            if(bytes_read < external_index_buffer_size - buffer_position) {
+                // index file streaming finished
+                write_limit = buffer_position + bytes_read;
+            } else {
+                write_limit = external_index_buffer_size - BLCKSZ;
+            }
+
+            // store nodes into index pages
+            StoreExternalIndexNodes(index,
+                                    external_index_metadata,
+                                    headerp,
+                                    forkNum,
+                                    external_index_data,
+                                    write_limit,
+                                    &local_progress,
+                                    &tuples_indexed,
+                                    pg_dimensions,
+                                    opts->dimensions,
+                                    tuples_indexed,
+                                    item_pointers,
+                                    status);
+
+            // rotate buffer
+            buffer_position = external_index_buffer_size - local_progress;
+            memcpy(external_index_data, external_index_data + local_progress, buffer_position);
+
+            progress += local_progress;
+        }
+    } else {
+        uint64 added_vectors = 0;
+        StoreExternalIndexNodes(index,
+                                external_index_metadata,
+                                headerp,
+                                forkNum,
+                                data + USEARCH_HEADER_SIZE,
+                                index_file_size - USEARCH_HEADER_SIZE,
+                                &progress,
+                                &added_vectors,
+                                pg_dimensions,
+                                opts->dimensions,
+                                0,
+                                item_pointers,
+                                status);
+        assert(added_vectors == num_added_vectors);
+    }
     // this is where I rewrite all neighbors to use BlockNumber
     Buffer              buf;
     HnswIndexHeaderPage header_copy;

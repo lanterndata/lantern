@@ -62,15 +62,19 @@ external_index_socket_t *create_external_index_session(const char               
                                                        const usearch_init_options_t *params,
                                                        const ldb_HnswBuildState     *buildstate,
                                                        uint32                        estimated_row_count);
-void                     external_index_send_codebook(external_index_socket_t *socket_con,
-                                                      float                   *codebook,
-                                                      uint32                   dimensions,
-                                                      uint32                   num_centroids,
-                                                      uint32                   num_subvectors);
-void                     external_index_receive_index_file(external_index_socket_t *socket_con,
-                                                           uint64                  *num_added_vectors,
-                                                           char                   **result_buf);
-void                     external_index_send_tuple(
-                        external_index_socket_t *socket_con, usearch_label_t *label, void *vector, uint8 scalar_bits, uint32 dimensions);
+void                     external_index_receive_metadata(external_index_socket_t *socket_con,
+                                                         uint64                  *num_added_vectors,
+                                                         uint64                  *index_size,
+                                                         BuildIndexStatus        *status);
+uint64                   external_index_receive_index_part(external_index_socket_t *socket_con,
+                                                           char                    *result_buf,
+                                                           uint64                   size,
+                                                           BuildIndexStatus        *status);
+void                     external_index_send_tuple(external_index_socket_t *socket_con,
+                                                   usearch_label_t         *label,
+                                                   void                    *vector,
+                                                   uint8                    scalar_bits,
+                                                   uint32                   dimensions,
+                                                   BuildIndexStatus        *status);
 
 #endif  // LDB_EXTERNAL_IDX_SOCKET_H

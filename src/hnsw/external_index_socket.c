@@ -15,7 +15,7 @@ static bool is_little_endian()
     return *((char *)&i) == 1;
 }
 
-static void set_read_timeout(int32 client_fd, uint32 seconds)
+static void set_read_timeout(int32 client_fd, uint32 seconds, BuildIndexStatus *status)
 {
     struct timeval timeout;
 
@@ -23,11 +23,14 @@ static void set_read_timeout(int32 client_fd, uint32 seconds)
     timeout.tv_usec = 0;
 
     if(setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout) < 0) {
-        elog(ERROR, "external index: failed to set receive timeout for socket");
+        status->code = BUILD_INDEX_FAILED;
+        strncpy(status->error, "external index: failed to set receive timeout for socket", BUILD_INDEX_MAX_ERROR_SIZE);
+        return;
     }
+    status->code = BUILD_INDEX_OK;
 }
 
-static void set_write_timeout(int32 client_fd, uint32 seconds)
+static void set_write_timeout(int32 client_fd, uint32 seconds, BuildIndexStatus *status)
 {
     struct timeval timeout;
 
@@ -35,8 +38,11 @@ static void set_write_timeout(int32 client_fd, uint32 seconds)
     timeout.tv_usec = 0;
 
     if(setsockopt(client_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof timeout) < 0) {
-        elog(ERROR, "external index: failed to set send timeout for socket");
+        status->code = BUILD_INDEX_FAILED;
+        strncpy(status->error, "external index: failed to set send timeout for socket", BUILD_INDEX_MAX_ERROR_SIZE);
+        return;
     }
+    status->code = BUILD_INDEX_OK;
 }
 
 /* PLAIN SOCKET FUNCTIONS */
@@ -123,42 +129,63 @@ static int connect_with_timeout(int sockfd, const struct sockaddr *addr, socklen
 
 /**
  * Check for error received from socket response
- * This function will return void or elog(ERROR) and exit process
+ * This function will return void setting the corresponding error code and error message
  * Error conditions are the following:
  *  - read size is less then zero. (this can happen on network errors, or when the server will be closed)
  *  - packet starts with EXTERNAL_INDEX_ERR_MSG bytes. (this will be send from the server indicating that something gone
  *    wrong in the server and the following bytes will be error message and will be interpreted as string in
  *    elog(ERROR))
  */
-static void check_external_index_response_error(external_index_socket_t *socket_con, char *buffer, int64 size)
+static void set_external_index_response_status(external_index_socket_t *socket_con,
+                                               char                    *buffer,
+                                               int64                    size,
+                                               BuildIndexStatus        *status)
 {
     uint32 hdr;
+
     if(size < 0) {
-        socket_con->close(socket_con);
-        elog(ERROR, "external index socket read failed");
+        status->code = BUILD_INDEX_FAILED;
+        strncpy(status->error, "external index socket read failed", BUILD_INDEX_MAX_ERROR_SIZE);
+        return;
     }
 
-    if(size < sizeof(uint32)) return;
+    if(size < sizeof(uint32)) {
+        return;
+    }
 
     memcpy(&hdr, buffer, sizeof(uint32));
 
-    if(hdr != EXTERNAL_INDEX_ERR_MSG) return;
+    if(hdr != EXTERNAL_INDEX_ERR_MSG) {
+        status->code = BUILD_INDEX_OK;
+        return;
+    };
 
-    // append nullbyte
-    buffer[ size ] = '\0';
-    socket_con->close(socket_con);
-    elog(ERROR, "external index error: %s", buffer + EXTERNAL_INDEX_MAGIC_MSG_SIZE);
+    buffer[ size - 1 ] = '\0';
+
+    status->code = BUILD_INDEX_FAILED;
+    strncpy(status->error, buffer, BUILD_INDEX_MAX_ERROR_SIZE);
 }
 
-static void check_external_index_request_error(external_index_socket_t *socket_con, int64 bytes_written)
+static void set_external_index_request_status(external_index_socket_t *socket_con,
+                                              int64                    bytes_written,
+                                              BuildIndexStatus        *status)
 {
-    if(bytes_written > 0) return;
+    if(INTERRUPTS_PENDING_CONDITION()) {
+        status->code = BUILD_INDEX_INTERRUPT;
+        return;
+    }
 
-    socket_con->close(socket_con);
-    elog(ERROR, "external index socket send failed");
+    if(bytes_written > 0) {
+        status->code = BUILD_INDEX_OK;
+        return;
+    };
+
+    status->code = BUILD_INDEX_FAILED;
+    strncpy(status->error, "external index socket send failed", BUILD_INDEX_MAX_ERROR_SIZE);
 }
 
-static void writeall_or_error(external_index_socket_t *socket_con, const char *buf, uint32 len, int flags)
+static void write_all(
+    external_index_socket_t *socket_con, const char *buf, uint32 len, int flags, BuildIndexStatus *status)
 {
     int32  total = 0;
     uint32 bytesleft = len;
@@ -166,28 +193,40 @@ static void writeall_or_error(external_index_socket_t *socket_con, const char *b
 
     while(total < len) {
         n = socket_con->write(socket_con, buf + total, bytesleft);
-        check_external_index_request_error(socket_con, n);
+        set_external_index_request_status(socket_con, n, status);
+
+        if(status->code != BUILD_INDEX_OK) {
+            return;
+        }
+
         total += n;
         bytesleft -= (uint32)n;
     }
+
+    status->code = BUILD_INDEX_OK;
 }
 
-void external_index_send_codebook(external_index_socket_t *socket_con,
-                                  float                   *codebook,
-                                  uint32                   dimensions,
-                                  uint32                   num_centroids,
-                                  uint32                   num_subvectors)
+static void external_index_send_codebook(external_index_socket_t *socket_con,
+                                         float                   *codebook,
+                                         uint32                   dimensions,
+                                         uint32                   num_centroids,
+                                         uint32                   num_subvectors,
+                                         BuildIndexStatus        *status)
 {
     uint32 data_size = dimensions * sizeof(float);
     char   buf[ data_size ];
 
     for(uint32 i = 0; i < num_centroids; i++) {
         memcpy(buf, &codebook[ i * dimensions ], data_size);
-        writeall_or_error(socket_con, buf, data_size, 0);
+        write_all(socket_con, buf, data_size, 0, status);
+
+        if(status->code != BUILD_INDEX_OK) {
+            return;
+        }
     }
 
     uint32 end_msg = EXTERNAL_INDEX_END_MSG;
-    writeall_or_error(socket_con, (char *)&end_msg, EXTERNAL_INDEX_MAGIC_MSG_SIZE, 0);
+    write_all(socket_con, (char *)&end_msg, EXTERNAL_INDEX_MAGIC_MSG_SIZE, 0, status);
 }
 
 external_index_socket_t *create_external_index_session(const char                   *host,
@@ -205,10 +244,14 @@ external_index_socket_t *create_external_index_session(const char               
     char                     init_response[ EXTERNAL_INDEX_INIT_BUFFER_SIZE ] = {0};
 
     if(!is_little_endian()) {
-        elog(ERROR, "external indexing is supported only for little endian byte ordering");
+        buildstate->status->code = BUILD_INDEX_FAILED;
+        strncpy(buildstate->status->error,
+                "external indexing is supported only for little endian byte ordering",
+                BUILD_INDEX_MAX_ERROR_SIZE);
+        return NULL;
     }
 
-    elog(INFO, "connecting to external indexing daemon on %s:%d", host, port);
+    elog(INFO, "connecting to external indexing server on %s:%d", host, port);
 
 #ifdef LANTERN_USE_OPENSSL
     if(secure) {
@@ -219,9 +262,12 @@ external_index_socket_t *create_external_index_session(const char               
     }
 #else
     if(secure) {
-        elog(ERROR,
-             "Can not use secure connection as Postgres is not compiled with openssl support. Set "
-             "'lantern.external_index_secure=false' and retry");
+        buildstate->status->code = BUILD_INDEX_FAILED;
+        strncpy(buildstate->status->error,
+                "Can not use secure connection as Postgres is not compiled with openssl support. Set "
+                "'lantern.external_index_secure=false' and retry",
+                BUILD_INDEX_MAX_ERROR_SIZE);
+        return NULL;
     }
 #endif  // ifdef LANTERN_USE_OPENSSL
     if(!secure) {
@@ -232,7 +278,9 @@ external_index_socket_t *create_external_index_session(const char               
     }
 
     if((client_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        elog(ERROR, "external index: socket creation failed");
+        buildstate->status->code = BUILD_INDEX_FAILED;
+        strncpy(buildstate->status->error, "external index: socket creation failed", BUILD_INDEX_MAX_ERROR_SIZE);
+        return NULL;
     }
 
     socket_con->fd = client_fd;
@@ -241,18 +289,35 @@ external_index_socket_t *create_external_index_session(const char               
     status = getaddrinfo(host, port_str, &hints, &serv_addr);
 
     if(status != 0) {
-        elog(ERROR, "external index: getaddrinfo %s\n", gai_strerror(status));
+        buildstate->status->code = BUILD_INDEX_FAILED;
+        snprintf(buildstate->status->error,
+                 BUILD_INDEX_MAX_ERROR_SIZE,
+                 "external index: getaddrinfo %s",
+                 gai_strerror(status));
+        return socket_con;
     }
 
-    set_write_timeout(client_fd, EXTERNAL_INDEX_SOCKET_TIMEOUT);
-    set_read_timeout(client_fd, EXTERNAL_INDEX_SOCKET_TIMEOUT);
+    set_write_timeout(client_fd, EXTERNAL_INDEX_SOCKET_TIMEOUT, buildstate->status);
+
+    if(buildstate->status->code != BUILD_INDEX_OK) {
+        return socket_con;
+    }
+
+    set_read_timeout(client_fd, EXTERNAL_INDEX_SOCKET_TIMEOUT, buildstate->status);
+
+    if(buildstate->status->code != BUILD_INDEX_OK) {
+        return socket_con;
+    }
 
     if((status
         = connect_with_timeout(client_fd, serv_addr->ai_addr, serv_addr->ai_addrlen, EXTERNAL_INDEX_SOCKET_TIMEOUT))
        < 0) {
-        elog(ERROR, "external index: connection with server failed");
+        buildstate->status->code = BUILD_INDEX_FAILED;
+        strncpy(buildstate->status->error, "external index: connect timeout", BUILD_INDEX_MAX_ERROR_SIZE);
+        return socket_con;
     }
 
+    elog(INFO, "successfully connected to external indexing server");
     socket_con->init(socket_con);
 
     external_index_params_t index_params = {
@@ -271,65 +336,99 @@ external_index_socket_t *create_external_index_session(const char               
     uint32 hdr_msg = EXTERNAL_INDEX_INIT_MSG;
     memcpy(init_buf, &hdr_msg, EXTERNAL_INDEX_MAGIC_MSG_SIZE);
     memcpy(init_buf + EXTERNAL_INDEX_MAGIC_MSG_SIZE, &index_params, sizeof(external_index_params_t));
-    writeall_or_error(socket_con, init_buf, sizeof(external_index_params_t) + EXTERNAL_INDEX_MAGIC_MSG_SIZE, 0);
+
+    write_all(
+        socket_con, init_buf, sizeof(external_index_params_t) + EXTERNAL_INDEX_MAGIC_MSG_SIZE, 0, buildstate->status);
+
+    if(buildstate->status->code != BUILD_INDEX_OK) {
+        return socket_con;
+    }
 
     if(params->pq) {
         external_index_send_codebook(socket_con,
                                      buildstate->pq_codebook,
                                      index_params.dim,
                                      index_params.num_centroids,
-                                     index_params.num_subvectors);
+                                     index_params.num_subvectors,
+                                     buildstate->status);
+
+        if(buildstate->status->code != BUILD_INDEX_OK) {
+            return socket_con;
+        }
     }
 
     int64 buf_size = socket_con->read(socket_con, (char *)&init_response, EXTERNAL_INDEX_INIT_BUFFER_SIZE);
 
-    check_external_index_response_error(socket_con, (char *)init_response, buf_size);
+    set_external_index_response_status(socket_con, (char *)init_response, buf_size, buildstate->status);
 
     return socket_con;
 }
 
-void external_index_receive_index_file(external_index_socket_t *socket_con,
-                                       uint64                  *num_added_vectors,
-                                       char                   **result_buf)
+void external_index_receive_metadata(external_index_socket_t *socket_con,
+                                     uint64                  *num_added_vectors,
+                                     uint64                  *index_size,
+                                     BuildIndexStatus        *status)
 {
     uint32 end_msg = EXTERNAL_INDEX_END_MSG;
     char   buffer[ sizeof(uint64_t) ];
     int64  bytes_read;
-    uint64 index_size = 0, total_received = 0;
 
     // disable read timeout while indexing is in progress
-    set_read_timeout(socket_con->fd, 0);
+    set_read_timeout(socket_con->fd, 0, status);
+    if(status->code != BUILD_INDEX_OK) {
+        return;
+    }
+
     // send message indicating that we have finished streaming tuples
-    writeall_or_error(socket_con, (char *)&end_msg, EXTERNAL_INDEX_MAGIC_MSG_SIZE, 0);
+    write_all(socket_con, (char *)&end_msg, EXTERNAL_INDEX_MAGIC_MSG_SIZE, 0, status);
+    if(status->code != BUILD_INDEX_OK) {
+        return;
+    }
 
     // read how many tuples have been indexed
     bytes_read = socket_con->read(socket_con, buffer, sizeof(uint64));
-    check_external_index_response_error(socket_con, buffer, bytes_read);
+    set_external_index_response_status(socket_con, buffer, bytes_read, status);
+
+    if(status->code != BUILD_INDEX_OK) {
+        return;
+    }
+
     memcpy(num_added_vectors, buffer, sizeof(uint64));
 
     // read index file size
     bytes_read = socket_con->read(socket_con, buffer, sizeof(uint64));
-    check_external_index_response_error(socket_con, buffer, bytes_read);
-    memcpy(&index_size, buffer, sizeof(uint64));
+    set_external_index_response_status(socket_con, buffer, bytes_read, status);
 
-    *result_buf = palloc0(index_size);
-
-    if(*result_buf == NULL) {
-        elog(ERROR, "external index: failed to allocate buffer for index file");
+    if(status->code != BUILD_INDEX_OK) {
+        return;
     }
 
-    set_read_timeout(socket_con->fd, EXTERNAL_INDEX_SOCKET_TIMEOUT);
+    memcpy(index_size, buffer, sizeof(uint64));
+}
+
+uint64 external_index_receive_index_part(external_index_socket_t *socket_con,
+                                         char                    *result_buf,
+                                         uint64                   size,
+                                         BuildIndexStatus        *status)
+{
+    int64  bytes_read;
+    uint64 index_size = 0, total_received = 0;
+
     // start reading index into buffer
-    while(total_received < index_size) {
-        bytes_read = socket_con->read(socket_con, *result_buf + total_received, EXTERNAL_INDEX_FILE_BUFFER_SIZE);
+    while(total_received < size) {
+        bytes_read = socket_con->read(socket_con, result_buf + total_received, size - total_received);
 
         // Check for CTRL-C interrupts
         if(INTERRUPTS_PENDING_CONDITION()) {
-            socket_con->close(socket_con);
-            ProcessInterrupts();
+            status->code = BUILD_INDEX_INTERRUPT;
+            return total_received;
         }
 
-        check_external_index_response_error(socket_con, (char *)*result_buf + total_received, bytes_read);
+        set_external_index_response_status(socket_con, result_buf, bytes_read, status);
+
+        if(status->code != BUILD_INDEX_OK) {
+            return total_received;
+        }
 
         if(bytes_read == 0) {
             break;
@@ -337,10 +436,16 @@ void external_index_receive_index_file(external_index_socket_t *socket_con,
 
         total_received += (uint32)bytes_read;
     }
+
+    return total_received;
 }
 
-void external_index_send_tuple(
-    external_index_socket_t *socket_con, usearch_label_t *label, void *vector, uint8 scalar_bits, uint32 dimensions)
+void external_index_send_tuple(external_index_socket_t *socket_con,
+                               usearch_label_t         *label,
+                               void                    *vector,
+                               uint8                    scalar_bits,
+                               uint32                   dimensions,
+                               BuildIndexStatus        *status)
 {
     char   tuple[ EXTERNAL_INDEX_MAX_TUPLE_SIZE ];
     uint32 tuple_size;
@@ -357,5 +462,5 @@ void external_index_send_tuple(
     // send tuple over socket if this is external indexing
     memcpy(tuple, label, sizeof(usearch_label_t));
     memcpy(tuple + sizeof(usearch_label_t), vector, tuple_size - sizeof(usearch_label_t));
-    writeall_or_error(socket_con, tuple, tuple_size, 0);
+    write_all(socket_con, tuple, tuple_size, 0, status);
 }
