@@ -35,6 +35,13 @@
  * Stores hnsw nodes onto postgres index pages
  * Assumes individual writes are not WAL tracked and instead a final
  * pass brings everything under WAL.
+ *
+ * It will write from the specified buffer (*data) to pages until it reaches the buffer_size
+ * In case of external indexing via socket the bytes_written may exceed buffer_size, but it will not overflow
+ * as we subtract BLCKSZ from the actual buffer size when calling this function, because the last node may not
+ * be fully received from the socket.
+ *
+ * This function will try to reuse the last page from header pointer if available
  */
 void StoreExternalIndexNodes(Relation             index,
                              const metadata_t    *metadata,
@@ -69,7 +76,7 @@ void StoreExternalIndexNodes(Relation             index,
     BlockNumber                blockno;
     OffsetNumber               offsetno;
     Page                       page;
-    HnswIndexPageSpecialBlock *special;
+    HnswIndexPageSpecialBlock *special = NULL;
 
     if(headerp->last_data_block != InvalidBlockNumber) {
         // reuse last page
@@ -87,19 +94,24 @@ void StoreExternalIndexNodes(Relation             index,
     while(bytes_written < buffer_size) {
         // note: even if the condition is true, nodepage may be too large
         // as the condition does not take into account the flexible array component
+        // force_create_page is set to true in 2 conditions:
+        //   1. The index pages are empty and we should create the first page on start.
+        //      This is set based on condition above when the last_data_block is equal to InvalidBlockNumber
+        //   2. There's not enough space in current page to store the node, so we should create a new page.
+        //      This is set if PageAddItem will return InvalidOffsetNumber
         if(force_create_page || (PageGetFreeSpace(page) < sizeof(HnswIndexTuple) + pg_dimension * sizeof(float))) {
             // create new page
             newbuf = ReadBufferExtended(index, forkNum, P_NEW, RBM_NORMAL, NULL);
             blockno = BufferGetBlockNumber(newbuf);
 
-            if(bytes_written > 0) {
+            if(special) {
                 // fill the last page special info if buffer was modified
                 special->nextblockno = blockno;
                 special->lastId = node_id - 1;
                 MarkBufferDirty(buf);
             }
 
-            if(buf != 0) {
+            if(buf) {
                 UnlockReleaseBuffer(buf);
             }
 
@@ -224,6 +236,19 @@ void StoreExternalEmptyIndex(
     log_newpage_range(index, forkNum, 0, RelationGetNumberOfBlocksInFork(index, forkNum), false);
 }
 
+/*
+ * This function will write usearch index into postgres index pages
+ * It has 2 paths:
+ *  - The first path is when we already have usearch index file mmaped into memory
+ *    and should just iterate over it and write into pages
+ *  - The second path is when we are reading the index file from remote socket
+ *    in this case we will read the file in 10MB chunks and try to write that chunk into pages.
+ *
+ *  This function should not exit process via elog(ERROR) or interrupts
+ *  Instead it should change the BuildIndexStatus and return from the function
+ *  The BuildIndexStatus will be handled in BuildIndex function and process will be exitted after cleanup
+ * */
+
 void StoreExternalIndex(Relation                 index,
                         const metadata_t        *external_index_metadata,
                         ForkNumber               forkNum,
@@ -294,29 +319,30 @@ void StoreExternalIndex(Relation                 index,
 
     if(external_index_socket != NULL) {
         uint64 bytes_read = 0;
-        uint32 external_index_buffer_size = 1024 * 1024 * 10;
-        char  *external_index_data = palloc0(external_index_buffer_size);
+        uint64 total_bytes_read = USEARCH_HEADER_SIZE;
+        char  *external_index_data = palloc0(EXTERNAL_INDEX_FILE_BUFFER_SIZE);
         uint32 buffer_position = 0;
         uint64 local_progress = 0;
-        uint64 write_limit = 0;
+        uint64 data_size = 0;
 
         while(tuples_indexed < num_added_vectors) {
             local_progress = 0;
 
             bytes_read = external_index_receive_index_part(external_index_socket,
                                                            external_index_data + buffer_position,
-                                                           external_index_buffer_size - buffer_position,
+                                                           EXTERNAL_INDEX_FILE_BUFFER_SIZE - buffer_position,
                                                            status);
+            total_bytes_read += bytes_read;
 
             if(status->code != BUILD_INDEX_OK) {
                 return;
             }
 
-            if(bytes_read < external_index_buffer_size - buffer_position) {
+            if(total_bytes_read == index_file_size) {
                 // index file streaming finished
-                write_limit = buffer_position + bytes_read;
+                data_size = buffer_position + bytes_read;
             } else {
-                write_limit = external_index_buffer_size - BLCKSZ;
+                data_size = EXTERNAL_INDEX_FILE_BUFFER_SIZE - BLCKSZ;
             }
 
             // store nodes into index pages
@@ -325,7 +351,7 @@ void StoreExternalIndex(Relation                 index,
                                     headerp,
                                     forkNum,
                                     external_index_data,
-                                    write_limit,
+                                    data_size,
                                     &local_progress,
                                     &tuples_indexed,
                                     pg_dimensions,
@@ -335,7 +361,8 @@ void StoreExternalIndex(Relation                 index,
                                     status);
 
             // rotate buffer
-            buffer_position = external_index_buffer_size - local_progress;
+            buffer_position = EXTERNAL_INDEX_FILE_BUFFER_SIZE - local_progress;
+            assert(buffer_position <= BLCKSZ);
             memcpy(external_index_data, external_index_data + local_progress, buffer_position);
 
             progress += local_progress;
