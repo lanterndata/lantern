@@ -163,7 +163,8 @@ static void set_external_index_response_status(external_index_socket_t *socket_c
     buffer[ size - 1 ] = '\0';
 
     status->code = BUILD_INDEX_FAILED;
-    strncpy(status->error, buffer, BUILD_INDEX_MAX_ERROR_SIZE);
+    snprintf(
+        status->error, BUILD_INDEX_MAX_ERROR_SIZE, "external index error: %s", buffer + EXTERNAL_INDEX_MAGIC_MSG_SIZE);
 }
 
 static void set_external_index_request_status(external_index_socket_t *socket_con,
