@@ -8,7 +8,7 @@
 #include "hnsw.h"
 #include "usearch.h"
 
-#define BUILD_INDEX_MAX_ERROR_SIZE 1024
+#define BUILD_INDEX_MAX_ERROR_SIZE 1048
 
 typedef enum
 {
