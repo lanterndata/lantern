@@ -380,6 +380,9 @@ static void InitBuildState(ldb_HnswBuildState *buildstate, Relation heap, Relati
     buildstate->columnType = GetIndexColumnType(index);
     buildstate->dimensions = GetHnswIndexDimensions(index, indexInfo);
     buildstate->index_file_path = ldb_HnswGetIndexFilePath(index);
+    buildstate->index_file_fd = -1;
+    buildstate->index_buffer_size = 0;
+    buildstate->index_buffer = NULL;
     buildstate->external = ldb_HnswGetExternal(index);
     buildstate->status = palloc0(sizeof(BuildIndexStatus));
 
@@ -455,6 +458,16 @@ void CheckBuildIndexError(ldb_HnswBuildState *buildstate)
         buildstate->external_socket->close(buildstate->external_socket);
     }
 
+    if(buildstate->index_file_fd != -1) {
+        // index_file_fd will only exist when we mmap the index file to memory
+        if(!buildstate->external && buildstate->index_buffer) {
+            int munmap_ret = munmap(buildstate->index_buffer, buildstate->index_buffer_size);
+            assert(munmap_ret == 0);
+            LDB_UNUSED(munmap_ret);
+        }
+        close(buildstate->index_file_fd);
+    }
+
     if(buildstate->status->code == BUILD_INDEX_FAILED) {
         elog(ERROR, "%s", buildstate->status->error);
     }
@@ -472,16 +485,13 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
     usearch_error_t        error = NULL;
     usearch_init_options_t opts;
     struct stat            index_file_stat;
-    char                  *result_buf = NULL;
     char                  *tmp_index_file_path = NULL;
     const char            *tmp_index_file_fmt_str = "%s/ldb-index-%d.bin";
     // parent_dir + max digits of uint32 (Oid) 10
     const uint32 tmp_index_file_char_cnt = MAXPGPATH + strlen(tmp_index_file_fmt_str) + 10;
-    int          index_file_fd;
     int          munmap_ret;
     metadata_t   metadata;
     uint64       num_added_vectors;
-    uint64       index_file_size = 0;
 
     MemSet(&opts, 0, sizeof(opts));
 
@@ -580,16 +590,16 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
     assert(error == NULL);
 
     if(buildstate->index_file_path) {
-        index_file_fd = open(buildstate->index_file_path, O_RDONLY);
-        assert(index_file_fd > 0);
+        buildstate->index_file_fd = open(buildstate->index_file_path, O_RDONLY);
+        assert(buildstate->index_file_fd > 0);
     } else if(buildstate->external) {
-        result_buf = palloc(USEARCH_HEADER_SIZE);
+        buildstate->index_buffer = palloc(USEARCH_HEADER_SIZE);
         external_index_receive_metadata(
-            buildstate->external_socket, &num_added_vectors, &index_file_size, buildstate->status);
+            buildstate->external_socket, &num_added_vectors, &buildstate->index_buffer_size, buildstate->status);
         CheckBuildIndexError(buildstate);
 
         uint32 bytes_read = external_index_receive_index_part(
-            buildstate->external_socket, result_buf, USEARCH_HEADER_SIZE, buildstate->status);
+            buildstate->external_socket, buildstate->index_buffer, USEARCH_HEADER_SIZE, buildstate->status);
         CheckBuildIndexError(buildstate);
 
         if(bytes_read != USEARCH_HEADER_SIZE) {
@@ -607,8 +617,8 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
             tmp_index_file_path, tmp_index_file_char_cnt, tmp_index_file_fmt_str, DataDir, index->rd_rel->relfilenode);
         usearch_save(buildstate->usearch_index, tmp_index_file_path, &error);
         assert(error == NULL);
-        index_file_fd = open(tmp_index_file_path, O_RDONLY);
-        assert(index_file_fd > 0);
+        buildstate->index_file_fd = open(tmp_index_file_path, O_RDONLY);
+        assert(buildstate->index_file_fd > 0);
     }
 
     if(!buildstate->external) {
@@ -624,11 +634,12 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
     buildstate->usearch_index = NULL;
 
     if(!buildstate->external) {
-        fstat(index_file_fd, &index_file_stat);
-        index_file_size = index_file_stat.st_size;
-        result_buf = mmap(NULL, index_file_stat.st_size, PROT_READ, MAP_PRIVATE, index_file_fd, 0);
+        fstat(buildstate->index_file_fd, &index_file_stat);
+        buildstate->index_buffer_size = index_file_stat.st_size;
+        buildstate->index_buffer
+            = mmap(NULL, index_file_stat.st_size, PROT_READ, MAP_PRIVATE, buildstate->index_file_fd, 0);
 
-        if(result_buf == MAP_FAILED) {
+        if(buildstate->index_buffer == MAP_FAILED) {
             buildstate->status->code = BUILD_INDEX_FAILED;
             strncpy(buildstate->status->error, "failed to mmap index file", BUILD_INDEX_MAX_ERROR_SIZE);
             CheckBuildIndexError(buildstate);
@@ -640,26 +651,26 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
     UpdateProgress(PROGRESS_CREATEIDX_PHASE, LDB_PROGRESS_HNSW_PHASE_LOAD);
 
     if(num_added_vectors == 0) {
-        StoreExternalEmptyIndex(index, MAIN_FORKNUM, result_buf, buildstate->dimensions, &opts);
+        StoreExternalEmptyIndex(index, MAIN_FORKNUM, buildstate->index_buffer, buildstate->dimensions, &opts);
     } else {
         StoreExternalIndex(index,
                            &metadata,
                            MAIN_FORKNUM,
-                           result_buf,
+                           buildstate->index_buffer,
                            &opts,
                            buildstate->dimensions,
                            num_added_vectors,
                            buildstate->external_socket,
-                           index_file_size,
+                           buildstate->index_buffer_size,
                            buildstate->status);
         CheckBuildIndexError(buildstate);
     }
 
     if(!buildstate->external) {
-        munmap_ret = munmap(result_buf, index_file_stat.st_size);
+        munmap_ret = munmap(buildstate->index_buffer, buildstate->index_buffer_size);
         assert(munmap_ret == 0);
         LDB_UNUSED(munmap_ret);
-        close(index_file_fd);
+        close(buildstate->index_file_fd);
     }
 
     if(buildstate->external) {
