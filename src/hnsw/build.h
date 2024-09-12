@@ -34,8 +34,11 @@ typedef struct
 
     /* Settings */
     int                      dimensions;
+    int                      index_file_fd;
+    uint64                   index_buffer_size;
     HnswColumnType           columnType;
     char                    *index_file_path;
+    char                    *index_buffer;
     bool                     external;
     external_index_socket_t *external_socket;
     BuildIndexStatus        *status;
