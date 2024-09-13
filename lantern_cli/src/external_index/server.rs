@@ -14,7 +14,7 @@ use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::sync::{Arc, Mutex, RwLock};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use usearch::ffi::{IndexOptions, MetricKind, ScalarKind};
 use usearch::Index;
 
@@ -26,6 +26,7 @@ const LABEL_SIZE: usize = 8;
 const INTEGER_SIZE: usize = 4;
 const SOCKET_TIMEOUT: u64 = 5;
 pub const PROTOCOL_HEADER_SIZE: usize = 4;
+pub const SERVER_TYPE: u32 = 0x1; // (0x1: indexing server, 0x2: router server)
 pub const INIT_MSG: u32 = 0x13333337;
 pub const END_MSG: u32 = 0x31333337;
 pub const ERR_MSG: u32 = 0x37333337;
@@ -44,6 +45,39 @@ struct ThreadSafeIndex(Index);
 
 unsafe impl Sync for ThreadSafeIndex {}
 unsafe impl Send for ThreadSafeIndex {}
+
+#[derive(Clone, Copy)]
+enum ServerStatus {
+    Idle = 0,
+    InProgress = 1,
+    Failed = 2,
+    Succeded = 3,
+}
+
+struct ServerContext {
+    status: ServerStatus,
+    status_updated_at: u128,
+}
+
+impl ServerContext {
+    pub fn new() -> ServerContext {
+        let mut ctx = ServerContext {
+            status: ServerStatus::Idle,
+            status_updated_at: 0,
+        };
+        ctx.set_status(ServerStatus::Idle);
+
+        ctx
+    }
+
+    pub fn set_status(&mut self, status: ServerStatus) {
+        self.status = status.clone();
+        self.status_updated_at = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+    }
+}
 
 fn parse_index_options(
     logger: Arc<Logger>,
@@ -159,6 +193,7 @@ fn initialize_index(
 ) -> Result<(usize, ThreadSafeIndex), anyhow::Error> {
     let buf = vec![0 as u8; INDEX_HEADER_LENGTH];
     let mut soc_stream = stream.lock().unwrap();
+    soc_stream.write_data(&SERVER_TYPE.to_le_bytes())?;
     match read_frame(&mut soc_stream, buf, INDEX_HEADER_LENGTH, Some(INIT_MSG))? {
         ProtocolMessage::Init(buf) => {
             drop(soc_stream);
@@ -506,10 +541,11 @@ fn cleanup_tmp_dir(logger: Arc<Logger>, tmp_dir: Arc<String>) {
     }
 }
 
-pub fn start_tcp_server(args: IndexServerArgs, logger: Option<Logger>) -> AnyhowVoidResult {
-    let logger =
-        Arc::new(logger.unwrap_or(Logger::new("Lantern Indexing Server", LogLevel::Debug)));
-
+fn start_indexing_server(
+    args: IndexServerArgs,
+    logger: Arc<Logger>,
+    ctx: Arc<RwLock<ServerContext>>,
+) -> AnyhowVoidResult {
     let (listener, ssl_config) = initialize_listener(&args)?;
     logger.info(&format!(
         "External Indexing Server started on {}:{}",
@@ -518,8 +554,6 @@ pub fn start_tcp_server(args: IndexServerArgs, logger: Option<Logger>) -> Anyhow
 
     let tmp_dir = Arc::new(args.tmp_dir);
 
-    // TODO:: this now accepts only one request at a time
-    // As single indexing job consumes whole CPU
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
@@ -537,11 +571,13 @@ pub fn start_tcp_server(args: IndexServerArgs, logger: Option<Logger>) -> Anyhow
                     Arc::new(Mutex::new(stream))
                 };
 
+                ctx.write().unwrap().set_status(ServerStatus::InProgress);
                 if let Err(e) = create_streaming_usearch_index(
                     connection_stream.clone(),
                     logger.clone(),
                     tmp_dir.clone(),
                 ) {
+                    ctx.write().unwrap().set_status(ServerStatus::Failed);
                     logger.error(&format!("Indexing error: {e}"));
                     let mut error_text: Vec<u8> = e.to_string().bytes().collect();
                     let error_header: [u8; PROTOCOL_HEADER_SIZE] =
@@ -552,6 +588,7 @@ pub fn start_tcp_server(args: IndexServerArgs, logger: Option<Logger>) -> Anyhow
                     let _ = stream.write_data(error_header.as_slice());
                 };
 
+                ctx.write().unwrap().set_status(ServerStatus::Succeded);
                 cleanup_tmp_dir(logger.clone(), tmp_dir.clone());
             }
             Err(e) => {
@@ -559,5 +596,66 @@ pub fn start_tcp_server(args: IndexServerArgs, logger: Option<Logger>) -> Anyhow
             }
         }
     }
+    Ok(())
+}
+
+fn start_status_server(
+    args: IndexServerArgs,
+    logger: Arc<Logger>,
+    ctx: Arc<RwLock<ServerContext>>,
+) -> AnyhowVoidResult {
+    let listener = TcpListener::bind(&format!("{}:{}", args.host, args.status_port))?;
+
+    logger.info(&format!(
+        "External Indexing Status Server started on {}:{}",
+        args.host, args.status_port,
+    ));
+
+    for stream in listener.incoming() {
+        match stream {
+            Ok(mut stream) => {
+                let ctx = ctx.read().unwrap();
+                let status_json = format!(
+                    r#"{{"status":{},"status_updated_at":{}}}"#,
+                    ctx.status as u8, ctx.status_updated_at
+                );
+                let response_bytes = status_json.as_bytes();
+                let response_len = response_bytes.len();
+                stream.write("HTTP/1.1 200\n".as_bytes())?;
+                stream.write("Content-Type: application/json\n".as_bytes())?;
+                stream.write(format!("Content-Length: {response_len}\n\n").as_bytes())?;
+                stream.write(status_json.as_bytes())?;
+            }
+            Err(e) => {
+                logger.error(&format!("Connection error: {e}"));
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn start_tcp_server(args: IndexServerArgs, logger: Option<Logger>) -> AnyhowVoidResult {
+    let args_clone = args.clone();
+    let logger =
+        Arc::new(logger.unwrap_or(Logger::new("Lantern Indexing Server", LogLevel::Debug)));
+    let logger_clone = logger.clone();
+    let logger_clone2 = logger.clone();
+
+    let context = Arc::new(RwLock::new(ServerContext::new()));
+    let context_clone = context.clone();
+
+    let indexing_server_handle =
+        std::thread::spawn(move || start_indexing_server(args_clone, logger_clone, context_clone));
+
+    let status_server_handle =
+        std::thread::spawn(move || start_status_server(args, logger_clone2, context));
+
+    for handle in [indexing_server_handle, status_server_handle] {
+        if let Err(e) = handle.join() {
+            logger.error("{e}");
+            anyhow::bail!("{:?}", e);
+        }
+    }
+
     Ok(())
 }

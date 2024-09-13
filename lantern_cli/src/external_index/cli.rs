@@ -182,7 +182,7 @@ pub struct CreateIndexArgs {
     pub index_name: Option<String>,
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 pub struct IndexServerArgs {
     /// Host to bind
     #[arg(long, default_value = "0.0.0.0")]
@@ -195,6 +195,10 @@ pub struct IndexServerArgs {
     /// Port to bind
     #[arg(long, default_value_t = 8998)]
     pub port: usize,
+
+    /// Status Server Port to bind
+    #[arg(long, default_value_t = 8999)]
+    pub status_port: usize,
 
     /// SSL Certificate path
     #[arg(long)]
