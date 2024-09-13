@@ -583,6 +583,8 @@ fn start_indexing_server(
                     let error_header: [u8; PROTOCOL_HEADER_SIZE] =
                         unsafe { std::mem::transmute(ERR_MSG.to_le()) };
                     let mut error_header = error_header.to_vec();
+                    let mut error_msg_len = (error_text.len() as u32).to_le_bytes().to_vec();
+                    error_header.append(&mut error_msg_len);
                     error_header.append(&mut error_text);
                     let mut stream = connection_stream.lock().unwrap();
                     let _ = stream.write_data(error_header.as_slice());

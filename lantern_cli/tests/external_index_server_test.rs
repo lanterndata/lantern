@@ -91,7 +91,7 @@ fn initialize() {
             )
             .unwrap();
         });
-        std::thread::sleep(Duration::from_secs(1));
+        std::thread::sleep(Duration::from_secs(2));
     });
 }
 
@@ -132,7 +132,7 @@ fn initialize_ssl() {
             )
             .unwrap();
         });
-        std::thread::sleep(Duration::from_secs(1));
+        std::thread::sleep(Duration::from_secs(2));
     });
 }
 
@@ -145,24 +145,21 @@ async fn test_external_index_server_invalid_header() {
     assert_eq!(u32::from_le_bytes(uint32_buf), 0x1);
     let bytes_written = stream.write(&[0, 1, 1, 1, 1, 1]).unwrap();
     assert_eq!(bytes_written, 6);
-    let mut buf: [u8; 64] = [0; 64];
-    stream.read(&mut buf).unwrap();
-
-    assert_eq!(
-        u32::from_le_bytes(buf[..PROTOCOL_HEADER_SIZE].try_into().unwrap()),
-        ERR_MSG
-    );
-
+    let mut header_buf: [u8; PROTOCOL_HEADER_SIZE] = [0; PROTOCOL_HEADER_SIZE];
+    stream.read(&mut header_buf).unwrap();
     let expected_msg = "Invalid message header";
-    assert_eq!(
-        str::from_utf8(
-            buf[PROTOCOL_HEADER_SIZE..PROTOCOL_HEADER_SIZE + expected_msg.len()]
-                .try_into()
-                .unwrap()
-        )
-        .unwrap(),
-        expected_msg
-    );
+    let expected_msg_bytes = expected_msg.as_bytes();
+
+    assert_eq!(u32::from_le_bytes(header_buf.try_into().unwrap()), ERR_MSG);
+
+    stream.read_exact(&mut header_buf).unwrap();
+    let err_msg_size = u32::from_le_bytes(header_buf);
+    assert_eq!(err_msg_size, expected_msg_bytes.len() as u32);
+
+    let mut error_buf = vec![0 as u8; err_msg_size as usize];
+    stream.read_exact(&mut error_buf).unwrap();
+
+    assert_eq!(str::from_utf8(error_buf.as_slice()).unwrap(), expected_msg);
 }
 
 #[tokio::test]
@@ -174,24 +171,21 @@ async fn test_external_index_server_short_message() {
     assert_eq!(u32::from_le_bytes(uint32_buf), 0x1);
     let bytes_written = stream.write(&[0, 1]).unwrap();
     assert_eq!(bytes_written, 2);
-    let mut buf: [u8; 64] = [0; 64];
-    stream.read(&mut buf).unwrap();
-
-    assert_eq!(
-        u32::from_le_bytes(buf[..PROTOCOL_HEADER_SIZE].try_into().unwrap()),
-        ERR_MSG
-    );
-
+    let mut header_buf: [u8; PROTOCOL_HEADER_SIZE] = [0; PROTOCOL_HEADER_SIZE];
+    stream.read(&mut header_buf).unwrap();
     let expected_msg = "Invalid frame received";
-    assert_eq!(
-        str::from_utf8(
-            buf[PROTOCOL_HEADER_SIZE..PROTOCOL_HEADER_SIZE + expected_msg.len()]
-                .try_into()
-                .unwrap()
-        )
-        .unwrap(),
-        expected_msg
-    );
+    let expected_msg_bytes = expected_msg.as_bytes();
+
+    assert_eq!(u32::from_le_bytes(header_buf.try_into().unwrap()), ERR_MSG);
+
+    stream.read_exact(&mut header_buf).unwrap();
+    let err_msg_size = u32::from_le_bytes(header_buf);
+    assert_eq!(err_msg_size, expected_msg_bytes.len() as u32);
+
+    let mut error_buf = vec![0 as u8; err_msg_size as usize];
+    stream.read_exact(&mut error_buf).unwrap();
+
+    assert_eq!(str::from_utf8(error_buf.as_slice()).unwrap(), expected_msg);
 }
 
 #[tokio::test]
@@ -315,6 +309,7 @@ async fn test_external_index_server_indexing() {
 
     assert_eq!(index.size(), received_index.size());
     drop(stream);
+    std::thread::sleep(Duration::from_secs(1));
 
     let request = Request::get(&format!("http://127.0.0.1:8999"))
         .body("")
