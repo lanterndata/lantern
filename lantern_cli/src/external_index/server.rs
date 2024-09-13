@@ -9,7 +9,7 @@ use rustls::{ServerConfig, ServerConnection, StreamOwned};
 use std::cmp;
 use std::fs::{self, File};
 use std::io::{BufReader, Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::net::{Shutdown, TcpListener, TcpStream};
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::sync::mpsc::{self, Receiver, SyncSender};
@@ -26,6 +26,7 @@ const LABEL_SIZE: usize = 8;
 const INTEGER_SIZE: usize = 4;
 const SOCKET_TIMEOUT: u64 = 5;
 pub const PROTOCOL_HEADER_SIZE: usize = 4;
+pub const PROTOCOL_VERSION: u32 = 1;
 pub const SERVER_TYPE: u32 = 0x1; // (0x1: indexing server, 0x2: router server)
 pub const INIT_MSG: u32 = 0x13333337;
 pub const END_MSG: u32 = 0x31333337;
@@ -193,6 +194,7 @@ fn initialize_index(
 ) -> Result<(usize, ThreadSafeIndex), anyhow::Error> {
     let buf = vec![0 as u8; INDEX_HEADER_LENGTH];
     let mut soc_stream = stream.lock().unwrap();
+    soc_stream.write_data(&PROTOCOL_VERSION.to_le_bytes())?;
     soc_stream.write_data(&SERVER_TYPE.to_le_bytes())?;
     match read_frame(&mut soc_stream, buf, INDEX_HEADER_LENGTH, Some(INIT_MSG))? {
         ProtocolMessage::Init(buf) => {
@@ -627,7 +629,8 @@ fn start_status_server(
                 stream.write("Content-Type: application/json\r\n".as_bytes())?;
                 stream.write(format!("Content-Length: {response_len}\r\n\r\n").as_bytes())?;
                 stream.write(response_bytes)?;
-                stream.write(&[0x0D, 0x0A])?;
+                stream.write(&[0x0D, 0x0A])?; // \r\n
+                stream.shutdown(Shutdown::Both)?;
             }
             Err(e) => {
                 logger.error(&format!("Connection error: {e}"));

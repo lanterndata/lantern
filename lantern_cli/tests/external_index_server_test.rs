@@ -1,6 +1,8 @@
 use isahc::{ReadResponseExt, Request};
 use lantern_cli::external_index::cli::UMetricKind;
-use lantern_cli::external_index::server::{END_MSG, ERR_MSG, INIT_MSG, PROTOCOL_HEADER_SIZE};
+use lantern_cli::external_index::server::{
+    END_MSG, ERR_MSG, INIT_MSG, PROTOCOL_HEADER_SIZE, PROTOCOL_VERSION,
+};
 use lantern_cli::external_index::{self, cli::IndexServerArgs};
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::pki_types::{CertificateDer, UnixTime};
@@ -142,6 +144,8 @@ async fn test_external_index_server_invalid_header() {
     let mut stream = TcpStream::connect("127.0.0.1:8998").unwrap();
     let mut uint32_buf = [0; 4];
     stream.read_exact(&mut uint32_buf).unwrap();
+    assert_eq!(u32::from_le_bytes(uint32_buf), PROTOCOL_VERSION);
+    stream.read_exact(&mut uint32_buf).unwrap();
     assert_eq!(u32::from_le_bytes(uint32_buf), 0x1);
     let bytes_written = stream.write(&[0, 1, 1, 1, 1, 1]).unwrap();
     assert_eq!(bytes_written, 6);
@@ -167,6 +171,8 @@ async fn test_external_index_server_short_message() {
     initialize();
     let mut stream = TcpStream::connect("127.0.0.1:8998").unwrap();
     let mut uint32_buf = [0; 4];
+    stream.read_exact(&mut uint32_buf).unwrap();
+    assert_eq!(u32::from_le_bytes(uint32_buf), PROTOCOL_VERSION);
     stream.read_exact(&mut uint32_buf).unwrap();
     assert_eq!(u32::from_le_bytes(uint32_buf), 0x1);
     let bytes_written = stream.write(&[0, 1]).unwrap();
@@ -227,6 +233,8 @@ async fn test_external_index_server_indexing() {
 
     let mut stream = TcpStream::connect("127.0.0.1:8998").unwrap();
     let mut uint32_buf = [0; 4];
+    stream.read_exact(&mut uint32_buf).unwrap();
+    assert_eq!(u32::from_le_bytes(uint32_buf), PROTOCOL_VERSION);
     stream.read_exact(&mut uint32_buf).unwrap();
     assert_eq!(u32::from_le_bytes(uint32_buf), 0x1);
 
@@ -374,6 +382,8 @@ async fn test_external_index_server_indexing_ssl() {
     let mut stream = rustls::Stream::new(&mut conn, &mut sock);
     let mut uint32_buf = [0; 4];
     stream.read_exact(&mut uint32_buf).unwrap();
+    assert_eq!(u32::from_le_bytes(uint32_buf), PROTOCOL_VERSION);
+    stream.read_exact(&mut uint32_buf).unwrap();
     assert_eq!(u32::from_le_bytes(uint32_buf), 0x1);
 
     let init_msg = [
@@ -485,6 +495,8 @@ async fn test_external_index_server_indexing_scalar_quantization() {
     let mut stream = TcpStream::connect("127.0.0.1:8998").unwrap();
     let mut uint32_buf = [0; 4];
     stream.read_exact(&mut uint32_buf).unwrap();
+    assert_eq!(u32::from_le_bytes(uint32_buf), PROTOCOL_VERSION);
+    stream.read_exact(&mut uint32_buf).unwrap();
     assert_eq!(u32::from_le_bytes(uint32_buf), 0x1);
     let init_msg = [
         INIT_MSG.to_le_bytes(),
@@ -594,6 +606,8 @@ async fn test_external_index_server_indexing_hamming_distance() {
 
     let mut stream = TcpStream::connect("127.0.0.1:8998").unwrap();
     let mut uint32_buf = [0; 4];
+    stream.read_exact(&mut uint32_buf).unwrap();
+    assert_eq!(u32::from_le_bytes(uint32_buf), PROTOCOL_VERSION);
     stream.read_exact(&mut uint32_buf).unwrap();
     assert_eq!(u32::from_le_bytes(uint32_buf), 0x1);
     let init_msg = [
@@ -711,6 +725,8 @@ async fn test_external_index_server_indexing_pq() {
 
     let mut stream = TcpStream::connect("127.0.0.1:8998").unwrap();
     let mut uint32_buf = [0; 4];
+    stream.read_exact(&mut uint32_buf).unwrap();
+    assert_eq!(u32::from_le_bytes(uint32_buf), PROTOCOL_VERSION);
     stream.read_exact(&mut uint32_buf).unwrap();
     assert_eq!(u32::from_le_bytes(uint32_buf), 0x1);
     let init_msg = [
