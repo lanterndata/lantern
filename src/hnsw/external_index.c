@@ -362,8 +362,13 @@ void StoreExternalIndex(Relation                 index,
 
             // rotate buffer
             buffer_position = EXTERNAL_INDEX_FILE_BUFFER_SIZE - local_progress;
-            assert(buffer_position <= BLCKSZ);
-            memcpy(external_index_data, external_index_data + local_progress, buffer_position);
+
+            if(total_bytes_read != index_file_size) {
+                assert(buffer_position <= BLCKSZ);
+                memcpy(external_index_data, external_index_data + local_progress, buffer_position);
+            } else {
+                pfree(external_index_data);
+            }
 
             progress += local_progress;
         }
