@@ -1,9 +1,11 @@
+use isahc::{ReadResponseExt, Request};
 use lantern_cli::external_index::cli::UMetricKind;
 use lantern_cli::external_index::server::{END_MSG, ERR_MSG, INIT_MSG, PROTOCOL_HEADER_SIZE};
 use lantern_cli::external_index::{self, cli::IndexServerArgs};
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::pki_types::{CertificateDer, UnixTime};
 use rustls::{ClientConfig, DigitallySignedStruct};
+use serde::Deserialize;
 use std::fs;
 use std::io::prelude::*;
 use std::net::TcpStream;
@@ -22,6 +24,11 @@ static SSL_INIT: Once = Once::new();
 
 #[derive(Debug)]
 struct NoServerAuth;
+
+#[derive(Deserialize)]
+struct ServerStatusResponse {
+    status: u8,
+}
 
 impl ServerCertVerifier for NoServerAuth {
     fn verify_server_cert(
@@ -75,6 +82,7 @@ fn initialize() {
                 IndexServerArgs {
                     host: "127.0.0.1".to_owned(),
                     port: 8998,
+                    status_port: 8999,
                     tmp_dir: "/tmp".to_owned(),
                     cert: None,
                     key: None,
@@ -115,6 +123,7 @@ fn initialize_ssl() {
                 IndexServerArgs {
                     host: "127.0.0.1".to_owned(),
                     port: 8990,
+                    status_port: 8991,
                     tmp_dir: "/tmp".to_owned(),
                     cert: Some("/tmp/lantern-index-server-test-cert.pem".to_owned()),
                     key: Some("/tmp/lantern-index-server-test-key.pem".to_owned()),
@@ -131,6 +140,9 @@ fn initialize_ssl() {
 async fn test_external_index_server_invalid_header() {
     initialize();
     let mut stream = TcpStream::connect("127.0.0.1:8998").unwrap();
+    let mut uint32_buf = [0; 4];
+    stream.read_exact(&mut uint32_buf).unwrap();
+    assert_eq!(u32::from_le_bytes(uint32_buf), 0x1);
     let bytes_written = stream.write(&[0, 1, 1, 1, 1, 1]).unwrap();
     assert_eq!(bytes_written, 6);
     let mut buf: [u8; 64] = [0; 64];
@@ -157,6 +169,9 @@ async fn test_external_index_server_invalid_header() {
 async fn test_external_index_server_short_message() {
     initialize();
     let mut stream = TcpStream::connect("127.0.0.1:8998").unwrap();
+    let mut uint32_buf = [0; 4];
+    stream.read_exact(&mut uint32_buf).unwrap();
+    assert_eq!(u32::from_le_bytes(uint32_buf), 0x1);
     let bytes_written = stream.write(&[0, 1]).unwrap();
     assert_eq!(bytes_written, 2);
     let mut buf: [u8; 64] = [0; 64];
@@ -217,6 +232,10 @@ async fn test_external_index_server_indexing() {
     ];
 
     let mut stream = TcpStream::connect("127.0.0.1:8998").unwrap();
+    let mut uint32_buf = [0; 4];
+    stream.read_exact(&mut uint32_buf).unwrap();
+    assert_eq!(u32::from_le_bytes(uint32_buf), 0x1);
+
     let init_msg = [
         INIT_MSG.to_le_bytes(),
         (0 as u32).to_le_bytes(),
@@ -238,6 +257,17 @@ async fn test_external_index_server_indexing() {
     stream.read(&mut buf).unwrap();
 
     assert_eq!(buf[0], 0);
+
+    let request = Request::get(&format!("http://127.0.0.1:8999"))
+        .body("")
+        .unwrap();
+    let mut response = isahc::send(request).unwrap();
+    let mut body: Vec<u8> = Vec::new();
+    response.copy_to(&mut body).unwrap();
+    let body_json = String::from_utf8(body).unwrap();
+    let body_json: ServerStatusResponse = serde_json::from_str(&body_json).unwrap();
+    assert_eq!(body_json.status, 1);
+
     let index = Index::new(&index_options).unwrap();
     index.reserve(tuples.len()).unwrap();
     for tuple in &tuples {
@@ -284,6 +314,17 @@ async fn test_external_index_server_indexing() {
     Index::load_from_buffer(&received_index, &received_index_buffer).unwrap();
 
     assert_eq!(index.size(), received_index.size());
+    drop(stream);
+
+    let request = Request::get(&format!("http://127.0.0.1:8999"))
+        .body("")
+        .unwrap();
+    let mut response = isahc::send(request).unwrap();
+    let mut body: Vec<u8> = Vec::new();
+    response.copy_to(&mut body).unwrap();
+    let body_json = String::from_utf8(body).unwrap();
+    let body_json: ServerStatusResponse = serde_json::from_str(&body_json).unwrap();
+    assert_eq!(body_json.status, 3);
 }
 
 #[tokio::test]
@@ -336,6 +377,9 @@ async fn test_external_index_server_indexing_ssl() {
     let mut sock = TcpStream::connect(addr).unwrap();
     let mut conn = rustls::ClientConnection::new(config, "localhost".try_into().unwrap()).unwrap();
     let mut stream = rustls::Stream::new(&mut conn, &mut sock);
+    let mut uint32_buf = [0; 4];
+    stream.read_exact(&mut uint32_buf).unwrap();
+    assert_eq!(u32::from_le_bytes(uint32_buf), 0x1);
 
     let init_msg = [
         INIT_MSG.to_le_bytes(),
@@ -444,6 +488,9 @@ async fn test_external_index_server_indexing_scalar_quantization() {
     ];
 
     let mut stream = TcpStream::connect("127.0.0.1:8998").unwrap();
+    let mut uint32_buf = [0; 4];
+    stream.read_exact(&mut uint32_buf).unwrap();
+    assert_eq!(u32::from_le_bytes(uint32_buf), 0x1);
     let init_msg = [
         INIT_MSG.to_le_bytes(),
         (0 as u32).to_le_bytes(),
@@ -551,6 +598,9 @@ async fn test_external_index_server_indexing_hamming_distance() {
     ];
 
     let mut stream = TcpStream::connect("127.0.0.1:8998").unwrap();
+    let mut uint32_buf = [0; 4];
+    stream.read_exact(&mut uint32_buf).unwrap();
+    assert_eq!(u32::from_le_bytes(uint32_buf), 0x1);
     let init_msg = [
         INIT_MSG.to_le_bytes(),
         (0 as u32).to_le_bytes(),
@@ -665,6 +715,9 @@ async fn test_external_index_server_indexing_pq() {
     ];
 
     let mut stream = TcpStream::connect("127.0.0.1:8998").unwrap();
+    let mut uint32_buf = [0; 4];
+    stream.read_exact(&mut uint32_buf).unwrap();
+    assert_eq!(u32::from_le_bytes(uint32_buf), 0x1);
     let init_msg = [
         INIT_MSG.to_le_bytes(),
         (1 as u32).to_le_bytes(),

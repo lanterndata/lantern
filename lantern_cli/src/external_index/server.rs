@@ -621,10 +621,11 @@ fn start_status_server(
                 );
                 let response_bytes = status_json.as_bytes();
                 let response_len = response_bytes.len();
-                stream.write("HTTP/1.1 200\n".as_bytes())?;
-                stream.write("Content-Type: application/json\n".as_bytes())?;
-                stream.write(format!("Content-Length: {response_len}\n\n").as_bytes())?;
-                stream.write(status_json.as_bytes())?;
+                stream.write("HTTP/1.1 200\r\n".as_bytes())?;
+                stream.write("Content-Type: application/json\r\n".as_bytes())?;
+                stream.write(format!("Content-Length: {response_len}\r\n\r\n").as_bytes())?;
+                stream.write(response_bytes)?;
+                stream.write(&[0x0D, 0x0A])?;
             }
             Err(e) => {
                 logger.error(&format!("Connection error: {e}"));
