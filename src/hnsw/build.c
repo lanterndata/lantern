@@ -598,7 +598,7 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
             buildstate->external_socket, &num_added_vectors, &buildstate->index_buffer_size, buildstate->status);
         CheckBuildIndexError(buildstate);
 
-        uint32 bytes_read = external_index_receive_index_part(
+        uint32 bytes_read = external_index_receive_all(
             buildstate->external_socket, buildstate->index_buffer, USEARCH_HEADER_SIZE, buildstate->status);
         CheckBuildIndexError(buildstate);
 

@@ -328,10 +328,10 @@ void StoreExternalIndex(Relation                 index,
         while(tuples_indexed < num_added_vectors) {
             local_progress = 0;
 
-            bytes_read = external_index_receive_index_part(external_index_socket,
-                                                           external_index_data + buffer_position,
-                                                           EXTERNAL_INDEX_FILE_BUFFER_SIZE - buffer_position,
-                                                           status);
+            bytes_read = external_index_receive_all(external_index_socket,
+                                                    external_index_data + buffer_position,
+                                                    EXTERNAL_INDEX_FILE_BUFFER_SIZE - buffer_position,
+                                                    status);
             total_bytes_read += bytes_read;
 
             if(status->code != BUILD_INDEX_OK) {
