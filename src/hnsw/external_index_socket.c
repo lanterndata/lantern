@@ -273,7 +273,7 @@ static void set_external_index_response_status(external_index_socket_t *socket_c
     }
 
     status->code = BUILD_INDEX_FAILED;
-    snprintf(status->error, BUILD_INDEX_MAX_ERROR_SIZE, "external index error: %s", (char *)&recv_error);
+    snprintf(status->error, BUILD_INDEX_MAX_ERROR_SIZE, "external index error: %.1024s", (char *)&recv_error);
 }
 
 static void set_external_index_request_status(external_index_socket_t *socket_con,
