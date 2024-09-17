@@ -3,11 +3,13 @@
 #include "external_index_socket.h"
 
 #include <arpa/inet.h>
-#include <hnsw/build.h>
 #include <miscadmin.h>
 #include <netdb.h>
 #include <string.h>
 #include <unistd.h>
+
+#include "build.h"
+#include "failure_point.h"
 
 static bool is_little_endian()
 {
@@ -23,7 +25,8 @@ static void set_read_timeout(int32 client_fd, uint32 seconds, BuildIndexStatus *
     timeout.tv_sec = seconds;
     timeout.tv_usec = 0;
 
-    if(setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout) < 0) {
+    if(setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout) < 0
+       || LDB_FAILURE_POINT_IS_ENABLED("crash_after_set_recv_timeout")) {
         status->code = BUILD_INDEX_FAILED;
         strncpy(status->error, "external index: failed to set receive timeout for socket", BUILD_INDEX_MAX_ERROR_SIZE);
         return;
@@ -38,7 +41,8 @@ static void set_write_timeout(int32 client_fd, uint32 seconds, BuildIndexStatus 
     timeout.tv_sec = seconds;
     timeout.tv_usec = 0;
 
-    if(setsockopt(client_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof timeout) < 0) {
+    if(setsockopt(client_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof timeout) < 0
+       || LDB_FAILURE_POINT_IS_ENABLED("crash_after_set_send_timeout")) {
         status->code = BUILD_INDEX_FAILED;
         strncpy(status->error, "external index: failed to set send timeout for socket", BUILD_INDEX_MAX_ERROR_SIZE);
         return;
@@ -70,16 +74,17 @@ static int connect_with_timeout(int sockfd, const struct sockaddr *addr, socklen
 {
     // Set the socket to non-blocking mode
     int flags = fcntl(sockfd, F_GETFL, 0);
-    if(flags == -1) {
+    if(flags == -1 || LDB_FAILURE_POINT_IS_ENABLED("crash_after_get_flags")) {
         return -1;
     }
-    if(fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) == -1) {
+    if(fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) == -1
+       || LDB_FAILURE_POINT_IS_ENABLED("crash_after_set_non_blocking")) {
         return -1;
     }
 
     // Attempt to connect
     int result = connect(sockfd, addr, addrlen);
-    if(result == -1 && errno != EINPROGRESS) {
+    if((result == -1 && errno != EINPROGRESS) || LDB_FAILURE_POINT_IS_ENABLED("crash_after_connect")) {
         return -1;
     }
 
@@ -98,9 +103,9 @@ static int connect_with_timeout(int sockfd, const struct sockaddr *addr, socklen
     tv.tv_usec = 0;
 
     result = select(sockfd + 1, NULL, &writefds, NULL, &tv);
-    if(result == -1) {
+    if(result == -1 || LDB_FAILURE_POINT_IS_ENABLED("crash_after_select")) {
         return -1;
-    } else if(result == 0) {
+    } else if(result == 0 || LDB_FAILURE_POINT_IS_ENABLED("crash_on_timeout")) {
         // Timeout occurred
         errno = ETIMEDOUT;
         return -1;
@@ -108,18 +113,19 @@ static int connect_with_timeout(int sockfd, const struct sockaddr *addr, socklen
         // Socket is writable, check for errors
         int       err;
         socklen_t len = sizeof(err);
-        if(getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &err, &len) == -1) {
+        if(getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &err, &len) == -1
+           || LDB_FAILURE_POINT_IS_ENABLED("crash_after_getsockopts")) {
             return -1;
         }
 
-        if(err) {
+        if(err || LDB_FAILURE_POINT_IS_ENABLED("crash_after_getsockopts_err")) {
             errno = err;
             return -1;
         }
     }
 
     // Restore the socket to blocking mode
-    if(fcntl(sockfd, F_SETFL, flags) == -1) {
+    if(fcntl(sockfd, F_SETFL, flags) == -1 || LDB_FAILURE_POINT_IS_ENABLED("crash_after_set_blocking")) {
         return -1;
     }
 
@@ -200,7 +206,7 @@ static void set_external_index_response_status(external_index_socket_t *socket_c
     uint32 total_bytes_read = 0;
     char   recv_error[ BUILD_INDEX_MAX_ERROR_SIZE ];
 
-    if(size < 0) {
+    if(size < 0 || LDB_FAILURE_POINT_IS_ENABLED("crash_on_response_size_check")) {
         status->code = BUILD_INDEX_FAILED;
         strncpy(status->error, "external index socket read failed", BUILD_INDEX_MAX_ERROR_SIZE);
         return;
@@ -221,14 +227,37 @@ static void set_external_index_response_status(external_index_socket_t *socket_c
     // the server should send err_msg_bytes (uint32) followed by the actual error message
     // we will read and check errors here manually to not get stuck into recursion
 
-    bytes_read = socket_con->read(socket_con, (char *)&recv_error, sizeof(uint32));
+    char   err_len_bytes[ sizeof(uint32) ];
+    uint32 err_len_size_read = 0;
 
-    if(bytes_read != sizeof(uint32)) {
-        status->code = BUILD_INDEX_FAILED;
-        strncpy(status->error, "external index socket read failed", BUILD_INDEX_MAX_ERROR_SIZE);
-        return;
+    // if some part of err is already read copy to buffer
+    total_bytes_read = size - EXTERNAL_INDEX_MAGIC_MSG_SIZE;
+    if(total_bytes_read > 0) {
+        err_len_size_read = total_bytes_read >= sizeof(uint32) ? sizeof(uint32) : total_bytes_read;
+        memcpy(&err_len_bytes, buffer + EXTERNAL_INDEX_MAGIC_MSG_SIZE, err_len_size_read);
+        total_bytes_read -= err_len_size_read;
     }
-    memcpy(&err_msg_size, recv_error, sizeof(uint32));
+
+    // if after copying the error message length
+    // there are still bytes left in the buffer
+    // copy them as part of error message
+    if(total_bytes_read > 0) {
+        memcpy(&recv_error, buffer + EXTERNAL_INDEX_MAGIC_MSG_SIZE + err_len_size_read, total_bytes_read);
+    }
+
+    // if we still need to read from socket to get the error length
+    if(err_len_size_read < sizeof(uint32)) {
+        bytes_read = socket_con->read(
+            socket_con, (char *)&err_len_bytes + err_len_size_read, sizeof(uint32) - err_len_size_read);
+
+        if(bytes_read != sizeof(uint32) - err_len_size_read) {
+            status->code = BUILD_INDEX_FAILED;
+            strncpy(status->error, "external index socket read failed", BUILD_INDEX_MAX_ERROR_SIZE);
+            return;
+        }
+    }
+
+    memcpy(&err_msg_size, &err_len_bytes, sizeof(uint32));
 
     while(total_bytes_read < err_msg_size) {
         bytes_read
@@ -354,12 +383,12 @@ external_index_socket_t *create_external_index_session(const char               
     external_index_socket_t *socket_con = palloc0(sizeof(external_index_socket_t));
     int                      client_fd, status;
     char                     init_buf[ sizeof(external_index_params_t) + EXTERNAL_INDEX_MAGIC_MSG_SIZE ];
-    char                     port_str[ 5 ];
+    char                     port_str[ 6 ];
     struct addrinfo         *serv_addr, hints = {0};
     char                     init_response[ EXTERNAL_INDEX_INIT_BUFFER_SIZE ] = {0};
     int64                    bytes_read = 0;
 
-    if(!is_little_endian()) {
+    if(!is_little_endian() || LDB_FAILURE_POINT_IS_ENABLED("crash_on_check_little_endian")) {
         buildstate->status->code = BUILD_INDEX_FAILED;
         strncpy(buildstate->status->error,
                 "external indexing is supported only for little endian byte ordering",
@@ -393,7 +422,7 @@ external_index_socket_t *create_external_index_session(const char               
         socket_con->close = (void *)close_plain;
     }
 
-    if((client_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+    if((client_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0 || LDB_FAILURE_POINT_IS_ENABLED("crash_after_socket_create")) {
         buildstate->status->code = BUILD_INDEX_FAILED;
         strncpy(buildstate->status->error, "external index: socket creation failed", BUILD_INDEX_MAX_ERROR_SIZE);
         return NULL;
@@ -437,7 +466,7 @@ external_index_socket_t *create_external_index_session(const char               
     socket_con->init(socket_con);
 
     // receive and check protocol version
-    bytes_read = socket_con->read(socket_con, (char *)&init_response, EXTERNAL_INDEX_MAGIC_MSG_SIZE);
+    bytes_read = socket_con->read(socket_con, (char *)&init_response, sizeof(uint32));
     set_external_index_response_status(socket_con, (char *)init_response, bytes_read, buildstate->status);
     if(buildstate->status->code != BUILD_INDEX_OK) {
         return socket_con;
@@ -445,7 +474,8 @@ external_index_socket_t *create_external_index_session(const char               
     uint32 protocol_version = 0;
     memcpy(&protocol_version, init_response, sizeof(uint32));
 
-    if(protocol_version != EXTERNAL_INDEX_PROTOCOL_VERSION) {
+    if(protocol_version != EXTERNAL_INDEX_PROTOCOL_VERSION
+       || LDB_FAILURE_POINT_IS_ENABLED("crash_on_protocol_version_check")) {
         buildstate->status->code = BUILD_INDEX_FAILED;
         snprintf(buildstate->status->error,
                  BUILD_INDEX_MAX_ERROR_SIZE,
@@ -455,7 +485,7 @@ external_index_socket_t *create_external_index_session(const char               
         return socket_con;
     }
     // check server type
-    bytes_read = socket_con->read(socket_con, (char *)&init_response, EXTERNAL_INDEX_MAGIC_MSG_SIZE);
+    bytes_read = socket_con->read(socket_con, (char *)&init_response, sizeof(uint32));
     set_external_index_response_status(socket_con, (char *)init_response, bytes_read, buildstate->status);
     if(buildstate->status->code != BUILD_INDEX_OK) {
         return socket_con;
@@ -567,14 +597,18 @@ void external_index_receive_metadata(external_index_socket_t *socket_con,
     char   buffer[ sizeof(uint64_t) ];
     int64  bytes_read;
 
-    // disable read timeout while indexing is in progress
-    set_read_timeout(socket_con->fd, 0, status);
-    if(status->code != BUILD_INDEX_OK) {
-        return;
+    if(LDB_FAILURE_POINT_IS_ENABLED("crash_on_end_msg")) {
+        end_msg = EXTERNAL_INDEX_INIT_MSG;
     }
 
     // send message indicating that we have finished streaming tuples
     write_all(socket_con, (char *)&end_msg, EXTERNAL_INDEX_MAGIC_MSG_SIZE, 0, status);
+    if(status->code != BUILD_INDEX_OK) {
+        return;
+    }
+
+    // wait for data to be available
+    wait_for_data(socket_con, status);
     if(status->code != BUILD_INDEX_OK) {
         return;
     }

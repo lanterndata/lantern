@@ -41,10 +41,11 @@
 #include "bench.h"
 #include "external_index.h"
 #include "external_index_socket.h"
+#include "failure_point.h"
 #include "hnsw.h"
-#include "hnsw/pqtable.h"
-#include "hnsw/retriever.h"
 #include "options.h"
+#include "pqtable.h"
+#include "retriever.h"
 #include "utils.h"
 #include "vector.h"
 
@@ -602,7 +603,7 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
             buildstate->external_socket, buildstate->index_buffer, USEARCH_HEADER_SIZE, buildstate->status);
         CheckBuildIndexError(buildstate);
 
-        if(bytes_read != USEARCH_HEADER_SIZE) {
+        if(bytes_read != USEARCH_HEADER_SIZE || LDB_FAILURE_POINT_IS_ENABLED("crash_after_recv_header")) {
             buildstate->status->code = BUILD_INDEX_FAILED;
             strncpy(buildstate->status->error, "received invalid index header", BUILD_INDEX_MAX_ERROR_SIZE);
             CheckBuildIndexError(buildstate);

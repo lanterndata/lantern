@@ -806,5 +806,197 @@ def test_external_index_reindex(external_index, primary, source_table, quant_bit
     primary.safe_psql(dbname="testdb", query=f"REINDEX INDEX CONCURRENTLY {index_name};")
     primary.execute("testdb", f"SELECT _lantern_internal.validate_index('{index_name}')")
 
+@pytest.mark.parametrize("distance_metric", ["l2sq"], scope="session")
+@pytest.mark.parametrize("quant_bits", [32], scope="session")
+@pytest.mark.external_index
+def test_external_index_failures(external_index, primary, source_table, quant_bits, distance_metric):
+    table_name = f"{source_table}_{quant_bits}_{distance_metric}_external_index_failures"
+    index_name = f"idx_hnsw_{table_name}_{distance_metric}_failure"
+    use_ssl =  "ON" if os.getenv("USE_SSL") == "1" else "OFF"
+
+    data_type = 'REAL[]'
+
+    if not primary.execute(
+        "testdb",
+        f"SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '{table_name}')",
+    )[0][0]:
+        primary.execute(
+            "testdb",
+            f"CREATE TABLE IF NOT EXISTS {table_name} AS SELECT id, v::{data_type} FROM {source_table}",
+        )
+        primary.execute("testdb", f"ALTER TABLE {table_name} ADD PRIMARY KEY (id)")
+
+    ops = 'dist_l2sq_ops'
+    try:
+        primary.execute("testdb", f"""
+                        SELECT _lantern_internal.failure_point_enable('set_read_timeout', 'crash_after_set_recv_timeout', 0);
+                        SET lantern.external_index_secure={use_ssl}; 
+                        CREATE INDEX {index_name} ON {table_name} USING lantern_hnsw (v {ops}) WITH (dim=128, M=10, quant_bits = {quant_bits}, external = true);
+        """)
+        assert False
+    except Exception as e:
+        assert f"failed to set receive timeout for socket" in str(e), f"Failed for recv timeout"
+
+    try:
+        primary.execute("testdb", f"""
+                        SELECT _lantern_internal.failure_point_enable('set_write_timeout', 'crash_after_set_send_timeout', 0);
+                        SET lantern.external_index_secure={use_ssl}; 
+                        CREATE INDEX {index_name} ON {table_name} USING lantern_hnsw (v {ops}) WITH (dim=128, M=10, quant_bits = {quant_bits}, external = true);
+        """)
+        assert False
+    except Exception as e:
+        assert f"failed to set send timeout for socket" in str(e), f"Failed for send timeout"
+        
+    try:
+        primary.execute("testdb", f"""
+                        SELECT _lantern_internal.failure_point_enable('connect_with_timeout', 'crash_after_get_flags', 0);
+                        SET lantern.external_index_secure={use_ssl};
+                        CREATE INDEX {index_name} ON {table_name} USING lantern_hnsw (v {ops}) WITH (dim=128, M=10, quant_bits = {quant_bits}, external = true);
+        """)
+        assert False
+    except Exception as e:
+        assert f"external index: connect timeout" in str(e), f"Failed for connect_with_timeout"
+        
+    try:
+        primary.execute("testdb", f"""
+                        SELECT _lantern_internal.failure_point_enable('connect_with_timeout', 'crash_after_set_non_blocking', 0);
+                        SET lantern.external_index_secure={use_ssl};
+                        CREATE INDEX {index_name} ON {table_name} USING lantern_hnsw (v {ops}) WITH (dim=128, M=10, quant_bits = {quant_bits}, external = true);
+        """)
+        assert False
+    except Exception as e:
+        assert f"external index: connect timeout" in str(e), f"Failed for connect_with_timeout"
+
+    try:
+        primary.execute("testdb", f"""
+                        SELECT _lantern_internal.failure_point_enable('connect_with_timeout', 'crash_after_connect', 0);
+                        SET lantern.external_index_secure={use_ssl};
+                        CREATE INDEX {index_name} ON {table_name} USING lantern_hnsw (v {ops}) WITH (dim=128, M=10, quant_bits = {quant_bits}, external = true);
+        """)
+        assert False
+    except Exception as e:
+        assert f"external index: connect timeout" in str(e), f"Failed for connect_with_timeout"
+        
+    try:
+        primary.execute("testdb", f"""
+                        SELECT _lantern_internal.failure_point_enable('connect_with_timeout', 'crash_after_select', 0);
+                        SET lantern.external_index_secure={use_ssl};
+                        CREATE INDEX {index_name} ON {table_name} USING lantern_hnsw (v {ops}) WITH (dim=128, M=10, quant_bits = {quant_bits}, external = true);
+        """)
+        assert False
+    except Exception as e:
+        assert f"external index: connect timeout" in str(e), f"Failed for connect_with_timeout"
+
+    try:
+        primary.execute("testdb", f"""
+                        SELECT _lantern_internal.failure_point_enable('connect_with_timeout', 'crash_on_timeout', 0);
+                        SET lantern.external_index_secure={use_ssl};
+                        CREATE INDEX {index_name} ON {table_name} USING lantern_hnsw (v {ops}) WITH (dim=128, M=10, quant_bits = {quant_bits}, external = true);
+        """)
+        assert False
+    except Exception as e:
+        assert f"external index: connect timeout" in str(e), f"Failed for connect_with_timeout"
+        
+
+    try:
+        primary.execute("testdb", f"""
+                        SELECT _lantern_internal.failure_point_enable('connect_with_timeout', 'crash_after_getsockopts', 0);
+                        SET lantern.external_index_secure={use_ssl};
+                        CREATE INDEX {index_name} ON {table_name} USING lantern_hnsw (v {ops}) WITH (dim=128, M=10, quant_bits = {quant_bits}, external = true);
+        """)
+        assert False
+    except Exception as e:
+        assert f"external index: connect timeout" in str(e), f"Failed for connect_with_timeout"
+
+    try:
+        primary.execute("testdb", f"""
+                        SELECT _lantern_internal.failure_point_enable('connect_with_timeout', 'crash_after_getsockopts_err', 0);
+                        SET lantern.external_index_secure={use_ssl};
+                        CREATE INDEX {index_name} ON {table_name} USING lantern_hnsw (v {ops}) WITH (dim=128, M=10, quant_bits = {quant_bits}, external = true);
+        """)
+        assert False
+    except Exception as e:
+        assert f"external index: connect timeout" in str(e), f"Failed for connect_with_timeout"
+
+    try:
+        primary.execute("testdb", f"""
+                        SELECT _lantern_internal.failure_point_enable('connect_with_timeout', 'crash_after_set_blocking', 0);
+                        SET lantern.external_index_secure={use_ssl};
+                        CREATE INDEX {index_name} ON {table_name} USING lantern_hnsw (v {ops}) WITH (dim=128, M=10, quant_bits = {quant_bits}, external = true);
+        """)
+        assert False
+    except Exception as e:
+        assert f"external index: connect timeout" in str(e), f"Failed for connect_with_timeout"
+
+    try:
+        primary.execute("testdb", f"""
+                        SELECT _lantern_internal.failure_point_enable('create_external_index_session', 'crash_on_check_little_endian', 0);
+                        SET lantern.external_index_secure={use_ssl};
+                        CREATE INDEX {index_name} ON {table_name} USING lantern_hnsw (v {ops}) WITH (dim=128, M=10, quant_bits = {quant_bits}, external = true);
+        """)
+        assert False
+    except Exception as e:
+        assert f"external indexing is supported only for little endian byte ordering" in str(e), f"Failed for is_little_endian()"
+
+    try:
+        primary.execute("testdb", f"""
+                        SELECT _lantern_internal.failure_point_enable('create_external_index_session', 'crash_after_socket_create', 0);
+                        SET lantern.external_index_secure={use_ssl};
+                        CREATE INDEX {index_name} ON {table_name} USING lantern_hnsw (v {ops}) WITH (dim=128, M=10, quant_bits = {quant_bits}, external = true);
+        """)
+        assert False
+    except Exception as e:
+        assert f"external index: socket creation failed" in str(e), f"Failed for create_socket"
+
+    try:
+        primary.execute("testdb", f"""
+                        SELECT _lantern_internal.failure_point_enable('create_external_index_session', 'crash_on_protocol_version_check', 0);
+                        SET lantern.external_index_secure={use_ssl};
+                        CREATE INDEX {index_name} ON {table_name} USING lantern_hnsw (v {ops}) WITH (dim=128, M=10, quant_bits = {quant_bits}, external = true);
+        """)
+        assert False
+    except Exception as e:
+        assert f"external index protocol version mismatch" in str(e), f"Failed for protocol version check"
+
+    try:
+        primary.execute("testdb", f"""
+                        SELECT _lantern_internal.failure_point_enable('set_external_index_response_status', 'crash_on_response_size_check', 0);
+                        SET lantern.external_index_secure={use_ssl};
+                        CREATE INDEX {index_name} ON {table_name} USING lantern_hnsw (v {ops}) WITH (dim=128, M=10, quant_bits = {quant_bits}, external = true);
+        """)
+        assert False
+    except Exception as e:
+        assert f"external index socket read failed" in str(e), f"Failed for set_external_index_response_status"
+
+    try:
+        primary.execute("testdb", f"""
+                        SELECT _lantern_internal.failure_point_enable('set_external_index_response_status', 'crash_on_response_size_check', 0);
+                        SET lantern.external_index_secure={use_ssl};
+                        CREATE INDEX {index_name} ON {table_name} USING lantern_hnsw (v {ops}) WITH (dim=128, M=10, quant_bits = {quant_bits}, external = true);
+        """)
+        assert False
+    except Exception as e:
+        assert f"external index socket read failed" in str(e), f"Failed for set_external_index_response_status"
+
+    try:
+        primary.execute("testdb", f"""
+                        SELECT _lantern_internal.failure_point_enable('BuildIndex', 'crash_after_recv_header', 0);
+                        SET lantern.external_index_secure={use_ssl};
+                        CREATE INDEX {index_name} ON {table_name} USING lantern_hnsw (v {ops}) WITH (dim=128, M=10, quant_bits = {quant_bits}, external = true);
+        """)
+        assert False
+    except Exception as e:
+        assert f"received invalid index header" in str(e), f"Failed for receive usearch header"
+
+    try:
+        primary.execute("testdb", f"""
+                        SELECT _lantern_internal.failure_point_enable('external_index_receive_metadata', 'crash_on_end_msg', 0);
+                        SET lantern.external_index_secure={use_ssl};
+                        CREATE INDEX {index_name} ON {table_name} USING lantern_hnsw (v {ops}) WITH (dim=128, M=10, quant_bits = {quant_bits}, external = true);
+        """)
+        assert False
+    except Exception as e:
+        assert f"Resource temporarily unavailable" in str(e), f"Failed for crash_on_end_msg"
+
 if __name__ == "__main__":
     os._exit(pytest.main(["-s", __file__, *sys.argv[1:]]))
