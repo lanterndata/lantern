@@ -80,6 +80,11 @@ function build_and_install() {
     flags="$flags -DCODECOVERAGE=ON"
     cp /usr/bin/gcov-12 /usr/bin/gcov
   fi
+  
+  if [[ "$ENABLE_FAILURE_POINTS" == "1" ]]
+  then
+    flags="$flags -DFAILURE_POINTS=ON"
+  fi
 
   # Run cmake
   cmake $flags ..

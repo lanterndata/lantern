@@ -32,7 +32,7 @@ jobs:
 
       - name: Build without SSL
         id: build_without_ssl
-        run: sudo sh -c "USE_SSL=0 PG_VERSION=$PG_VERSION USE_SOURCE=1 GITHUB_OUTPUT=$GITHUB_OUTPUT INSTALL_CLI=1 ./ci/scripts/build.sh"
+        run: sudo sh -c "USE_SSL=0 PG_VERSION=$PG_VERSION USE_SOURCE=1 GITHUB_OUTPUT=$GITHUB_OUTPUT INSTALL_CLI=1 ENABLE_FAILURE_POINTS=1 ./ci/scripts/build.sh"
         env:
           PG_VERSION: ${{ matrix.postgres }}
           BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
@@ -59,7 +59,7 @@ jobs:
 
       - name: Build
         id: build
-        run: sudo sh -c "USE_SSL=1 PG_VERSION=$PG_VERSION USE_SOURCE=1 GITHUB_OUTPUT=$GITHUB_OUTPUT ENABLE_COVERAGE=$ENABLE_COVERAGE ./ci/scripts/build.sh"
+        run: sudo sh -c "USE_SSL=1 PG_VERSION=$PG_VERSION USE_SOURCE=1 GITHUB_OUTPUT=$GITHUB_OUTPUT ENABLE_COVERAGE=$ENABLE_COVERAGE ENABLE_FAILURE_POINTS=1 ./ci/scripts/build.sh"
         env:
           PG_VERSION: ${{ matrix.postgres }}
           BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
