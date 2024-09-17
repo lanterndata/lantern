@@ -398,9 +398,10 @@ pub fn create_streaming_usearch_index(
 
     // Send added row count
     let mut stream = stream.lock().unwrap();
-    let index = index.read().unwrap();
 
-    let tuple_count = index.0.size() as u64;
+    let index_data = index.read().unwrap();
+
+    let tuple_count = index_data.0.size() as u64;
     logger.debug(&format!(
         "Indexing took {}s, indexed {tuple_count} items",
         start_time.elapsed().as_secs()
@@ -415,7 +416,8 @@ pub fn create_streaming_usearch_index(
     let index_path = format!("{tmp_dir}/ldb-index-{}.usearch", rng.gen_range(0..1000));
 
     let streaming_start = Instant::now();
-    index.0.save(&index_path)?;
+    index_data.0.save(&index_path)?;
+    drop(index_data);
     drop(index);
     logger.debug(&format!(
         "Writing index to file took {}s{}ms",
