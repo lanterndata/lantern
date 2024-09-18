@@ -202,7 +202,7 @@ static void set_external_index_response_status(external_index_socket_t *socket_c
     uint32 err_msg_size = 0;
     uint32 bytes_read = 0;
     uint32 total_bytes_read = 0;
-    char   recv_error[ BUILD_INDEX_MAX_ERROR_SIZE ];
+    char   recv_error[ 1024 ];
 
     if(size < 0 || LDB_FAILURE_POINT_IS_ENABLED("crash_on_response_size_check")) {
         status->code = BUILD_INDEX_FAILED;
