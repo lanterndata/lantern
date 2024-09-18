@@ -137,8 +137,6 @@ static void wait_for_data(external_index_socket_t *socket_con, BuildIndexStatus 
     struct timeval timeout;
     fd_set         read_fds;
 
-    int interval = 5;
-
     // Set the socket to non-blocking mode
     int flags = fcntl(socket_con->fd, F_GETFL, 0);
     if(flags == -1) {
@@ -157,7 +155,7 @@ static void wait_for_data(external_index_socket_t *socket_con, BuildIndexStatus 
         FD_ZERO(&read_fds);
         FD_SET(socket_con->fd, &read_fds);
 
-        timeout.tv_sec = 5;
+        timeout.tv_sec = 1;
         timeout.tv_usec = 0;
 
         int activity = select(socket_con->fd + 1, &read_fds, NULL, NULL, &timeout);
