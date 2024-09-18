@@ -24,7 +24,7 @@ use crate::types::*;
 const CHAR_BITS: usize = 8;
 const LABEL_SIZE: usize = 8;
 const INTEGER_SIZE: usize = 4;
-const SOCKET_TIMEOUT: u64 = 5;
+const SOCKET_TIMEOUT: u64 = 10;
 pub const PROTOCOL_HEADER_SIZE: usize = 4;
 pub const PROTOCOL_VERSION: u32 = 1;
 pub const SERVER_TYPE: u32 = 0x1; // (0x1: indexing server, 0x2: router server)
@@ -256,6 +256,7 @@ fn receive_rows(
     drop(idx);
 
     let ten_percent = cmp::max((current_capacity as f32 * 0.1) as usize, 100000);
+    let start = Instant::now();
 
     loop {
         let buf = vec![0 as u8; expected_payload_size];
@@ -273,7 +274,11 @@ fn receive_rows(
                 received_rows += 1;
 
                 if received_rows % ten_percent == 0 {
-                    logger.debug(&format!("Indexed {received_rows} tuples..."));
+                    let speed = received_rows
+                        / (cmp::max(1, Instant::now().duration_since(start).as_secs() as usize));
+                    logger.debug(&format!(
+                        "Indexed {received_rows} tuples [speed {speed} tuples/s]..."
+                    ));
                 }
 
                 worker_tx.send(row)?;
