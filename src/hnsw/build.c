@@ -453,6 +453,7 @@ void CheckBuildIndexError(ldb_HnswBuildState *buildstate)
 
     if(buildstate->usearch_index) {
         usearch_free(buildstate->usearch_index, &error);
+        buildstate->usearch_index = NULL;
     }
 
     if(buildstate->external_socket) {
