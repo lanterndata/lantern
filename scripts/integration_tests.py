@@ -960,23 +960,13 @@ def test_external_index_failures(external_index, primary, source_table, quant_bi
 
     try:
         primary.execute("testdb", f"""
-                        SELECT _lantern_internal.failure_point_enable('set_external_index_response_status', 'crash_on_response_size_check', 0);
+                        SELECT _lantern_internal.failure_point_enable('check_external_index_response_status', 'crash_on_response_size_check', 0);
                         SET lantern.external_index_secure={use_ssl};
                         CREATE INDEX {index_name} ON {table_name} USING lantern_hnsw (v {ops}) WITH (dim=128, M=10, quant_bits = {quant_bits}, external = true);
         """)
         assert False
     except Exception as e:
-        assert f"external index socket read failed" in str(e), f"Failed for set_external_index_response_status"
-
-    try:
-        primary.execute("testdb", f"""
-                        SELECT _lantern_internal.failure_point_enable('set_external_index_response_status', 'crash_on_response_size_check', 0);
-                        SET lantern.external_index_secure={use_ssl};
-                        CREATE INDEX {index_name} ON {table_name} USING lantern_hnsw (v {ops}) WITH (dim=128, M=10, quant_bits = {quant_bits}, external = true);
-        """)
-        assert False
-    except Exception as e:
-        assert f"external index socket read failed" in str(e), f"Failed for set_external_index_response_status"
+        assert f"external index socket read failed" in str(e), f"Failed for check_external_index_response_status"
 
     try:
         primary.execute("testdb", f"""
