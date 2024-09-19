@@ -10,6 +10,7 @@
 #define EXTERNAL_INDEX_INIT_MSG              0x13333337
 #define EXTERNAL_INDEX_END_MSG               0x31333337
 #define EXTERNAL_INDEX_ERR_MSG               0x37333337
+#define EXTERNAL_INDEX_MAX_ERR_SIZE          1024
 #define EXTERNAL_INDEX_INIT_BUFFER_SIZE      1024
 #define EXTERNAL_INDEX_FILE_BUFFER_SIZE      1024 * 1024 * 10  // 10MB
 #define EXTERNAL_INDEX_SOCKET_TIMEOUT        10                // 10 seconds
@@ -59,25 +60,17 @@ int64 write_ssl(external_index_socket_t *socket_con, const char *buf, uint32 siz
 void  close_ssl(external_index_socket_t *socket_con);
 /* ====================== */
 
-external_index_socket_t *create_external_index_session(const char                   *host,
-                                                       int                           port,
-                                                       bool                          secure,
-                                                       const usearch_init_options_t *params,
-                                                       const ldb_HnswBuildState     *buildstate,
-                                                       uint32                        estimated_row_count);
-void                     external_index_receive_metadata(external_index_socket_t *socket_con,
-                                                         uint64                  *num_added_vectors,
-                                                         uint64                  *index_size,
-                                                         BuildIndexStatus        *status);
-uint64                   external_index_receive_all(external_index_socket_t *socket_con,
-                                                    char                    *result_buf,
-                                                    uint64                   size,
-                                                    BuildIndexStatus        *status);
-void                     external_index_send_tuple(external_index_socket_t *socket_con,
-                                                   usearch_label_t         *label,
-                                                   void                    *vector,
-                                                   uint8                    scalar_bits,
-                                                   uint32                   dimensions,
-                                                   BuildIndexStatus        *status);
+void   create_external_index_session(const char                   *host,
+                                     int                           port,
+                                     bool                          secure,
+                                     const usearch_init_options_t *params,
+                                     const ldb_HnswBuildState     *buildstate,
+                                     uint32                        estimated_row_count);
+void   external_index_receive_metadata(external_index_socket_t *socket_con,
+                                       uint64                  *num_added_vectors,
+                                       uint64                  *index_size);
+uint64 external_index_read_all(external_index_socket_t *socket_con, char *result_buf, uint64 size);
+void   external_index_send_tuple(
+      external_index_socket_t *socket_con, usearch_label_t *label, void *vector, uint8 scalar_bits, uint32 dimensions);
 
 #endif  // LDB_EXTERNAL_IDX_SOCKET_H

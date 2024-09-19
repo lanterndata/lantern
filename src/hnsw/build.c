@@ -110,10 +110,8 @@ static void AddTupleToUsearchIndex(ItemPointer         tid,
 
     if(buildstate->external_socket) {
         // send tuple over socket if this is external indexing
-        external_index_send_tuple(
-            buildstate->external_socket, &label, vector, scalar_bits, buildstate->dimensions, buildstate->status);
+        external_index_send_tuple(buildstate->external_socket, &label, vector, scalar_bits, buildstate->dimensions);
 
-        CheckBuildIndexError(buildstate);
     } else if(buildstate->usearch_index != NULL) {
         size_t capacity = usearch_capacity(buildstate->usearch_index, &error);
         if(capacity == usearch_size(buildstate->usearch_index, &error)) {
@@ -385,7 +383,6 @@ static void InitBuildState(ldb_HnswBuildState *buildstate, Relation heap, Relati
     buildstate->index_buffer_size = 0;
     buildstate->index_buffer = NULL;
     buildstate->external = ldb_HnswGetExternal(index);
-    buildstate->status = palloc0(sizeof(BuildIndexStatus));
 
     // If a dimension wasn't specified try to infer it
     if(heap != NULL && buildstate->dimensions < 1) {
@@ -445,18 +442,16 @@ static void ScanTable(ldb_HnswBuildState *buildstate)
 #endif
 }
 
-void CheckBuildIndexError(ldb_HnswBuildState *buildstate)
+static void BuildIndexCleanup(ldb_HnswBuildState *buildstate)
 {
     usearch_error_t error = NULL;
-
-    if(buildstate->status->code == BUILD_INDEX_OK) return;
 
     if(buildstate->usearch_index) {
         usearch_free(buildstate->usearch_index, &error);
         buildstate->usearch_index = NULL;
     }
 
-    if(buildstate->external_socket) {
+    if(buildstate->external_socket && buildstate->external_socket->close) {
         buildstate->external_socket->close(buildstate->external_socket);
     }
 
@@ -468,14 +463,6 @@ void CheckBuildIndexError(ldb_HnswBuildState *buildstate)
             LDB_UNUSED(munmap_ret);
         }
         close(buildstate->index_file_fd);
-    }
-
-    if(buildstate->status->code == BUILD_INDEX_FAILED) {
-        elog(ERROR, "%s", buildstate->status->error);
-    }
-
-    if(buildstate->status->code == BUILD_INDEX_INTERRUPT) {
-        ProcessInterrupts();
     }
 }
 
@@ -560,13 +547,13 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
                  "maintenance_work_mem");
 
         if(buildstate->external) {
-            buildstate->external_socket = create_external_index_session(ldb_external_index_host,
-                                                                        ldb_external_index_port,
-                                                                        ldb_external_index_secure,
-                                                                        &opts,
-                                                                        buildstate,
-                                                                        estimated_row_count);
-            CheckBuildIndexError(buildstate);
+            buildstate->external_socket = palloc0(sizeof(external_index_socket_t));
+            create_external_index_session(ldb_external_index_host,
+                                          ldb_external_index_port,
+                                          ldb_external_index_secure,
+                                          &opts,
+                                          buildstate,
+                                          estimated_row_count);
         } else {
             usearch_reserve(buildstate->usearch_index, estimated_row_count, &error);
 
@@ -597,17 +584,13 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
     } else if(buildstate->external) {
         buildstate->index_buffer = palloc(USEARCH_HEADER_SIZE);
         external_index_receive_metadata(
-            buildstate->external_socket, &num_added_vectors, &buildstate->index_buffer_size, buildstate->status);
-        CheckBuildIndexError(buildstate);
+            buildstate->external_socket, &num_added_vectors, &buildstate->index_buffer_size);
 
-        uint32 bytes_read = external_index_receive_all(
-            buildstate->external_socket, buildstate->index_buffer, USEARCH_HEADER_SIZE, buildstate->status);
-        CheckBuildIndexError(buildstate);
+        uint32 bytes_read
+            = external_index_read_all(buildstate->external_socket, buildstate->index_buffer, USEARCH_HEADER_SIZE);
 
         if(bytes_read != USEARCH_HEADER_SIZE || LDB_FAILURE_POINT_IS_ENABLED("crash_after_recv_header")) {
-            buildstate->status->code = BUILD_INDEX_FAILED;
-            strncpy(buildstate->status->error, "received invalid index header", BUILD_INDEX_MAX_ERROR_SIZE);
-            CheckBuildIndexError(buildstate);
+            elog(ERROR, "received invalid index header");
         }
     } else {
         // Save index into temporary file
@@ -642,9 +625,7 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
             = mmap(NULL, index_file_stat.st_size, PROT_READ, MAP_PRIVATE, buildstate->index_file_fd, 0);
 
         if(buildstate->index_buffer == MAP_FAILED) {
-            buildstate->status->code = BUILD_INDEX_FAILED;
-            strncpy(buildstate->status->error, "failed to mmap index file", BUILD_INDEX_MAX_ERROR_SIZE);
-            CheckBuildIndexError(buildstate);
+            elog(ERROR, "failed to mmap index file");
         }
     }
     //****************************** mmap index to memory END ******************************//
@@ -663,9 +644,7 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
                            buildstate->dimensions,
                            num_added_vectors,
                            buildstate->external_socket,
-                           buildstate->index_buffer_size,
-                           buildstate->status);
-        CheckBuildIndexError(buildstate);
+                           buildstate->index_buffer_size);
     }
 
     if(!buildstate->external) {
@@ -739,9 +718,16 @@ IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInf
     memset(&buildstate, 0, sizeof(ldb_HnswBuildState));
 
     (void)CheckExtensionVersions();
-
-    BuildIndex(heap, index, indexInfo, &buildstate);
-
+    PG_TRY();
+    {
+        BuildIndex(heap, index, indexInfo, &buildstate);
+    }
+    PG_CATCH();
+    {
+        BuildIndexCleanup(&buildstate);
+        PG_RE_THROW();
+    }
+    PG_END_TRY();
     result = (IndexBuildResult *)palloc(sizeof(IndexBuildResult));
     result->heap_tuples = buildstate.reltuples;
     result->index_tuples = buildstate.tuples_indexed;

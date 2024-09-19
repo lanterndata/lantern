@@ -54,8 +54,7 @@ void StoreExternalIndexNodes(Relation             index,
                              uint32               pg_dimension,
                              uint32               usearch_dimension,
                              uint32               first_node_index,
-                             ItemPointerData     *item_pointers,
-                             BuildIndexStatus    *status)
+                             ItemPointerData     *item_pointers)
 {
     assert(sizeof(HnswIndexTuple) + pg_dimension * sizeof(float) <= BLCKSZ);
 
@@ -162,12 +161,6 @@ void StoreExternalIndexNodes(Relation             index,
         item_pointers[ node_id ].ip_posid = offsetno;
         bytes_written += node_size;
         node_id++;
-
-        if(INTERRUPTS_PENDING_CONDITION()) {
-            UnlockReleaseBuffer(buf);
-            status->code = BUILD_INDEX_INTERRUPT;
-            return;
-        }
     }
 
     special->lastId = node_id - 1;
@@ -180,8 +173,6 @@ void StoreExternalIndexNodes(Relation             index,
     *num_added_vectors += (node_id - first_node_index);
 
     LDB_FAILURE_POINT_CRASH_IF_ENABLED("just_before_updating_blockmaps_after_inserting_nodes");
-
-    status->code = BUILD_INDEX_OK;
 }
 
 void StoreExternalEmptyIndex(
@@ -243,10 +234,6 @@ void StoreExternalEmptyIndex(
  *    and should just iterate over it and write into pages
  *  - The second path is when we are reading the index file from remote socket
  *    in this case we will read the file in 10MB chunks and try to write that chunk into pages.
- *
- *  This function should not exit process via elog(ERROR) or interrupts
- *  Instead it should change the BuildIndexStatus and return from the function
- *  The BuildIndexStatus will be handled in BuildIndex function and process will be exitted after cleanup
  * */
 
 void StoreExternalIndex(Relation                 index,
@@ -257,8 +244,7 @@ void StoreExternalIndex(Relation                 index,
                         uint32                   pg_dimensions,
                         size_t                   num_added_vectors,
                         external_index_socket_t *external_index_socket,
-                        uint64                   index_file_size,
-                        BuildIndexStatus        *status)
+                        uint64                   index_file_size)
 {
     Buffer header_buf = ReadBufferExtended(index, forkNum, P_NEW, RBM_NORMAL, NULL);
 
@@ -328,15 +314,10 @@ void StoreExternalIndex(Relation                 index,
         while(tuples_indexed < num_added_vectors) {
             local_progress = 0;
 
-            bytes_read = external_index_receive_all(external_index_socket,
-                                                    external_index_data + buffer_position,
-                                                    EXTERNAL_INDEX_FILE_BUFFER_SIZE - buffer_position,
-                                                    status);
+            bytes_read = external_index_read_all(external_index_socket,
+                                                 external_index_data + buffer_position,
+                                                 EXTERNAL_INDEX_FILE_BUFFER_SIZE - buffer_position);
             total_bytes_read += bytes_read;
-
-            if(status->code != BUILD_INDEX_OK) {
-                return;
-            }
 
             if(total_bytes_read == index_file_size) {
                 // index file streaming finished
@@ -357,8 +338,7 @@ void StoreExternalIndex(Relation                 index,
                                     pg_dimensions,
                                     opts->dimensions,
                                     tuples_indexed,
-                                    item_pointers,
-                                    status);
+                                    item_pointers);
 
             // rotate buffer
             buffer_position = EXTERNAL_INDEX_FILE_BUFFER_SIZE - local_progress;
@@ -371,6 +351,7 @@ void StoreExternalIndex(Relation                 index,
             }
 
             progress += local_progress;
+            CHECK_FOR_INTERRUPTS();
         }
     } else {
         uint64 added_vectors = 0;
@@ -385,8 +366,7 @@ void StoreExternalIndex(Relation                 index,
                                 pg_dimensions,
                                 opts->dimensions,
                                 0,
-                                item_pointers,
-                                status);
+                                item_pointers);
         assert(added_vectors == num_added_vectors);
     }
     // this is where I rewrite all neighbors to use BlockNumber

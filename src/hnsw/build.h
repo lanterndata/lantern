@@ -8,21 +8,6 @@
 #include "hnsw.h"
 #include "usearch.h"
 
-#define BUILD_INDEX_MAX_ERROR_SIZE 1048
-
-typedef enum
-{
-    BUILD_INDEX_OK = 0,
-    BUILD_INDEX_FAILED,
-    BUILD_INDEX_INTERRUPT,
-} BuildIndexStatusCode;
-
-typedef struct BuildIndexStatus
-{
-    BuildIndexStatusCode code;
-    char                 error[ BUILD_INDEX_MAX_ERROR_SIZE ];
-} BuildIndexStatus;
-
 typedef struct external_index_socket_t external_index_socket_t;
 
 typedef struct
@@ -41,7 +26,6 @@ typedef struct
     char                    *index_buffer;
     bool                     external;
     external_index_socket_t *external_socket;
-    BuildIndexStatus        *status;
 
     /* Statistics */
     double tuples_indexed;
@@ -62,6 +46,5 @@ void              ldb_ambuildunlogged(Relation index);
 int               GetHnswIndexDimensions(Relation index, IndexInfo *indexInfo);
 void              CheckHnswIndexDimensions(Relation index, Datum arrayDatum, int deimensions);
 void              ldb_reindex_external_index(Oid indrelid);
-void              CheckBuildIndexError(ldb_HnswBuildState *buildstate);
 // todo: does this render my check unnecessary
 #endif  // LDB_HNSW_BUILD_H

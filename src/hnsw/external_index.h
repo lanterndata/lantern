@@ -125,8 +125,7 @@ void StoreExternalIndex(Relation                 index,
                         uint32                   pg_dimension,
                         size_t                   num_added_vectors,
                         external_index_socket_t *external_index_socket,
-                        uint64                   index_file_size,
-                        BuildIndexStatus        *status);
+                        uint64                   index_file_size);
 
 // add the fully constructed index tuple to the index via wal
 // hdr is passed in so num_vectors, first_block_no, last_block_no can be updated
