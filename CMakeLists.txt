@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.3)
 include(CheckSymbolExists)
 
-set(LANTERN_VERSION 0.3.3)
+set(LANTERN_VERSION 0.3.4)
 
 project(
   LanternDB
@@ -264,6 +264,7 @@ set (_update_files
   sql/updates/0.3.0--0.3.1.sql
   sql/updates/0.3.1--0.3.2.sql
   sql/updates/0.3.2--0.3.3.sql
+  sql/updates/0.3.3--0.3.4.sql
 )
 
 # Generate version information for the binary
