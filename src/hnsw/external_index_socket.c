@@ -162,7 +162,7 @@ static void wait_for_data(external_index_socket_t *socket_con, BuildIndexStatus 
 
         if(activity < 0) {
             status->code = BUILD_INDEX_FAILED;
-            strncpy(status->error, "select syscall error", BUILD_INDEX_MAX_ERROR_SIZE);
+            snprintf(status->error, BUILD_INDEX_MAX_ERROR_SIZE, "select syscall error: %s", strerror(errno));
             return;
         }
 
@@ -502,7 +502,7 @@ external_index_socket_t *create_external_index_session(const char               
         memcpy(init_buf, &get_server_msg, sizeof(uint32));
         write_all(socket_con, init_buf, sizeof(uint32), 0, buildstate->status);
 
-        // wait for data to be available for read and also check for interrupts each 5s
+        // wait for data to be available for read and also check for interrupts each 1s
         wait_for_data(socket_con, buildstate->status);
 
         if(buildstate->status->code != BUILD_INDEX_OK) {
