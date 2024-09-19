@@ -160,9 +160,16 @@ static void wait_for_data(external_index_socket_t *socket_con, BuildIndexStatus 
 
         int activity = select(socket_con->fd + 1, &read_fds, NULL, NULL, &timeout);
 
-        if(activity < 0) {
+        // let postgres handle the interrupts
+        if(activity < 0 && errno != EINTR) {
             status->code = BUILD_INDEX_FAILED;
             snprintf(status->error, BUILD_INDEX_MAX_ERROR_SIZE, "select syscall error: %s", strerror(errno));
+            return;
+        }
+
+        // Check for interrupts on each iteration
+        if(INTERRUPTS_PENDING_CONDITION()) {
+            status->code = BUILD_INDEX_INTERRUPT;
             return;
         }
 
@@ -173,12 +180,6 @@ static void wait_for_data(external_index_socket_t *socket_con, BuildIndexStatus 
                 status->code = BUILD_INDEX_FAILED;
                 strncpy(status->error, "error setting socket to blocking mode", BUILD_INDEX_MAX_ERROR_SIZE);
             }
-            return;
-        }
-
-        // Check for interrupts on each iteration
-        if(INTERRUPTS_PENDING_CONDITION()) {
-            status->code = BUILD_INDEX_INTERRUPT;
             return;
         }
     }
