@@ -605,8 +605,8 @@ void external_index_receive_metadata(external_index_socket_t *socket_con,
         return;
     }
 
-    // wait for data to be available
-    wait_for_data(socket_con, status);
+    // disable read timeout
+    set_read_timeout(socket_con->fd, 0, status);
     if(status->code != BUILD_INDEX_OK) {
         return;
     }
