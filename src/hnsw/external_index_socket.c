@@ -155,6 +155,10 @@ static void wait_for_data(external_index_socket_t *socket_con)
         CHECK_FOR_INTERRUPTS();
 
         if(activity < 0) {
+            // Sometimes the select syscall may be interrupted by signals
+            // If this signals are important they would be handled in CHECK_FOR_INTERRUPTS()
+            // If after calling CHECK_FOR_INTERRUPTS() we are still here we can ignore the signal
+            if(errno == EINTR) continue;
             snprintf((char *)&errstr, EXTERNAL_INDEX_MAX_ERR_SIZE, "%s", strerror(errno));
             elog(ERROR, "select syscall error: %s", errstr);
         }
