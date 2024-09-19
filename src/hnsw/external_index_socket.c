@@ -136,12 +136,10 @@ static void wait_for_data(external_index_socket_t *socket_con)
     int flags = fcntl(socket_con->fd, F_GETFL, 0);
     if(flags == -1) {
         elog(ERROR, "error getting socket flags");
-        return;
     }
 
     if(fcntl(socket_con->fd, F_SETFL, flags | O_NONBLOCK) == -1) {
         elog(ERROR, "error setting socket to non-blocking mode");
-        return;
     }
 
     while(1) {
@@ -159,7 +157,6 @@ static void wait_for_data(external_index_socket_t *socket_con)
         if(activity < 0) {
             snprintf((char *)&errstr, EXTERNAL_INDEX_MAX_ERR_SIZE, "%s", strerror(errno));
             elog(ERROR, "select syscall error: %s", errstr);
-            return;
         }
 
         // If socket has data to read
@@ -244,7 +241,6 @@ static void check_external_index_response_status(external_index_socket_t *socket
 
         if(bytes_read < 0) {
             elog(ERROR, "external index socket read failed");
-            return;
         }
 
         total_bytes_read += bytes_read;
