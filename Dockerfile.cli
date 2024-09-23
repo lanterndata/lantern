@@ -5,6 +5,8 @@ COPY . .
 ENV ORT_STRATEGY="system"
 ARG RUSTFLAGS=""
 ENV RUSTFLAGS=$RUSTFLAGS
+ARG CXXFLAGS=""
+ENV CXXFLAGS=$CXXFLAGS
 
 # Remove lantern_extras from workspace
 RUN rm -rf lantern_extras && sed -i -e 's/"lantern_extras",//' Cargo.toml
