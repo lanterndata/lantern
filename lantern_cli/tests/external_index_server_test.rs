@@ -250,6 +250,7 @@ async fn test_external_index_server_indexing() {
         (index_options.num_centroids as u32).to_le_bytes(),
         (index_options.num_subvectors as u32).to_le_bytes(),
         ((tuples.len() / 2) as u32).to_le_bytes(), // test resizing
+        (32 as u32).to_le_bytes(),
     ]
     .concat();
 
@@ -398,6 +399,7 @@ async fn test_external_index_server_indexing_ssl() {
         (index_options.num_centroids as u32).to_le_bytes(),
         (index_options.num_subvectors as u32).to_le_bytes(),
         ((tuples.len() / 2) as u32).to_le_bytes(), // test resizing
+        (32 as u32).to_le_bytes(),
     ]
     .concat();
 
@@ -510,6 +512,7 @@ async fn test_external_index_server_indexing_scalar_quantization() {
         (index_options.num_centroids as u32).to_le_bytes(),
         (index_options.num_subvectors as u32).to_le_bytes(),
         (tuples.len() as u32).to_le_bytes(),
+        (32 as u32).to_le_bytes(),
     ]
     .concat();
 
@@ -587,21 +590,21 @@ async fn test_external_index_server_indexing_hamming_distance() {
         codebook: pq_codebook,
     };
 
-    let tuples = vec![
-        (0, vec![0.0, 0.0, 0.0]),
-        (1, vec![0.0, 0.0, 1.0]),
-        (2, vec![0.0, 0.0, 2.0]),
-        (3, vec![0.0, 0.0, 3.0]),
-        (4, vec![0.0, 1.0, 0.0]),
-        (5, vec![0.0, 1.0, 1.0]),
-        (6, vec![0.0, 1.0, 2.0]),
-        (7, vec![0.0, 1.0, 3.0]),
-        (8, vec![1.0, 0.0, 0.0]),
-        (9, vec![1.0, 0.0, 1.0]),
-        (10, vec![1.0, 0.0, 2.0]),
-        (11, vec![1.0, 0.0, 3.0]),
-        (12, vec![1.0, 1.0, 0.0]),
-        (13, vec![1.0, 1.0, 1.0]),
+    let tuples: Vec<(usize, Vec<i8>)> = vec![
+        (0, vec![0, 0, 0]),
+        (1, vec![0, 0, 1]),
+        (2, vec![0, 0, 2]),
+        (3, vec![0, 0, 3]),
+        (4, vec![0, 1, 0]),
+        (5, vec![0, 1, 1]),
+        (6, vec![0, 1, 2]),
+        (7, vec![0, 1, 3]),
+        (8, vec![1, 0, 0]),
+        (9, vec![1, 0, 1]),
+        (10, vec![1, 0, 2]),
+        (11, vec![1, 0, 3]),
+        (12, vec![1, 1, 0]),
+        (13, vec![1, 1, 1]),
     ];
 
     let mut stream = TcpStream::connect("127.0.0.1:8998").unwrap();
@@ -622,6 +625,7 @@ async fn test_external_index_server_indexing_hamming_distance() {
         (index_options.num_centroids as u32).to_le_bytes(),
         (index_options.num_subvectors as u32).to_le_bytes(),
         (tuples.len() as u32).to_le_bytes(),
+        (1 as u32).to_le_bytes(),
     ]
     .concat();
 
@@ -741,6 +745,7 @@ async fn test_external_index_server_indexing_pq() {
         (index_options.num_centroids as u32).to_le_bytes(),
         (index_options.num_subvectors as u32).to_le_bytes(),
         (tuples.len() as u32).to_le_bytes(),
+        (32 as u32).to_le_bytes(),
     ]
     .concat();
 

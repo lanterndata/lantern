@@ -1,6 +1,5 @@
 use super::cli::{IndexServerArgs, UMetricKind};
 use bitvec::prelude::*;
-use byteorder::{ByteOrder, LittleEndian};
 use glob::glob;
 use itertools::Itertools;
 use rand::Rng;
@@ -15,7 +14,7 @@ use std::path::Path;
 use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use usearch::ffi::{IndexOptions, MetricKind, ScalarKind};
+use usearch::ffi::{IndexOptions, ScalarKind};
 use usearch::Index;
 
 use crate::logger::{LogLevel, Logger};
@@ -32,11 +31,12 @@ pub const INIT_MSG: u32 = 0x13333337;
 pub const END_MSG: u32 = 0x31333337;
 pub const ERR_MSG: u32 = 0x37333337;
 // magic byte + pq + metric_kind + quantization + dim + m + efc + ef + num_centroids +
-// num_subvectors + capacity
-static INDEX_HEADER_LENGTH: usize = INTEGER_SIZE * 11;
+// num_subvectors + capacity + element_bits
+static INDEX_HEADER_LENGTH: usize = INTEGER_SIZE * 12;
 
 enum VectorType {
     F32(Vec<f32>),
+    F16(Vec<f32>),
     I8(Vec<i8>),
 }
 
@@ -84,15 +84,15 @@ fn parse_index_options(
     logger: Arc<Logger>,
     stream: Arc<Mutex<dyn Connection>>,
     buf: &[u8],
-) -> Result<IndexOptions, anyhow::Error> {
-    let mut params: [u32; 9] = [0; 9];
+) -> Result<(IndexOptions, u32, u32), anyhow::Error> {
+    let mut params: [u32; 11] = [0; 11];
 
     for i in 0..params.len() {
         let start_idx = INTEGER_SIZE * i;
         params[i] = u32::from_le_bytes(buf[start_idx..(start_idx + INTEGER_SIZE)].try_into()?);
     }
 
-    let [pq, metric_kind, quantization, dim, m, ef_construction, ef, num_centroids, num_subvectors] =
+    let [pq, metric_kind, quantization, dim, m, ef_construction, ef, num_centroids, num_subvectors, estimated_capacity, element_bits] =
         params;
 
     let pq = pq == 1;
@@ -108,7 +108,7 @@ fn parse_index_options(
 
     let metric = UMetricKind::from_u32(metric_kind)?.value();
 
-    logger.info(&format!("Index Params - pq: {pq}, metric_kind: {:?}, quantization: {:?}, dim: {dim}, m: {m}, ef_construction: {ef_construction}, ef: {ef}, num_subvectors: {num_subvectors}, num_centroids: {num_centroids}", metric, quantization));
+    logger.info(&format!("Index Params - pq: {pq}, metric_kind: {:?}, quantization: {:?}, dim: {dim}, m: {m}, ef_construction: {ef_construction}, ef: {ef}, num_subvectors: {num_subvectors}, num_centroids: {num_centroids}, element_bits: {element_bits}", metric, quantization));
 
     let mut pq_codebook: *const f32 = std::ptr::null();
 
@@ -135,37 +135,46 @@ fn parse_index_options(
         pq_codebook = codebook.as_ptr();
     }
 
-    Ok(IndexOptions {
-        dimensions: dim as usize,
-        metric,
-        quantization,
-        multi: false,
-        connectivity: m as usize,
-        expansion_add: ef_construction as usize,
-        expansion_search: ef as usize,
-        num_threads: 0, // automatic
-        // note: pq_construction and pq_output distinction is not yet implemented in usearch
-        // in the future, if pq_construction is false, we will use full vectors in memory (and
-        // require large memory for construction) but will output pq-quantized graph
-        //
-        // currently, regardless of pq_construction value, as long as pq_output is true,
-        // we construct a pq_quantized index using quantized values during construction
-        pq_construction: pq,
-        pq_output: pq,
-        num_centroids: num_centroids as usize,
-        num_subvectors: num_subvectors as usize,
-        codebook: pq_codebook,
-    })
+    Ok((
+        IndexOptions {
+            dimensions: dim as usize,
+            metric,
+            quantization,
+            multi: false,
+            connectivity: m as usize,
+            expansion_add: ef_construction as usize,
+            expansion_search: ef as usize,
+            num_threads: 0, // automatic
+            // note: pq_construction and pq_output distinction is not yet implemented in usearch
+            // in the future, if pq_construction is false, we will use full vectors in memory (and
+            // require large memory for construction) but will output pq-quantized graph
+            //
+            // currently, regardless of pq_construction value, as long as pq_output is true,
+            // we construct a pq_quantized index using quantized values during construction
+            pq_construction: pq,
+            pq_output: pq,
+            num_centroids: num_centroids as usize,
+            num_subvectors: num_subvectors as usize,
+            codebook: pq_codebook,
+        },
+        element_bits,
+        estimated_capacity,
+    ))
 }
 
 fn bytes_to_f32_vec_le(bytes: &[u8]) -> Vec<f32> {
     let mut float_vec = Vec::with_capacity(bytes.len() / 4);
 
     for chunk in bytes.chunks_exact(4) {
-        float_vec.push(LittleEndian::read_f32(chunk));
+        float_vec.push(f32::from_le_bytes(chunk.try_into().unwrap()));
     }
 
     float_vec
+}
+
+// TODO:: change to f16 once usearch accepts it
+fn bytes_to_f16_vec_le(bytes: &[u8]) -> Vec<f32> {
+    todo!("not implemented");
 }
 
 fn parse_tuple(buf: &[u8], element_bits: usize) -> Result<Row, anyhow::Error> {
@@ -182,6 +191,7 @@ fn parse_tuple(buf: &[u8], element_bits: usize) -> Result<Row, anyhow::Error> {
                 })
                 .concat(),
         ),
+        16 => VectorType::F16(bytes_to_f16_vec_le(&buf[LABEL_SIZE..])),
         _ => VectorType::F32(bytes_to_f32_vec_le(&buf[LABEL_SIZE..])),
     };
 
@@ -199,10 +209,10 @@ fn initialize_index(
     match read_frame(&mut soc_stream, buf, INDEX_HEADER_LENGTH, Some(INIT_MSG))? {
         ProtocolMessage::Init(buf) => {
             drop(soc_stream);
-            let index_options = parse_index_options(
+            let (index_options, element_bits, estimated_capacity) = parse_index_options(
                 logger.clone(),
                 stream.clone(),
-                &buf[PROTOCOL_HEADER_SIZE..INDEX_HEADER_LENGTH - PROTOCOL_HEADER_SIZE],
+                &buf[PROTOCOL_HEADER_SIZE..INDEX_HEADER_LENGTH],
             )?;
             logger.info(&format!(
                 "Creating index with parameters dimensions={} m={} ef={} ef_construction={}",
@@ -213,30 +223,13 @@ fn initialize_index(
             ));
 
             let index = Index::new(&index_options)?;
-            let estimated_capacity: u32 = u32::from_le_bytes(
-                buf[INDEX_HEADER_LENGTH - INTEGER_SIZE..INDEX_HEADER_LENGTH]
-                    .try_into()
-                    .unwrap(),
-            );
             logger.info(&format!("Estimated capcity is {estimated_capacity}"));
             index.reserve(estimated_capacity as usize)?;
             let mut soc_stream = stream.lock().unwrap();
             // send success code
             soc_stream.write_data(&[0]).unwrap();
 
-            let element_bits = match index_options.metric {
-                MetricKind::Hamming => 1,
-                _ => match index_options.quantization {
-                    ScalarKind::B1 => 1,
-                    ScalarKind::I8 => 8,
-                    ScalarKind::F16 => 16,
-                    ScalarKind::F32 => 32,
-                    ScalarKind::F64 => 64,
-                    _ => anyhow::bail!("unsupported quantization"),
-                },
-            };
-
-            Ok((element_bits, ThreadSafeIndex(index)))
+            Ok((element_bits as usize, ThreadSafeIndex(index)))
         }
         _ => anyhow::bail!("send init message first"),
     }
@@ -314,7 +307,7 @@ fn read_frame<'a>(
         anyhow::bail!("Invalid frame received");
     }
 
-    match LittleEndian::read_u32(&buf[0..PROTOCOL_HEADER_SIZE]) {
+    match u32::from_le_bytes(buf[0..4].try_into().unwrap()) {
         END_MSG => Ok(ProtocolMessage::Exit),
         msg => {
             if let Some(wanted_hdr) = match_header {
@@ -379,6 +372,7 @@ pub fn create_streaming_usearch_index(
                     let index = index_ref.read().unwrap();
                     match row.1 {
                         VectorType::F32(vec) => index.0.add(row.0, &vec)?,
+                        VectorType::F16(vec) => index.0.add(row.0, &vec)?,
                         VectorType::I8(vec) => index.0.add(row.0, &vec)?,
                     }
                 } else {
