@@ -63,7 +63,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [skylake]
+        target: [skylake, cascadelake, icelake-server, sapphirerapids]
     steps:
       - uses: actions/checkout@v4
       - name: Set up QEMU
@@ -89,7 +89,6 @@ jobs:
           platforms: |
             linux/amd64
           build-args: |
-            RUSTFLAGS=${{ format('-C target-cpu={0}', matrix.target) }}
             CXXFLAGS=${{ format('-march={0} -DUSEARCH_USE_SIMSIMD=1 -DUSEARCH_USE_FP16LIB=0', matrix.target) }}
           file: Dockerfile.cli
           push: true
