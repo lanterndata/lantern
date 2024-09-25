@@ -91,6 +91,11 @@ void StoreExternalIndexNodes(Relation             index,
 
     /* Add all the vectors to the index pages */
     while(bytes_written < buffer_size) {
+        /************* extract node from usearch index************/
+        node = data + bytes_written;
+        node_level = level_from_node(node);
+        node_size = node_tuple_size(node, usearch_dimension, metadata);
+
         // note: even if the condition is true, nodepage may be too large
         // as the condition does not take into account the flexible array component
         // force_create_page is set to true in 2 conditions:
@@ -98,7 +103,7 @@ void StoreExternalIndexNodes(Relation             index,
         //      This is set based on condition above when the last_data_block is equal to InvalidBlockNumber
         //   2. There's not enough space in current page to store the node, so we should create a new page.
         //      This is set if PageAddItem will return InvalidOffsetNumber
-        if(force_create_page || (PageGetFreeSpace(page) < sizeof(HnswIndexTuple) + pg_dimension * sizeof(float))) {
+        if(force_create_page || (PageGetFreeSpace(page) < sizeof(HnswIndexTuple) + node_size)) {
             // create new page
             newbuf = ReadBufferExtended(index, forkNum, P_NEW, RBM_NORMAL, NULL);
             blockno = BufferGetBlockNumber(newbuf);
@@ -128,10 +133,6 @@ void StoreExternalIndexNodes(Relation             index,
         }
 
         memset(bufferpage, 0, BLCKSZ);
-        /************* extract node from usearch index************/
-        node = data + bytes_written;
-        node_level = level_from_node(node);
-        node_size = node_tuple_size(node, usearch_dimension, metadata);
 
         bufferpage->seqid = node_id;
         bufferpage->size = node_size;

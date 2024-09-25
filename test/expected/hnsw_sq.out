@@ -45,7 +45,7 @@ INFO:  done saving 1000 vectors
 SELECT * FROM ldb_get_indexes('sift_base1k');
  indexname |  size  |                                             indexdef                                              | indisvalid 
 -----------+--------+---------------------------------------------------------------------------------------------------+------------
- ind16     | 408 kB | CREATE INDEX ind16 ON sift_base1k USING lantern_hnsw (v) WITH (dim='128', m='8', quant_bits='16') | t
+ ind16     | 400 kB | CREATE INDEX ind16 ON sift_base1k USING lantern_hnsw (v) WITH (dim='128', m='8', quant_bits='16') | t
  ind32     | 680 kB | CREATE INDEX ind32 ON sift_base1k USING lantern_hnsw (v) WITH (dim='128', m='8', quant_bits='32') | t
 (2 rows)
 
@@ -93,14 +93,14 @@ INFO:  done saving 1000 vectors
 SELECT * FROM ldb_get_indexes('sift_base1k');
  indexname |  size  |                                                  indexdef                                                   | indisvalid 
 -----------+--------+-------------------------------------------------------------------------------------------------------------+------------
- ind8      | 280 kB | CREATE INDEX ind8 ON sift_base1k USING lantern_hnsw (v_transformed) WITH (dim='128', m='8', quant_bits='8') | t
+ ind8      | 272 kB | CREATE INDEX ind8 ON sift_base1k USING lantern_hnsw (v_transformed) WITH (dim='128', m='8', quant_bits='8') | t
 (1 row)
 
 EXPLAIN SELECT id, ROUND((v_transformed <-> :'v_transformed')::numeric, 1) as dist FROM sift_base1k ORDER BY v_transformed <-> :'v_transformed' LIMIT 10;
                                                                                                                                                                                                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                    
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Limit  (cost=0.00..9.30 rows=10 width=40)
-   ->  Index Scan using ind8 on sift_base1k  (cost=0.00..930.50 rows=1000 width=40)
+ Limit  (cost=0.00..9.26 rows=10 width=40)
+   ->  Index Scan using ind8 on sift_base1k  (cost=0.00..926.29 rows=1000 width=40)
          Order By: (v_transformed <-> '{-0.49,-0.5,-0.5,-0.5,-0.5,-0.5,-0.29,-0.15,-0.49,-0.5,-0.5,-0.5,-0.5,0.27,0.01,-0.08,0.16,-0.48,-0.5,-0.5,-0.5,0.36,0.9,0.21,0.02,-0.49,-0.5,-0.5,-0.5,-0.5,-0.27,0.2,-0.48,-0.5,-0.5,-0.5,-0.5,0.14,0.23,0,-0.39,-0.5,-0.5,-0.5,-0.5,0.9,0.47,-0.32,0.9,0.14,-0.5,-0.5,-0.5,0.49,0.01,0.15,0.28,-0.39,-0.5,-0.5,-0.5,-0.5,-0.09,0.26,-0.5,-0.5,-0.5,-0.5,-0.5,0.74,0.32,-0.48,-0.02,-0.49,-0.5,-0.5,-0.5,0.68,-0.19,-0.45,0.9,-0.29,-0.5,-0.5,-0.5,-0.46,-0.38,0.28,-0.38,-0.5,-0.5,-0.5,-0.5,-0.5,0.08,0.67,-0.49,-0.5,-0.5,-0.5,-0.48,-0.25,-0.43,-0.48,-0.04,-0.48,-0.5,-0.5,-0.49,-0.38,-0.46,-0.42,0.9,-0.41,-0.5,-0.5,-0.5,-0.49,-0.42,-0.34,-0.47,-0.5,-0.5,-0.5,-0.5,-0.5,-0.29,-0.16}'::real[])
 (3 rows)
 
@@ -133,7 +133,7 @@ INFO:  done saving 1000 vectors
 SELECT * FROM ldb_get_indexes('sift_base1k');
  indexname |  size  |                                                  indexdef                                                   | indisvalid 
 -----------+--------+-------------------------------------------------------------------------------------------------------------+------------
- ind1      | 168 kB | CREATE INDEX ind1 ON sift_base1k USING lantern_hnsw (v_transformed) WITH (dim='128', m='8', quant_bits='1') | t
+ ind1      | 160 kB | CREATE INDEX ind1 ON sift_base1k USING lantern_hnsw (v_transformed) WITH (dim='128', m='8', quant_bits='1') | t
 (1 row)
 
 EXPLAIN SELECT id, ROUND((v_transformed <-> :'v_transformed42')::numeric, 1) as dist FROM sift_base1k ORDER BY v_transformed <-> :'v_transformed42' LIMIT 4;
