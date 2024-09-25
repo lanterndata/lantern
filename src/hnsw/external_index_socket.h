@@ -32,6 +32,7 @@ typedef struct external_index_params_t
     uint32                num_centroids;
     uint32                num_subvectors;
     uint32                estimated_capcity;
+    uint32                element_bits;
 
 } external_index_params_t;
 

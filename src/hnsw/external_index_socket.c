@@ -332,6 +332,7 @@ void create_external_index_session(const char                   *host,
     struct addrinfo *serv_addr, hints = {0};
     char             init_response[ EXTERNAL_INDEX_INIT_BUFFER_SIZE ] = {0};
     int64            bytes_read = 0;
+    uint32           element_bits = 0;
 
     if(!is_little_endian() || LDB_FAILURE_POINT_IS_ENABLED("crash_on_check_little_endian")) {
         elog(ERROR, "external indexing is supported only for little endian byte ordering");
@@ -445,18 +446,23 @@ void create_external_index_session(const char                   *host,
             address, port_number, (bool)is_secure, params, buildstate, estimated_row_count);
     }
 
-    external_index_params_t index_params = {
-        .pq = params->pq,
-        .metric_kind = params->metric_kind,
-        .quantization = params->quantization,
-        .dim = (uint32)params->dimensions,
-        .m = (uint32)params->connectivity,
-        .ef_construction = (uint32)params->expansion_add,
-        .ef = (uint32)params->expansion_search,
-        .num_centroids = (uint32)params->num_centroids,
-        .num_subvectors = (uint32)params->num_subvectors,
-        .estimated_capcity = estimated_row_count,
-    };
+    if(params->metric_kind == usearch_metric_hamming_k) {
+        element_bits = 1;
+    } else {
+        element_bits = 32;
+    }
+
+    external_index_params_t index_params = {.pq = params->pq,
+                                            .metric_kind = params->metric_kind,
+                                            .quantization = params->quantization,
+                                            .dim = (uint32)params->dimensions,
+                                            .m = (uint32)params->connectivity,
+                                            .ef_construction = (uint32)params->expansion_add,
+                                            .ef = (uint32)params->expansion_search,
+                                            .num_centroids = (uint32)params->num_centroids,
+                                            .num_subvectors = (uint32)params->num_subvectors,
+                                            .estimated_capcity = estimated_row_count,
+                                            .element_bits = element_bits};
 
     uint32 hdr_msg = EXTERNAL_INDEX_INIT_MSG;
     memcpy(init_buf, &hdr_msg, EXTERNAL_INDEX_MAGIC_MSG_SIZE);
