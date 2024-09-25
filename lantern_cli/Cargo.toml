@@ -1,6 +1,6 @@
 [package]
 name = "lantern_cli"
-version = "0.3.25"
+version = "0.3.26"
 edition = "2021"
 
 [[bin]]
@@ -40,7 +40,7 @@ strum = { version = "0.25", features = ["derive"] }
 tiktoken-rs = "0.5.8"
 regex = "1.10.3"
 postgres-types = { version = "0.2.6", features = ["derive"] }
-usearch = { git = "https://github.com/Ngalstyan4/usearch.git", rev = "de8580c7e4f8d43d878905a7c81ec65fe0d5a2db" }
+usearch = { git = "https://github.com/Ngalstyan4/usearch.git", rev = "67d10026f776276781f230dccec3221f2546b68c" }
 actix-web = { version = "4.5.1", optional = true }
 env_logger = { version = "0.11.2", optional = true }
 deadpool-postgres = { version = "0.12.1", optional = true }

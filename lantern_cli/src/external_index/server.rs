@@ -1,7 +1,5 @@
 use super::cli::{IndexServerArgs, UMetricKind};
-use bitvec::prelude::*;
 use glob::glob;
-use itertools::Itertools;
 use rand::Rng;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use rustls::{ServerConfig, ServerConnection, StreamOwned};
@@ -34,13 +32,7 @@ pub const ERR_MSG: u32 = 0x37333337;
 // num_subvectors + capacity + element_bits
 static INDEX_HEADER_LENGTH: usize = INTEGER_SIZE * 12;
 
-enum VectorType {
-    F32(Vec<f32>),
-    F16(Vec<f32>),
-    I8(Vec<i8>),
-}
-
-type Row = (u64, VectorType);
+type Row = (u64, Vec<u8>);
 
 struct ThreadSafeIndex(Index);
 
@@ -172,28 +164,9 @@ fn bytes_to_f32_vec_le(bytes: &[u8]) -> Vec<f32> {
     float_vec
 }
 
-// TODO:: change to f16 once usearch accepts it
-fn bytes_to_f16_vec_le(bytes: &[u8]) -> Vec<f32> {
-    todo!("not implemented");
-}
-
-fn parse_tuple(buf: &[u8], element_bits: usize) -> Result<Row, anyhow::Error> {
+fn parse_tuple(buf: &[u8]) -> Result<Row, anyhow::Error> {
     let label = u64::from_le_bytes(buf[..LABEL_SIZE].try_into()?);
-    let vec: VectorType = match element_bits {
-        1 => VectorType::I8(
-            buf[LABEL_SIZE..]
-                .iter()
-                .map(|e| {
-                    BitSlice::<_, Lsb0>::from_element(e)
-                        .iter()
-                        .map(|n| if *n.as_ref() { 0 } else { 1 })
-                        .collect::<Vec<i8>>()
-                })
-                .concat(),
-        ),
-        16 => VectorType::F16(bytes_to_f16_vec_le(&buf[LABEL_SIZE..])),
-        _ => VectorType::F32(bytes_to_f32_vec_le(&buf[LABEL_SIZE..])),
-    };
+    let vec: Vec<u8> = buf[LABEL_SIZE..].to_vec();
 
     Ok((label, vec))
 }
@@ -263,7 +236,7 @@ fn receive_rows(
         match read_frame(&mut stream, buf, expected_payload_size, None)? {
             ProtocolMessage::Exit => break,
             ProtocolMessage::Data(buf) => {
-                let row = parse_tuple(&buf, element_bits)?;
+                let row = parse_tuple(&buf)?;
 
                 if received_rows == current_capacity {
                     current_capacity *= 2;
@@ -370,11 +343,7 @@ pub fn create_streaming_usearch_index(
 
                 if let Ok(row) = row_result {
                     let index = index_ref.read().unwrap();
-                    match row.1 {
-                        VectorType::F32(vec) => index.0.add(row.0, &vec)?,
-                        VectorType::F16(vec) => index.0.add(row.0, &vec)?,
-                        VectorType::I8(vec) => index.0.add(row.0, &vec)?,
-                    }
+                    index.0.add_raw(row.0, &row.1, element_bits)?;
                 } else {
                     // channel has been closed
                     break;
