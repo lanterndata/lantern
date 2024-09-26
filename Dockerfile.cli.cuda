@@ -6,9 +6,12 @@ COPY . .
 # Remove lantern_extras from workspace
 RUN rm -rf lantern_extras && sed -i -e 's/"lantern_extras",//' Cargo.toml
 
+ENV CC=/usr/bin/clang-18
+ENV CXX=/usr/bin/clang++-18
 # Build your program for release
 RUN apt update && \
-  apt install -y --no-install-recommends wget build-essential pkg-config clang curl libssl-dev && \
+  apt install -y --no-install-recommends lsb-release wget software-properties-common gnupg pkg-config curl libssl-dev && \
+  curl -s https://apt.llvm.org/llvm.sh | bash -s -- 18 && \
   cargo build --release --package lantern_cli
 
 FROM nvcr.io/nvidia/cuda:11.8.0-runtime-ubuntu22.04

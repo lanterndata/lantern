@@ -187,15 +187,16 @@ fn initialize_index(
                 stream.clone(),
                 &buf[PROTOCOL_HEADER_SIZE..INDEX_HEADER_LENGTH],
             )?;
+            let index = Index::new(&index_options)?;
             logger.info(&format!(
-                "Creating index with parameters dimensions={} m={} ef={} ef_construction={}",
+                "Creating index with parameters dimensions={} m={} ef={} ef_construction={}, hardware_acceleration={}",
                 index_options.dimensions,
                 index_options.connectivity,
                 index_options.expansion_search,
-                index_options.expansion_add
+                index_options.expansion_add,
+                index.hardware_acceleration()
             ));
 
-            let index = Index::new(&index_options)?;
             logger.info(&format!("Estimated capcity is {estimated_capacity}"));
             index.reserve(estimated_capacity as usize)?;
             let mut soc_stream = stream.lock().unwrap();

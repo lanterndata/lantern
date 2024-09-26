@@ -8,12 +8,15 @@ ENV RUSTFLAGS=$RUSTFLAGS
 ARG CXXFLAGS=""
 ENV CXXFLAGS=$CXXFLAGS
 
+ENV CC=/usr/bin/clang-18
+ENV CXX=/usr/bin/clang++-18
 # Remove lantern_extras from workspace
 RUN rm -rf lantern_extras && sed -i -e 's/"lantern_extras",//' Cargo.toml
 
 # Build your program for release
 RUN apt update && \
-  apt install -y --no-install-recommends wget build-essential pkg-config clang curl libssl-dev && \
+  apt install -y --no-install-recommends lsb-release wget software-properties-common gnupg pkg-config curl libssl-dev && \
+  curl -s https://apt.llvm.org/llvm.sh | bash -s -- 18 && \
   cargo build --release --package lantern_cli
 
 FROM debian:12
