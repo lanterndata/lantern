@@ -40,7 +40,7 @@ strum = { version = "0.25", features = ["derive"] }
 tiktoken-rs = "0.5.8"
 regex = "1.10.3"
 postgres-types = { version = "0.2.6", features = ["derive"] }
-usearch = { git = "https://github.com/var77/usearch.git", rev = "7512b501307f4983e2dee03f2352e638a6605dd0" }
+usearch = { git = "https://github.com/var77/usearch.git", rev = "8dfb64cb3bd65574db1759da7c0bd646ad664df5" }
 actix-web = { version = "4.5.1", optional = true }
 env_logger = { version = "0.11.2", optional = true }
 deadpool-postgres = { version = "0.12.1", optional = true }
