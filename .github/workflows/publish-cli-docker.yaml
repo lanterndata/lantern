@@ -63,7 +63,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [skylake, cascadelake, icelake-server, sapphirerapids]
+        target: [skylake, cascadelake, icelake-server]
     steps:
       - uses: actions/checkout@v4
       - name: Set up QEMU
