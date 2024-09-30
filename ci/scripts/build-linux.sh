@@ -94,5 +94,7 @@ function cleanup_environment() {
 
   # Chown to postgres for running tests
   chown -R postgres:postgres /tmp/lantern
-  chown -R postgres:postgres /tmp/pgvector
+  if [ -d /tmp/pgvector ]; then
+    chown -R postgres:postgres /tmp/pgvector
+  fi
 }
