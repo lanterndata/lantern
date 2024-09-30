@@ -8,12 +8,12 @@ static SSL_CTX *ssl_ctx_create(void)
     SSL_CTX *ctx;
     uint64   options;
 
-#if(OPENSSL_VERSION_NUMBER >= 0x1010000fL)
+#if OPENSSL_VERSION_NUMBER >= 0x1010000fL
     /* OpenSSL >= v1.1 */
     ctx = SSL_CTX_new(TLS_method());
 
     options = SSL_OP_NO_SSLv3 | SSL_OP_NO_TLSv1 | SSL_OP_NO_TLSv1_1;
-#elif(OPENSSL_VERSION_NUMBER >= 0x1000000fL)
+#elif OPENSSL_VERSION_NUMBER >= 0x1000000fL
     /* OpenSSL >= v1.0 */
     ctx = SSL_CTX_new(SSLv23_method());
 
