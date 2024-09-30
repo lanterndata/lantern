@@ -19,7 +19,7 @@ function setup_environment() {
   export DEBIAN_FRONTEND=noninteractive
   export PG_VERSION=${PG_VERSION:-15}
   export GITHUB_OUTPUT=${GITHUB_OUTPUT:-/dev/null}
-  export PGVECTOR_VERSION=0.6.1
+  export PGVECTOR_VERSION=0.7.4-lanterncloud
   #fix pg_cron at the latest commit of the time
   export PG_CRON_COMMIT_SHA=7e91e72b1bebc5869bb900d9253cc9e92518b33f
 }
@@ -39,21 +39,23 @@ function clone_or_use_source() {
 }
 
 function install_external_dependencies() {
-  # Install pgvector
-  pushd /tmp
-    wget --quiet -O pgvector.tar.gz https://github.com/pgvector/pgvector/archive/refs/tags/v${PGVECTOR_VERSION}.tar.gz
-    tar xzf pgvector.tar.gz
-    rm -rf pgvector || true
-    mv pgvector-${PGVECTOR_VERSION} pgvector
-    pushd pgvector
-      # Set max ef_search to 50000
-      # .bak trick is needed to make this work on both mac and linux
-      # https://stackoverflow.com/questions/5694228/sed-in-place-flag-that-works-both-on-mac-bsd-and-linux
-      sed -i.bak "s/#define HNSW_MAX_EF_SEARCH.*/#define HNSW_MAX_EF_SEARCH 50000/g" src/hnsw.h
-      make -j && make install
-    popd
+  if [[ $PG_VERSION -gt 12 ]]; then
+    # Install pgvector
+    pushd /tmp
+      wget --quiet -O pgvector.tar.gz https://github.com/lanterndata/pgvector/archive/refs/tags/v${PGVECTOR_VERSION}.tar.gz
+      tar xzf pgvector.tar.gz
+      rm -rf pgvector || true
+      mv pgvector-${PGVECTOR_VERSION} pgvector
+      pushd pgvector
+        # Set max ef_search to 50000
+        # .bak trick is needed to make this work on both mac and linux
+        # https://stackoverflow.com/questions/5694228/sed-in-place-flag-that-works-both-on-mac-bsd-and-linux
+        sed -i.bak "s/#define HNSW_MAX_EF_SEARCH.*/#define HNSW_MAX_EF_SEARCH 50000/g" src/hnsw.h
+        make -j && make install
+      popd
 
-  popd
+    popd
+  fi
 }
 
 function build_and_install() {

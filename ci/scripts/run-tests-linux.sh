@@ -27,23 +27,25 @@ function wait_for_pg(){
 }
 
 function run_pgvector_tests(){
-  pushd /tmp/pgvector
-    # Add lantern to load-extension in pgregress
-    sed -i '/REGRESS_OPTS \=/ s/$/ --load-extension lantern/'  Makefile
+  if [[ $PG_VERSION -gt 12 ]]; then
+    pushd /tmp/pgvector
+      # Add lantern to load-extension in pgregress
+      sed -i '/REGRESS_OPTS \=/ s/$/ --load-extension lantern/'  Makefile
 
-    # Set pgvector_compat flag in test files
-    for file in ./test/sql/*; do
-      echo 'SET lantern.pgvector_compat=TRUE;' | cat - $file > temp && mv temp $file
-    done
+      # Set pgvector_compat flag in test files
+      for file in ./test/sql/*; do
+        echo 'SET lantern.pgvector_compat=TRUE;' | cat - $file > temp && mv temp $file
+      done
 
-    # Set pgvector_compat flag in result files
-    for file in ./test/expected/*.out; do
-      echo 'SET lantern.pgvector_compat=TRUE;' | cat - $file > temp && mv temp $file
-    done
+      # Set pgvector_compat flag in result files
+      for file in ./test/expected/*.out; do
+        echo 'SET lantern.pgvector_compat=TRUE;' | cat - $file > temp && mv temp $file
+      done
 
-    # Run tests
-    make installcheck
-  popd
+      # Run tests
+      make installcheck
+    popd
+  fi
 }
 
 function run_db_tests(){
