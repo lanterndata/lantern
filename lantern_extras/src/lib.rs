@@ -28,7 +28,7 @@ pub static DAEMON_DATABASES: GucSetting<Option<&'static CStr>> =
 #[pg_guard]
 pub unsafe extern "C" fn _PG_init() {
     BackgroundWorkerBuilder::new("Lantern Daemon")
-        .set_function("background_worker_main")
+        .set_function("lantern_daemon_worker")
         .set_library("lantern_extras")
         .set_restart_time(Some(Duration::from_secs(5)))
         .enable_spi_access()
@@ -94,7 +94,7 @@ pub unsafe extern "C" fn _PG_init() {
 
 #[pg_guard]
 #[no_mangle]
-pub extern "C" fn background_worker_main() {
+pub extern "C" fn lantern_daemon_worker() {
     BackgroundWorker::attach_signal_handlers(SignalWakeFlags::SIGHUP | SignalWakeFlags::SIGTERM);
 
     BackgroundWorker::connect_worker_to_spi(Some("postgres"), None);

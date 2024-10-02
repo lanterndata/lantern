@@ -1,5 +1,6 @@
 use lantern_cli::{
     daemon::{cli::DaemonArgs, start},
+    embeddings::core::{cohere_runtime::CohereRuntimeParams, openai_runtime::OpenAiRuntimeParams},
     logger::{LogLevel, Logger},
     types::AnyhowVoidResult,
     utils::{get_full_table_name, quote_ident},
@@ -8,7 +9,10 @@ use pgrx::{bgworkers::BackgroundWorker, prelude::*};
 use tokio::runtime::Runtime;
 use tokio_util::sync::CancellationToken;
 
-use crate::DAEMON_DATABASES;
+use crate::{
+    COHERE_TOKEN, DAEMON_DATABASES, OPENAI_AZURE_API_TOKEN, OPENAI_AZURE_ENTRA_TOKEN,
+    OPENAI_DEPLOYMENT_URL, OPENAI_TOKEN,
+};
 
 pub fn start_daemon(
     embeddings: bool,
@@ -109,6 +113,58 @@ fn add_embedding_job<'a>(
     pk: default!(&'a str, "'id'"),
     schema: default!(&'a str, "'public'"),
 ) -> Result<i32, anyhow::Error> {
+    let mut params = runtime_params.to_owned();
+    if params == "{}" {
+        match runtime {
+            "openai" => {
+                let base_url = if let Some(deployment_url) = OPENAI_DEPLOYMENT_URL.get() {
+                    Some(deployment_url.to_str().unwrap().to_owned())
+                } else {
+                    None
+                };
+
+                let api_token = if let Some(api_token) = OPENAI_TOKEN.get() {
+                    Some(api_token.to_str().unwrap().to_owned())
+                } else {
+                    None
+                };
+
+                let azure_api_token = if let Some(api_token) = OPENAI_AZURE_API_TOKEN.get() {
+                    Some(api_token.to_str().unwrap().to_owned())
+                } else {
+                    None
+                };
+
+                let azure_entra_token = if let Some(api_token) = OPENAI_AZURE_ENTRA_TOKEN.get() {
+                    Some(api_token.to_str().unwrap().to_owned())
+                } else {
+                    None
+                };
+
+                params = serde_json::to_string(&OpenAiRuntimeParams {
+                    dimensions: Some(1536),
+                    base_url,
+                    api_token,
+                    azure_api_token,
+                    azure_entra_token,
+                })?;
+            }
+            "cohere" => {
+                let api_token = if let Some(api_token) = COHERE_TOKEN.get() {
+                    Some(api_token.to_str().unwrap().to_owned())
+                } else {
+                    None
+                };
+
+                params = serde_json::to_string(&CohereRuntimeParams {
+                    api_token,
+                    input_type: Some("search_document".to_owned()),
+                })?;
+            }
+            _ => {}
+        }
+    }
+
     let id: Option<i32> = Spi::get_one_with_args(
         &format!(
             r#"
@@ -127,7 +183,7 @@ fn add_embedding_job<'a>(
             (PgBuiltInOids::TEXTOID.oid(), dst_column.into_datum()),
             (PgBuiltInOids::TEXTOID.oid(), embedding_model.into_datum()),
             (PgBuiltInOids::TEXTOID.oid(), runtime.into_datum()),
-            (PgBuiltInOids::TEXTOID.oid(), runtime_params.into_datum()),
+            (PgBuiltInOids::TEXTOID.oid(), params.into_datum()),
         ],
     )?;
 
@@ -244,6 +300,46 @@ pub mod tests {
             let id: Option<i32> = id.first().get(1)?;
 
             assert_eq!(id.is_none(), false);
+            Ok::<(), anyhow::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[pg_test]
+    fn test_add_daemon_job_default_params() {
+        Spi::connect(|mut client| {
+            // wait for daemon
+            std::thread::sleep(Duration::from_secs(5));
+            client.update(
+                "
+                CREATE TABLE t1 (id serial primary key, title text);
+                SET lantern_extras.openai_token='test_openai';
+                SET lantern_extras.cohere_token='test_cohere';
+                ",
+                None,
+                None,
+            )?;
+            let id = client.select("SELECT add_embedding_job('t1', 'title', 'title_embedding', 'BAAI/bge-small-en', 'openai', '{}', 'id', 'public')", None, None)?;
+
+            let id: Option<i32> = id.first().get(1)?;
+
+            assert_eq!(id.is_none(), false);
+
+            let rows = client.select("SELECT (runtime_params->'api_token')::text as token FROM _lantern_extras_internal.embedding_generation_jobs WHERE id=$1", None, Some(vec![(PgBuiltInOids::INT4OID.oid(), id.into_datum())]))?;
+            let api_token: Option<String> = rows.first().get(1)?;
+
+            assert_eq!(api_token.unwrap(), "\"test_openai\"".to_owned());
+
+            let id = client.select("SELECT add_embedding_job('t1', 'title', 'title_embedding', 'BAAI/bge-small-en', 'cohere', '{}', 'id', 'public')", None, None)?;
+
+            let id: Option<i32> = id.first().get(1)?;
+
+            assert_eq!(id.is_none(), false);
+
+            let rows = client.select("SELECT (runtime_params->'api_token')::text as token FROM _lantern_extras_internal.embedding_generation_jobs WHERE id=$1", None, Some(vec![(PgBuiltInOids::INT4OID.oid(), id.into_datum())]))?;
+            let api_token: Option<String> = rows.first().get(1)?;
+
+            assert_eq!(api_token.unwrap(), "\"test_cohere\"".to_owned());
             Ok::<(), anyhow::Error>(())
         })
         .unwrap();
