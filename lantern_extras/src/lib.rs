@@ -1,5 +1,7 @@
 use core::ffi::CStr;
-use pgrx::{prelude::*, GucContext, GucFlags, GucRegistry, GucSetting};
+use pgrx::{bgworkers::*, prelude::*, GucContext, GucFlags, GucRegistry, GucSetting};
+use std::time::Duration;
+use tokio_util::sync::CancellationToken;
 
 pgrx::pg_module_magic!();
 pub mod daemon;
@@ -25,6 +27,13 @@ pub static DAEMON_DATABASES: GucSetting<Option<&'static CStr>> =
 #[allow(non_snake_case)]
 #[pg_guard]
 pub unsafe extern "C" fn _PG_init() {
+    BackgroundWorkerBuilder::new("Lantern Daemon")
+        .set_function("background_worker_main")
+        .set_library("lantern_extras")
+        .set_restart_time(Some(Duration::from_secs(5)))
+        .enable_spi_access()
+        .load();
+
     GucRegistry::define_string_guc(
         "lantern_extras.openai_token",
         "OpenAI API token.",
@@ -81,12 +90,34 @@ pub unsafe extern "C" fn _PG_init() {
         GucContext::Sighup,
         GucFlags::NO_SHOW_ALL,
     );
+}
+
+#[pg_guard]
+#[no_mangle]
+pub extern "C" fn background_worker_main() {
+    BackgroundWorker::attach_signal_handlers(SignalWakeFlags::SIGHUP | SignalWakeFlags::SIGTERM);
+
+    BackgroundWorker::connect_worker_to_spi(Some("postgres"), None);
+
+    let mut cancellation_token = CancellationToken::new();
+    let mut started = false;
 
     if ENABLE_DAEMON.get() {
-        warning!("Lantern Daemon in SQL is experimental and can lead to undefined behaviour");
-        // TODO:: Make extension working with shared_preload_libs and start daemon only when
-        // started from shared_preload_libs
-        daemon::start_daemon(true, false, false).unwrap();
+        daemon::start_daemon(true, false, false, cancellation_token.clone()).unwrap();
+        started = true;
+    }
+
+    while BackgroundWorker::wait_latch(Some(Duration::from_secs(10))) {
+        if BackgroundWorker::sighup_received() {
+            if ENABLE_DAEMON.get() && !started {
+                cancellation_token = CancellationToken::new();
+                daemon::start_daemon(true, false, false, cancellation_token.clone()).unwrap();
+                started = true;
+            } else if !ENABLE_DAEMON.get() && started {
+                cancellation_token.cancel();
+                started = false;
+            }
+        }
     }
 }
 
@@ -97,6 +128,10 @@ pub mod pg_test {
     }
 
     pub fn postgresql_conf_options() -> Vec<&'static str> {
-        vec!["lantern_extras.enable_daemon=true"]
+        vec![
+            "shared_preload_libraries='lantern_extras.so'",
+            "lantern_extras.daemon_databases='pgrx_tests'",
+            "lantern_extras.enable_daemon=true",
+        ]
     }
 }

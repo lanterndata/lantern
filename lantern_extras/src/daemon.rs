@@ -1,12 +1,10 @@
-use std::time::{Duration, Instant};
-
 use lantern_cli::{
     daemon::{cli::DaemonArgs, start},
     logger::{LogLevel, Logger},
     types::AnyhowVoidResult,
     utils::{get_full_table_name, quote_ident},
 };
-use pgrx::prelude::*;
+use pgrx::{bgworkers::BackgroundWorker, prelude::*};
 use tokio::runtime::Runtime;
 use tokio_util::sync::CancellationToken;
 
@@ -16,10 +14,11 @@ pub fn start_daemon(
     embeddings: bool,
     indexing: bool,
     autotune: bool,
-) -> Result<bool, anyhow::Error> {
-    let cancellation_token = CancellationToken::new();
-    let (db, user, socket_path, port) = Spi::connect(|client| {
-        let row = client
+    cancellation_token: CancellationToken,
+) -> Result<(), anyhow::Error> {
+    let (db, user, socket_path, port) = BackgroundWorker::transaction(|| {
+        Spi::connect(|client| {
+            let row = client
             .select(
                 "
            SELECT current_database()::text AS db,
@@ -32,26 +31,37 @@ pub fn start_daemon(
             )?
             .first();
 
-        let db = row.get_by_name::<String, &str>("db")?.unwrap();
-        let socket_path = row.get_by_name::<String, &str>("socket_path")?.unwrap();
-        let port = row.get_by_name::<String, &str>("port")?.unwrap();
-        let user = row.get_by_name::<String, &str>("user")?.unwrap();
+            let db = row.get_by_name::<String, &str>("db")?.unwrap();
+            let socket_path = row.get_by_name::<String, &str>("socket_path")?.unwrap();
+            let port = row.get_by_name::<String, &str>("port")?.unwrap();
+            let user = row.get_by_name::<String, &str>("user")?.unwrap();
+            let db = if db.trim() != "" {
+                db
+            } else {
+                "postgres".to_owned()
+            };
 
-        Ok::<(String, String, String, String), anyhow::Error>((db, user, socket_path, port))
+            Ok::<(String, String, String, String), anyhow::Error>((db, user, socket_path, port))
+        })
     })?;
 
     let mut target_dbs = vec![];
 
     if let Some(db_list) = DAEMON_DATABASES.get() {
-        for db_name in db_list.to_str()?.split(",") {
-            let connection_string = format!(
-                "postgresql://{user}@{socket_path}:{port}/{db}",
-                socket_path = socket_path.replace("/", "%2F"),
-                db = db_name.trim()
-            );
-            target_dbs.push(connection_string);
+        let list = db_list.to_str()?.trim();
+        if list != "" {
+            for db_name in list.split(",") {
+                let connection_string = format!(
+                    "postgresql://{user}@{socket_path}:{port}/{db}",
+                    socket_path = socket_path.replace("/", "%2F"),
+                    db = db_name.trim()
+                );
+                target_dbs.push(connection_string);
+            }
         }
-    } else {
+    }
+
+    if target_dbs.len() == 0 {
         let connection_string = format!(
             "postgresql://{user}@{socket_path}:{port}/{db}",
             socket_path = socket_path.replace("/", "%2F")
@@ -60,43 +70,32 @@ pub fn start_daemon(
     }
 
     std::thread::spawn(move || {
-        let mut last_retry = Instant::now();
-        let mut retry_interval = 5;
-        loop {
-            let logger = Logger::new("Lantern Daemon", LogLevel::Debug);
-            let rt = Runtime::new().unwrap();
-            let res = rt.block_on(start(
-                DaemonArgs {
-                    label: None,
-                    embeddings,
-                    external_index: indexing,
-                    autotune,
-                    log_level: lantern_cli::daemon::cli::LogLevel::Debug,
-                    databases_table: String::new(),
-                    master_db: None,
-                    master_db_schema: String::new(),
-                    schema: String::from("_lantern_extras_internal"),
-                    target_db: Some(target_dbs.clone()),
-                },
-                Some(logger.clone()),
-                cancellation_token.clone(),
-            ));
+        let logger = Logger::new("Lantern Daemon", LogLevel::Debug);
+        let rt = Runtime::new().unwrap();
+        let res = rt.block_on(start(
+            DaemonArgs {
+                label: None,
+                embeddings,
+                external_index: indexing,
+                autotune,
+                log_level: lantern_cli::daemon::cli::LogLevel::Debug,
+                databases_table: String::new(),
+                master_db: None,
+                master_db_schema: String::new(),
+                schema: String::from("_lantern_extras_internal"),
+                target_db: Some(target_dbs.clone()),
+            },
+            Some(logger.clone()),
+            cancellation_token.clone(),
+        ));
 
-            if let Err(e) = res {
-                eprintln!("{e}");
-                logger.error(&format!("{e}"));
-            }
-            if last_retry.elapsed().as_secs() > retry_interval * 2 {
-                // reset retry exponential backoff time if job was not failing constantly
-                retry_interval = 10;
-            }
-            std::thread::sleep(Duration::from_secs(retry_interval));
-            retry_interval *= 2;
-            last_retry = Instant::now();
+        if let Err(e) = res {
+            eprintln!("{e}");
+            logger.error(&format!("{e}"));
         }
     });
 
-    Ok(true)
+    Ok(())
 }
 
 #[pg_extern(immutable, parallel_unsafe, security_definer)]
@@ -151,8 +150,8 @@ fn get_embedding_job_status<'a>(
 > {
     let tuple = Spi::get_three_with_args(
         r#"
-          SELECT 
-          CASE 
+          SELECT
+          CASE
             WHEN init_failed_at IS NOT NULL THEN 'failed'
             WHEN canceled_at IS NOT NULL THEN 'canceled'
             WHEN init_finished_at IS NOT NULL THEN 'enabled'
@@ -172,6 +171,26 @@ fn get_embedding_job_status<'a>(
     }
 
     Ok(TableIterator::once(tuple.unwrap()))
+}
+
+#[pg_extern(immutable, parallel_safe, security_definer)]
+fn get_embedding_jobs<'a>() -> Result<
+    TableIterator<
+        'static,
+        (
+            name!(id, Option<i32>),
+            name!(status, Option<String>),
+            name!(progress, Option<i16>),
+            name!(error, Option<String>),
+        ),
+    >,
+    anyhow::Error,
+> {
+    Spi::connect(|client| {
+        client.select("SELECT id, (get_embedding_job_status(id)).* FROM _lantern_extras_internal.embedding_generation_jobs", None, None)?
+            .map(|row| Ok((row["id"].value()?, row["status"].value()?, row["progress"].value()?, row["error"].value()?)))
+            .collect::<Result<Vec<_>, _>>()
+    }).map(TableIterator::new)
 }
 
 #[pg_extern(immutable, parallel_safe, security_definer)]
@@ -212,7 +231,7 @@ pub mod tests {
     fn test_add_daemon_job() {
         Spi::connect(|mut client| {
             // wait for daemon
-            std::thread::sleep(Duration::from_secs(1));
+            std::thread::sleep(Duration::from_secs(5));
             client.update(
                 "
                 CREATE TABLE t1 (id serial primary key, title text);
@@ -234,7 +253,7 @@ pub mod tests {
     fn test_get_daemon_job() {
         Spi::connect(|mut client| {
             // wait for daemon
-            std::thread::sleep(Duration::from_secs(1));
+            std::thread::sleep(Duration::from_secs(5));
             client.update(
                 "
                 CREATE TABLE t1 (id serial primary key, title text);
@@ -317,10 +336,43 @@ pub mod tests {
     }
 
     #[pg_test]
+    fn test_get_daemon_jobs() {
+        Spi::connect(|mut client| {
+            // wait for daemon
+            std::thread::sleep(Duration::from_secs(5));
+            client.update(
+                "
+                CREATE TABLE t1 (id serial primary key, title text);
+                ",
+                None,
+                None,
+            )?;
+
+            client.update("SELECT add_embedding_job('t1', 'title', 'title_embedding', 'BAAI/bge-small-en', 'ort', '{}', 'id', 'public')", None, None)?;
+            client.update("SELECT add_embedding_job('t1', 'title', 'title_embedding2', 'BAAI/bge-small-en', 'ort', '{}', 'id', 'public')", None, None)?;
+
+            // queued
+            let rows = client.select("SELECT status, progress, error FROM get_embedding_jobs()", None, None)?;
+            for job in rows {
+                let status: &str = job.get(1)?.unwrap();
+                let progress: i16 = job.get(2)?.unwrap();
+                let error: Option<&str> = job.get(3)?;
+
+                assert_eq!(status, "queued");
+                assert_eq!(progress, 0);
+                assert_eq!(error, None);
+            }
+
+            Ok::<(), anyhow::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[pg_test]
     fn test_cancel_daemon_job() {
         Spi::connect(|mut client| {
             // wait for daemon
-            std::thread::sleep(Duration::from_secs(1));
+            std::thread::sleep(Duration::from_secs(5));
             client.update(
                 "
                 CREATE TABLE t1 (id serial primary key, title text);
@@ -350,7 +402,7 @@ pub mod tests {
     fn test_resume_daemon_job() {
         Spi::connect(|mut client| {
             // wait for daemon
-            std::thread::sleep(Duration::from_secs(1));
+            std::thread::sleep(Duration::from_secs(5));
             client.update(
                 "
                 CREATE TABLE t1 (id serial primary key, title text);
