@@ -1,4 +1,3 @@
-use isahc::{ReadResponseExt, Request};
 use lantern_cli::external_index::cli::UMetricKind;
 use lantern_cli::external_index::server::{
     END_MSG, ERR_MSG, INIT_MSG, PROTOCOL_HEADER_SIZE, PROTOCOL_VERSION,
@@ -11,6 +10,7 @@ use serde::Deserialize;
 use std::fs;
 use std::io::prelude::*;
 use std::net::TcpStream;
+use std::ops::Deref;
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::process::Command;
@@ -261,14 +261,11 @@ async fn test_external_index_server_indexing() {
 
     assert_eq!(buf[0], 0);
 
-    let request = Request::get(&format!("http://127.0.0.1:8999"))
-        .body("")
+    let request = reqwest::get(&format!("http://127.0.0.1:8999"))
+        .await
         .unwrap();
-    let mut response = isahc::send(request).unwrap();
-    let mut body: Vec<u8> = Vec::new();
-    response.copy_to(&mut body).unwrap();
-    let body_json = String::from_utf8(body).unwrap();
-    let body_json: ServerStatusResponse = serde_json::from_str(&body_json).unwrap();
+    let body_json: ServerStatusResponse =
+        serde_json::from_slice(request.bytes().await.unwrap().deref()).unwrap();
     assert_eq!(body_json.status, 1);
 
     let index = Index::new(&index_options).unwrap();
@@ -320,14 +317,11 @@ async fn test_external_index_server_indexing() {
     drop(stream);
     std::thread::sleep(Duration::from_secs(1));
 
-    let request = Request::get(&format!("http://127.0.0.1:8999"))
-        .body("")
+    let request = reqwest::get(&format!("http://127.0.0.1:8999"))
+        .await
         .unwrap();
-    let mut response = isahc::send(request).unwrap();
-    let mut body: Vec<u8> = Vec::new();
-    response.copy_to(&mut body).unwrap();
-    let body_json = String::from_utf8(body).unwrap();
-    let body_json: ServerStatusResponse = serde_json::from_str(&body_json).unwrap();
+    let body_json: ServerStatusResponse =
+        serde_json::from_slice(request.bytes().await.unwrap().deref()).unwrap();
     assert_eq!(body_json.status, 3);
 }
 

@@ -19,7 +19,6 @@ linfa = {version = "0.7.0", optional = true}
 ndarray = { version = "0.15.6", features = ["rayon"] }
 rayon = { version="1.8.1", optional = true }
 md5 = {version="0.7.0", optional = true }
-isahc = "1.7.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.111"
 gcp_auth = {version="0.10.0", optional = true}
@@ -54,6 +53,7 @@ bitvec = { version="1.0.1", optional=true }
 rustls = { version="0.23.12", optional=true }
 rustls-pemfile = { version="2.1.2", optional=true }
 glob = { version="0.3.1", optional=true }
+reqwest = { version = "0.12.8", default-features = false, features = ["json", "blocking", "rustls-tls"] }
 
 [features]
 default = ["cli", "daemon", "http-server", "autotune", "pq", "external-index", "external-index-server", "embeddings"]

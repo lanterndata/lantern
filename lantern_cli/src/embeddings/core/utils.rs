@@ -1,28 +1,26 @@
 use anyhow::anyhow;
-use isahc::config::RedirectPolicy;
-use isahc::{prelude::*, HttpClient};
 use nvml_wrapper::Nvml;
-use std::ops::Deref;
+use reqwest::redirect::Policy;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::{fs::create_dir_all, time::Duration};
+use std::{fs::create_dir_all, io::Cursor, time::Duration};
 use sysinfo::{System, SystemExt};
 
 use super::runtime::EmbeddingResult;
 
 type GetResponseFn = Box<dyn Fn(Vec<u8>) -> Result<EmbeddingResult, anyhow::Error> + Send + Sync>;
 
-pub fn download_file(url: &str, path: &PathBuf) -> Result<(), anyhow::Error> {
-    let client = HttpClient::builder()
-        .timeout(Duration::from_secs(600))
-        .redirect_policy(RedirectPolicy::Limit(2))
+pub async fn download_file(url: &str, path: &PathBuf) -> Result<(), anyhow::Error> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(120))
+        .redirect(Policy::limited(2))
         .build()?;
 
-    let mut response = client.get(url)?;
+    let mut response = Cursor::new(client.get(url).send().await?.bytes().await?);
     // Copy the response body to the local file
     create_dir_all(path.parent().unwrap())?;
     let mut file = std::fs::File::create(path)?;
-    std::io::copy(response.body_mut(), &mut file).expect("Failed writing response to file");
+    std::io::copy(&mut response, &mut file).expect("Failed writing response to file");
     Ok(())
 }
 
@@ -81,7 +79,7 @@ pub fn percent_gpu_memory_used() -> Result<f64, anyhow::Error> {
 }
 
 pub async fn post_with_retries(
-    client: Arc<HttpClient>,
+    client: Arc<reqwest::Client>,
     url: String,
     body: String,
     get_response_fn: GetResponseFn,
@@ -91,7 +89,7 @@ pub async fn post_with_retries(
     let mut last_error = "".to_string();
 
     for i in 0..max_retries {
-        match client.post_async(&url, body.deref()).await {
+        match client.post(&url).body(body.clone()).send().await {
             Err(e) => {
                 // TODO:: use logger
                 eprintln!("Request error: url: {url}, error: {e}, retry: {i}");
@@ -100,10 +98,8 @@ pub async fn post_with_retries(
                 tokio::time::sleep(Duration::from_millis((starting_interval * (i + 1)) as u64))
                     .await;
             }
-            Ok(mut response) => {
-                let mut body: Vec<u8> = Vec::with_capacity(body.capacity());
-                response.copy_to(&mut body).await?;
-                let embedding_response = get_response_fn(body);
+            Ok(response) => {
+                let embedding_response = get_response_fn(response.bytes().await?.to_vec().clone());
 
                 match embedding_response {
                     Err(e) => {

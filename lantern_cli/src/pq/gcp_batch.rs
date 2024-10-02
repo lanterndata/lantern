@@ -3,9 +3,9 @@ use super::setup::{make_codebook_logged_and_readonly, setup_tables, setup_trigge
 use super::{set_and_report_progress, AnyhowVoidResult, ProgressCbFn};
 use crate::logger::Logger;
 use crate::utils::quote_ident;
-use isahc::{prelude::*, HttpClient, Request};
 use postgres::{Client, NoTls};
 use rand::Rng;
+use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::Deserialize;
 use serde_json::{self, json, Value};
 use std::cmp;
@@ -142,10 +142,19 @@ fn run_batch_job(logger: &Logger, task_body: &str, parent: &str) -> AnyhowVoidRe
     )?;
     let token_str = token.as_str();
 
-    let response = Request::post(url)
-        .header("Authorization", &format!("Bearer {token_str}"))
-        .header("Content-Type", "application/json")
-        .body(task_body)?
+    let http_client = reqwest::blocking::Client::builder();
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        AUTHORIZATION,
+        HeaderValue::from_str(&format!("Bearer {token_str}"))?,
+    );
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    let http_client = http_client.default_headers(headers).build()?;
+
+    let response = http_client
+        .post(&url)
+        .body(task_body.to_owned())
         .send()?
         .bytes()?;
 
@@ -173,16 +182,23 @@ fn run_batch_job(logger: &Logger, task_body: &str, parent: &str) -> AnyhowVoidRe
         )?;
         let token_str = token.as_str();
 
-        let http_client = HttpClient::builder()
-            .default_header("Authorization", &format!("Bearer {token_str}"))
-            .default_header("Content-Type", "application/json")
-            .build()?;
+        let http_client = reqwest::blocking::Client::builder();
 
-        let mut response = http_client.get(&job_url)?;
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            AUTHORIZATION,
+            HeaderValue::from_str(&format!("Bearer {token_str}"))?,
+        );
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        let http_client = http_client.default_headers(headers).build()?;
+
+        let response = http_client.get(&job_url).send()?;
+
+        let response_text = response.text()?;
         let result: Result<BatchJobResponse, serde_json::Error> =
-            serde_json::from_slice(&response.bytes()?);
+            serde_json::from_str(&response_text);
         if let Err(e) = result {
-            anyhow::bail!("Error: {e}. GCP response: {:?}", response.text()?);
+            anyhow::bail!("Error: {e}. GCP response: {:?}", response_text);
         }
 
         let job = result.unwrap();

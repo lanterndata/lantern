@@ -5,17 +5,19 @@ use std::{
     time::Duration,
 };
 
-use actix_web::http::StatusCode;
-use isahc::{ReadResponseExt, Request};
 use lantern_cli::{
     http_server::{self, cli::HttpServerArgs},
     types::AnyhowVoidResult,
+};
+use reqwest::{
+    header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
+    StatusCode,
 };
 use tokio_postgres::{Client, NoTls};
 
 static TEST_COLLECTION_NAME: &'static str = "_lantern_http_test1";
 static SERVER_URL: &'static str = "http://127.0.0.1:7777";
-static AUTH_HEADER: (&'static str, &'static str) = ("Authorization", "Basic dGVzdDp0ZXN0");
+static AUTH_HEADER: &'static str = "Basic dGVzdDp0ZXN0";
 
 async fn drop_db_tables(client: &mut Client) {
     client
@@ -83,17 +85,21 @@ async fn test_collection_create() -> AnyhowVoidResult {
                  "schema": {{ "id": "serial primary key", "v": "REAL[]", "m": "JSONB" }}
              }}"#
     );
-    let request = Request::post(&format!("{SERVER_URL}/collections"))
-        .header("content-type", "application/json")
-        .header(AUTH_HEADER.0, AUTH_HEADER.1)
-        .body(body.as_bytes())?;
 
-    let mut response = isahc::send(request)?;
+    let http_client = reqwest::Client::builder();
+    let mut headers = HeaderMap::new();
+    headers.insert(AUTHORIZATION, HeaderValue::from_static(AUTH_HEADER));
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    let http_client = http_client.default_headers(headers).build()?;
 
-    let mut body: Vec<u8> = Vec::with_capacity(body.capacity());
-    response.copy_to(&mut body)?;
-    let body_json = String::from_utf8(body)?;
+    let response = http_client
+        .post(&format!("{SERVER_URL}/collections"))
+        .body(body.to_owned())
+        .send()
+        .await?;
+
     println!("Status: {:?}", response.status());
+    let body_json = response.text().await?;
     println!("Response: {:?}", body_json);
     let body_json: HashMap<String, serde_json::Value> = serde_json::from_str(&body_json)?;
     assert_eq!(body_json.get("name").unwrap(), TEST_COLLECTION_NAME);
@@ -118,31 +124,39 @@ async fn test_collection_insert() -> AnyhowVoidResult {
                 ]
              }}"#
     );
-    let request = Request::put(&format!("{SERVER_URL}/collections/{TEST_COLLECTION_NAME}"))
-        .header("content-type", "application/json")
-        .header(AUTH_HEADER.0, AUTH_HEADER.1)
-        .body(body.as_bytes())?;
+    let http_client = reqwest::Client::builder();
+    let mut headers = HeaderMap::new();
+    headers.insert(AUTHORIZATION, HeaderValue::from_static(AUTH_HEADER));
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    let http_client = http_client.default_headers(headers).build()?;
 
-    let response = isahc::send(request)?;
+    let response = http_client
+        .put(&format!("{SERVER_URL}/collections/{TEST_COLLECTION_NAME}"))
+        .body(body.to_owned())
+        .send()
+        .await?;
+
     assert_eq!(response.status(), StatusCode::from_u16(200)?);
 
     Ok(())
 }
 
 async fn test_collection_list() -> AnyhowVoidResult {
-    let request = Request::get(&format!("{SERVER_URL}/collections"))
-        .header("content-type", "application/json")
-        .header(AUTH_HEADER.0, AUTH_HEADER.1)
-        .body("")?;
+    let http_client = reqwest::Client::builder();
+    let mut headers = HeaderMap::new();
+    headers.insert(AUTHORIZATION, HeaderValue::from_static(AUTH_HEADER));
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    let http_client = http_client.default_headers(headers).build()?;
 
-    let mut response = isahc::send(request)?;
+    let response = http_client
+        .get(&format!("{SERVER_URL}/collections"))
+        .send()
+        .await?;
 
-    let mut body: Vec<u8> = Vec::new();
-    response.copy_to(&mut body)?;
-    let body_json = String::from_utf8(body)?;
+    println!("Status: {:?}", response.status());
+    let body_json = response.text().await?;
     println!("Response: {:?}", body_json);
     let body_json: Vec<HashMap<String, serde_json::Value>> = serde_json::from_str(&body_json)?;
-
     assert_eq!(body_json.len(), 1);
     assert_eq!(
         body_json.first().unwrap().get("name").unwrap(),
@@ -153,16 +167,19 @@ async fn test_collection_list() -> AnyhowVoidResult {
 }
 
 async fn test_collection_get() -> AnyhowVoidResult {
-    let request = Request::get(&format!("{SERVER_URL}/collections/{TEST_COLLECTION_NAME}"))
-        .header("content-type", "application/json")
-        .header(AUTH_HEADER.0, AUTH_HEADER.1)
-        .body("")?;
+    let http_client = reqwest::Client::builder();
+    let mut headers = HeaderMap::new();
+    headers.insert(AUTHORIZATION, HeaderValue::from_static(AUTH_HEADER));
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    let http_client = http_client.default_headers(headers).build()?;
 
-    let mut response = isahc::send(request)?;
+    let response = http_client
+        .get(&format!("{SERVER_URL}/collections/{TEST_COLLECTION_NAME}"))
+        .send()
+        .await?;
 
-    let mut body: Vec<u8> = Vec::new();
-    response.copy_to(&mut body)?;
-    let body_json = String::from_utf8(body)?;
+    println!("Status: {:?}", response.status());
+    let body_json = response.text().await?;
     println!("Response: {:?}", body_json);
     let body_json: HashMap<String, serde_json::Value> = serde_json::from_str(&body_json)?;
 
@@ -178,26 +195,28 @@ async fn test_collection_get() -> AnyhowVoidResult {
 }
 
 async fn test_collection_delete() -> AnyhowVoidResult {
-    let request = Request::delete(&format!("{SERVER_URL}/collections/{TEST_COLLECTION_NAME}"))
-        .header("content-type", "application/json")
-        .header(AUTH_HEADER.0, AUTH_HEADER.1)
-        .body("")?;
+    let http_client = reqwest::Client::builder();
+    let mut headers = HeaderMap::new();
+    headers.insert(AUTHORIZATION, HeaderValue::from_static(AUTH_HEADER));
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    let http_client = http_client.default_headers(headers).build()?;
 
-    isahc::send(request)?;
+    http_client
+        .delete(&format!("{SERVER_URL}/collections/{TEST_COLLECTION_NAME}"))
+        .send()
+        .await?;
 
-    let request = Request::get(&format!("{SERVER_URL}/collections"))
-        .header("content-type", "application/json")
-        .header(AUTH_HEADER.0, AUTH_HEADER.1)
-        .body("")?;
+    let response = http_client
+        .get(&format!("{SERVER_URL}/collections"))
+        .send()
+        .await?;
 
-    let mut response = isahc::send(request)?;
-
-    let mut body: Vec<u8> = Vec::new();
-    response.copy_to(&mut body)?;
-    let body_json = String::from_utf8(body)?;
-    let body_json: Vec<HashMap<String, String>> = serde_json::from_str(&body_json)?;
-
+    println!("Status: {:?}", response.status());
+    let body_json = response.text().await?;
+    println!("Response: {:?}", body_json);
+    let body_json: Vec<HashMap<String, serde_json::Value>> = serde_json::from_str(&body_json)?;
     assert_eq!(body_json.len(), 0);
+
     Ok(())
 }
 
@@ -209,20 +228,18 @@ async fn test_pq() -> AnyhowVoidResult {
                "splits": 1
              }}"#
     );
-    let request = Request::post(&format!(
-        "{SERVER_URL}/collections/{TEST_COLLECTION_NAME}/pq"
-    ))
-    .header("content-type", "application/json")
-    .header(AUTH_HEADER.0, AUTH_HEADER.1)
-    .body(body.as_bytes())?;
 
-    let mut response = isahc::send(request)?;
-    let mut body: Vec<u8> = Vec::new();
-    response.copy_to(&mut body)?;
-    let body_json = String::from_utf8(body)?;
+    let response = reqwest::Client::new()
+        .post(&format!(
+            "{SERVER_URL}/collections/{TEST_COLLECTION_NAME}/pq"
+        ))
+        .header(CONTENT_TYPE, "application/json")
+        .header(AUTHORIZATION, AUTH_HEADER)
+        .body(body)
+        .send()
+        .await?;
 
-    println!("Response: {:?}", body_json);
-    assert_eq!(response.status(), StatusCode::from_u16(200)?);
+    assert_eq!(response.status(), reqwest::StatusCode::from_u16(200)?);
 
     Ok(())
 }
@@ -236,29 +253,27 @@ async fn test_index_create() -> AnyhowVoidResult {
                "pq": true
              }}"#
     );
-    let request = Request::post(&format!(
-        "{SERVER_URL}/collections/{TEST_COLLECTION_NAME}/index"
-    ))
-    .header("content-type", "application/json")
-    .header(AUTH_HEADER.0, AUTH_HEADER.1)
-    .body(body.as_bytes())?;
 
-    let response = isahc::send(request)?;
-    let body: Vec<u8> = Vec::new();
-    let body_json = String::from_utf8(body)?;
-    println!("Response: {:?}", body_json);
-    assert_eq!(response.status(), StatusCode::from_u16(200)?);
+    let response = reqwest::Client::new()
+        .post(&format!(
+            "{SERVER_URL}/collections/{TEST_COLLECTION_NAME}/index"
+        ))
+        .header(CONTENT_TYPE, "application/json")
+        .header(AUTHORIZATION, AUTH_HEADER)
+        .body(body)
+        .send()
+        .await?;
 
-    let request = Request::get(&format!("{SERVER_URL}/collections/{TEST_COLLECTION_NAME}"))
-        .header("content-type", "application/json")
-        .header(AUTH_HEADER.0, AUTH_HEADER.1)
-        .body("")?;
+    assert_eq!(response.status(), reqwest::StatusCode::from_u16(200)?);
 
-    let mut response = isahc::send(request)?;
+    let response = reqwest::Client::new()
+        .get(&format!("{SERVER_URL}/collections/{TEST_COLLECTION_NAME}"))
+        .header(CONTENT_TYPE, "application/json")
+        .header(AUTHORIZATION, AUTH_HEADER)
+        .send()
+        .await?;
 
-    let mut body: Vec<u8> = Vec::new();
-    response.copy_to(&mut body)?;
-    let body_json = String::from_utf8(body)?;
+    let body_json = response.text().await?;
     println!("Response: {:?}", body_json);
     let body_json: HashMap<String, serde_json::Value> = serde_json::from_str(&body_json)?;
     let indexes: Vec<HashMap<String, String>> =
@@ -283,19 +298,18 @@ async fn test_search_vector() -> AnyhowVoidResult {
                  "select": "id"
              }}"#
     );
-    let request = Request::post(&format!(
-        "{SERVER_URL}/collections/{TEST_COLLECTION_NAME}/search"
-    ))
-    .header("content-type", "application/json")
-    .header(AUTH_HEADER.0, AUTH_HEADER.1)
-    .body(body.as_bytes())?;
 
-    let mut response = isahc::send(request)?;
+    let response = reqwest::Client::new()
+        .post(&format!(
+            "{SERVER_URL}/collections/{TEST_COLLECTION_NAME}/search"
+        ))
+        .header(CONTENT_TYPE, "application/json")
+        .header(AUTHORIZATION, AUTH_HEADER)
+        .body(body)
+        .send()
+        .await?;
 
-    let mut body: Vec<u8> = Vec::new();
-    response.copy_to(&mut body)?;
-    let body_json = String::from_utf8(body)?;
-
+    let body_json = response.text().await?;
     println!("Response: {:?}", body_json);
     let body_json: HashMap<String, Vec<serde_json::Value>> = serde_json::from_str(&body_json)?;
 
@@ -306,7 +320,7 @@ async fn test_search_vector() -> AnyhowVoidResult {
     assert_eq!(first["id"], 6);
     assert_eq!(first["distance"], 0);
 
-    // Test wih k=5
+    // Test with k=5
     let body = format!(
         r#"{{
                  "column": "v",
@@ -315,19 +329,18 @@ async fn test_search_vector() -> AnyhowVoidResult {
                  "select": "id, v"
              }}"#
     );
-    let request = Request::post(&format!(
-        "{SERVER_URL}/collections/{TEST_COLLECTION_NAME}/search"
-    ))
-    .header("content-type", "application/json")
-    .header(AUTH_HEADER.0, AUTH_HEADER.1)
-    .body(body.as_bytes())?;
 
-    let mut response = isahc::send(request)?;
+    let response = reqwest::Client::new()
+        .post(&format!(
+            "{SERVER_URL}/collections/{TEST_COLLECTION_NAME}/search"
+        ))
+        .header(CONTENT_TYPE, "application/json")
+        .header(AUTHORIZATION, AUTH_HEADER)
+        .body(body)
+        .send()
+        .await?;
 
-    let mut body: Vec<u8> = Vec::new();
-    response.copy_to(&mut body)?;
-    let body_json = String::from_utf8(body)?;
-
+    let body_json = response.text().await?;
     println!("Response: {:?}", body_json);
     let body_json: HashMap<String, Vec<serde_json::Value>> = serde_json::from_str(&body_json)?;
 
@@ -348,7 +361,7 @@ async fn test_search_vector() -> AnyhowVoidResult {
         INSERT INTO {TEST_COLLECTION_NAME} (v) VALUES (text_embedding('BAAI/bge-small-en', 'Weather is nice today')), (text_embedding('BAAI/bge-small-en', 'The car is red'));
         CREATE INDEX test_idx ON {TEST_COLLECTION_NAME} USING lantern_hnsw (v) WITH (m=16, ef_construction=128, ef=128);
     ")).await?;
-    // Test wih model
+    // Test with model
     let body = format!(
         r#"{{
                  "column": "v",
@@ -358,19 +371,18 @@ async fn test_search_vector() -> AnyhowVoidResult {
                  "select": "id"
              }}"#
     );
-    let request = Request::post(&format!(
-        "{SERVER_URL}/collections/{TEST_COLLECTION_NAME}/search"
-    ))
-    .header("content-type", "application/json")
-    .header(AUTH_HEADER.0, AUTH_HEADER.1)
-    .body(body.as_bytes())?;
 
-    let mut response = isahc::send(request)?;
+    let response = reqwest::Client::new()
+        .post(&format!(
+            "{SERVER_URL}/collections/{TEST_COLLECTION_NAME}/search"
+        ))
+        .header(CONTENT_TYPE, "application/json")
+        .header(AUTHORIZATION, AUTH_HEADER)
+        .body(body)
+        .send()
+        .await?;
 
-    let mut body: Vec<u8> = Vec::new();
-    response.copy_to(&mut body)?;
-    let body_json = String::from_utf8(body)?;
-
+    let body_json = response.text().await?;
     println!("Response: {:?}", body_json);
     let body_json: HashMap<String, Vec<serde_json::Value>> = serde_json::from_str(&body_json)?;
 
@@ -389,19 +401,18 @@ async fn test_search_vector() -> AnyhowVoidResult {
                  "select": "id"
              }}"#
     );
-    let request = Request::post(&format!(
-        "{SERVER_URL}/collections/{TEST_COLLECTION_NAME}/search"
-    ))
-    .header("content-type", "application/json")
-    .header(AUTH_HEADER.0, AUTH_HEADER.1)
-    .body(body.as_bytes())?;
 
-    let mut response = isahc::send(request)?;
+    let response = reqwest::Client::new()
+        .post(&format!(
+            "{SERVER_URL}/collections/{TEST_COLLECTION_NAME}/search"
+        ))
+        .header(CONTENT_TYPE, "application/json")
+        .header(AUTHORIZATION, AUTH_HEADER)
+        .body(body)
+        .send()
+        .await?;
 
-    let mut body: Vec<u8> = Vec::new();
-    response.copy_to(&mut body)?;
-    let body_json = String::from_utf8(body)?;
-
+    let body_json = response.text().await?;
     println!("Response: {:?}", body_json);
     let body_json: HashMap<String, Vec<serde_json::Value>> = serde_json::from_str(&body_json)?;
 
@@ -415,18 +426,15 @@ async fn test_search_vector() -> AnyhowVoidResult {
 
 async fn test_index_delete() -> AnyhowVoidResult {
     let body = String::new();
-    let request = Request::delete(&format!("{SERVER_URL}/index/test_idx"))
-        .header("content-type", "application/json")
-        .header(AUTH_HEADER.0, AUTH_HEADER.1)
-        .body(body.as_bytes())?;
+    let response = reqwest::Client::new()
+        .delete(&format!("{SERVER_URL}/index/test_idx"))
+        .header(CONTENT_TYPE, "application/json")
+        .header(AUTHORIZATION, AUTH_HEADER)
+        .body(body)
+        .send()
+        .await?;
 
-    let mut response = isahc::send(request)?;
-    let mut body: Vec<u8> = Vec::new();
-    response.copy_to(&mut body)?;
-    let body_json = String::from_utf8(body)?;
-
-    println!("Response: {:?}", body_json);
-    assert_eq!(response.status(), StatusCode::from_u16(200)?);
+    assert_eq!(response.status(), reqwest::StatusCode::from_u16(200)?);
 
     Ok(())
 }

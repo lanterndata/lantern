@@ -1,11 +1,11 @@
 use futures::StreamExt;
 use image::{imageops::FilterType, io::Reader as ImageReader, GenericImageView};
-use isahc::{config::RedirectPolicy, prelude::*, HttpClient};
 use itertools::Itertools;
 use ndarray::{s, Array2, Array4, ArrayBase, Axis, CowArray, CowRepr, Dim, IxDynImpl};
 use ort::session::Session;
 use ort::tensor::ort_owned_tensor::ViewHolder;
 use ort::{Environment, ExecutionProvider, GraphOptimizationLevel, SessionBuilder, Value};
+use reqwest::redirect::Policy;
 use serde::Deserialize;
 use std::{
     cmp,
@@ -156,7 +156,7 @@ pub struct EncoderOptions {
 }
 
 const DATA_PATH: &'static str = ".ldb_extras_data/";
-const MAX_IMAGE_SIZE: usize = 1024 * 1024 * 20; // 20 MB
+const MAX_IMAGE_SIZE: u64 = 1024 * 1024 * 20; // 20 MB
 
 struct ModelInfo {
     url: String,
@@ -766,7 +766,7 @@ impl<'a> OrtRuntime<'a> {
         Ok(())
     }
 
-    fn check_and_download_files(
+    async fn check_and_download_files(
         &self,
         model_name: &str,
         mut models_map: &mut HashMap<&'static str, ModelInfo>,
@@ -800,13 +800,13 @@ impl<'a> OrtRuntime<'a> {
         if !model_path.exists() {
             // model is not downloaded, we should download it
             (self.logger)("Downloading model [this is one time operation]");
-            download_file(&model_info.url, &model_path)?;
+            download_file(&model_info.url, &model_path).await?;
         }
 
         if !tokenizer_path.exists() && model_info.tokenizer_url.is_some() {
             (self.logger)("Downloading tokenizer [this is one time operation]");
             // tokenizer is not downloaded, we should download it
-            download_file(&model_info.tokenizer_url.as_ref().unwrap(), &tokenizer_path)?;
+            download_file(&model_info.tokenizer_url.as_ref().unwrap(), &tokenizer_path).await?;
         }
 
         if let Some(onnx_data_url) = &model_info.onnx_data_url {
@@ -814,7 +814,7 @@ impl<'a> OrtRuntime<'a> {
 
             if !onnx_data_path.exists() {
                 (self.logger)("Downloading model onnx data [this is one time operation]");
-                download_file(onnx_data_url, &onnx_data_path)?;
+                download_file(onnx_data_url, &onnx_data_path).await?;
             }
         }
 
@@ -842,41 +842,25 @@ impl<'a> OrtRuntime<'a> {
 
     async fn get_image_buffer(&self, path_or_url: &str) -> Result<Vec<u8>, anyhow::Error> {
         if let Ok(url) = Url::parse(path_or_url) {
-            let client = HttpClient::builder()
+            let client = reqwest::Client::builder()
                 .timeout(Duration::from_secs(15))
-                .redirect_policy(RedirectPolicy::Limit(2))
+                .redirect(Policy::limited(2))
                 .build()?;
 
-            let response = client.get_async(&url.to_string()).await;
+            let response = client
+                .get(&url.to_string())
+                .send()
+                .await?
+                .error_for_status()?;
 
-            if let Err(e) = response {
-                anyhow::bail!(
-                    "[X] Error while downloading image \"{}\" - {}",
-                    path_or_url,
-                    e
-                );
-            }
-
-            let mut response = response?;
-            let status = response.status();
-
-            if status.as_u16() > 304 {
-                anyhow::bail!(
-                    "[X] Request failed with status {status}. Error: {}",
-                    response.text().await?
-                )
-            }
-
-            let response = response.bytes().await?;
-
-            if response.len() > MAX_IMAGE_SIZE {
+            if response.content_length().unwrap_or(MAX_IMAGE_SIZE + 1) > MAX_IMAGE_SIZE {
                 anyhow::bail!(
                     "[X] Maximum supported image size is {}MB, downloaded file size is {}MB",
                     MAX_IMAGE_SIZE / 1024 / 1024,
-                    response.len() / 1024 / 1024
+                    response.content_length().unwrap_or(MAX_IMAGE_SIZE + 1) / 1024 / 1024
                 );
             }
-            return Ok(response.to_vec());
+            return Ok(response.bytes().await?.to_vec());
         } else if Path::new(path_or_url).is_absolute() {
             let response = fs::read(path_or_url).await;
             if let Err(e) = response {
@@ -929,7 +913,7 @@ impl<'a> EmbeddingRuntimeT for OrtRuntime<'a> {
         inputs: &Vec<&str>,
     ) -> Result<EmbeddingResult, anyhow::Error> {
         let mut map = MODEL_INFO_MAP.lock().await;
-        let download_result = self.check_and_download_files(model_name, &mut map);
+        let download_result = self.check_and_download_files(model_name, &mut map).await;
 
         if let Err(err) = download_result {
             anyhow::bail!("{:?}", err);

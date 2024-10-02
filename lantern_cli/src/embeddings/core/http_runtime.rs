@@ -1,8 +1,7 @@
 use super::runtime::EmbeddingResult;
-use isahc::HttpClient;
 
 pub trait IHTTPRuntime {
-    fn get_client(&self) -> Result<HttpClient, anyhow::Error>;
+    fn get_client(&self) -> Result<reqwest::Client, anyhow::Error>;
     fn post_request(
         &self,
         endpoint: &str,
@@ -17,22 +16,25 @@ macro_rules! HTTPRuntime {
         use super::http_runtime::IHTTPRuntime;
         use super::utils::post_with_retries;
         use core::time::Duration;
-        use isahc::{config::RedirectPolicy, prelude::*, HttpClient};
         use std::sync::atomic::{AtomicUsize, Ordering};
         use std::sync::Arc;
         use url::Url;
 
         impl<'a> IHTTPRuntime for $a<'a> {
-            fn get_client(&self) -> Result<HttpClient, anyhow::Error> {
-                let mut client = HttpClient::builder()
+            fn get_client(&self) -> Result<reqwest::Client, anyhow::Error> {
+                let client = reqwest::Client::builder()
                     .timeout(Duration::from_secs(self.request_timeout))
-                    .redirect_policy(RedirectPolicy::Limit(2));
+                    .redirect(reqwest::redirect::Policy::limited(2));
 
+                let mut headers = reqwest::header::HeaderMap::new();
                 for header in &self.headers {
-                    client = client.default_header(header.0.clone(), header.1.clone());
+                    headers.insert(
+                        reqwest::header::HeaderName::from_bytes(header.0.as_bytes())?,
+                        reqwest::header::HeaderValue::from_str(&header.1)?,
+                    );
                 }
 
-                Ok(client.build()?)
+                Ok(client.default_headers(headers).build()?)
             }
 
             async fn post_request(
