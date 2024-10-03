@@ -1,4 +1,5 @@
 use super::cli::{IndexServerArgs, UMetricKind};
+use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 use glob::glob;
 use rand::Rng;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
@@ -6,7 +7,7 @@ use rustls::{ServerConfig, ServerConnection, StreamOwned};
 use std::cmp;
 use std::fs::{self, File};
 use std::io::{BufReader, Read, Write};
-use std::net::{Shutdown, TcpListener, TcpStream};
+use std::net::{TcpListener, TcpStream};
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::sync::mpsc::{self, Receiver, SyncSender};
@@ -581,40 +582,45 @@ fn start_indexing_server(
     Ok(())
 }
 
+async fn get_status(ctx: web::Data<Arc<RwLock<ServerContext>>>) -> impl Responder {
+    let ctx = ctx.read().unwrap();
+    let status_json = format!(
+        r#"{{"status":{},"status_updated_at":{}}}"#,
+        ctx.status as u8, ctx.status_updated_at
+    );
+
+    HttpResponse::Ok()
+        .content_type("application/json")
+        .body(status_json)
+}
+
 fn start_status_server(
     args: IndexServerArgs,
     logger: Arc<Logger>,
     ctx: Arc<RwLock<ServerContext>>,
 ) -> AnyhowVoidResult {
-    let listener = TcpListener::bind(&format!("{}:{}", args.host, args.status_port))?;
-
     logger.info(&format!(
         "External Indexing Status Server started on {}:{}",
         args.host, args.status_port,
     ));
 
-    for stream in listener.incoming() {
-        match stream {
-            Ok(mut stream) => {
-                let ctx = ctx.read().unwrap();
-                let status_json = format!(
-                    r#"{{"status":{},"status_updated_at":{}}}"#,
-                    ctx.status as u8, ctx.status_updated_at
-                );
-                let response_bytes = status_json.as_bytes();
-                let response_len = response_bytes.len();
-                stream.write("HTTP/1.1 200\r\n".as_bytes())?;
-                stream.write("Content-Type: application/json\r\n".as_bytes())?;
-                stream.write(format!("Content-Length: {response_len}\r\n\r\n").as_bytes())?;
-                stream.write(response_bytes)?;
-                stream.write(&[0x0D, 0x0A])?; // \r\n
-                stream.shutdown(Shutdown::Both)?;
-            }
-            Err(e) => {
-                logger.error(&format!("Connection error: {e}"));
-            }
-        }
-    }
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_io()
+        .build()?;
+
+    rt.block_on(async {
+        HttpServer::new(move || {
+            App::new()
+                .app_data(web::Data::new(ctx.clone()))
+                .route("/", web::get().to(get_status))
+        })
+        .bind((args.host, args.status_port as u16))?
+        .disable_signals()
+        .run()
+        .await?;
+
+        Ok::<(), anyhow::Error>(())
+    })?;
     Ok(())
 }
 
