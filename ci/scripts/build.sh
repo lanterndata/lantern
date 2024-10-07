@@ -42,10 +42,8 @@ function install_external_dependencies() {
   if [[ $PG_VERSION -gt 12 ]]; then
     # Install pgvector
     pushd /tmp
-      wget --quiet -O pgvector.tar.gz https://github.com/lanterndata/pgvector/archive/refs/tags/v${PGVECTOR_VERSION}.tar.gz
-      tar xzf pgvector.tar.gz
       rm -rf pgvector || true
-      mv pgvector-${PGVECTOR_VERSION} pgvector
+      git clone --recursive https://github.com/lanterndata/pgvector.git -b "v${PGVECTOR_VERSION}"
       pushd pgvector
         # Set max ef_search to 50000
         # .bak trick is needed to make this work on both mac and linux
