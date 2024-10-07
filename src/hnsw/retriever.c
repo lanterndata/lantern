@@ -17,7 +17,7 @@ RetrieverCtx *ldb_wal_retriever_area_init(Relation index_rel, HnswIndexHeaderPag
     ctx->index_rel = index_rel;
     ctx->header_page_under_wal = header_page_under_wal;
     ctx->extra_dirted = extra_dirtied_new();
-    ctx->takenbuffers_size = m * 2;
+    ctx->takenbuffers_size = m * 5;
     ctx->takenbuffers_next = 0;
 #if LANTERNDB_COPYNODES
     ctx->takenbuffers = palloc0(sizeof(char *) * ctx->takenbuffers_size);
