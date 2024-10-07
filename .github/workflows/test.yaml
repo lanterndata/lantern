@@ -170,7 +170,7 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
       - name: Setup test env
-        run: sudo su -c "PG_VERSION=$PG_VERSION SETUP_POSTGRES=1 SETUP_TESTS=1 ./ci/scripts/build-extras.sh"
+        run: sudo su -c "PG_VERSION=$PG_VERSION SETUP_POSTGRES=1 SETUP_TESTS=1 USE_SOURCE=1 ./ci/scripts/build-extras.sh"
         env:
           PG_VERSION: ${{ matrix.postgres }}
       - name: Install extension
