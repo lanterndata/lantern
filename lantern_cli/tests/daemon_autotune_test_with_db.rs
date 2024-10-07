@@ -47,6 +47,7 @@ async fn test_daemon_autotune_with_create_index() {
                 schema: "_lantern_extras_internal".to_owned(),
                 target_db: Some(vec![new_connection_uri]),
                 log_level: LogLevel::Debug,
+                data_path: None,
             },
             None,
             cancel_token_clone,

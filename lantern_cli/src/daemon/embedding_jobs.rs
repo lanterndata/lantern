@@ -594,7 +594,7 @@ async fn job_insert_processor(
     schema: String,
     table: String,
     daemon_label: String,
-    data_path: &'static str,
+    data_path: String,
     jobs_map: Arc<JobEventHandlersMap>,
     job_batching_hashmap: Arc<JobBatchingHashMap>,
     client_jobs_map: Arc<ClientJobsMap>,
@@ -627,6 +627,7 @@ async fn job_insert_processor(
     let logger_r1 = logger.clone();
     let lock_table_name = Arc::new(get_full_table_name(&schema, EMB_LOCK_TABLE_NAME));
     let job_batching_hashmap_r1 = job_batching_hashmap.clone();
+    let data_path_clone = data_path.clone();
 
     let (insert_client, connection) = tokio_postgres::connect(&db_uri_r1, NoTls).await?;
     let insert_client = Arc::new(insert_client);
@@ -689,7 +690,7 @@ async fn job_insert_processor(
                     .get::<&str, Option<SystemTime>>("init_finished_at")
                     .is_none();
 
-                let job = EmbeddingJob::new(row, data_path, &db_uri_r1);
+                let job = EmbeddingJob::new(row, &data_path, &db_uri_r1);
 
                 if let Err(e) = &job {
                     logger_r1.error(&format!("Error while creating job {id}: {e}",));
@@ -770,7 +771,7 @@ async fn job_insert_processor(
                     continue;
                 }
                 let row = job_result.unwrap();
-                let job = EmbeddingJob::new(row, data_path, &db_uri);
+                let job = EmbeddingJob::new(row, &data_path_clone, &db_uri);
 
                 if let Err(e) = &job {
                     logger.error(&format!("Error while creating job {job_id}: {e}"));
@@ -934,33 +935,38 @@ async fn job_update_processor(
     }
 }
 
-async fn create_data_path(logger: Arc<Logger>) -> Result<&'static str, anyhow::Error> {
-    let tmp_path = "/tmp/lantern-daemon";
-    let data_path = if cfg!(target_os = "macos") {
-        "/usr/local/var/lantern-daemon"
+async fn create_data_path(
+    logger: Arc<Logger>,
+    data_path: Option<String>,
+) -> Result<String, anyhow::Error> {
+    let tmp_path = "/tmp/lantern-daemon".to_owned();
+    let local_path = if cfg!(target_os = "macos") {
+        "/usr/local/var/lantern-daemon".to_owned()
     } else {
-        "/var/lib/lantern-daemon"
+        "/var/lib/lantern-daemon".to_owned()
     };
 
-    let data_path_obj = Path::new(data_path);
+    let data_path = data_path.unwrap_or(local_path);
+
+    let data_path_obj = Path::new(&data_path);
     if data_path_obj.exists() {
         return Ok(data_path);
     }
 
-    if fs::create_dir(data_path).await.is_ok() {
+    if fs::create_dir(&data_path).await.is_ok() {
         return Ok(data_path);
     }
 
     logger.warn(&format!(
         "No write permission in directory {data_path}. Writing data to temp directory"
     ));
-    let tmp_path_obj = Path::new(tmp_path);
+    let tmp_path_obj = Path::new(&tmp_path);
 
     if tmp_path_obj.exists() {
         return Ok(tmp_path);
     }
 
-    if let Err(e) = fs::create_dir(tmp_path).await {
+    if let Err(e) = fs::create_dir(&tmp_path).await {
         match e.kind() {
             std::io::ErrorKind::AlreadyExists => {}
             _ => anyhow::bail!(e),
@@ -1019,7 +1025,7 @@ pub async fn start(
     let connection_task = tokio::spawn(async move { connection.await });
 
     let notification_channel = "lantern_cloud_embedding_jobs_v2";
-    let data_path = create_data_path(logger.clone()).await?;
+    let data_path = create_data_path(logger.clone(), args.data_path).await?;
 
     let (insert_notification_queue_tx, insert_notification_queue_rx): (
         UnboundedSender<JobInsertNotification>,

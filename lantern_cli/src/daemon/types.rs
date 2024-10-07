@@ -21,6 +21,7 @@ pub struct JobRunArgs {
     pub log_level: crate::logger::LogLevel,
     pub table_name: String,
     pub label: Option<String>,
+    pub data_path: Option<String>,
 }
 
 #[derive(Clone, Debug)]

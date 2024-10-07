@@ -155,7 +155,7 @@ pub struct EncoderOptions {
     pub input_image_size: Option<usize>,
 }
 
-const DATA_PATH: &'static str = ".ldb_extras_data/";
+pub const DATA_PATH: &'static str = ".ldb_extras_data/";
 const MAX_IMAGE_SIZE: u64 = 1024 * 1024 * 20; // 20 MB
 
 struct ModelInfo {

@@ -67,6 +67,10 @@ pub struct DaemonArgs {
     #[arg(long)]
     pub label: Option<String>,
 
+    /// Data path
+    #[arg(long)]
+    pub data_path: Option<String>,
+
     /// Log level
     #[arg(long, value_enum, default_value_t = LogLevel::Info)] // arg_enum here
     pub log_level: LogLevel,

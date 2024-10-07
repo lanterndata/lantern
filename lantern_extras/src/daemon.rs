@@ -1,6 +1,9 @@
 use lantern_cli::{
     daemon::{cli::DaemonArgs, start},
-    embeddings::core::{cohere_runtime::CohereRuntimeParams, openai_runtime::OpenAiRuntimeParams},
+    embeddings::core::{
+        cohere_runtime::CohereRuntimeParams, openai_runtime::OpenAiRuntimeParams,
+        ort_runtime::DATA_PATH,
+    },
     logger::{LogLevel, Logger},
     types::AnyhowVoidResult,
     utils::{get_full_table_name, quote_ident},
@@ -88,6 +91,7 @@ pub fn start_daemon(
                 master_db_schema: String::new(),
                 schema: String::from("_lantern_extras_internal"),
                 target_db: Some(target_dbs.clone()),
+                data_path: Some(DATA_PATH.to_owned()),
             },
             Some(logger.clone()),
             cancellation_token.clone(),

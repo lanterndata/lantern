@@ -45,6 +45,7 @@ async fn test_daemon_external_index_create_on_small_table() {
                 schema: "_lantern_extras_internal".to_owned(),
                 target_db: Some(vec![new_connection_uri]),
                 log_level: LogLevel::Debug,
+                data_path: None,
             },
             None,
             cancel_token_clone,
@@ -100,6 +101,7 @@ async fn test_daemon_external_index_create() {
                 schema: "_lantern_extras_internal".to_owned(),
                 target_db: Some(vec![new_connection_uri]),
                 log_level: LogLevel::Debug,
+                data_path: None,
             },
             None,
             cancel_token_clone,
@@ -157,6 +159,7 @@ async fn test_daemon_external_index_wrong_ops() {
                 schema: "_lantern_extras_internal".to_owned(),
                 target_db: Some(vec![new_connection_uri]),
                 log_level: LogLevel::Debug,
+                data_path: None,
             },
             None,
             cancel_token_clone,
@@ -177,4 +180,3 @@ async fn test_daemon_external_index_wrong_ops() {
 
     cancel_token.cancel();
 }
-
