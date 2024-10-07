@@ -207,12 +207,12 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: *-lcov.info
+          pattern: "*-lcov.info"
           merge-multiple: true
           path: /tmp/lantern-coverage
       - uses: geekyeggo/delete-artifact@v4
         with:
-          name: *-lcov.info
+          name: "*-lcov.info"
       - name: Upload coverage to Codecov
         env:
           codecov_token: ${{ secrets.CODECOV_TOKEN }}
