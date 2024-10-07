@@ -161,6 +161,8 @@ endforeach()
 
 if(APPLE)
   set(_link_flags "${_link_flags} -bundle_loader ${PG_BINARY} -undefined dynamic_lookup")
+else()
+set(_link_flags "${_link_flags} -Wl,--version-script=${CMAKE_BINARY_DIR}/hide_symbols.version")
 endif()
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   # suppress warnings from autovectorization failures such as:
@@ -373,6 +375,20 @@ add_custom_target(
   COMMAND ${CMAKE_SOURCE_DIR}/scripts/run_benchmarks.sh --print-only
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/build
 )
+
+# build machinery to suppress extraneous symbols in .so
+if(NOT APPLE)
+  add_custom_target(
+    symbol-suppresion
+    COMMAND ${CMAKE_SOURCE_DIR}/scripts/build_symbol_suppression.sh ${CMAKE_SOURCE_DIR}/src ${CMAKE_BINARY_DIR}/hide_symbols.version
+  )
+  add_dependencies(lantern symbol-suppresion)
+  set_property(
+    TARGET lantern
+    APPEND
+    PROPERTY ADDITIONAL_CLEAN_FILES hide_symbols.version
+  )
+endif()
 
 # DEVELOPMENT
 find_program(CLANG_FORMAT NAMES clang-format)
