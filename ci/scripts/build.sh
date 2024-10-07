@@ -13,7 +13,7 @@ else
    exit 1
 fi
 
-source "$(dirname "$0")/../../scripts/utils.sh"
+source "$(dirname "$0")/utils.sh"
 
 setup_environment
 

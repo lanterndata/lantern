@@ -90,8 +90,8 @@ function configure_and_start_postgres() {
 }
 
 # Source unified utility functions
-source "$(dirname "$0")/../../scripts/utils.sh"
-source "$(dirname "$0")/../../scripts/build-linux.sh"
+source "$(dirname "$0")/utils.sh"
+source "$(dirname "$0")/build-linux.sh"
 
 if [ ! -z "$RUN_POSTGRES" ]
 then
