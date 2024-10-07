@@ -56,6 +56,7 @@ function install_platform_specific_dependencies() {
   pushd /tmp
     
     if [[ "$INSTALL_EXTRAS" = "1" ]]
+    then
       setup_rust
       setup_cargo_deps
       pushd lantern
