@@ -89,7 +89,7 @@ typedef struct
     ExtraDirtiedBufs *extra_dirted;
 
 #if LANTERNDB_COPYNODES
-    char *takenbuffers;
+    char **takenbuffers;
 #else
     Buffer *takenbuffers;
 #endif

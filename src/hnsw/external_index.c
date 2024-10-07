@@ -648,8 +648,7 @@ void *ldb_wal_index_node_retriever(void *ctxp, unsigned long long id)
     ctx->takenbuffers[ ctx->takenbuffers_next ] = buf_p;
     ctx->takenbuffers_next = (ctx->takenbuffers_next + 1) % ctx->takenbuffers_size;
     return buf_p;
-#endif
-
+#else
     // if we locked the page, unlock it and only leave a pin on it.
     // otherwise, it must must have been locked because we are in the middle of an update and that node
     // was affected, so we must leave it locked
@@ -662,6 +661,7 @@ void *ldb_wal_index_node_retriever(void *ctxp, unsigned long long id)
         ctx->takenbuffers[ ctx->takenbuffers_next ] = buf;
         ctx->takenbuffers_next = (ctx->takenbuffers_next + 1) % ctx->takenbuffers_size;
     }
+#endif
 
 #if PG_VERSION_NUM >= 130000
     CheckMem(work_mem,
