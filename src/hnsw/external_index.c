@@ -626,7 +626,9 @@ void *ldb_wal_index_node_retriever(void *ctxp, unsigned long long id)
     page = extra_dirtied_get(ctx->extra_dirted, data_block_no, NULL);
     if(page == NULL) {
         buf = ReadBufferExtended(ctx->index_rel, MAIN_FORKNUM, data_block_no, RBM_NORMAL, NULL);
+#if LANTERNDB_COPYNODES
         LockBuffer(buf, BUFFER_LOCK_SHARE);
+#endif
         page = BufferGetPage(buf);
     } else {
         idx_page_prelocked = true;
@@ -634,29 +636,31 @@ void *ldb_wal_index_node_retriever(void *ctxp, unsigned long long id)
 
     nodepage = (HnswIndexTuple *)PageGetItem(page, PageGetItemId(page, tid_data.ip_posid));
 #if LANTERNDB_COPYNODES
-    BufferNode *buffNode;
-    buffNode = (BufferNode *)palloc(sizeof(BufferNode));
-    buffNode->buf = (char *)palloc(nodepage->size);
-    memcpy(buffNode->buf, nodepage->node, nodepage->size);
+    char *buf_p = (char *)palloc(nodepage->size);
+    memcpy(buf_p, nodepage->node, nodepage->size);
     if(!idx_page_prelocked) {
         UnlockReleaseBuffer(buf);
     }
-    dlist_push_tail(&ctx->takenbuffers, &buffNode->node);
-    return buffNode->buf;
+    if(ctx->takenbuffers[ ctx->takenbuffers_next ]) {
+        pfree(ctx->takenbuffers[ ctx->takenbuffers_next ]);
+    }
+
+    ctx->takenbuffers[ ctx->takenbuffers_next ] = buf_p;
+    ctx->takenbuffers_next = (ctx->takenbuffers_next + 1) % ctx->takenbuffers_size;
+    return buf_p;
 #endif
 
     // if we locked the page, unlock it and only leave a pin on it.
     // otherwise, it must must have been locked because we are in the middle of an update and that node
     // was affected, so we must leave it locked
     if(!idx_page_prelocked) {
-        // Wrap buf in a linked list node
-        BufferNode *buffNode;
-        buffNode = (BufferNode *)palloc(sizeof(BufferNode));
-        buffNode->buf = buf;
+        // Add buffer to the list of pinned buffers
+        if(ctx->takenbuffers[ ctx->takenbuffers_next ]) {
+            ReleaseBuffer(ctx->takenbuffers[ ctx->takenbuffers_next ]);
+        }
 
-        // Add buffNode to list of pinned buffers
-        dlist_push_tail(&ctx->takenbuffers, &buffNode->node);
-        LockBuffer(buf, BUFFER_LOCK_UNLOCK);
+        ctx->takenbuffers[ ctx->takenbuffers_next ] = buf;
+        ctx->takenbuffers_next = (ctx->takenbuffers_next + 1) % ctx->takenbuffers_size;
     }
 
 #if PG_VERSION_NUM >= 130000
@@ -666,7 +670,6 @@ void *ldb_wal_index_node_retriever(void *ctxp, unsigned long long id)
              0,
              "pinned more tuples during node retrieval than will fit in work_mem, cosider increasing work_mem");
 #endif
-    // fa_cache_insert(&ctx->fa_cache, (uint32)id, nodepage->node);
     return nodepage->node;
 }
 

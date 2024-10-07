@@ -11,9 +11,7 @@
 
 #include "external_index_socket.h"
 #include "extra_dirtied.h"
-#include "fa_cache.h"
 #include "hnsw.h"
-#include "htab_cache.h"
 #include "options.h"
 #include "usearch.h"
 
@@ -83,8 +81,6 @@ typedef struct HnswIndexTuple
 
 typedef struct
 {
-    HTABCache block_numbers_cache;
-
     Relation index_rel;
 
     // used for inserts
@@ -92,20 +88,14 @@ typedef struct
 
     ExtraDirtiedBufs *extra_dirted;
 
-    FullyAssociativeCache fa_cache;
-
-    dlist_head takenbuffers;
-} RetrieverCtx;
-
-typedef struct
-{
 #if LANTERNDB_COPYNODES
-    char *buf;
+    char *takenbuffers;
 #else
-    Buffer buf;
+    Buffer *takenbuffers;
 #endif
-    dlist_node node;
-} BufferNode;
+    uint32 takenbuffers_size;
+    uint32 takenbuffers_next;
+} RetrieverCtx;
 
 typedef struct
 {

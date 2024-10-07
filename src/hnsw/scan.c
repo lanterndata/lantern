@@ -28,10 +28,9 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     int                    dimensions;
     usearch_error_t        error = NULL;
     usearch_init_options_t opts;
+    RetrieverCtx          *retriever_ctx;
 
     (void)CheckExtensionVersions();
-
-    RetrieverCtx *retriever_ctx = ldb_wal_retriever_area_init(index, NULL);
 
     scan = RelationGetIndexScan(index, nkeys, norderbys);
 
@@ -52,6 +51,7 @@ IndexScanDesc ldb_ambeginscan(Relation index, int nkeys, int norderbys)
     headerp = (HnswIndexHeaderPage *)PageGetContents(page);
     assert(headerp->magicNumber == LDB_WAL_MAGIC_NUMBER);
 
+    retriever_ctx = ldb_wal_retriever_area_init(index, NULL, headerp->m);
     // Initialize usearch index options based on params stored in our index header
     dimensions = headerp->vector_dim;
 
@@ -279,6 +279,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
                                          scanstate->labels,
                                          scanstate->distances,
                                          &error);
+
         ldb_wal_retriever_area_reset(scanstate->retriever_ctx);
 
         scanstate->count = num_returned;

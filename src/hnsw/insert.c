@@ -127,7 +127,7 @@ bool ldb_aminsert(Relation         index,
         opts.quantization = usearch_scalar_b1_k;
         usearch_scalar = usearch_scalar_b1_k;
     }
-    opts.retriever_ctx = ldb_wal_retriever_area_init(index, hdr);
+    opts.retriever_ctx = ldb_wal_retriever_area_init(index, hdr, hdr->m);
     opts.retriever = ldb_wal_index_node_retriever;
     opts.retriever_mut = ldb_wal_index_node_retriever_mut;
 

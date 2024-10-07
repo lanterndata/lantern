@@ -9,7 +9,7 @@
 
 // this area is used to return pointers back to usearch
 
-RetrieverCtx* ldb_wal_retriever_area_init(Relation index_rel, HnswIndexHeaderPage* header_page_under_wal);
+RetrieverCtx* ldb_wal_retriever_area_init(Relation index_rel, HnswIndexHeaderPage* header_page_under_wal, uint32 m);
 // can be used after each usearch_search to tell the retriever that the pointers given out
 // will no longer be used
 void ldb_wal_retriever_area_reset(RetrieverCtx* ctx);
