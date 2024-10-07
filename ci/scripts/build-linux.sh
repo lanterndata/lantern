@@ -59,7 +59,7 @@ function install_platform_specific_dependencies() {
     then
       setup_rust
       setup_cargo_deps
-      pushd lantern
+      pushd /tmp/lantern
         ORT_STRATEGY=system cargo pgrx install --pg-config /usr/bin/pg_config --package lantern_extras
       popd
     fi
