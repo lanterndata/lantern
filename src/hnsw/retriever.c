@@ -5,66 +5,48 @@
 
 #include <assert.h>
 #include <common/relpath.h>
-#include <pg_config.h>  // BLCKSZ
+#include <storage/bufmgr.h>  // Buffer
 #include <utils/hsearch.h>
 #include <utils/relcache.h>
 
 #include "external_index.h"
-#include "htab_cache.h"
-#include "insert.h"
 
-RetrieverCtx *ldb_wal_retriever_area_init(Relation index_rel, HnswIndexHeaderPage *header_page_under_wal)
+RetrieverCtx *ldb_wal_retriever_area_init(Relation index_rel, HnswIndexHeaderPage *header_page_under_wal, uint32 m)
 {
     RetrieverCtx *ctx = palloc0(sizeof(RetrieverCtx));
     ctx->index_rel = index_rel;
     ctx->header_page_under_wal = header_page_under_wal;
     ctx->extra_dirted = extra_dirtied_new();
-
-    fa_cache_init(&ctx->fa_cache);
-
-    dlist_init(&ctx->takenbuffers);
-
-    /* fill in a buffer with blockno index information, before spilling it to disk */
-    ctx->block_numbers_cache = cache_create("BlockNumberCache");
+    ctx->takenbuffers_size = m * 5;
+    ctx->takenbuffers_next = 0;
+#if LANTERNDB_COPYNODES
+    ctx->takenbuffers = palloc0(sizeof(char *) * ctx->takenbuffers_size);
+#else
+    ctx->takenbuffers = palloc0(sizeof(Buffer) * ctx->takenbuffers_size);
+#endif
 
     return ctx;
 }
 
 void ldb_wal_retriever_area_reset(RetrieverCtx *ctx)
 {
-    dlist_mutable_iter miter;
-    dlist_foreach_modify(miter, &ctx->takenbuffers)
-    {
-        BufferNode *node = dlist_container(BufferNode, node, miter.cur);
-        if(node->buf != InvalidBuffer) {
-            ReleaseBuffer(node->buf);
+    for(uint32 i = 0; i < ctx->takenbuffers_size; i++) {
+        if(ctx->takenbuffers[ i ]) {
+#if LANTERNDB_COPYNODES
+            pfree(ctx->takenbuffers[ i ]);
+            ctx->takenbuffers[ i ] = NULL;
+#else
+            ReleaseBuffer(ctx->takenbuffers[ i ]);
+            ctx->takenbuffers[ i ] = 0;
+#endif
         }
-        dlist_delete(miter.cur);
-        pfree(node);
     }
-    dlist_init(&ctx->takenbuffers);
-
-    fa_cache_init(&ctx->fa_cache);
+    ctx->takenbuffers_next = 0;
 }
 
 void ldb_wal_retriever_area_fini(RetrieverCtx *ctx)
 {
-    cache_destroy(&ctx->block_numbers_cache);
-    dlist_mutable_iter miter;
-    dlist_foreach_modify(miter, &ctx->takenbuffers)
-    {
-        BufferNode *node = dlist_container(BufferNode, node, miter.cur);
-#if LANTERNDB_COPYNODES
-        pfree(node->buf);
-#else
-        if(node->buf != InvalidBuffer) {
-            ReleaseBuffer(node->buf);
-        }
-#endif
-        dlist_delete(miter.cur);
-        pfree(node);
-    }
-    dlist_init(&ctx->takenbuffers);
-
+    ldb_wal_retriever_area_reset(ctx);
+    pfree(ctx->takenbuffers);
     extra_dirtied_free(ctx->extra_dirted);
 }
