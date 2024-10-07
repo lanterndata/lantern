@@ -1,0 +1,24 @@
+
+[workspace]
+resolver = "2"
+
+
+members = [
+    "lantern_extras",
+    "lantern_cli"
+]
+
+[profile.release]
+panic = "unwind"
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = true
+
+[profile.dev]
+panic = "unwind"
+
+[profile.ci-build]
+inherits = "release"
+opt-level = 2
+codegen-units = 8

@@ -8,22 +8,11 @@ RUN_TESTS=${RUN_TESTS:-1}
 
 export PGDATA=/etc/postgresql/$PG_VERSION/main
 
+source "$(dirname "$0")/../../scripts/utils.sh"
+
 function stop_current_postgres() {
   # Stop any existing processes
   /usr/lib/postgresql/$PG_VERSION/bin/pg_ctl stop -D $PGDATA
-}
-function wait_for_pg(){
- tries=0
- until pg_isready -U postgres 2>/dev/null; do
-   if [ $tries -eq 10 ];
-   then
-     echo "Can not connect to postgres"
-     exit 1
-   fi
-
-   sleep 1
-   tries=$((tries+1))
- done
 }
 
 function run_pgvector_tests(){

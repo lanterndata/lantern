@@ -1,0 +1,38 @@
+FROM rust:1.78.0 as build
+# Copy the files in your machine to the Docker image
+WORKDIR /app
+COPY . .
+
+# Remove lantern_extras from workspace
+RUN rm -rf lantern_extras && sed -i -e 's/"lantern_extras",//' Cargo.toml
+
+ENV CC=/usr/bin/clang-18
+ENV CXX=/usr/bin/clang++-18
+# Build your program for release
+RUN apt update && \
+  apt install -y --no-install-recommends lsb-release wget software-properties-common gnupg pkg-config curl libssl-dev && \
+  curl -s https://apt.llvm.org/llvm.sh | bash -s -- 18 && \
+  cargo build --release --package lantern_cli
+
+FROM nvcr.io/nvidia/cuda:11.8.0-runtime-ubuntu22.04
+COPY --from=build /app/target/release/lantern-cli .
+RUN apt update && \
+  apt install -y wget && apt clean
+# Download onnxruntime
+RUN mkdir -p /usr/local/lib && \
+    cd /usr/local/lib && \
+    wget -q https://github.com/microsoft/onnxruntime/releases/download/v1.16.1/onnxruntime-linux-x64-gpu-1.16.1.tgz && \
+    tar xzf ./onnx*.tgz && \
+    rm -rf ./onnx*.tgz && \
+    mv ./onnx* ./onnxruntime 
+
+# Install libcudnn
+RUN wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/libcudnn8_8.7.0.84-1+cuda11.8_amd64.deb -O libcudnn.deb && \
+    dpkg -i libcudnn.deb && \
+    rm -rf libcudnn.deb
+
+RUN ln -s /usr/local/cuda/targets/x86_64-linux/lib/libnvrtc.so.11.2 /usr/local/cuda/targets/x86_64-linux/lib/libnvrtc.so
+ENV ORT_STRATEGY=system
+ENV ORT_DYLIB_PATH=/usr/local/lib/onnxruntime/lib/libonnxruntime.so
+# Run the binary
+ENTRYPOINT ["./lantern-cli"]

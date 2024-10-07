@@ -26,3 +26,9 @@ sanitizer
 .env.rb
 .venv
 __pycache__
+.idea/
+/target
+*.iml
+**/*.rs.bk
+Cargo.lock
+.ldb_extras_data

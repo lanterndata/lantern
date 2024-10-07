@@ -1,19 +1,7 @@
 #!/bin/bash
 set -e
 
-wait_for_pg(){
- tries=0
- until pg_isready -U postgres 2>/dev/null; do
-   if [ $tries -eq 10 ];
-   then
-     echo "Can not connect to postgres"
-     exit 1
-   fi
-   
-   sleep 1
-   tries=$((tries+1))
- done
-}
+source "$(dirname "$0")/../../scripts/utils.sh"
 
 export WORKDIR=/tmp/lantern
 export PG_VERSION=15
