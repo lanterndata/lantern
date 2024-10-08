@@ -34,7 +34,7 @@ function install_external_dependencies() {
         # .bak trick is needed to make this work on both mac and linux
         # https://stackoverflow.com/questions/5694228/sed-in-place-flag-that-works-both-on-mac-bsd-and-linux
         sed -i.bak "s/#define HNSW_MAX_EF_SEARCH.*/#define HNSW_MAX_EF_SEARCH 50000/g" src/hnsw.h
-        make -j && make install
+        CC=/usr/bin/clang-15 CXX=/usr/bin/clang-15++ make -j && make install
       popd
 
     popd
@@ -42,38 +42,36 @@ function install_external_dependencies() {
 }
 
 function build_and_install_lantern() {
-  rm -rf /tmp/lantern/build || true 2>/dev/null
-  cd /tmp/lantern
-  # install ruby dependencies for test_updates
-  pushd /tmp/lantern/scripts/test_updates
-    bundler
+  rm -rf /tmp/lantern/lantern_hnsw/build || true 2>/dev/null
+  pushd /tmp/lantern/lantern_hnsw
+    # install ruby dependencies for test_updates
+    pushd /tmp/lantern/lantern_hnsw/scripts/test_updates
+      bundler
+    popd
+
+    # install update and WAL test dependencies
+    python3 -m venv cienv
+    source cienv/bin/activate
+    pip install -r /tmp/lantern/lantern_hnsw/scripts/requirements.txt
+
+    flags="-DBUILD_FOR_DISTRIBUTING=YES -DMARCH_NATIVE=OFF -DCMAKE_COMPILE_WARNING_AS_ERROR=ON \
+    -DCMAKE_C_COMPILER=$CC -DCMAKE_CXX_COMPILER=$CXX -DUSE_SSL=$USE_SSL"
+
+    if [[ "$ENABLE_COVERAGE" == "1" ]]
+    then
+      flags="$flags -DCODECOVERAGE=ON"
+      cp /usr/bin/gcov-12 /usr/bin/gcov
+    fi
+    
+    if [[ "$ENABLE_FAILURE_POINTS" == "1" ]]
+    then
+      flags="$flags -DFAILURE_POINTS=ON"
+    fi
+
+    # Run cmake
+    cmake $flags -B build
+    make -C build install -j
   popd
-
-  # install update and WAL test dependencies
-  python3 -m venv cienv
-  source cienv/bin/activate
-  pip install -r /tmp/lantern/scripts/requirements.txt
-
-  mkdir build
-  cd build
-
-  flags="-DBUILD_FOR_DISTRIBUTING=YES -DMARCH_NATIVE=OFF -DCMAKE_COMPILE_WARNING_AS_ERROR=ON \
-  -DCMAKE_C_COMPILER=$CC -DCMAKE_CXX_COMPILER=$CXX -DUSE_SSL=$USE_SSL"
-
-  if [[ "$ENABLE_COVERAGE" == "1" ]]
-  then
-    flags="$flags -DCODECOVERAGE=ON"
-    cp /usr/bin/gcov-12 /usr/bin/gcov
-  fi
-  
-  if [[ "$ENABLE_FAILURE_POINTS" == "1" ]]
-  then
-    flags="$flags -DFAILURE_POINTS=ON"
-  fi
-
-  # Run cmake
-  cmake $flags ..
-  make install -j
 }
 
 function wait_for_pg(){

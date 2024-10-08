@@ -1,19 +1,7 @@
 #!/bin/bash
 set -e
 
-wait_for_pg(){
- tries=0
- until pg_isready -U postgres 2>/dev/null; do
-   if [ $tries -eq 10 ];
-   then
-     echo "Can not connect to postgres"
-     exit 1
-   fi
-   
-   sleep 1
-   tries=$((tries+1))
- done
-}
+source "$(dirname "$0")/utils.sh"
 
 export WORKDIR=/tmp/lantern
 export PG_VERSION=15
@@ -28,7 +16,7 @@ echo "host    all             all             ::1/128                 trust" >> 
 
 POSTGRES_HOST_AUTH_METHOD=trust /usr/lib/postgresql/$PG_VERSION/bin/postgres 1>/tmp/pg-out.log 2>/tmp/pg-error.log &
 wait_for_pg
-cd $WORKDIR/build
+cd $WORKDIR/lantern_hnsw/build
 
 export DATABASE_URL=postgresql://localhost:5432/postgres
 export LANTERN_DATABASE_URL=postgresql://localhost:5432/postgres

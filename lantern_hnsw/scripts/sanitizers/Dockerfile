@@ -6,7 +6,7 @@ ARG UBSAN=
 
 WORKDIR /lantern
 # This requires the docker command be run in the lantern base director
-COPY scripts scripts
+COPY lantern_hnsw/scripts scripts
 
 WORKDIR pg_build
 
@@ -82,7 +82,7 @@ RUN wget --quiet -O pgvector.tar.gz https://github.com/pgvector/pgvector/archive
     cd pgvector-${PGVECTOR_VERSION} && \
     make && make install
 
-COPY . .
+COPY lantern_hnsw .
 
 # lantern sources contain cpp code, so we need cpp compiler
 ENV CXX "clang++-15"

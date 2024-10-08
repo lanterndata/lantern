@@ -47,7 +47,7 @@ else
     CONTAINER="lantern-san$CONTAINER"
 fi
 
-docker build -t $CONTAINER -f scripts/sanitizers/Dockerfile $ARGS .
+docker build -t $CONTAINER -f lantern_hnsw/scripts/sanitizers/Dockerfile $ARGS .
 
 docker run --rm -d -v $(pwd)/sanitizer:/lantern/sanitizer --name lantern-sanitizers $CONTAINER
 

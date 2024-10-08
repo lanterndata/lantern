@@ -33,16 +33,16 @@ env:
   CXXFLAGS: "-g -fsanitize=address -fno-omit-frame-pointer -Og -fno-inline-functions"
   LDFLAGS: "-fsanitize=address"
 
-  ASAN_OPTIONS: suppressions=${{ github.workspace }}/scripts/sanitizers/suppressions/suppr_asan.txt
+  ASAN_OPTIONS: suppressions=${{ github.workspace }}/lantern_hnsw/scripts/sanitizers/suppressions/suppr_asan.txt
     detect_odr_violation=0 log_path=${{ github.workspace }}/sanitizer/
     log_exe_name=true print_suppressions=false exitcode=27
     detect_leaks=0 abort_on_error=1
 
-  LSAN_OPTIONS: suppressions=${{ github.workspace }}/scripts/sanitizers/suppressions/suppr_leak.txt
+  LSAN_OPTIONS: suppressions=${{ github.workspace }}/lantern_hnsw/scripts/sanitizers/suppressions/suppr_leak.txt
     print_suppressions=0 log_path=${{ github.workspace }}/sanitizer/
     log_exe_name=true print_suppressions=false exitcode=27
 
-  UBSAN_OPTIONS: suppressions=${{ github.workspace }}/scripts/sanitizers/suppressions/suppr_ub.txt
+  UBSAN_OPTIONS: suppressions=${{ github.workspace }}/lantern_hnsw/scripts/sanitizers/suppressions/suppr_ub.txt
     print_stacktrace=1 halt_on_error=1 log_path=${{ github.workspace }}/sanitizer/
     log_exe_name=true print_suppressions=false exitcode=27
 
@@ -127,7 +127,7 @@ jobs:
         tar --extract --file postgresql.tar.bz2 --directory ~/$PG_SRC_DIR --strip-components 1
         # Add instrumentation to the Postgres memory contexts. For more details, see
         # https://www.postgresql.org/message-id/CAM-w4HNH7%2BU9jZevpVK7Wr49tkfpWSR6wav0RLYrq0HWuP5cxw%40mail.gmail.com
-        patch -F5 -p1 -d ~/$PG_SRC_DIR < scripts/sanitizers/postgres-asan-instrumentation.patch
+        patch -F5 -p1 -d ~/$PG_SRC_DIR < lantern_hnsw/scripts/sanitizers/postgres-asan-instrumentation.patch
         cd ~/$PG_SRC_DIR
         ./configure --prefix=$PG_INSTALL_DIR --enable-debug --enable-cassert \
           --with-openssl --without-readline --without-zlib --without-libxml
@@ -160,8 +160,8 @@ jobs:
 
     - name: Build Lantern
       run: |
-        mkdir lantern_build
-        cd lantern_build
+        mkdir lantern_hnsw/lantern_build
+        cd lantern_hnsw/lantern_build
         CXXFLAG="" cmake ..
         make install
 
@@ -177,7 +177,7 @@ jobs:
 
     - name: make test
       run: |
-        cd lantern_build
+        cd lantern_hnsw/lantern_build
         make test
 
     - name: Show regression diffs
@@ -229,7 +229,7 @@ jobs:
           info locals
           bt full
         " 2>&1 | tee stacktrace.log
-        ./scripts/sanitizers/bundle_coredump.sh
+        ./lantern_hnsw/scripts/sanitizers/bundle_coredump.sh
         grep -C40 "was terminated by signal" postgres.log > postgres-failure.log ||:
 
     - name: Coredumps

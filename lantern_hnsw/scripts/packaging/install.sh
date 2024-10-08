@@ -54,12 +54,14 @@ then
   exit 1
 fi
 
+echo "Installing Lantern"
+
 cp -r src/${ARCH}/${PLATFORM}/${PG_VERSION}/*.{so,dylib} $PG_LIBRARY_DIR 2>/dev/null || true
 cp -r src/${ARCH}/${PLATFORM}/${PG_VERSION}/bitcode/* $PG_LIBRARY_DIR/bitcode/ 2>/dev/null || true
 cp -r shared/*.sql $PG_EXTENSION_DIR
 cp -r shared/*.control $PG_EXTENSION_DIR
 
-echo "Lantern installed successfully"
+echo "Extension installed successfully"
 
 EXTRAS_PACKAGE_NAME=$(find . -name "lantern-extras*" | head -n 1)
 

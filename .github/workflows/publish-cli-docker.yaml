@@ -48,7 +48,7 @@ jobs:
           context: .
           platforms: |
             linux/amd64
-          file: Dockerfile.cli${{ (matrix.device == 'gpu' && '.cuda' || '') }}
+          file: docker/Dockerfile.cli${{ (matrix.device == 'gpu' && '.cuda' || '') }}
           push: true
           # We will only correctly tag GPU image as we have it only for x86_64 platform
           # CPU image will be tagged with github sha, to be merged later with arm64 image and pushed with correct tags
@@ -90,7 +90,7 @@ jobs:
             linux/amd64
           build-args: |
             CXXFLAGS=${{ format('-march={0} -DUSEARCH_USE_SIMSIMD=1 -DUSEARCH_USE_FP16LIB=0', matrix.target) }}
-          file: Dockerfile.cli
+          file: docker/Dockerfile.cli
           push: true
           tags: |
             ${{ format('{0}:{1}-cpu-{2}', inputs.IMAGE_NAME, inputs.VERSION, matrix.target) }}
@@ -115,7 +115,7 @@ jobs:
           context: .
           platforms: |
             linux/arm64
-          file: Dockerfile.cli
+          file: docker/Dockerfile.cli
           push: true
           tags: |
             ${{ inputs.IMAGE_NAME }}:${{ github.sha }}-cpu-arm64

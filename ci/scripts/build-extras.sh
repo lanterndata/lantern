@@ -3,10 +3,14 @@
 set -e
 
 function setup_onnx() {
+  source "$(dirname "$0")/../../lantern_hnsw/scripts/get_arch_and_platform.sh"
   pushd /tmp
     ONNX_VERSION="1.16.1"
     PACKAGE_URL="https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-linux-x64-${ONNX_VERSION}.tgz" && \
-    if [[ $ARCH == *"arm"* ]]; then PACKAGE_URL="https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-linux-aarch64-${ONNX_VERSION}.tgz"; fi && \
+    case "$ARCH" in \
+        *arm*|aarch64) \
+            PACKAGE_URL="https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-linux-aarch64-${ONNX_VERSION}.tgz"; \
+    esac && \
     mkdir -p /usr/local/lib && \
     cd /usr/local/lib && \
     wget -q $PACKAGE_URL && \
@@ -15,11 +19,13 @@ function setup_onnx() {
     mv ./onnx* ./onnxruntime && \
     echo /usr/local/lib/onnxruntime/lib > /etc/ld.so.conf.d/onnx.conf && \
     ldconfig
+    echo "onnxruntime installed from package: $PACKAGE_URL"
   popd
 }
 
 function package_cli() {
-  source "$(dirname "$0")/get_arch_and_platform.sh"
+  . "$HOME/.cargo/env"
+  source "$(dirname "$0")/../../lantern_hnsw/scripts/get_arch_and_platform.sh"
   VERSION=$(cargo metadata --format-version 1 | jq '.packages[] | select( .name == "lantern_cli") | .version' | tr -d '"')
   PACKAGE_NAME=lantern-cli-${VERSION}-${PLATFORM}-${ARCH}
   SOURCE_DIR=$(pwd)
@@ -47,7 +53,7 @@ function install_extension() {
 
 function package_extension() {
   cargo pgrx package --pg-config /usr/bin/pg_config --package lantern_extras
-  source "$(dirname "$0")/get_arch_and_platform.sh"
+  source "$(dirname "$0")/../../lantern_hnsw/scripts/get_arch_and_platform.sh"
 
   EXT_VERSION=$(cargo metadata --format-version 1 | jq '.packages[] | select( .name == "lantern_extras") | .version' | tr -d '"')
   PACKAGE_NAME=lantern-extras-${EXT_VERSION}-postgres-${PG_VERSION}-${PLATFORM}-${ARCH}
@@ -57,18 +63,18 @@ function package_extension() {
   SHARE_BUILD_DIR="$(pwd)/target/release/lantern_extras-pg${PG_VERSION}/usr/share/postgresql/${PG_VERSION}/extension"
   OUT_DIR=/tmp/lantern-extras
   
-  mkdir -p ${OUT_DIR}/${PACKAGE_NAME}/lib
+  mkdir -p ${OUT_DIR}/${PACKAGE_NAME}/src
 
   # For Mac OS and Postgres 16 the module will have .dylib extension
   # Instead of .so, so any of the files may not exist
   # So we will ignore the error from cp command
-  cp ${LIB_BUILD_DIR}/*.{so,dylib} ${OUT_DIR}/${PACKAGE_NAME}/lib 2>/dev/null || true
+  cp ${LIB_BUILD_DIR}/*.{so,dylib} ${OUT_DIR}/${PACKAGE_NAME}/src 2>/dev/null || true
   
   cp ${SOURCE_DIR}/README.md ${OUT_DIR}/${PACKAGE_NAME}/ 
   cp ${SOURCE_DIR}/LICENSE ${OUT_DIR}/${PACKAGE_NAME}/ 2>/dev/null || true
-  cp ${SOURCE_DIR}/scripts/packaging/* ${OUT_DIR}/${PACKAGE_NAME}/
-  cp ${SHARE_BUILD_DIR}/*.sql ${OUT_DIR}/${PACKAGE_NAME}/lib
-  cp ${SHARE_BUILD_DIR}/*.control ${OUT_DIR}/${PACKAGE_NAME}/lib
+  cp ${SOURCE_DIR}/lantern_hnsw/scripts/packaging/* ${OUT_DIR}/${PACKAGE_NAME}/
+  cp ${SHARE_BUILD_DIR}/*.sql ${OUT_DIR}/${PACKAGE_NAME}/src
+  cp ${SHARE_BUILD_DIR}/*.control ${OUT_DIR}/${PACKAGE_NAME}/src
 
   pushd "$OUT_DIR"
     tar cf ${PACKAGE_NAME}.tar ${PACKAGE_NAME}
@@ -99,9 +105,13 @@ then
   exit 0
 fi
 
-setup_environment
-setup_locale_and_install_packages
-clone_or_use_source
+if [ ! -z "$SETUP_ENV" ]
+then
+  setup_environment
+  setup_locale_and_install_packages
+  clone_or_use_source
+  setup_rust
+fi
 
 if [ ! -z "$SETUP_POSTGRES" ]
 then
