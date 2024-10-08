@@ -1,0 +1,719 @@
+name: Release
+
+on:
+  push:
+    branches: ["main"]
+
+env:
+  BUILD_TYPE: Release
+  GH_TOKEN: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
+  PYTHONUTF8: 1
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+  packages: write
+
+jobs:
+  versioning:
+    name: Semantic Release
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v3
+      - run: npm install --save-dev --prefix ./package-ci @semantic-release/exec @semantic-release/git conventional-changelog-eslint semantic-release && npx --prefix ./package-ci semantic-release
+
+  rebase:
+    name: Rebase Dev. Branch
+    needs: versioning
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout the latest code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Perform rebase
+        run: |
+          git fetch origin main
+          git checkout main-dev
+          git rebase origin/main
+
+      - name: Push changes
+        uses: CasperWA/push-protected@v2
+        with:
+          token: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
+          branch: main-dev
+          unprotect_reviews: True
+          force: True
+
+  create_linux_deb_package:
+    name: Create Debian Package for ${{ matrix.arch }}
+    runs-on: ubuntu-22.04
+    needs: versioning
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ["linux/amd64", "linux/arm64"]
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          persist-credentials: false
+          ref: "main"
+      - run: git submodule update --init --recursive
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Setup Docker
+        uses: docker/setup-buildx-action@v2
+
+      - name: Get Docker daemon IP
+        id: dockerip
+        run: |
+          docker_ip=$(ip addr show docker0 | grep -Po 'inet \K[\d.]+') && \
+          echo "docker_ip=$docker_ip" >> "$GITHUB_OUTPUT"
+
+      - name: Set runner user password
+        id: userpass
+        run: |
+          user_pass="1122"
+          echo "runner:$user_pass" | sudo chpasswd
+          echo "user_pass=$user_pass" >> "$GITHUB_OUTPUT"
+
+      - name: Build library
+        run: |
+          docker buildx create --use
+          docker buildx build \
+          --platform ${{ matrix.arch }} \
+          --build-arg docker_ip=${{ steps.dockerip.outputs.docker_ip }} \
+          --build-arg user_pass=${{ steps.userpass.outputs.user_pass }} \
+          --file .github/workflows/Dockerfile.libs \
+          --tag unum/usearch-library:latest \
+          --load .
+      - name: Clear Docker buildx cache
+        run: docker buildx prune --all --force
+
+      - name: Upload archive
+        uses: xresloader/upload-to-github-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          file: "*.deb"
+          update_latest_release: true
+
+  create_windows_dll_library:
+    name: Create Dll Library for Windows ${{ matrix.arch }}
+    runs-on: windows-2022
+    needs: versioning
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, x86]
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          persist-credentials: false
+          ref: "main"
+      - run: git submodule update --init --recursive
+
+      - name: Setup CMake
+        uses: jwlawson/actions-setup-cmake@v1.13
+
+      - uses: actions/setup-go@v4
+        with:
+          go-version: "^1.19.0"
+
+      - name: Setup MinGW
+        uses: egor-tensin/setup-mingw@v2
+        with:
+          platform: ${{ matrix.arch }}
+          version: 12.2.0
+
+      - name: Get version
+        id: set_version
+        shell: bash
+        run: |
+          version=$(cat VERSION)
+          echo "version=$version" >> $GITHUB_OUTPUT
+
+      - name: Build library
+        run: |
+          cmake -DCMAKE_BUILD_TYPE=Release -DUSEARCH_BUILD_LIB_C=1 -DUSEARCH_BUILD_TEST_CPP=0 -DUSEARCH_BUILD_BENCH_CPP=0 -B ./build_release
+          cmake --build ./build_release --config Release
+          tar -cvf usearch_windows_${{ matrix.arch }}_${{ steps.set_version.outputs.version }}.tar .\build_release\libusearch_c.dll .\c\usearch.h
+
+      - name: Upload archive
+        uses: xresloader/upload-to-github-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          file: "usearch_windows_${{ matrix.arch }}_${{ steps.set_version.outputs.version }}.tar"
+          update_latest_release: true
+
+  create_macos_library:
+    name: Create Library for MacOS ${{ matrix.arch }}
+    runs-on: macos-12
+    needs: versioning
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x86_64]
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          persist-credentials: false
+          ref: "main"
+      - run: git submodule update --init --recursive
+
+      - uses: actions/setup-go@v4
+        with:
+          go-version: "^1.21.0"
+
+      - name: Get version
+        id: version
+        run: |
+          version=$(cat VERSION)
+          echo "version=$version" >> $GITHUB_OUTPUT
+
+      - name: Build library
+        run: |
+          cmake -DCMAKE_BUILD_TYPE=Release -DUSEARCH_BUILD_LIB_C=1 -DUSEARCH_BUILD_TEST_CPP=0 -DUSEARCH_BUILD_BENCH_CPP=0 -B ./build_release
+          cmake --build ./build_release --config Release        
+          zip -r usearch_macOS_${{ matrix.arch }}_${{ steps.version.outputs.version }}.zip build_release/libusearch_c.so c/usearch.h
+
+      - name: Upload archive
+        uses: xresloader/upload-to-github-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          file: "*.zip"
+          update_latest_release: true
+
+  wasm_c_library:
+    name: WASM builds for C libraries on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    needs: versioning
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macOS-11, windows-2022]
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          persist-credentials: false
+          ref: "main"
+      - run: git submodule update --init --recursive
+
+      - name: Get version
+        id: version
+        run: |
+          version=$(cat VERSION)
+          echo "version=$version" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Build library on Ubuntu
+        run: |
+          export WASI_VERSION=20
+          export WASI_VERSION_FULL=${WASI_VERSION}.0
+          wget https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_VERSION}/wasi-sdk-${WASI_VERSION_FULL}-linux.tar.gz
+          tar xf wasi-sdk-${WASI_VERSION_FULL}-linux.tar.gz
+          rm -rf wasi-sdk-${WASI_VERSION_FULL}-linux.tar.gz
+          export WASI_SDK_PATH=/home/runner/work/usearch/usearch/wasi-sdk-${WASI_VERSION_FULL}
+          archs=("x86_64" "arm64")
+          cd ./c
+          for arch in "${archs[@]}"
+          do
+            ../wasi-sdk-20.0/bin/clang++ --sysroot=${WASI_SDK_PATH}/share/wasi-sysroot -o libusearch_c.so -O3 lib.cpp -I.  -I ../include/  -I ../fp16/include/ -shared --target=wasm32-wasi-threads  -Wl,--no-entry -nostdlib -D_WASI_EMULATED_MMAN -march="$arch"
+            tar -czvf usearch_wasm_linux_"$arch"_${{ steps.version.outputs.version }}.tar.gz libusearch_c.so
+            mv usearch_wasm_linux_"$arch"_${{ steps.version.outputs.version }}.tar.gz ../ && rm -rf libusearch_c.so
+          done
+        if: matrix.os == 'ubuntu-22.04'
+
+      - name: Build library on MacOS
+        run: |
+          export WASI_VERSION=20
+          export WASI_VERSION_FULL=${WASI_VERSION}.0
+          wget https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_VERSION}/wasi-sdk-${WASI_VERSION_FULL}-macos.tar.gz
+          tar xf wasi-sdk-${WASI_VERSION_FULL}-macos.tar.gz
+          rm -rf wasi-sdk-${WASI_VERSION_FULL}-macos.tar.gz
+          export WASI_SDK_PATH=/Users/runner/work/usearch/usearch/wasi-sdk-${WASI_VERSION_FULL}
+          archs=("x86_64" "arm64")
+          cd ./c 
+          for arch in "${archs[@]}"
+          do
+            ../wasi-sdk-20.0/bin/clang++ --sysroot=${WASI_SDK_PATH}/share/wasi-sysroot -o libusearch_c.so -O3 lib.cpp -I.  -I ../include/  -I ../fp16/include/ -shared --target=wasm32-wasi-threads  -Wl,--no-entry -nostdlib -D_WASI_EMULATED_MMAN -march="$arch"
+            zip -r usearch_wasm_macos_"$arch"_${{ steps.version.outputs.version }}.zip libusearch_c.so
+            mv usearch_wasm_macos_"$arch"_${{ steps.version.outputs.version }}.zip ../ && rm -rf libusearch_c.so
+          done
+        if: matrix.os == 'macOS-11'
+
+      - name: Build library on Windows
+        run: |
+          export WASI_VERSION=20
+          export WASI_VERSION_FULL=${WASI_VERSION}.0
+          curl -LOJ https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_VERSION}/wasi-sdk-${WASI_VERSION_FULL}.m-mingw.tar.gz
+          tar xf wasi-sdk-${WASI_VERSION_FULL}.m-mingw.tar.gz
+          rm -rf wasi-sdk-${WASI_VERSION_FULL}.m-mingw.tar.gz
+          export WASI_SDK_PATH=/d/a/usearch/usearch/wasi-sdk-${WASI_VERSION_FULL}+m
+          archs=("x64" "x86")
+          cd ./c 
+          for arch in "${archs[@]}"
+          do
+            ../wasi-sdk-20.0+m/bin/clang++ --sysroot=${WASI_SDK_PATH}/share/wasi-sysroot -o libusearch_c.so -O3 lib.cpp -I.  -I ../include/  -I ../fp16/include/ -shared --target=wasm32-wasi-threads  -Wl,--no-entry -nostdlib -D_WASI_EMULATED_MMAN -march="$arch"
+            tar -cvf usearch_wasm_windows_"$arch"_${{ steps.version.outputs.version }}.tar.gz libusearch_c.so
+            mv usearch_wasm_windows_"$arch"_${{ steps.version.outputs.version }}.tar.gz ../ && rm -rf libusearch_c.so
+          done
+        shell: bash
+        if: matrix.os == 'windows-2022'
+
+      - name: Upload archive
+        uses: xresloader/upload-to-github-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          file: "*.zip;*.tar.gz"
+          update_latest_release: true
+
+  publish_checksums:
+    name: Compute Assets Checksums
+    runs-on: ubuntu-22.04
+    needs:
+      [
+        versioning,
+        create_linux_deb_package,
+        create_windows_dll_library,
+        create_macos_library,
+        wasm_c_library,
+        deploy_docs_pages,
+      ]
+    steps:
+      - name: Get last release ID
+        id: last_release
+        run: |
+          response=$(curl -s -H "Authorization: Bearer ${{ secrets.SEMANTIC_RELEASE_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/latest")
+          echo "last_release_id=$(echo "$response" | jq -r '.id')" >> $GITHUB_OUTPUT
+
+      - uses: robinraju/release-downloader@v1.8
+        name: Download release assets
+        with:
+          latest: true
+          fileName: "*"
+          out-file-path: "downloads"
+          tarBall: true
+          zipBall: true
+
+      - name: Calculate source hashes
+        id: hashes
+        run: |
+          i=1
+          cd $GITHUB_WORKSPACE/downloads
+          for asset_name in $(ls); do
+            asset_hash=$(sha256sum $asset_name | awk '{print $1}')
+            echo "asset_name_$i=$asset_name" >> $GITHUB_OUTPUT
+            echo "asset_hash_$i=$asset_hash" >> $GITHUB_OUTPUT
+            i=$((i+1))
+          done
+
+      - name: Upload hashes to release
+        uses: irongut/EditRelease@v1.2.0
+        with:
+          token: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
+          id: ${{ steps.last_release.outputs.last_release_id }}
+          prerelease: false
+          replacebody: false
+          body: |
+            ## Hashes
+            * ${{ steps.hashes.outputs.asset_name_1 }} : `${{ steps.hashes.outputs.asset_hash_1 }}`
+            * ${{ steps.hashes.outputs.asset_name_2 }} : `${{ steps.hashes.outputs.asset_hash_2 }}`
+            * ${{ steps.hashes.outputs.asset_name_3 }} : `${{ steps.hashes.outputs.asset_hash_3 }}`
+            * ${{ steps.hashes.outputs.asset_name_4 }} : `${{ steps.hashes.outputs.asset_hash_4 }}`
+            * ${{ steps.hashes.outputs.asset_name_5 }} : `${{ steps.hashes.outputs.asset_hash_5 }}`
+            * ${{ steps.hashes.outputs.asset_name_6 }} : `${{ steps.hashes.outputs.asset_hash_6 }}`
+            * ${{ steps.hashes.outputs.asset_name_7 }} : `${{ steps.hashes.outputs.asset_hash_7 }}`
+            * ${{ steps.hashes.outputs.asset_name_8 }} : `${{ steps.hashes.outputs.asset_hash_8 }}`
+            * ${{ steps.hashes.outputs.asset_name_9 }} : `${{ steps.hashes.outputs.asset_hash_9 }}`
+            * ${{ steps.hashes.outputs.asset_name_10 }} : `${{ steps.hashes.outputs.asset_hash_10 }}`
+            * ${{ steps.hashes.outputs.asset_name_11 }} : `${{ steps.hashes.outputs.asset_hash_11 }}`
+            * ${{ steps.hashes.outputs.asset_name_12 }} : `${{ steps.hashes.outputs.asset_hash_12 }}`
+            * ${{ steps.hashes.outputs.asset_name_13 }} : `${{ steps.hashes.outputs.asset_hash_13 }}`
+            * ${{ steps.hashes.outputs.asset_name_14 }} : `${{ steps.hashes.outputs.asset_hash_14 }}`
+            * ${{ steps.hashes.outputs.asset_name_15 }} : `${{ steps.hashes.outputs.asset_hash_15 }}`
+
+  build_wheels:
+    name: Build Python
+    needs: versioning
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macOS-11, windows-2022]
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: "main"
+      - uses: actions/setup-python@v3
+
+      - name: Setup Docker
+        if: matrix.os == 'ubuntu-22.04'
+        uses: crazy-max/ghaction-setup-docker@v1.0.0
+        with:
+          version: 23.0.1
+
+      - name: Setup QEMU
+        if: matrix.os == 'ubuntu-22.04'
+        uses: docker/setup-qemu-action@v2.1.0
+
+      - name: Install CIBuildWheel
+        run: python -m pip install cibuildwheel
+
+      - name: Build wheels
+        run: python -m cibuildwheel
+
+      - uses: actions/upload-artifact@v3
+        with:
+          path: ./wheelhouse/*.whl
+
+  publish_python:
+    name: Publish Python
+    needs: build_wheels
+    runs-on: ubuntu-22.04
+    environment:
+      name: pypi
+      url: https://pypi.org/p/usearch
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v3.0.2
+        with:
+          path: ./dist/
+
+      - name: Publish to PyPi
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: ./dist/artifact
+          verbose: true
+          print-hash: true
+
+  publish_javascript:
+    name: Publish JavaScript
+    needs: versioning
+    runs-on: ubuntu-22.04
+    env:
+      CC: gcc-12
+      CXX: g++-12
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: "main"
+      - run: git submodule update --init --recursive
+
+      - name: Update compilers
+        run: |
+          sudo apt update
+          sudo apt install -y cmake build-essential libjemalloc-dev libomp-dev gcc-12 g++-12
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Build and Test
+        run: |
+          npm ci
+          npm test
+          npm run typegen
+
+      - name: Publish
+        uses: JS-DevTools/npm-publish@v2
+        with:
+          token: ${{ secrets.NPM_TOKEN }}
+
+  publish_rust:
+    name: Publish Rust
+    needs: versioning
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: "main"
+      - run: git submodule update --init --recursive
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - uses: katyo/publish-crates@v2
+        with:
+          registry-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  publish_java:
+    name: Publish Java
+    needs: versioning
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: write
+    env:
+      MAVEN_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+      MAVEN_PASSWORD: ${{ secrets.OSSRH_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      ORG_GRADLE_PROJECT_signingKey: ${{ secrets.ORG_GRADLE_PROJECT_SIGNINGKEY }}
+      ORG_GRADLE_PROJECT_signingPassword: ${{ secrets.ORG_GRADLE_PROJECT_SIGNINGPASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: "main"
+      - run: git submodule update --init --recursive
+      - uses: actions/setup-java@v3
+        with:
+          java-version: "11"
+          distribution: "adopt"
+      - name: Setup Gradle
+        uses: gradle/gradle-build-action@v2.4.2
+      - name: Execute Gradle build
+        run: gradle sign && gradle build
+      - name: Publish package
+        run: gradle publish
+
+  publish_swift:
+    name: Publish ObjC & Swift
+    needs: versioning
+    runs-on: macos-12
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: "main"
+      - run: git submodule update --init --recursive
+      - name: Build
+        run: swift build
+      - name: Run tests
+        run: swift test
+
+  # Publishes to both Docker Hub and GitHub Container Registry
+  # https://docs.github.com/en/actions/publishing-packages/publishing-docker-images#publishing-images-to-docker-hub-and-github-packages
+  publish_docker:
+    name: Publish Docker Image
+    needs: versioning
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: "main"
+      - run: git submodule update --init --recursive
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Log in to GitHub Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Extract tags & labels for Docker
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: |
+            unum/usearch
+            ghcr.io/${{ github.repository }}
+      - name: Build and push
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  build_csharp:
+    name: Build C Dependencies for C#
+    needs: versioning
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-12, windows-2022]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: "main"
+      - run: git submodule update --init --recursive
+
+      - name: Build C library for Linux
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt update
+          sudo apt install -y cmake build-essential libjemalloc-dev libomp-dev gcc-12 g++-12
+          export CC=gcc-12
+          export CXX=g++-12
+          cmake -B build_artifacts -DCMAKE_BUILD_TYPE=Release -DUSEARCH_BUILD_TEST_CPP=0 -DUSEARCH_BUILD_TEST_C=0 -DUSEARCH_BUILD_LIB_C=1 -DUSEARCH_USE_OPENMP=1 -DUSEARCH_USE_SIMSIMD=1 -DUSEARCH_USE_JEMALLOC=1
+          cmake --build build_artifacts --config Release
+          mkdir -p "${{ github.workspace }}/csharp/lib/runtimes/linux-x64/native"
+          cp "${{ github.workspace }}/build_artifacts/libusearch_c.so" "${{ github.workspace }}/csharp/lib/runtimes/linux-x64/native"
+
+      - name: Build C library for MacOS
+        if: matrix.os == 'macos-12'
+        run: |
+          brew update
+          brew install cmake
+          cmake -B build_artifacts -DCMAKE_BUILD_TYPE=Release -DUSEARCH_BUILD_TEST_CPP=0 -DUSEARCH_BUILD_TEST_C=0 -DUSEARCH_BUILD_LIB_C=1 -DUSEARCH_USE_OPENMP=0 -DUSEARCH_USE_SIMSIMD=1 -DUSEARCH_USE_JEMALLOC=0
+          cmake --build build_artifacts --config Release
+          mkdir -p "${{ github.workspace }}/csharp/lib/runtimes/osx-x64/native"
+          cp "${{ github.workspace }}/build_artifacts/libusearch_c.dylib" "${{ github.workspace }}/csharp/lib/runtimes/osx-x64/native"
+
+      - name: Build C library for Windows
+        if: matrix.os == 'windows-2022'
+        run: |
+          choco install cmake
+          cmake -B build_artifacts -DCMAKE_BUILD_TYPE=Release -DUSEARCH_BUILD_TEST_CPP=0 -DUSEARCH_BUILD_TEST_C=0 -DUSEARCH_BUILD_LIB_C=1 -DUSEARCH_USE_OPENMP=0 -DUSEARCH_USE_SIMSIMD=0 -DUSEARCH_USE_JEMALLOC=0
+          cmake --build build_artifacts --config Release
+          mkdir -p "${{ github.workspace }}\csharp\lib\runtimes\win-x64\native"
+          cp "${{ github.workspace }}\build_artifacts\libusearch_c.dll" "${{ github.workspace }}\csharp\lib\runtimes\win-x64\native"
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: usearch-csharp-dependencies
+          path: ${{ github.workspace }}/csharp/lib/**/*
+
+  publish_csharp:
+    name: Publish C#
+    runs-on: ubuntu-22.04
+    needs: [build_csharp]
+    env:
+      SOLUTION: ${{ github.workspace }}/csharp
+      USEARCH_LIBS: ${{ github.workspace }}/csharp/lib
+      NUGET_PACKAGES: ${{ github.workspace }}/csharp/packages
+      # NUGET_SOURCE: https://apiint.nugettest.org/v3/index.json
+      NUGET_SOURCE: https://api.nuget.org/v3/index.json
+      GITHUB_PACKAGES_SOURCE: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: "main"
+      - run: git submodule update --init --recursive
+
+      - name: Download usearch libs artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: usearch-csharp-dependencies
+          path: ${{ env.USEARCH_LIBS }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: 7.0.x
+
+      - name: Pack project
+        run: |
+          dotnet pack "${{ env.SOLUTION }}" -c Release --output ${{ env.NUGET_PACKAGES }}
+        working-directory: ${{ github.workspace }}
+
+      - name: Publish to NuGet
+        run: dotnet nuget push "${{ env.NUGET_PACKAGES }}/*.nupkg" --api-key "${{ secrets.NUGET_API }}" --source "${{ env.NUGET_SOURCE }}" --skip-duplicate
+
+      - name: Prepare publish to GitHub Registry
+        run: dotnet nuget add source --username ${{ github.repository_owner }} --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text --name github "${{ env.GITHUB_PACKAGES_SOURCE }}"
+
+      - name: Publish to GitHub Registry
+        run: dotnet nuget push "${{ env.NUGET_PACKAGES }}/*.nupkg"  --api-key "${{ secrets.GITHUB_TOKEN }}" --source "github" --skip-duplicate
+
+  build_docs:
+    name: Build Docs
+    runs-on: ubuntu-22.04
+    if: ${{ always() }}
+    needs:
+      [
+        publish_python,
+        publish_javascript,
+        publish_rust,
+        publish_java,
+        publish_swift,
+        publish_docker,
+        publish_csharp,
+      ]
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          ref: "main"
+      - name: Install dependencies
+        run: |
+          sudo apt update && 
+          sudo apt install -y doxygen graphviz dia git && 
+          pip install sphinx==5.3.0 sphinx-js==3.2.1 breathe==4.35.0 furo==2023.3.27 m2r2==0.3.3.post2 sphinxcontrib-googleanalytics==0.2.dev20220708 sphinxcontrib-jquery==4.1 && 
+          npm install -g jsdoc
+      - name: Install USearch from PyPi
+        run: pip install usearch
+      - name: Build documentation
+        run: cd docs && doxygen conf.dox && make html
+      - name: Copy assets
+        run: cp -r assets build/docs/html/
+      - name: Compress assets
+        run: tar -czvf docs.tar.gz build/docs/html/
+      - name: Upload docs to release
+        uses: xresloader/upload-to-github-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          file: docs.tar.gz
+          update_latest_release: true
+
+  deploy_docs_pages:
+    name: Deploy GitHub Pages
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-22.04
+    if: ${{ always() }}
+    needs: build_docs
+    steps:
+      - uses: robinraju/release-downloader@v1.8
+        with:
+          latest: true
+          fileName: docs.tar.gz
+      - name: Unpack docs
+        run: tar -xf ./docs.tar.gz
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v2
+      - name: Upload artifacts
+        uses: actions/upload-pages-artifact@v1
+        with:
+          path: ./build/docs/html
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v1
+
+  deploy_docs_vercel:
+    name: Deploy Vercel
+    runs-on: ubuntu-22.04
+    if: ${{ always() }}
+    needs: build_docs
+    steps:
+      - name: Notify Vercel
+        uses: fjogeleit/http-request-action@v1
+        with:
+          url: ${{ secrets.DOCS_VERCEL }}
+          method: "POST"

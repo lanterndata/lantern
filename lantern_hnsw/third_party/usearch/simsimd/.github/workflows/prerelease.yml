@@ -1,0 +1,107 @@
+name: Pre-Release
+
+on:
+  push:
+    branches: ["main-dev", "test-ga-**"]
+  pull_request:
+    branches: ["main-dev"]
+
+env:
+  BUILD_TYPE: Release
+  GH_TOKEN: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
+  PYTHONUTF8: 1
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+
+jobs:
+  test_python:
+    name: Test Python ${{ matrix.python-version }} on ${{ matrix.architecture }} ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macOS-11, windows-2022]
+        python-version: ["3.12", "3.8"]
+        architecture: [x64, arm64]
+
+    steps:
+      - uses: actions/checkout@v4
+      - run: git submodule update --init --recursive
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --no-cache-dir --upgrade pip
+          pip install --no-cache-dir pytest numpy scipy py-cpuinfo pytest-repeat
+          python -c "from cpuinfo import get_cpu_info; print(get_cpu_info())"
+
+      - name: Build locally on Ubuntu
+        run: |
+          sudo apt-get update
+          sudo apt-get install gcc-12 -y
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 12
+          sudo update-alternatives --config gcc
+          gcc --version
+          python -m pip install .
+        if: ${{ matrix.os == 'ubuntu-22.04' }}
+
+      - name: Build locally on other OS
+        run: python -m pip install .
+        if: ${{ matrix.os != 'ubuntu-22.04' }}
+
+      - name: Test with PyTest
+        run: |
+          python -c "import simsimd; print(simsimd.get_capabilities())"
+          pytest python/test.py -s -x -v
+
+  test_javascript:
+    name: Test JavaScript
+    runs-on: ubuntu-22.04
+    env:
+      CC: gcc-12
+      CXX: g++-12
+
+    steps:
+      - uses: actions/checkout@v4
+      - run: git submodule update --init --recursive
+
+      - name: Update compilers
+        run: |
+          sudo apt update
+          sudo apt install -y cmake build-essential libjemalloc-dev libomp-dev gcc-12 g++-12
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Build and Test
+        run: |
+          npm ci --ignore-scripts
+          npm run install
+          npm run build-js
+          npm test
+
+  test_rust:
+    name: Test Rust
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+      - run: git submodule update --init --recursive
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Build and Test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
