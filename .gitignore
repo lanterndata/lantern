@@ -26,3 +26,4 @@ sanitizer
 .env.rb
 .venv
 __pycache__
+lantern_hnsw/build

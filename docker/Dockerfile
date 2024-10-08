@@ -7,6 +7,5 @@ WORKDIR /tmp/lantern
 
 COPY ./lantern_hnsw .
 COPY ./ci ./ci
-COPY ./scripts ./scripts
 
 RUN PG_VERSION=$PG_VERSION ./ci/scripts/build-docker.sh
