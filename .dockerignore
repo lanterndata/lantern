@@ -1,6 +1,5 @@
 .git
 .cargo
 .github
-ci
 target
 .DS_Store
