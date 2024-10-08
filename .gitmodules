@@ -1,4 +1,4 @@
 [submodule "third_party/usearch"]
-	path = third_party/usearch
+	path = lantern_hnsw/third_party/usearch
 	url = https://github.com/ngalstyan4/usearch
 	branch = pg-rebase
