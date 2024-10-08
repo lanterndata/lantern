@@ -1,18 +1,17 @@
 FROM rust:1.78.0 as build
 # Copy the files in your machine to the Docker image
 WORKDIR /app
-COPY . .
-
-# Remove lantern_extras from workspace
-RUN rm -rf lantern_extras && sed -i -e 's/"lantern_extras",//' Cargo.toml
+COPY lantern_cli .
 
 ENV CC=/usr/bin/clang-18
 ENV CXX=/usr/bin/clang++-18
+
 # Build your program for release
-RUN apt update && \
-  apt install -y --no-install-recommends lsb-release wget software-properties-common gnupg pkg-config curl libssl-dev && \
-  curl -s https://apt.llvm.org/llvm.sh | bash -s -- 18 && \
-  cargo build --release --package lantern_cli
+RUN apt update && apt install -y --no-install-recommends lsb-release wget software-properties-common gnupg pkg-config curl libssl-dev
+
+RUN curl -s https://apt.llvm.org/llvm.sh | bash -s -- 18
+
+RUN cargo build --release
 
 FROM nvcr.io/nvidia/cuda:11.8.0-runtime-ubuntu22.04
 COPY --from=build /app/target/release/lantern-cli .
