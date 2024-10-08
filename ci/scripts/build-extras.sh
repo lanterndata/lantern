@@ -2,13 +2,6 @@
 
 set -e
 
-function setup_environment() {
-  export DEBIAN_FRONTEND=noninteractive
-  export PG_VERSION=${PG_VERSION:-15}
-  export GITHUB_OUTPUT=${GITHUB_OUTPUT:-/dev/null}
-  export PGDATA=/etc/postgresql/$PG_VERSION/main
-}
-
 function setup_onnx() {
   pushd /tmp
     ONNX_VERSION="1.16.1"
@@ -23,65 +16,6 @@ function setup_onnx() {
     echo /usr/local/lib/onnxruntime/lib > /etc/ld.so.conf.d/onnx.conf && \
     ldconfig
   popd
-}
-
-function setup_locale_and_install_packages() {
-  echo "LC_ALL=en_US.UTF-8" > /etc/environment
-  echo "en_US.UTF-8 UTF-8" > /etc/locale.gen
-  echo "LANG=en_US.UTF-8" > /etc/locale.conf
-
-  apt update -y
-  apt install -y --no-install-recommends lsb-release wget build-essential ca-certificates zlib1g-dev pkg-config libreadline-dev clang curl gnupg libssl-dev jq clang llvm
-
-  locale-gen en_US.UTF-8
-  export ARCH=$(dpkg-architecture -q DEB_BUILD_ARCH)
-}
-
-function setup_postgres() {
-  # Add postgresql apt repo
-  echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list
-  wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc |  apt-key add -
-  # Install postgres and dev files for C headers
-  apt update
-  apt install -y postgresql-$PG_VERSION postgresql-server-dev-$PG_VERSION
-  # Fix pg_config (sometimes it points to wrong version)
-  rm -f /usr/bin/pg_config && ln -s /usr/lib/postgresql/$PG_VERSION/bin/pg_config /usr/bin/pg_config
-  # Enable auth without password
-  echo "local   all             all                                     trust" >  $PGDATA/pg_hba.conf
-  echo "host    all             all             127.0.0.1/32            trust" >>  $PGDATA/pg_hba.conf
-  echo "host    all             all             ::1/128                 trust" >>  $PGDATA/pg_hba.conf
-  # Set port
-  echo "port = 5432" >> ${PGDATA}/postgresql.conf
-}
-
-function setup_lantern() {
-   LANTERN_VERSION=v0.3.1
-    git clone --recursive https://github.com/lanterndata/lantern.git /tmp/lantern 
-    pushd /tmp/lantern
-      git checkout ${LANTERN_VERSION} && \
-      git submodule update --recursive && \
-      mkdir build 
-      pushd build
-        cmake -DMARCH_NATIVE=OFF -DBUILD_FOR_DSTRIBUTING=1 .. && \
-        make install
-      popd
-    popd
-}
-
-function setup_rust() {
-  curl -k -o /tmp/rustup.sh https://sh.rustup.rs
-  chmod +x /tmp/rustup.sh
-  /tmp/rustup.sh -y
-  . "$HOME/.cargo/env"
-}
-
-function setup_cargo_deps() {
-  if [ ! -d .cargo ]; then
-  	mkdir .cargo
-  fi
-  echo "[target.$(rustc -vV | sed -n 's|host: ||p')]" >> .cargo/config
-  cargo install cargo-pgrx --version 0.11.3
-  cargo pgrx init "--pg$PG_VERSION" /usr/bin/pg_config
 }
 
 function package_cli() {
@@ -144,19 +78,6 @@ function package_extension() {
   popd
 }
 
-function wait_for_pg(){
- tries=0
- until pg_isready -U postgres 2>/dev/null; do
-   if [ $tries -eq 10 ];
-   then
-     echo "Can not connect to postgres"
-     exit 1
-   fi
-   
-   sleep 1
-   tries=$((tries+1))
- done
-}
 
 function configure_and_start_postgres() {
   # Start postgres
@@ -168,18 +89,24 @@ function configure_and_start_postgres() {
   psql -U postgres -c "CREATE EXTENSION lantern_extras" postgres
 }
 
+# Source unified utility functions
+source "$(dirname "$0")/utils.sh"
+source "$(dirname "$0")/build-linux.sh"
+
 if [ ! -z "$RUN_POSTGRES" ]
 then
   configure_and_start_postgres
   exit 0
 fi
 
-setup_environment && \
+setup_environment
 setup_locale_and_install_packages
+clone_or_use_source
 
-if [ -z "$SETUP_TESTS" ]
+if [ ! -z "$SETUP_POSTGRES" ]
 then
-  setup_rust
+ setup_postgres
+ install_platform_specific_dependencies
 fi
 
 if [ ! -z "$PACKAGE_CLI" ]
@@ -187,19 +114,15 @@ then
  package_cli
 fi
 
-if [ ! -z "$SETUP_POSTGRES" ]
-then
- setup_postgres
-fi
   
 if [ ! -z "$SETUP_TESTS" ]
 then
-  setup_lantern && \
+  build_and_install_lantern
   setup_onnx
 fi
 
 if [ ! -z "$PACKAGE_EXTENSION" ]
 then
- setup_cargo_deps && \
+ setup_cargo_deps
  package_extension
 fi
