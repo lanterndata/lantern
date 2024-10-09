@@ -21,10 +21,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # os: [ubuntu-22.04, ubicloud-standard-4-arm, macos-13]
-        # postgres: [11, 12, 13, 14, 15, 16]
-        os: [ubuntu-22.04]
-        postgres: [15]
+        os: [ubuntu-22.04, ubicloud-standard-4-arm, macos-13]
+        postgres: [11, 12, 13, 14, 15, 16]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -150,8 +148,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # os: [ubuntu-22.04, ubicloud-standard-4-arm]
-        os: [ubuntu-22.04]
+        os: [ubuntu-22.04, ubicloud-standard-4-arm]
         postgres: [15]
     steps:
       - uses: actions/checkout@v4
@@ -210,6 +207,9 @@ jobs:
     strategy:
       fail-fast: false
     steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
       - uses: actions/download-artifact@v4
         with:
           pattern: "*-lcov.info"

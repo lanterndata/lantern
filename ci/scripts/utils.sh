@@ -37,13 +37,9 @@ function install_external_dependencies() {
         # .bak trick is needed to make this work on both mac and linux
         # https://stackoverflow.com/questions/5694228/sed-in-place-flag-that-works-both-on-mac-bsd-and-linux
         sed -i.bak "s/#define HNSW_MAX_EF_SEARCH.*/#define HNSW_MAX_EF_SEARCH 50000/g" src/hnsw.h
-        OLDCC=$CC
-        OLDCXX=$CXX
-        export CC=/usr/bin/clang-15
-        export CXX=/usr/bin/clang++-15
-        make -j && make install
-        export CC=$OLDCC
-        export CXX=$OLDCXX
+        # TODO:: remove after new release of pgvector
+        echo '#include <array>' >> ./third_party/usearch/include/usearch/lantern_storage.hpp
+        CC=/usr/bin/clang-15 CXX=/usr/bin/clang++-15 make -j && make install
       popd
 
     popd
