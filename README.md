@@ -45,20 +45,16 @@ To build Lantern on new hardware or with CPU-specific vectorization:
 ```
 git clone --recursive https://github.com/lanterndata/lantern.git
 cd lantern
-mkdir build
-cd build
-cmake -DMARCH_NATIVE=ON ..
-make install
+cmake -DMARCH_NATIVE=ON -S lantern_hnsw -B build
+make -C build install -j
 ```
 
 To build portable Lantern binaries:
 ``` 
 git clone --recursive https://github.com/lanterndata/lantern.git
 cd lantern
-mkdir build
-cd build
-cmake -DMARCH_NATIVE=OFF ..
-make install
+cmake -DMARCH_NATIVE=OFF -S lantern_hnsw -B build
+make -C build install -j
 ```
 
 ## 📖 How to use Lantern

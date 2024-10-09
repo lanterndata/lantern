@@ -40,7 +40,7 @@ This is a CLI application that generates vector embeddings from your postgres da
 
 ### Installation
 
-Run `cargo install --path lantern_cli` to install the binary if you have clonned the source code or `cargo install --git https://github.com/lanterndata/lantern_extras.git` to install from git.
+Run `cargo install --path lantern_cli` to install the binary if you have clonned the source code or `cargo install --git https://github.com/lanterndata/lantern.git` to install from git.
 
 or build and use the docker image
 

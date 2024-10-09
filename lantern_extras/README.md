@@ -1,9 +1,5 @@
 # Lantern Extras
 
-[![build](https://github.com/lanterndata/lantern_extras/actions/workflows/build.yaml/badge.svg?branch=main)](https://github.com/lanterndata/lantern_extras/actions/workflows/build.yaml)
-[![test](https://github.com/lanterndata/lantern_extras/actions/workflows/test.yaml/badge.svg?branch=main)](https://github.com/lanterndata/lantern_extras/actions/workflows/test.yaml)
-[![codecov](https://codecov.io/github/lanterndata/lantern_extras/branch/main/graph/badge.svg)](https://codecov.io/github/lanterndata/lantern_extras)
-
 This extension makes it easy to experiment with embeddings from inside a Postgres database. We use this extension along with [Lantern](https://github.com/lanterndata/lantern) to make vector operations performant. But all the helpers here are standalone and may be used without the main database.
 
 **NOTE**: Functions defined in this extension use Postgres in ways Postgres is usually not used.
@@ -96,7 +92,7 @@ sudo apt-get install clang
 
 #install pgrx itself
 cargo install --locked cargo-pgrx --version 0.11.3
-cargo pgrx init
+cargo pgrx init --pg15 $(which pg_config)
 ```
 
 Then, you can run the extension under development with the following
@@ -111,6 +107,12 @@ To package the extension run
 cargo pgrx package --package lantern_extras
 ```
 
+To install the extension run
+
+```bash
+cargo pgrx install --release --pg-config /usr/bin/pg_config --package lantern_extras
+```
+ 
 </details>
 
 ### Initializing with psql
