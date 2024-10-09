@@ -12,7 +12,7 @@ type GetResponseFn = Box<dyn Fn(Vec<u8>) -> Result<EmbeddingResult, anyhow::Erro
 
 pub async fn download_file(url: &str, path: &PathBuf) -> Result<(), anyhow::Error> {
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(300))
+        .timeout(Duration::from_secs(900))
         .redirect(Policy::limited(2))
         .build()?;
 

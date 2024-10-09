@@ -189,12 +189,30 @@ jobs:
         run: |
           sudo chmod 777 -R /usr/lib/postgresql/15/lib/
           sudo chmod 777 -R /usr/share/postgresql/15/extension/
+      - name: Load model files from cache
+        id: cache-models
+        uses: actions/cache@v4
+        with:
+          path: "/tmp/lantern-embeddings-core-test"
+          key: "embedding-models-v1"
+      - name: Copy model files to necessarry locations
+        if: steps.cache-models.outputs.cache-hit == 'true'
+        run: |
+           sudo ln -S /tmp/lantern-embeddings-core-test "/etc/postgresql/${{ matrix.postgres }}/main/.ldb_extras_data"
+           sudo ln -S /tmp/lantern-embeddings-core-test "/var/lib/lantern-daemon"
+           sudo chown -R postgres:postgres "/etc/postgresql/${{ matrix.postgres }}/main/.ldb_extras_data"
       - name: Run tests
         run: cargo llvm-cov --workspace --lcov --output-path lantern-extras-lcov.info
         env:
           OPENAI_TOKEN: ${{ secrets.OPENAI_TOKEN }}
           COHERE_TOKEN: ${{ secrets.COHERE_TOKEN }}
           DB_URL: "postgres://postgres@127.0.0.1:5432/postgres"
+      - name: Save model files to cache
+        if: steps.cache-models.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: "/tmp/lantern-embeddings-core-test"
+          key: "embedding-models-v1"
       - name: Upload lantern_extras coverage
         uses: actions/upload-artifact@v4
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
