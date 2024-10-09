@@ -10,7 +10,7 @@ function setup_locale_and_install_packages() {
 
   source /etc/environment
   apt update -y
-  apt install -y locales lsb-core build-essential automake cmake wget git dpkg-dev lcov clang-format clang llvm
+  apt install -y locales lsb-core build-essential gcc-12 g++-12 automake cmake wget git dpkg-dev lcov clang-format clang llvm
 
   locale-gen en_US.UTF-8
 }
@@ -26,26 +26,45 @@ function setup_postgres() {
   rm -f /usr/bin/pg_config && ln -s /usr/lib/postgresql/$PG_VERSION/bin/pg_config /usr/bin/pg_config
   # preload pg_cron, necessary for async tasks test
   echo "shared_preload_libraries = 'pg_cron' " >> /etc/postgresql/$PG_VERSION/main/postgresql.conf
+  # Enable auth without password
+  echo "local   all             all                                     trust" >   /etc/postgresql/$PG_VERSION/main/pg_hba.conf
+  echo "host    all             all             127.0.0.1/32            trust" >>  /etc/postgresql/$PG_VERSION/main/pg_hba.conf
+  echo "host    all             all             ::1/128                 trust" >>  /etc/postgresql/$PG_VERSION/main/pg_hba.conf
+  # Set port
+  echo "port = 5432" >> /etc/postgresql/$PG_VERSION/main/postgresql.conf
 }
 
 function setup_rust() {
-  curl -k -o /tmp/rustup.sh https://sh.rustup.rs
-  chmod +x /tmp/rustup.sh
-  /tmp/rustup.sh -y --default-toolchain=1.78.0
+  if [ ! -f /tmp/rustup.sh ]; then
+    curl -k -o /tmp/rustup.sh https://sh.rustup.rs
+    chmod +x /tmp/rustup.sh
+    /tmp/rustup.sh -y --default-toolchain=1.78.0
+  fi
   . "$HOME/.cargo/env"
+}
+
+function setup_cargo_deps() {
+  if [ ! -d .cargo ]; then
+  	mkdir .cargo
+  fi
+  echo "[target.$(rustc -vV | sed -n 's|host: ||p')]" >> .cargo/config
+  cargo install cargo-pgrx --version 0.11.3
+  cargo pgrx init "--pg$PG_VERSION" /usr/bin/pg_config
 }
 
 function install_platform_specific_dependencies() {
   # Currently lantern_extras binaries are only available for Linux x86_64
   # We won't install onnxruntime as lantern_extras are used only for external index in tests
   pushd /tmp
-    LANTERN_EXTRAS_VERSION=$(curl -s "https://api.github.com/repos/lanterndata/lantern_extras/releases/latest" | jq ".tag_name" | sed 's/"//g')
-    wget --quiet https://github.com/lanterndata/lantern_extras/releases/download/${LANTERN_EXTRAS_VERSION}/lantern-extras-${LANTERN_EXTRAS_VERSION}.tar -O lantern-extras.tar
-    tar xf lantern-extras.tar
-    pushd lantern-extras-${LANTERN_EXTRAS_VERSION}
-      make install
-    popd
-    rm -rf lantern-extras*
+    
+    if [[ "$INSTALL_EXTRAS" = "1" ]]
+    then
+      setup_rust
+      setup_cargo_deps
+      pushd /tmp/lantern
+        ORT_STRATEGY=system cargo pgrx install --pg-config /usr/bin/pg_config --package lantern_extras
+      popd
+    fi
 
     # check needed to make sure double-cloning does not happen on the benchmarking CI/CD instance
     if [ ! -d "pg_cron" ]
@@ -66,7 +85,7 @@ function install_platform_specific_dependencies() {
     if [[ "$INSTALL_CLI" = "1" ]]
     then
       setup_rust
-      ORT_STRATEGY=system cargo install --git https://github.com/lanterndata/lantern_extras.git --branch main --debug --bin lantern-cli --root /tmp
+      ORT_STRATEGY=system cargo install --debug --bin lantern-cli --root /tmp --path /tmp/lantern/lantern_cli
     fi
 
   popd
@@ -74,14 +93,16 @@ function install_platform_specific_dependencies() {
 
 function package_if_necessary() {
   if [ -n "$BUILD_PACKAGES" ]; then
-    # Bundle debian packages
-    cpack &&
-    # Print package name to github output
-    export EXT_VERSION=$(cmake --system-information | awk -F= '$1~/CMAKE_PROJECT_VERSION:STATIC/{print$2}') && \
-    export PACKAGE_NAME=lantern-${EXT_VERSION}-postgres-${PG_VERSION}-${ARCH}.deb && \
+    pushd /tmp/lantern/lantern_hnsw/build
+      # Bundle debian packages
+      cpack &&
+      # Print package name to github output
+      export EXT_VERSION=$(cmake --system-information | awk -F= '$1~/CMAKE_PROJECT_VERSION:STATIC/{print$2}') && \
+      export PACKAGE_NAME=lantern-${EXT_VERSION}-postgres-${PG_VERSION}-${ARCH}.deb && \
 
-    echo "deb_package_name=$PACKAGE_NAME" >> "$GITHUB_OUTPUT" && \
-    echo "deb_package_path=$(pwd)/$(ls *.deb | tr -d '\n')" >> "$GITHUB_OUTPUT"
+      echo "deb_package_name=$PACKAGE_NAME" >> "$GITHUB_OUTPUT" && \
+      echo "deb_package_path=$(pwd)/$(ls *.deb | tr -d '\n')" >> "$GITHUB_OUTPUT"
+    popd
   fi
 }
 
@@ -89,7 +110,7 @@ function cleanup_environment() {
   # Check for undefined symbols
   if [[ "$ENABLE_COVERAGE" != "1" ]]
   then
-    /tmp/lantern/scripts/check_symbols.sh ./lantern.so
+    /tmp/lantern/lantern_hnsw/scripts/check_symbols.sh /tmp/lantern/lantern_hnsw/build/lantern.so
   fi
 
   # Chown to postgres for running tests

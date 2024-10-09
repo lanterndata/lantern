@@ -16,12 +16,12 @@ on:
         required: false
         default: false
 jobs:
-  test:
+  test_lantern:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, ubicloud-standard-2-arm, macos-13]
+        os: [ubuntu-22.04, ubicloud-standard-4-arm, macos-13]
         postgres: [11, 12, 13, 14, 15, 16]
     steps:
       - uses: actions/checkout@v4
@@ -32,10 +32,12 @@ jobs:
 
       - name: Build without SSL
         id: build_without_ssl
-        run: sudo sh -c "USE_SSL=0 PG_VERSION=$PG_VERSION USE_SOURCE=1 GITHUB_OUTPUT=$GITHUB_OUTPUT INSTALL_CLI=1 ENABLE_FAILURE_POINTS=1 ./ci/scripts/build.sh"
+        run: sudo sh -c "INSTALL_EXTRAS=1 USE_SSL=0 PG_VERSION=$PG_VERSION USE_SOURCE=1 GITHUB_OUTPUT=$GITHUB_OUTPUT INSTALL_CLI=1 ENABLE_FAILURE_POINTS=1 ./ci/scripts/build.sh"
         env:
           PG_VERSION: ${{ matrix.postgres }}
           BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+      - name: Check clang formatting
+        run: "cd /tmp/lantern/lantern_hnsw/build && make format_check"
       # Enable tmate debugging of manually-triggered workflows if the input option was provided
       - name: Setup tmate session
         uses: mxschmitt/action-tmate@v3
@@ -50,8 +52,8 @@ jobs:
         id: integration-test-linux-without-ssl
         run: |
           # pytest tries to open files with full path and so 'work' home folder must be listable by postgres for it to work
-          sudo chmod +x /home/runner && \
-          sudo su postgres -c "LANTERN_CLI_PATH=${{ env.LANTERN_CLI_PATH }} USE_SSL=0 /tmp/lantern/cienv/bin/python ./scripts/integration_tests.py -k external_index" &&\
+          sudo -E chmod +x $HOME && \
+          sudo su postgres -c "LANTERN_CLI_PATH=${{ env.LANTERN_CLI_PATH }} USE_SSL=0 /tmp/lantern/lantern_hnsw/cienv/bin/python ./lantern_hnsw/scripts/integration_tests.py -k external_index" &&\
           echo "Done with integration tests"
         env:
           PG_VERSION: ${{ matrix.postgres }}
@@ -80,8 +82,8 @@ jobs:
         run: |
           # pytest tries to open files with full path and so 'work' home folder must be listable by postgres for it to work
           sudo fuser -k 8998/tcp || true 2>/dev/null # kill previously started cli
-          sudo chmod +x /home/runner && \
-          sudo su postgres -c "LANTERN_CLI_PATH=${{ env.LANTERN_CLI_PATH }} USE_SSL=1 /tmp/lantern/cienv/bin/python ./scripts/integration_tests.py" &&\
+          sudo -E chmod +x $HOME && \
+          sudo su postgres -c "LANTERN_CLI_PATH=${{ env.LANTERN_CLI_PATH }} USE_SSL=1 /tmp/lantern/lantern_hnsw/cienv/bin/python ./lantern_hnsw/scripts/integration_tests.py" &&\
           echo "Done with integration tests"
         env:
           PG_VERSION: ${{ matrix.postgres }}
@@ -89,7 +91,7 @@ jobs:
 
       - name: Collect coverage files
         id: collect-cov-files
-        run: sudo su postgres -c "cd /tmp/lantern/build && make cover"
+        run: sudo su postgres -c "cd /tmp/lantern/lantern_hnsw/build && make cover"
         if: ${{ startsWith(matrix.os, 'ubuntu') && matrix.postgres == 15 }}
 
       - name: Run update tests linux
@@ -97,7 +99,7 @@ jobs:
         run: |
           # Start postgres
           sudo su postgres -c "PG_VERSION=$PG_VERSION RUN_TESTS=0 ./ci/scripts/run-tests-linux.sh" && \
-          sudo su -c "PG_VERSION=$PG_VERSION /tmp/lantern/cienv/bin/python ./scripts/test_updates.py -U postgres" &&\
+          sudo su -c "cd /tmp/lantern/lantern_hnsw && PG_VERSION=$PG_VERSION ./cienv/bin/python ./scripts/test_updates.py -U postgres --builddir ./build_updates --rootdir ." &&\
           echo "Done with updates"
         env:
           PG_VERSION: ${{ matrix.postgres }}
@@ -106,7 +108,7 @@ jobs:
         id: catalog-update-test-linux
         run: |
           sudo su postgres -c "PG_VERSION=$PG_VERSION RUN_TESTS=0 ./ci/scripts/run-tests-linux.sh" && \
-          sudo su -c  "PG_VERSION=$PG_VERSION DATABASE_URL='postgresql://postgres@localhost:5432/postgres' ruby ./scripts/test_updates/main.rb test lantern" &&\
+          sudo su -c  "cd /tmp/lantern/lantern_hnsw && PG_VERSION=$PG_VERSION DATABASE_URL='postgresql://postgres@localhost:5432/postgres' ruby ./scripts/test_updates/main.rb test lantern" &&\
           echo "Done catalog update checks"
         env:
           PG_VERSION: ${{ matrix.postgres }}
@@ -122,7 +124,7 @@ jobs:
       - name: Run integration tests mac
         id: integration-test-mac
         run: |
-          PATH="/usr/local/opt/postgresql@${PG_VERSION}/bin:$PATH" /tmp/lantern/cienv/bin/python ./scripts/integration_tests.py &&\
+          PATH="/usr/local/opt/postgresql@${PG_VERSION}/bin:$PATH" /tmp/lantern/lantern_hnsw/cienv/bin/python ./lantern_hnsw/scripts/integration_tests.py &&\
           echo "Done with integration tests"
         env:
           PG_VERSION: ${{ matrix.postgres }}
@@ -135,16 +137,94 @@ jobs:
           path: |
             /tmp/pg-out.log
             /tmp/pg-error.log
-      - name: Upload to codecov
-        uses: codecov/codecov-action@v4
+      - name: Upload lantern coverage
+        if: ${{ startsWith(matrix.os, 'ubuntu') && matrix.postgres == 15 }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: lantern-lcov.info
+          path: /tmp/lantern/lantern_hnsw/build/coverage.info
+  test_extras:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubicloud-standard-4-arm]
+        postgres: [15]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+      - name: Setup Rust
+        run: rustup toolchain install stable --profile minimal --no-self-update
+      - name: Configure sccache
+        run: |
+          echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
+          echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.4
+      - name: Cache cargo deps
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            lantern_cli
+            lantern_extras
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Setup test env
+        run: sudo su -c "PG_VERSION=$PG_VERSION SETUP_ENV=1 SETUP_POSTGRES=1 SETUP_TESTS=1 USE_SOURCE=1 ./ci/scripts/build-extras.sh"
+        env:
+          PG_VERSION: ${{ matrix.postgres }}
+      - name: Install extension
+        run: |
+          cargo install cargo-pgrx --version 0.11.3
+          cargo pgrx init "--pg$PG_VERSION" /usr/bin/pg_config
+          RUSTFLAGS="--cfg profile=\"ci-build\"" cargo pgrx install --sudo --pg-config /usr/bin/pg_config --package lantern_extras
+        env:
+          PG_VERSION: ${{ matrix.postgres }}
+      - name: Run postgres
+        run: RUN_POSTGRES=1 ./ci/scripts/build-extras.sh
+        env:
+          PG_VERSION: ${{ matrix.postgres }}
+      - name: Setup permissions
+        run: |
+          sudo chmod 777 -R /usr/lib/postgresql/15/lib/
+          sudo chmod 777 -R /usr/share/postgresql/15/extension/
+      - name: Run tests
+        run: cargo llvm-cov --workspace --lcov --output-path lantern-extras-lcov.info
+        env:
+          OPENAI_TOKEN: ${{ secrets.OPENAI_TOKEN }}
+          COHERE_TOKEN: ${{ secrets.COHERE_TOKEN }}
+          DB_URL: "postgres://postgres@127.0.0.1:5432/postgres"
+      - name: Upload lantern_extras coverage
+        uses: actions/upload-artifact@v4
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        with:
+          name: lantern-extras-lcov.info
+          path: ./lantern-extras-lcov.info
+  upload_coverage:
+    runs-on: ubuntu-22.04
+    needs: [test_lantern, test_extras]
+    strategy:
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "*-lcov.info"
+          merge-multiple: true
+          path: /tmp/lantern-coverage
+      - uses: geekyeggo/delete-artifact@v4
+        with:
+          name: "*-lcov.info"
+      - name: Upload coverage to Codecov
         env:
           codecov_token: ${{ secrets.CODECOV_TOKEN }}
-        if: ${{ env.codecov_token != '' && startsWith(matrix.os, 'ubuntu') && matrix.postgres == 15 }} # for now run only on once
+        uses: codecov/codecov-action@v4.0.1
+        if: ${{ env.codecov_token != '' }}
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          name: codecov-lanterndb
+          files: /tmp/lantern-coverage/coverage.info,/tmp/lantern-coverage/lantern-extras-lcov.info
           fail_ci_if_error: true
-          directory: /tmp/lantern/build/
-          file: ./coverage.info
-      - name: Check clang formatting
-        run: "cd /tmp/lantern/build && make format_check"
+          verbose: true

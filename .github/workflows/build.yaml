@@ -16,12 +16,12 @@ on:
         required: false
         default: false
 jobs:
-  build:
+  build_lantern:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, ubicloud-standard-2-arm, macos-13]
+        os: [ubuntu-22.04, ubicloud-standard-4-arm, macos-13]
         postgres: [11, 12, 13, 14, 15, 16]
     steps:
       - uses: actions/checkout@v4
@@ -37,23 +37,69 @@ jobs:
         run: sudo sh -c "GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/package-archive.sh"
       - name: Upload deb package artifacts
         uses: actions/upload-artifact@v4
-        if: ${{ steps.build.outputs.deb_package_path != '' }}
+        if: ${{ steps.build.outputs.deb_package_path != '' && github.event_name == 'workflow_dispatch' && inputs.create_release }}
         with:
           name: ${{ steps.build.outputs.deb_package_name }}
           path: ${{ steps.build.outputs.deb_package_path }}
       - name: Upload archive package artifacts
         uses: actions/upload-artifact@v4
-        if: ${{ steps.archive.outputs.archive_package_path != '' }}
+        if: ${{ steps.archive.outputs.archive_package_path != '' && github.event_name == 'workflow_dispatch' && inputs.create_release }}
         with:
           name: ${{ steps.archive.outputs.archive_package_name }}
           path: ${{ steps.archive.outputs.archive_package_path }}
-  package:
-    runs-on: ubuntu-22.04
-    needs: [build]
+  build_extras:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubicloud-standard-4-arm]
+        postgres: [11, 12, 13, 14, 15, 16]
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: "recursive"
+      - name: Build
+        id: build
+        run: sudo su -c "PG_VERSION=$PG_VERSION SETUP_ENV=1 USE_SOURCE=1 SETUP_POSTGRES=1 PACKAGE_EXTENSION=1 GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/build-extras.sh"
+        env:
+          PG_VERSION: ${{ matrix.postgres }}
+      - name: Build Lantern CLI
+        id: build_cli
+        run: sudo su -c "PACKAGE_CLI=1 GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/build-extras.sh"
+        if: ${{ matrix.postgres == 15 }} # run only once
+      - name: Upload archive package artifacts
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_release }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.build.outputs.archive_package_name }}
+          path: ${{ steps.build.outputs.archive_package_path }}
+      - name: Upload Lantern CLI artifacts
+        if: ${{ matrix.postgres == 15 && github.event_name == 'workflow_dispatch' && inputs.create_release }} # run only once
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.build_cli.outputs.cli_package_name }}
+          path: ${{ steps.build_cli.outputs.cli_package_path }}
+  package:
+    runs-on: ubuntu-22.04
+    needs: [build_lantern, build_extras]
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: lantern-extras-*.tar
+          merge-multiple: true
+          path: /tmp/lantern-extras-package
+      - uses: geekyeggo/delete-artifact@v4
+        with:
+          name: lantern-extras*.tar
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: lantern-cli-*
+          merge-multiple: true
+          path: /tmp/lantern-cli-package
       - uses: actions/download-artifact@v4
         with:
           pattern: lantern-*.tar
@@ -73,24 +119,22 @@ jobs:
           name: ${{ steps.package.outputs.package_name }}
           path: ${{ steps.package.outputs.package_path }}
       - name: Create source code archive with submodules
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_release }}
         run: |
           find ./ -name '.git*' -exec rm -r {} \; || true
           tar -czf /tmp/lantern-v${{ steps.package.outputs.package_version }}-source.tar.gz .
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         id: create_release
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_release }}
         with:
           name: Lantern v${{ steps.package.outputs.package_version }}
           tag_name: v${{ steps.package.outputs.package_version }}
           files: |
             ${{ steps.package.outputs.package_path }}
             /tmp/lantern-v${{ steps.package.outputs.package_version }}-source.tar.gz
+            /tmp/lantern-cli-package/*
           generate_release_notes: true
       - name: Homebrew release
         uses: var77/bump-homebrew-formula-action@main
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_release }}
         with:
           formula-name: lantern
           formula-path: Formula/lantern.rb

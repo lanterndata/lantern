@@ -5,6 +5,7 @@ ARG PG_VERSION
 
 WORKDIR /tmp/lantern
 
-COPY . .
+COPY ./lantern_hnsw .
+COPY ./ci ./ci
 
 RUN PG_VERSION=$PG_VERSION ./ci/scripts/build-docker.sh

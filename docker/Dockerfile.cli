@@ -1,0 +1,47 @@
+FROM rust:1.78.0 as build
+# Copy the files in your machine to the Docker image
+WORKDIR /app
+COPY lantern_cli .
+ENV ORT_STRATEGY="system"
+ARG RUSTFLAGS=""
+ENV RUSTFLAGS=$RUSTFLAGS
+ARG CXXFLAGS=""
+ENV CXXFLAGS=$CXXFLAGS
+
+ENV CC=/usr/bin/clang-18
+ENV CXX=/usr/bin/clang++-18
+
+# Build your program for release
+RUN apt update && apt install -y --no-install-recommends lsb-release wget software-properties-common gnupg pkg-config curl libssl-dev
+
+RUN curl -s https://apt.llvm.org/llvm.sh | bash -s -- 18
+
+RUN cargo build --release
+
+FROM debian:12
+COPY --from=build /app/target/release/lantern-cli .
+ARG TARGETARCH
+ENV OS_ARCH="${TARGETARCH:-amd64}"
+
+RUN apt update && \
+  apt install -y wget && apt clean
+
+# Download onnxruntime
+RUN cd /tmp && \
+    ONNX_VERSION="1.16.1" && \
+    PACKAGE_URL="https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-linux-x64-${ONNX_VERSION}.tgz" && \
+    case "$OS_ARCH" in \
+        arm*|aarch64) \
+            PACKAGE_URL="https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-linux-aarch64-${ONNX_VERSION}.tgz"; \
+    esac && \
+    mkdir -p /usr/local/lib && \
+    cd /usr/local/lib && \
+    wget -qq $PACKAGE_URL  && \
+    tar xzf ./onnx*.tgz && \
+    rm -rf ./onnx*.tgz && \
+    mv ./onnx* ./onnxruntime
+
+ENV ORT_STRATEGY=system
+ENV ORT_DYLIB_PATH=/usr/local/lib/onnxruntime/lib/libonnxruntime.so
+# Run the binary
+ENTRYPOINT ["./lantern-cli"]

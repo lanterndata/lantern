@@ -26,3 +26,10 @@ sanitizer
 .env.rb
 .venv
 __pycache__
+lantern_hnsw/build
+.idea/
+/target
+*.iml
+**/*.rs.bk
+Cargo.lock
+.ldb_extras_data

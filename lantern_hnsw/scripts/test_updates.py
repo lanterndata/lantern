@@ -92,6 +92,9 @@ def update_from_tag(from_version: str, to_version: str, starting_point  = None):
         if not "error: cannot run ssh" in str(e):
             raise Exception(f"unknown fetch error: {e}")
 
+    rootdir = args.rootdir
+    if Version(from_version) < Version("0.4.0"):
+        rootdir = ".."
 
     sha_after = repo.head.object.hexsha
     print(f"Updating from tag {from_tag}(sha: {sha_after}) to {to_version}")
@@ -100,8 +103,13 @@ def update_from_tag(from_version: str, to_version: str, starting_point  = None):
     # checkout to latest to make sure we always run the latest version of all scripts
     repo.git.checkout(from_tag)
     # run "mkdir build && cd build && cmake .. && make -j4 && make install"
-    res = shell(f"mkdir -p {args.builddir} ; cd {args.builddir} && git submodule update --init --recursive && cmake -DRELEASE_ID={from_version} .. && make -j install")
+    res = shell(f"rm -rf {args.builddir} || true")
+    res = shell(f"mkdir -p {args.builddir} ; git submodule update --init --recursive && cmake -DRELEASE_ID={from_version} -S {rootdir} -B {args.builddir} && make -C {args.builddir} -j install")
     repo.git.checkout(starting_sha)
+    # We are just compilinig again (not installing)
+    # Because file structure was changed afte 0.4.0 version
+    # And cmake complains that CMakeFiles does not exist
+    res = shell(f"rm -rf {args.builddir} third_party && mkdir -p {args.builddir} && git submodule update --init --recursive && cmake -DRELEASE_ID={from_version} -S {args.rootdir} -B {args.builddir} && make -C {args.builddir} -j")
 
 
     res = shell(f"psql postgres -U {args.user} -c 'DROP DATABASE IF EXISTS {args.db};'")
@@ -121,7 +129,7 @@ def update_from_tag(from_version: str, to_version: str, starting_point  = None):
     res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-misc FILTER=begin")
 
     repo.git.checkout(to_sha)
-    res = shell(f"cd {args.builddir} ; git submodule update --init --recursive && cmake -DRELEASE_ID={to_version} .. && make -j install")
+    res = shell(f"rm -rf {args.builddir} third_party && rm -rf third_party && mkdir -p {args.builddir} && git submodule update --init --recursive && cmake -DRELEASE_ID={to_version} -S {args.rootdir} -B {args.builddir} && cd {args.builddir} && make -j install")
     repo.git.checkout(starting_sha)
 
     res = shell(f"cd {args.builddir} ; UPDATE_EXTENSION=1 UPDATE_FROM={from_version} UPDATE_TO={from_version} make test-misc FILTER=version_mismatch")
@@ -168,7 +176,8 @@ if __name__ == "__main__":
                         help='Tag to update to', required=False)
     parser.add_argument("-db", "--db", default="update_db", type=str, help="Database name used for updates")
     parser.add_argument("-U", "--user",  default=default_user, help="Database user")
-    parser.add_argument("-builddir", "--builddir",  default="build_updates", help="Database user")
+    parser.add_argument("-builddir", "--builddir",  default="build_updates", help="Build directory")
+    parser.add_argument("-rootdir", "--rootdir",  default=".", help="Root directory")
 
     args = parser.parse_args()
 
@@ -183,7 +192,7 @@ if __name__ == "__main__":
         exit(1)
 
     # test updates from all tags
-    version_pairs = [update_fname.split("--") for update_fname in os.listdir("sql/updates")]
+    version_pairs = [update_fname.split("--") for update_fname in os.listdir(f"{args.rootdir}/sql/updates")]
     version_pairs = [(from_version, to_version.split('.sql')[0]) for from_version, to_version in version_pairs]
     repo = git.Repo(search_parent_directories=True)
     tags_actual = [tag.name for tag in repo.tags]
@@ -214,9 +223,3 @@ if __name__ == "__main__":
             if incompatible_version(pg_version, from_tag):
                 continue
             try_update_from_tag(str(from_tag), str(latest_version))
-
-
-
-
-
-
