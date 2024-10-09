@@ -225,6 +225,6 @@ jobs:
         if: ${{ env.codecov_token != '' }}
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: /tmp/lantern-coverage/lantern-lcov.info,/tmp/lantern-coverage/lantern-extras-lcov.info
+          files: /tmp/lantern-coverage/coverage.info,/tmp/lantern-coverage/lantern-extras-lcov.info
           fail_ci_if_error: true
           verbose: true
