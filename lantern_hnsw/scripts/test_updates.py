@@ -93,7 +93,7 @@ def update_from_tag(from_version: str, to_version: str, starting_point  = None):
             raise Exception(f"unknown fetch error: {e}")
 
     rootdir = args.rootdir
-    if Version(from_version) < Version("0.3.5"):
+    if Version(from_version) < Version("0.4.0"):
         rootdir = ".."
 
     sha_after = repo.head.object.hexsha
@@ -107,7 +107,7 @@ def update_from_tag(from_version: str, to_version: str, starting_point  = None):
     res = shell(f"mkdir -p {args.builddir} ; git submodule update --init --recursive && cmake -DRELEASE_ID={from_version} -S {rootdir} -B {args.builddir} && make -C {args.builddir} -j install")
     repo.git.checkout(starting_sha)
     # We are just compilinig again (not installing)
-    # Because file structure was changed afte 0.3.5 version 
+    # Because file structure was changed afte 0.4.0 version
     # And cmake complains that CMakeFiles does not exist
     res = shell(f"rm -rf {args.builddir} third_party && mkdir -p {args.builddir} && git submodule update --init --recursive && cmake -DRELEASE_ID={from_version} -S {args.rootdir} -B {args.builddir} && make -C {args.builddir} -j")
 
