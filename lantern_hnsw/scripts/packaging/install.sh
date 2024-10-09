@@ -54,7 +54,7 @@ then
   exit 1
 fi
 
-echo "Installing Lantern"
+echo "Installing Extension"
 
 cp -r src/${ARCH}/${PLATFORM}/${PG_VERSION}/*.{so,dylib} $PG_LIBRARY_DIR 2>/dev/null || true
 cp -r src/${ARCH}/${PLATFORM}/${PG_VERSION}/bitcode/* $PG_LIBRARY_DIR/bitcode/ 2>/dev/null || true
@@ -67,6 +67,5 @@ EXTRAS_PACKAGE_NAME=$(find . -name "lantern-extras*" | head -n 1)
 
 if [ ! -z "$EXTRAS_PACKAGE_NAME" ]
 then
-  echo "Installing Lantern Extras"
   cd $EXTRAS_PACKAGE_NAME && make install
 fi
