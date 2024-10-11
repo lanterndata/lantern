@@ -33,7 +33,7 @@ function package_cli() {
   OUT_DIR=/tmp/${BINARY_NAME}
   BUILD_DIR=${SOURCE_DIR}/target/release/
   
-  CC=$(which clang) cargo build --package lantern_cli --release 
+  CC=$(which clang) ORT_STRATEGY=system cargo build --package lantern_cli --release 
 
   mkdir -p ${OUT_DIR}
   
@@ -48,19 +48,19 @@ function package_cli() {
 }
 
 function install_extension() {
-  cargo pgrx install --pg-config /usr/bin/pg_config --package lantern_extras
+  ORT_STRATEGY=system cargo pgrx install --pg-config $(which pg_config) --package lantern_extras
 }
 
 function package_extension() {
-  cargo pgrx package --pg-config /usr/bin/pg_config --package lantern_extras
+  ORT_STRATEGY=system cargo pgrx package --pg-config $(which pg_config) --package lantern_extras
   source "$(dirname "$0")/../../lantern_hnsw/scripts/get_arch_and_platform.sh"
 
   EXT_VERSION=$(cargo metadata --format-version 1 | jq '.packages[] | select( .name == "lantern_extras") | .version' | tr -d '"')
   PACKAGE_NAME=lantern-extras-${EXT_VERSION}-postgres-${PG_VERSION}-${PLATFORM}-${ARCH}
 
   SOURCE_DIR=$(pwd)
-  LIB_BUILD_DIR="$(pwd)/target/release/lantern_extras-pg${PG_VERSION}/usr/lib/postgresql/${PG_VERSION}/lib"
-  SHARE_BUILD_DIR="$(pwd)/target/release/lantern_extras-pg${PG_VERSION}/usr/share/postgresql/${PG_VERSION}/extension"
+  LIB_BUILD_DIR="$(pwd)/$(dirname $(find target/release/lantern_extras-pg${PG_VERSION} -type f -name "*.so" -o -name "*.dylib"))"
+  SHARE_BUILD_DIR="$(pwd)/$(dirname $(find target/release/lantern_extras-pg${PG_VERSION} -type f -name "*.sql"))"
   OUT_DIR=/tmp/lantern-extras
   
   mkdir -p ${OUT_DIR}/${PACKAGE_NAME}/src
@@ -97,7 +97,20 @@ function configure_and_start_postgres() {
 
 # Source unified utility functions
 source "$(dirname "$0")/utils.sh"
-source "$(dirname "$0")/build-linux.sh"
+# This sets $ARCH and $PLATFORM env variables
+source "$(dirname "$0")/../../lantern_hnsw/scripts/get_arch_and_platform.sh"
+
+if [[ $PLATFORM == "mac" ]]; then
+   BUILD_SCRIPT="build-mac.sh"
+elif [[ $PLATFORM == "linux" ]]; then
+   BUILD_SCRIPT="build-linux.sh"
+else
+   echo "Invalid target use one of [mac, linux]"
+   exit 1
+fi
+
+# Source platform specific build script
+source "$(dirname "$0")/${BUILD_SCRIPT}"
 
 if [ ! -z "$RUN_POSTGRES" ]
 then

@@ -12,6 +12,15 @@ function setup_environment() {
   export PG_CRON_COMMIT_SHA=7e91e72b1bebc5869bb900d9253cc9e92518b33f
 }
 
+function setup_rust() {
+  if [ ! -f /tmp/rustup.sh ]; then
+    curl -k -o /tmp/rustup.sh https://sh.rustup.rs
+    chmod +x /tmp/rustup.sh
+    /tmp/rustup.sh -y --default-toolchain=1.78.0
+  fi
+  . "$HOME/.cargo/env"
+}
+
 function clone_or_use_source() {
   if [ -z ${USE_SOURCE} ]; then
     # Clone from git

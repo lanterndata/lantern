@@ -10,6 +10,18 @@ function setup_locale_and_install_packages() {
   export CXX=/usr/bin/clang++
 }
 
+function setup_cargo_deps() {
+  if [ ! -d .cargo ]; then
+  	mkdir .cargo
+  fi
+
+  echo "[target.$(rustc -vV | sed -n 's|host: ||p')]" > .cargo/config
+  echo 'rustflags = ["-Clink-arg=-Wl,-undefined,dynamic_lookup"]' >> .cargo/config
+
+  cargo install cargo-pgrx --version 0.11.3
+  cargo pgrx init "--pg$PG_VERSION" $(which pg_config)
+}
+
 function setup_postgres() {
   cmd="brew install postgresql@${PG_VERSION} clang-format || true" # ignoring brew linking errors
   if [[ $USER == "root" ]]
