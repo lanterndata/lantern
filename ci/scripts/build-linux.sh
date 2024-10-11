@@ -15,6 +15,15 @@ function setup_locale_and_install_packages() {
   locale-gen en_US.UTF-8
 }
 
+function setup_cargo_deps() {
+  if [ ! -d .cargo ]; then
+  	mkdir .cargo
+  fi
+  echo "[target.$(rustc -vV | sed -n 's|host: ||p')]" >> .cargo/config
+  cargo install cargo-pgrx --version 0.11.3
+  cargo pgrx init "--pg$PG_VERSION" /usr/bin/pg_config
+}
+
 function setup_postgres() {
   # Add postgresql apt repo
   echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list
@@ -34,23 +43,6 @@ function setup_postgres() {
   echo "port = 5432" >> /etc/postgresql/$PG_VERSION/main/postgresql.conf
 }
 
-function setup_rust() {
-  if [ ! -f /tmp/rustup.sh ]; then
-    curl -k -o /tmp/rustup.sh https://sh.rustup.rs
-    chmod +x /tmp/rustup.sh
-    /tmp/rustup.sh -y --default-toolchain=1.78.0
-  fi
-  . "$HOME/.cargo/env"
-}
-
-function setup_cargo_deps() {
-  if [ ! -d .cargo ]; then
-  	mkdir .cargo
-  fi
-  echo "[target.$(rustc -vV | sed -n 's|host: ||p')]" >> .cargo/config
-  cargo install cargo-pgrx --version 0.11.3
-  cargo pgrx init "--pg$PG_VERSION" /usr/bin/pg_config
-}
 
 function install_platform_specific_dependencies() {
   # Currently lantern_extras binaries are only available for Linux x86_64

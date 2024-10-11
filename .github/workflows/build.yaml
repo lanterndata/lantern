@@ -52,7 +52,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, ubicloud-standard-4-arm]
+        os: [ubuntu-22.04, ubicloud-standard-4-arm, macos-13]
         postgres: [11, 12, 13, 14, 15, 16]
     steps:
       - uses: actions/checkout@v4
@@ -60,12 +60,12 @@ jobs:
           submodules: "recursive"
       - name: Build
         id: build
-        run: sudo su -c "PG_VERSION=$PG_VERSION SETUP_ENV=1 USE_SOURCE=1 SETUP_POSTGRES=1 PACKAGE_EXTENSION=1 GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/build-extras.sh"
+        run: sudo sh -c "PG_VERSION=$PG_VERSION SETUP_ENV=1 USE_SOURCE=1 SETUP_POSTGRES=1 PACKAGE_EXTENSION=1 GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/build-extras.sh"
         env:
           PG_VERSION: ${{ matrix.postgres }}
       - name: Build Lantern CLI
         id: build_cli
-        run: sudo su -c "PACKAGE_CLI=1 GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/build-extras.sh"
+        run: sudo sh -c "PACKAGE_CLI=1 GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/build-extras.sh"
         if: ${{ matrix.postgres == 15 }} # run only once
       - name: Upload archive package artifacts
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_release }}
