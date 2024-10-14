@@ -31,6 +31,8 @@ pub const JOB_TABLE_DEFINITION: &'static str = r#"
 "table" text NOT NULL,
 "pk" text NOT NULL DEFAULT 'id',
 "label" text NULL,
+"job_type" text DEFAULT 'embedding_generation',
+"column_type" text DEFAULT 'REAL[]',
 "runtime" text NOT NULL DEFAULT 'ort',
 "runtime_params" jsonb,
 "src_column" text NOT NULL,
@@ -55,7 +57,17 @@ pub const USAGE_TABLE_DEFINITION: &'static str = r#"
 "created_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
 "#;
 
+pub const FAILURE_TABLE_DEFINITION: &'static str = r#"
+"id" SERIAL PRIMARY KEY,
+"job_id" INT NOT NULL,
+"row_id" INT NOT NULL,
+"tokens" INT NOT NULL,
+"error" TEXT,
+"created_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+"#;
+
 const EMB_USAGE_TABLE_NAME: &'static str = "embedding_usage_info";
+const EMB_FAILURE_TABLE_NAME: &'static str = "embedding_failure_info";
 const EMB_LOCK_TABLE_NAME: &'static str = "_lantern_emb_job_locks";
 
 async fn lock_row(
@@ -458,8 +470,8 @@ async fn embedding_worker(
                     create_column: false,
                     filter: job_clone.filter.clone(),
                     limit: None,
-                    job_type: None,
-                    column_type: None
+                    job_type: job_clone.job_type.clone(),
+                    column_type: job_clone.column_type.clone()
                 },
                 tx,
                 task_logger
@@ -619,7 +631,7 @@ async fn job_insert_processor(
     // batch jobs for the rows. This will optimize embedding generation as if there will be lots of
     // inserts to the table between 10 seconds all that rows will be batched.
     let full_table_name = Arc::new(get_full_table_name(&schema, &table));
-    let job_query_sql = Arc::new(format!("SELECT id, pk, label, src_column as \"column\", dst_column, \"table\", \"schema\", embedding_model as model, runtime, runtime_params::text, init_finished_at FROM {0}", &full_table_name));
+    let job_query_sql = Arc::new(format!("SELECT id, pk, label, src_column as \"column\", dst_column, \"table\", \"schema\", embedding_model as model, runtime, runtime_params::text, init_finished_at, job_type, column_type FROM {0}", &full_table_name));
 
     let db_uri_r1 = db_uri.clone();
     let full_table_name_r1 = full_table_name.clone();
@@ -1050,6 +1062,8 @@ pub async fn start(
         None,
         Some(EMB_USAGE_TABLE_NAME),
         Some(USAGE_TABLE_DEFINITION),
+        Some(EMB_FAILURE_TABLE_NAME),
+        Some(FAILURE_TABLE_DEFINITION),
         None,
         &notification_channel,
         logger.clone(),

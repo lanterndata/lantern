@@ -49,6 +49,7 @@ pub mod daemon_test_utils {
     CREATE TABLE {CLIENT_TABLE_NAME} (
        id SERIAL PRIMARY KEY,
        title TEXT,
+       num INT,
        title_embedding REAL[]
     );
 
