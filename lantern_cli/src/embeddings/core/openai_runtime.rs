@@ -1,9 +1,10 @@
 use itertools::Itertools;
 use regex::Regex;
+use serde_json::json;
 use std::{collections::HashMap, sync::RwLock};
 
 use super::{
-    runtime::{EmbeddingResult, EmbeddingRuntimeT},
+    runtime::{BatchCompletionResult, CompletionResult, EmbeddingResult, EmbeddingRuntimeT},
     LoggerFn,
 };
 use crate::HTTPRuntime;
@@ -31,6 +32,33 @@ struct OpenAiUsage {
 #[derive(Deserialize, Debug)]
 struct OpenAiResponse {
     data: Vec<OpenAiEmbedding>,
+    usage: OpenAiUsage,
+}
+
+#[derive(Deserialize, Debug)]
+struct OpenAiChatMessage {
+    #[allow(dead_code)]
+    role: String,
+    content: String,
+}
+
+impl OpenAiChatMessage {
+    fn new() -> OpenAiChatMessage {
+        OpenAiChatMessage {
+            role: "system".to_owned(),
+            content: "".to_owned(),
+        }
+    }
+}
+
+#[derive(Deserialize, Debug)]
+struct OpenAiChatChoice {
+    message: OpenAiChatMessage,
+}
+
+#[derive(Deserialize, Debug)]
+struct OpenAiChatResponse {
+    choices: Vec<OpenAiChatChoice>,
     usage: OpenAiUsage,
 }
 
@@ -93,6 +121,7 @@ pub struct OpenAiRuntime<'a> {
     request_timeout: u64,
     base_url: String,
     headers: Vec<(String, String)>,
+    context: serde_json::Value,
     dimensions: Option<usize>,
     #[allow(dead_code)]
     logger: &'a LoggerFn,
@@ -104,6 +133,7 @@ pub struct OpenAiRuntimeParams {
     pub api_token: Option<String>,
     pub azure_api_token: Option<String>,
     pub azure_entra_token: Option<String>,
+    pub context: Option<String>,
     pub dimensions: Option<usize>,
 }
 
@@ -144,6 +174,11 @@ impl<'a> OpenAiRuntime<'a> {
             }
         };
 
+        let context = match &runtime_params.context {
+            Some(system_prompt) => json!({ "role": "system", "content": system_prompt.clone()}),
+            None => json!({ "role": "system", "content": "" }),
+        };
+
         Ok(Self {
             base_url,
             logger,
@@ -153,6 +188,7 @@ impl<'a> OpenAiRuntime<'a> {
                 auth_header,
             ],
             dimensions: runtime_params.dimensions,
+            context,
         })
     }
 
@@ -162,7 +198,7 @@ impl<'a> OpenAiRuntime<'a> {
         if base_url.is_none() {
             return Ok((
                 OpenAiDeployment::OpenAi,
-                "https://api.openai.com/v1/embeddings".to_owned(),
+                "https://api.openai.com".to_owned(),
             ));
         }
 
@@ -263,6 +299,70 @@ impl<'a> OpenAiRuntime<'a> {
         Ok(batch_tokens)
     }
 
+    pub async fn completion(
+        &self,
+        model_name: &str,
+        query: &str,
+        retries: Option<usize>,
+    ) -> Result<CompletionResult, anyhow::Error> {
+        let client = Arc::new(self.get_client()?);
+        let url = Url::parse(&self.base_url)?
+            .join("/v1/chat/completions")?
+            .to_string();
+        let completion_response: CompletionResult = post_with_retries(
+            client,
+            url,
+            serde_json::to_string(&json!({
+            "model": model_name,
+            "messages": [
+              self.context,
+              { "role": "user", "content": query }
+            ]
+            }))?,
+            Box::new(Self::get_completion_response),
+            retries.unwrap_or(5),
+        )
+        .await?;
+
+        Ok(completion_response)
+    }
+
+    pub async fn batch_completion(
+        self: Arc<&Self>,
+        model_name: &str,
+        queries: &Vec<&str>,
+    ) -> Result<BatchCompletionResult, anyhow::Error> {
+        let mut processed_tokens = 0;
+
+        let completion_futures = queries.into_iter().map(|query| {
+            let self_clone = Arc::clone(&self);
+            let model_name_clone = model_name.to_owned();
+            async move {
+                self_clone
+                    .completion(&model_name_clone, &query, Some(5))
+                    .await
+            }
+        });
+
+        let results = futures::future::join_all(completion_futures).await;
+
+        let mut responses = Vec::with_capacity(results.len());
+        for result in results {
+            match result {
+                Ok(msg) => {
+                    processed_tokens += msg.processed_tokens;
+                    responses.push(msg.message);
+                }
+                Err(e) => responses.push(format!("Error: {e}")),
+            }
+        }
+
+        Ok(BatchCompletionResult {
+            messages: responses,
+            processed_tokens,
+        })
+    }
+
     // Static functions
     pub fn get_response(body: Vec<u8>) -> Result<EmbeddingResult, anyhow::Error> {
         let result: Result<OpenAiResponse, serde_json::Error> = serde_json::from_slice(&body);
@@ -284,6 +384,31 @@ impl<'a> OpenAiRuntime<'a> {
                 .collect(),
         })
     }
+
+    pub fn get_completion_response(body: Vec<u8>) -> Result<CompletionResult, anyhow::Error> {
+        let result: Result<OpenAiChatResponse, serde_json::Error> = serde_json::from_slice(&body);
+        if let Err(e) = result {
+            anyhow::bail!(
+                "Error: {e}. OpenAI response: {:?}",
+                serde_json::from_slice::<serde_json::Value>(&body)?
+            );
+        }
+
+        let result = result.unwrap();
+
+        Ok(CompletionResult {
+            processed_tokens: result.usage.total_tokens,
+            message: result
+                .choices
+                .first()
+                .unwrap_or(&OpenAiChatChoice {
+                    message: OpenAiChatMessage::new(),
+                })
+                .message
+                .content
+                .clone(),
+        })
+    }
 }
 
 impl<'a> EmbeddingRuntimeT for OpenAiRuntime<'a> {
@@ -292,7 +417,8 @@ impl<'a> EmbeddingRuntimeT for OpenAiRuntime<'a> {
         model_name: &str,
         inputs: &Vec<&str>,
     ) -> Result<EmbeddingResult, anyhow::Error> {
-        self.post_request("", model_name, inputs).await
+        self.post_request("/v1/embeddings", model_name, inputs)
+            .await
     }
 
     async fn get_available_models(&self) -> (String, Vec<(String, bool)>) {
@@ -310,4 +436,5 @@ impl<'a> EmbeddingRuntimeT for OpenAiRuntime<'a> {
         return (res, models);
     }
 }
+
 HTTPRuntime!(OpenAiRuntime);

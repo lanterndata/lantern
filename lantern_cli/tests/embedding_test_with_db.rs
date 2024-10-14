@@ -65,7 +65,6 @@ async fn test_embedding_generation_from_db() {
             out_column: "emb".to_owned(),
             batch_size: None,
             visual: false,
-            out_csv: None,
             out_table: None,
             limit: None,
             filter: None,

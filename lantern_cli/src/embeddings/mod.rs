@@ -3,7 +3,6 @@ use crate::types::*;
 use crate::utils::{append_params_to_uri, get_full_table_name, quote_ident};
 use bytes::BytesMut;
 use core::get_available_runtimes;
-use csv::Writer;
 use futures::SinkExt;
 use rand::Rng;
 use std::sync::Arc;
@@ -20,7 +19,47 @@ pub mod cli;
 pub mod core;
 pub mod measure_speed;
 
-type EmbeddingRecord = (String, Vec<f32>);
+pub enum EmbeddingJobType {
+    Embedding,
+}
+
+struct EmbeddingRecord {
+    pk: String,
+    record: BytesMut,
+}
+
+impl EmbeddingRecord {
+    fn from_vec(pk: String, value: Vec<f32>) -> EmbeddingRecord {
+        let mut buf = BytesMut::with_capacity(4);
+
+        if value.len() > 0 {
+            let chunk_size = 1024 * 1024; // 1 MB
+            buf = BytesMut::with_capacity(chunk_size);
+            buf.extend_from_slice("{".as_bytes());
+            let row_str: String = value.iter().map(|&x| x.to_string() + ",").collect();
+            buf.extend_from_slice(row_str[0..row_str.len() - 1].as_bytes());
+            drop(row_str);
+            buf.extend_from_slice("}".as_bytes());
+        } else {
+            buf.extend_from_slice("NULL".as_bytes());
+        }
+
+        EmbeddingRecord { pk, record: buf }
+    }
+
+    #[allow(dead_code)]
+    fn from_string(pk: String, value: String) -> EmbeddingRecord {
+        let mut buf = BytesMut::from(value.as_bytes());
+
+        if value.len() > 0 {
+            buf = BytesMut::from(value.as_bytes())
+        } else {
+            buf.extend_from_slice("NULL".as_bytes());
+        }
+
+        EmbeddingRecord { pk, record: buf }
+    }
+}
 
 static CONNECTION_PARAMS: &'static str = "connect_timeout=10";
 
@@ -116,6 +155,7 @@ async fn embedding_worker(
     args: Arc<cli::EmbeddingArgs>,
     mut rx: Receiver<Vec<Row>>,
     tx: Sender<Vec<EmbeddingRecord>>,
+    job_type: EmbeddingJobType,
     cancel_token: CancellationToken,
     logger: Arc<Logger>,
 ) -> AnyhowUsizeResult {
@@ -178,7 +218,9 @@ async fn embedding_worker(
                 let mut response_data = Vec::with_capacity(rows.len());
 
                 for _ in 0..embeddings.len() {
-                    response_data.push((input_ids.pop().unwrap(), embeddings.pop().unwrap()));
+                    match job_type {
+                        EmbeddingJobType::Embedding => response_data.push(EmbeddingRecord::from_vec(input_ids.pop().unwrap(), embeddings.pop().unwrap()))
+                    }
                 }
 
                 if tx.send(response_data).await.is_err() {
@@ -211,6 +253,7 @@ async fn db_exporter_worker(
     args: Arc<cli::EmbeddingArgs>,
     mut rx: Receiver<Vec<EmbeddingRecord>>,
     item_count: i64,
+    column_type: String,
     progress_cb: Option<ProgressCbFn>,
     logger: Arc<Logger>,
 ) -> Result<JoinHandle<AnyhowUsizeResult>, anyhow::Error> {
@@ -230,7 +273,7 @@ async fn db_exporter_worker(
         transaction
             .execute(
                 &format!(
-                    "ALTER TABLE {full_table_name} ADD COLUMN IF NOT EXISTS {column} REAL[]",
+                    "ALTER TABLE {full_table_name} ADD COLUMN IF NOT EXISTS {column} {column_type}",
                     column = quote_ident(&column)
                 ),
                 &[],
@@ -251,7 +294,7 @@ async fn db_exporter_worker(
         transaction
             .execute(
                 &format!(
-                    "CREATE TEMPORARY TABLE {temp_table_name} AS SELECT {pk}, '{{}}'::REAL[] AS {column} FROM {full_table_name} LIMIT 0",
+                    "CREATE TEMPORARY TABLE {temp_table_name} AS SELECT {pk}, '{{}}'::{column_type} AS {column} FROM {full_table_name} LIMIT 0",
                     pk=quote_ident(&pk),
                     column=quote_ident(&column)
                 ),
@@ -281,17 +324,9 @@ async fn db_exporter_worker(
 
         while let Some(rows) = rx.recv().await {
             for row in &rows {
-                buf.extend_from_slice(row.0.as_bytes());
+                buf.extend_from_slice(row.pk.as_bytes());
                 buf.extend_from_slice("\t".as_bytes());
-                if row.1.len() > 0 {
-                    buf.extend_from_slice("{".as_bytes());
-                    let row_str: String = row.1.iter().map(|&x| x.to_string() + ",").collect();
-                    buf.extend_from_slice(row_str[0..row_str.len() - 1].as_bytes());
-                    drop(row_str);
-                    buf.extend_from_slice("}".as_bytes());
-                } else {
-                    buf.extend_from_slice("NULL".as_bytes());
-                }
+                buf.extend_from_slice(&row.record);
                 buf.extend_from_slice("\n".as_bytes());
                 collected_row_cnt += 1;
             }
@@ -380,37 +415,6 @@ async fn db_exporter_worker(
         Ok(processed_row_cnt)
     });
 
-    Ok(handle)
-}
-
-async fn csv_exporter_worker(
-    args: Arc<cli::EmbeddingArgs>,
-    mut rx: Receiver<Vec<EmbeddingRecord>>,
-    logger: Arc<Logger>,
-) -> Result<JoinHandle<AnyhowUsizeResult>, anyhow::Error> {
-    let handle = tokio::spawn(async move {
-        let csv_path = args.out_csv.as_ref().unwrap();
-        let mut wtr = Writer::from_path(&csv_path).unwrap();
-        let mut processed_row_cnt = 0;
-        while let Some(rows) = rx.recv().await {
-            for row in &rows {
-                let vector_string = &format!(
-                    "{{{}}}",
-                    row.1
-                        .iter()
-                        .map(|f| f.to_string())
-                        .collect::<Vec<String>>()
-                        .join(",")
-                );
-                wtr.write_record(&[&row.0.to_string(), vector_string])
-                    .unwrap();
-                processed_row_cnt += rows.len();
-            }
-        }
-        wtr.flush().unwrap();
-        logger.info(&format!("Embeddings exported to {}", &csv_path));
-        Ok(processed_row_cnt)
-    });
     Ok(handle)
 }
 
@@ -506,20 +510,16 @@ pub async fn create_embeddings_from_db(
     ) = mpsc::channel(1);
 
     // Create exporter based on provided args
-    // For now we only have csv and db exporters
-    let exporter_handle = if args.out_csv.is_some() {
-        csv_exporter_worker(args.clone(), embedding_rx, logger.clone()).await?
-    } else {
-        db_exporter_worker(
-            &uri,
-            args.clone(),
-            embedding_rx,
-            item_cnt,
-            progress_cb,
-            logger.clone(),
-        )
-        .await?
-    };
+    let exporter_handle = db_exporter_worker(
+        &uri,
+        args.clone(),
+        embedding_rx,
+        item_cnt,
+        "REAL[]".to_owned(),
+        progress_cb,
+        logger.clone(),
+    )
+    .await?;
 
     let (exporter_result, embedding_result, producer_result) = tokio::join!(
         exporter_handle,
@@ -527,6 +527,7 @@ pub async fn create_embeddings_from_db(
             args.clone(),
             producer_rx,
             embedding_tx,
+            EmbeddingJobType::Embedding,
             cancel_token,
             logger.clone(),
         ),

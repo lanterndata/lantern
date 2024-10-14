@@ -209,3 +209,10 @@ To resume a paused embedding job, use the `resume_embedding_job` function:
 SELECT resume_embedding_job(job_id);
 ```
 
+### LLM Query
+
+***Calling Chat OpenAI Completion API***
+```sql
+SET lantern_extras.openai_token='xxxx';
+SELECT openai_completion(query, [model, context, base_url]);
+```

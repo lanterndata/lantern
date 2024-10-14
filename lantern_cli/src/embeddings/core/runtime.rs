@@ -3,6 +3,16 @@ pub struct EmbeddingResult {
     pub processed_tokens: usize,
 }
 
+pub struct CompletionResult {
+    pub message: String,
+    pub processed_tokens: usize,
+}
+
+pub struct BatchCompletionResult {
+    pub messages: Vec<String>,
+    pub processed_tokens: usize,
+}
+
 pub trait EmbeddingRuntimeT {
     fn process(
         &self,

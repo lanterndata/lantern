@@ -53,7 +53,7 @@ macro_rules! HTTPRuntime {
                 for request_body in self.chunk_inputs(model_name, inputs)? {
                     let client = client.clone();
                     let url = url.clone();
-                    let embedding_response =
+                    let embedding_response: super::runtime::EmbeddingResult =
                         post_with_retries(client, url, request_body, Box::new($a::get_response), 5)
                             .await?;
                     processed_tokens_clone

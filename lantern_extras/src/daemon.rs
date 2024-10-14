@@ -1,9 +1,6 @@
 use lantern_cli::{
     daemon::{cli::DaemonArgs, start},
-    embeddings::core::{
-        cohere_runtime::CohereRuntimeParams, openai_runtime::OpenAiRuntimeParams,
-        ort_runtime::DATA_PATH,
-    },
+    embeddings::core::ort_runtime::DATA_PATH,
     logger::{LogLevel, Logger},
     types::AnyhowVoidResult,
     utils::{get_full_table_name, quote_ident},
@@ -13,8 +10,8 @@ use tokio::runtime::Runtime;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    COHERE_TOKEN, DAEMON_DATABASES, OPENAI_AZURE_API_TOKEN, OPENAI_AZURE_ENTRA_TOKEN,
-    OPENAI_DEPLOYMENT_URL, OPENAI_TOKEN,
+    embeddings::{get_cohere_runtime_params, get_openai_runtime_params},
+    DAEMON_DATABASES,
 };
 
 pub fn start_daemon(
@@ -117,53 +114,14 @@ fn add_embedding_job<'a>(
     pk: default!(&'a str, "'id'"),
     schema: default!(&'a str, "'public'"),
 ) -> Result<i32, anyhow::Error> {
-    let mut params = runtime_params.to_owned();
+    let params = runtime_params.to_owned();
     if params == "{}" {
         match runtime {
             "openai" => {
-                let base_url = if let Some(deployment_url) = OPENAI_DEPLOYMENT_URL.get() {
-                    Some(deployment_url.to_str().unwrap().to_owned())
-                } else {
-                    None
-                };
-
-                let api_token = if let Some(api_token) = OPENAI_TOKEN.get() {
-                    Some(api_token.to_str().unwrap().to_owned())
-                } else {
-                    None
-                };
-
-                let azure_api_token = if let Some(api_token) = OPENAI_AZURE_API_TOKEN.get() {
-                    Some(api_token.to_str().unwrap().to_owned())
-                } else {
-                    None
-                };
-
-                let azure_entra_token = if let Some(api_token) = OPENAI_AZURE_ENTRA_TOKEN.get() {
-                    Some(api_token.to_str().unwrap().to_owned())
-                } else {
-                    None
-                };
-
-                params = serde_json::to_string(&OpenAiRuntimeParams {
-                    dimensions: Some(1536),
-                    base_url,
-                    api_token,
-                    azure_api_token,
-                    azure_entra_token,
-                })?;
+                get_openai_runtime_params("", "", 1536)?;
             }
             "cohere" => {
-                let api_token = if let Some(api_token) = COHERE_TOKEN.get() {
-                    Some(api_token.to_str().unwrap().to_owned())
-                } else {
-                    None
-                };
-
-                params = serde_json::to_string(&CohereRuntimeParams {
-                    api_token,
-                    input_type: Some("search_document".to_owned()),
-                })?;
+                get_cohere_runtime_params("search_document")?;
             }
             _ => {}
         }

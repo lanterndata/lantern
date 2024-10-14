@@ -20,6 +20,8 @@ pub static OPENAI_AZURE_ENTRA_TOKEN: GucSetting<Option<&'static CStr>> =
 pub static COHERE_TOKEN: GucSetting<Option<&'static CStr>> =
     GucSetting::<Option<&'static CStr>>::new(None);
 pub static ENABLE_DAEMON: GucSetting<bool> = GucSetting::<bool>::new(false);
+pub static COMPLETION_CONTEXT: GucSetting<Option<&'static CStr>> =
+    GucSetting::<Option<&'static CStr>>::new(None);
 
 pub static DAEMON_DATABASES: GucSetting<Option<&'static CStr>> =
     GucSetting::<Option<&'static CStr>>::new(None);
@@ -88,6 +90,14 @@ pub unsafe extern "C" fn _PG_init() {
         "Flag to indicate if daemon is enabled or not",
         &ENABLE_DAEMON,
         GucContext::Sighup,
+        GucFlags::NO_SHOW_ALL,
+    );
+    GucRegistry::define_string_guc(
+        "lantern_extras.completion_context",
+        "Context to pass on LLM completion calls.",
+        "Used when calling completion method on LLMs",
+        &COMPLETION_CONTEXT,
+        GucContext::Userset,
         GucFlags::NO_SHOW_ALL,
     );
 }

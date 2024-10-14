@@ -5,8 +5,8 @@ use lantern_cli::embeddings::core::{
 use pgrx::prelude::*;
 
 use crate::{
-    COHERE_TOKEN, OPENAI_AZURE_API_TOKEN, OPENAI_AZURE_ENTRA_TOKEN, OPENAI_DEPLOYMENT_URL,
-    OPENAI_TOKEN,
+    COHERE_TOKEN, COMPLETION_CONTEXT, OPENAI_AZURE_API_TOKEN, OPENAI_AZURE_ENTRA_TOKEN,
+    OPENAI_DEPLOYMENT_URL, OPENAI_TOKEN,
 };
 
 pub static ORT_RUNTIME_PARAMS: &'static str = r#"{ "cache": true }"#;
@@ -22,27 +22,11 @@ fn get_dummy_runtime_params(runtime: &Runtime) -> String {
     }
 }
 
-#[pg_extern(immutable, parallel_safe)]
-fn text_embedding<'a>(model_name: &'a str, text: &'a str) -> Result<Vec<f32>, anyhow::Error> {
-    let runtime = EmbeddingRuntime::new(
-        &Runtime::Ort,
-        Some(&(notice_fn as LoggerFn)),
-        &ORT_RUNTIME_PARAMS,
-    )?;
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
-    let mut res = rt.block_on(runtime.process(model_name, &vec![text]))?;
-    Ok(res.embeddings.pop().unwrap())
-}
-
-#[pg_extern(immutable, parallel_safe, create_or_replace)]
-fn openai_embedding<'a>(
-    model_name: &'a str,
-    text: &'a str,
-    base_url: default!(&'a str, "''"),
-    dimensions: default!(i32, 1536),
-) -> Result<Vec<f32>, anyhow::Error> {
+pub fn get_openai_runtime_params(
+    base_url: &str,
+    context: &str,
+    dimensions: i32,
+) -> Result<String, anyhow::Error> {
     if OPENAI_TOKEN.get().is_none()
         && OPENAI_AZURE_API_TOKEN.get().is_none()
         && OPENAI_AZURE_ENTRA_TOKEN.get().is_none()
@@ -84,14 +68,62 @@ fn openai_embedding<'a>(
         None
     };
 
-    let runtime_params = serde_json::to_string(&OpenAiRuntimeParams {
+    let context = if context == "" {
+        if let Some(guc_context) = COMPLETION_CONTEXT.get() {
+            Some(guc_context.to_str().unwrap().to_owned())
+        } else {
+            None
+        }
+    } else {
+        Some(context.to_owned())
+    };
+
+    let params = serde_json::to_string(&OpenAiRuntimeParams {
         dimensions,
         base_url,
         api_token,
         azure_api_token,
         azure_entra_token,
+        context,
     })?;
 
+    Ok(params)
+}
+
+pub fn get_cohere_runtime_params(input_type: &str) -> Result<String, anyhow::Error> {
+    if COHERE_TOKEN.get().is_none() {
+        error!("'lantern_extras.cohere_token' is required for 'cohere' runtime");
+    }
+    let runtime_params = serde_json::to_string(&CohereRuntimeParams {
+        api_token: Some(COHERE_TOKEN.get().unwrap().to_str().unwrap().to_owned()),
+        input_type: Some(input_type.to_owned()),
+    })?;
+
+    Ok(runtime_params)
+}
+
+#[pg_extern(immutable, parallel_safe)]
+fn text_embedding<'a>(model_name: &'a str, text: &'a str) -> Result<Vec<f32>, anyhow::Error> {
+    let runtime = EmbeddingRuntime::new(
+        &Runtime::Ort,
+        Some(&(notice_fn as LoggerFn)),
+        &ORT_RUNTIME_PARAMS,
+    )?;
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let mut res = rt.block_on(runtime.process(model_name, &vec![text]))?;
+    Ok(res.embeddings.pop().unwrap())
+}
+
+#[pg_extern(immutable, parallel_safe, create_or_replace)]
+fn openai_embedding<'a>(
+    model_name: &'a str,
+    text: &'a str,
+    base_url: default!(&'a str, "''"),
+    dimensions: default!(i32, 1536),
+) -> Result<Vec<f32>, anyhow::Error> {
+    let runtime_params = get_openai_runtime_params(base_url, "", dimensions)?;
     let runtime = EmbeddingRuntime::new(
         &Runtime::OpenAi,
         Some(&(notice_fn as LoggerFn)),
@@ -111,14 +143,7 @@ fn cohere_embedding<'a>(
     text: &'a str,
     input_type: default!(&'a str, "'search_query'"),
 ) -> Result<Vec<f32>, anyhow::Error> {
-    if COHERE_TOKEN.get().is_none() {
-        error!("'lantern_extras.cohere_token' is required for 'cohere' runtime");
-    }
-    let runtime_params = serde_json::to_string(&CohereRuntimeParams {
-        api_token: Some(COHERE_TOKEN.get().unwrap().to_str().unwrap().to_owned()),
-        input_type: Some(input_type.to_owned()),
-    })?;
-
+    let runtime_params = get_cohere_runtime_params(input_type)?;
     let runtime = EmbeddingRuntime::new(
         &Runtime::Cohere,
         Some(&(notice_fn as LoggerFn)),
@@ -169,6 +194,29 @@ fn get_available_runtimes() -> Result<String, anyhow::Error> {
     let mut runtimes_str = lantern_cli::embeddings::core::get_available_runtimes().join("\n");
     runtimes_str.push_str("\n");
     return Ok(runtimes_str);
+}
+
+#[pg_extern(immutable, parallel_safe, create_or_replace)]
+fn openai_completion<'a>(
+    text: &'a str,
+    model_name: default!(&'a str, "'gpt-4o'"),
+    context: default!(&'a str, "''"),
+    base_url: default!(&'a str, "''"),
+) -> Result<String, anyhow::Error> {
+    let runtime_params = get_openai_runtime_params(base_url, context, 0)?;
+
+    let runtime = EmbeddingRuntime::new(
+        &Runtime::OpenAi,
+        Some(&(notice_fn as LoggerFn)),
+        &runtime_params,
+    )?;
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+
+    let res = rt.block_on(runtime.completion(model_name, text))?;
+    Ok(res.message)
 }
 
 #[cfg(any(test, feature = "pg_test"))]
@@ -321,6 +369,51 @@ pub mod tests {
                 .first();
             let embedding_large = row.get_by_name::<Vec<f32>, &str>("embedding")?.unwrap();
             assert!(embedding_large.len() == 768);
+
+            Ok::<(), anyhow::Error>(())
+        })
+        .unwrap();
+    }
+    #[pg_test(volatile, create_or_replace)]
+    fn test_openai_completion() {
+        let openai_token = env::var("OPENAI_TOKEN");
+
+        if openai_token.is_err() {
+            return;
+        }
+
+        let openai_token = openai_token.unwrap();
+        let openai_token = openai_token.trim();
+
+        if openai_token == "" {
+            return;
+        }
+
+        Spi::connect(|mut client| {
+            client.update(
+                &format!("SET lantern_extras.openai_token='{openai_token}'"),
+                None,
+                None,
+            )?;
+            client.update(
+                &format!("SET lantern_extras.completion_context='return x property from provided json object without any additional text and without quotes'"),
+                None,
+                None,
+            )?;
+            let row = client
+                .select(
+                    &format!(
+                        "
+                         SELECT openai_completion('{{\"x\": \"test1\"}}') as response
+                     "
+                    ),
+                    None,
+                    None,
+                )?
+                .first();
+
+            let response = row.get_by_name::<String, &str>("response")?.unwrap();
+            assert_eq!(&response, "test1");
 
             Ok::<(), anyhow::Error>(())
         })

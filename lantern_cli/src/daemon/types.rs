@@ -208,6 +208,7 @@ pub struct JobInsertNotification {
     pub generate_missing: bool,
     pub row_id: Option<String>,
     pub filter: Option<String>,
+    #[allow(dead_code)]
     pub limit: Option<u32>,
 }
 
