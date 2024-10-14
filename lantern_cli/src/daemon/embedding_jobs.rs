@@ -458,6 +458,8 @@ async fn embedding_worker(
                     create_column: false,
                     filter: job_clone.filter.clone(),
                     limit: None,
+                    job_type: None,
+                    column_type: None
                 },
                 tx,
                 task_logger

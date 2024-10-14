@@ -1,5 +1,11 @@
 pub use super::core::Runtime;
-use clap::Parser;
+use clap::{Parser, ValueEnum};
+
+#[derive(ValueEnum, Debug, Clone)]
+pub enum EmbeddingJobType {
+    Embedding,
+    Completion,
+}
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -43,6 +49,14 @@ pub struct EmbeddingArgs {
     /// Batch size
     #[arg(short, long)]
     pub batch_size: Option<usize>,
+
+    /// Generate embeddings or get chat completion
+    #[arg(long)]
+    pub job_type: Option<EmbeddingJobType>,
+
+    /// Type of destination column
+    #[arg(long)]
+    pub column_type: Option<String>,
 
     /// Runtime
     #[arg(long, default_value_t = Runtime::Ort)]

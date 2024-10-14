@@ -6,9 +6,9 @@ use std::{
     },
 };
 
-use lantern_cli::embeddings;
 use lantern_cli::embeddings::cli;
 use lantern_cli::embeddings::core::Runtime;
+use lantern_cli::embeddings::{self, cli::EmbeddingJobType};
 use tokio_postgres::{Client, NoTls};
 use tokio_util::sync::CancellationToken;
 
@@ -72,6 +72,8 @@ async fn test_embedding_generation_from_db() {
             runtime_params: "{\"data_path\": \"/tmp/lantern-embeddings-core-test\"}".to_owned(),
             create_column: true,
             stream: true,
+            job_type: None,
+            column_type: None,
         },
         true,
         Some(Box::new(callback)),
@@ -88,6 +90,78 @@ async fn test_embedding_generation_from_db() {
             &format!(
             "SELECT COUNT(id) FROM {table_name} WHERE emb IS NULL OR array_length(emb, 1) != 384"
         ),
+            &[],
+        )
+        .await
+        .unwrap();
+
+    let cnt = cnt.get::<usize, i64>(0);
+
+    drop_db_tables(&mut db_client, &table_name).await;
+
+    assert_eq!(cnt, 0);
+    assert_eq!(final_progress.load(Ordering::SeqCst), 100);
+}
+
+#[tokio::test]
+async fn test_openai_query_from_db() {
+    let db_url = env::var("DB_URL").expect("`DB_URL` not specified");
+    let api_token = env::var("OPENAI_TOKEN").unwrap_or("".to_owned());
+
+    if api_token == "" {
+        return;
+    }
+
+    let table_name = String::from("_completion_test_openai");
+    let (mut db_client, connection) = tokio_postgres::connect(&db_url, NoTls)
+        .await
+        .expect("Can not connect to database");
+    tokio::spawn(async move { connection.await.unwrap() });
+    setup_db_tables(&mut db_client, &table_name).await;
+
+    let final_progress = Arc::new(AtomicU8::new(0));
+    let final_progress_r1 = final_progress.clone();
+
+    let callback = move |progress: u8| {
+        final_progress_r1.store(progress, Ordering::SeqCst);
+    };
+
+    let (processed_rows, _) = embeddings::create_embeddings_from_db(
+        cli::EmbeddingArgs {
+            model: "gpt-4o".to_owned(),
+            uri: db_url.clone(),
+            pk: "id".to_owned(),
+            column: "content".to_owned(),
+            table: table_name.clone(),
+            schema: "public".to_owned(),
+            out_uri: None,
+            out_column: "chars".to_owned(),
+            batch_size: None,
+            visual: false,
+            out_table: None,
+            limit: Some(10),
+            filter: None,
+            runtime: Runtime::OpenAi,
+            runtime_params: format!(r#"{{"api_token": "{api_token}", "context": "you will be given text, return postgres array of TEXT[] by splitting the text by characters skipping spaces. Example 'te st' -> {{t,e,s,t}} . Do not put tailing commas, do not put double or single quotes around characters" }}"#),
+            create_column: true,
+            stream: true,
+            job_type: Some(EmbeddingJobType::Completion),
+            column_type: Some("TEXT[]".to_owned()),
+        },
+        true,
+        Some(Box::new(callback)),
+        CancellationToken::new(),
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(processed_rows, 10);
+
+    let cnt = db_client
+        .query_one(
+            &format!(
+                "SELECT COUNT(id) FROM {table_name} WHERE id < 11 AND chars != '{{H,e,l,l,o,w,o,r,l,d,!}}'"
+            ),
             &[],
         )
         .await
