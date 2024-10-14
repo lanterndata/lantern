@@ -13,6 +13,7 @@ use std::{
 };
 
 pgrx::pg_module_magic!();
+pub mod bloom;
 pub mod daemon;
 pub mod dotvecs;
 pub mod embeddings;
