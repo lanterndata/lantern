@@ -13,15 +13,12 @@ use tokio_util::sync::CancellationToken;
 
 use tokio_postgres::{Client, NoTls, Row};
 
+use self::cli::EmbeddingJobType;
 use self::core::EmbeddingRuntime;
 
 pub mod cli;
 pub mod core;
 pub mod measure_speed;
-
-pub enum EmbeddingJobType {
-    Embedding,
-}
 
 struct EmbeddingRecord {
     pk: String,
@@ -51,6 +48,7 @@ impl EmbeddingRecord {
     fn from_string(pk: String, value: String) -> EmbeddingRecord {
         let mut buf = BytesMut::from(value.as_bytes());
 
+        println!("pk -> {pk}, value -> {value}");
         if value.len() > 0 {
             buf = BytesMut::from(value.as_bytes())
         } else {
@@ -177,34 +175,45 @@ async fn embedding_worker(
                     start = Instant::now();
                 }
 
-                let mut input_vectors: Vec<&str> = Vec::with_capacity(rows.len());
+                let mut inputs: Vec<&str> = Vec::with_capacity(rows.len());
                 let mut input_ids: Vec<String> = Vec::with_capacity(rows.len());
 
                 for row in &rows {
                     if let Ok(Some(src_data)) = row.try_get::<usize, Option<&str>>(1) {
                         if src_data.trim() != "" {
-                            input_vectors.push(src_data);
+                            inputs.push(src_data);
                             input_ids.push(row.get::<usize, String>(0));
                         }
                     }
                 }
 
-                if input_vectors.len() == 0 {
+                if inputs.len() == 0 {
                     continue;
                 }
 
-                let embedding_response = runtime.process(&model, &input_vectors).await;
+                let mut response_data = Vec::with_capacity(rows.len());
 
-                if let Err(e) = embedding_response {
-                    anyhow::bail!("{}", e);
+                match job_type {
+                    EmbeddingJobType::Embedding => {
+                        let embedding_response = runtime.process(&model, &inputs).await?;
+                        processed_tokens += embedding_response.processed_tokens;
+                        let mut embeddings = embedding_response.embeddings;
+
+                        count += embeddings.len();
+                        for _ in 0..embeddings.len() {
+                            response_data.push(EmbeddingRecord::from_vec(input_ids.pop().unwrap(), embeddings.pop().unwrap()))
+                        }
+                    },
+                    EmbeddingJobType::Completion => {
+                        let embedding_response = runtime.batch_completion(&model, &inputs).await?;
+                        processed_tokens += embedding_response.processed_tokens;
+                        let mut messages = embedding_response.messages;
+                        count += messages.len();
+                        for _ in 0..messages.len() {
+                            response_data.push(EmbeddingRecord::from_string(input_ids.pop().unwrap(), messages.pop().unwrap()))
+                        }
+                    }
                 }
-
-                let embedding_response = embedding_response.unwrap();
-
-                processed_tokens += embedding_response.processed_tokens;
-                let mut embeddings = embedding_response.embeddings;
-
-                count += embeddings.len();
 
                 let duration = start.elapsed().as_secs();
                 // avoid division by zero error
@@ -214,14 +223,6 @@ async fn embedding_worker(
                     count,
                     count / duration as usize
                 ));
-
-                let mut response_data = Vec::with_capacity(rows.len());
-
-                for _ in 0..embeddings.len() {
-                    match job_type {
-                        EmbeddingJobType::Embedding => response_data.push(EmbeddingRecord::from_vec(input_ids.pop().unwrap(), embeddings.pop().unwrap()))
-                    }
-                }
 
                 if tx.send(response_data).await.is_err() {
                     // Error occured in exporter worker and channel has been closed
@@ -294,7 +295,7 @@ async fn db_exporter_worker(
         transaction
             .execute(
                 &format!(
-                    "CREATE TEMPORARY TABLE {temp_table_name} AS SELECT {pk}, '{{}}'::{column_type} AS {column} FROM {full_table_name} LIMIT 0",
+                    "CREATE TEMPORARY TABLE {temp_table_name} AS SELECT {pk}, {column} FROM {full_table_name} LIMIT 0",
                     pk=quote_ident(&pk),
                     column=quote_ident(&column)
                 ),
@@ -450,6 +451,13 @@ pub fn get_default_batch_size(model: &str) -> usize {
     }
 }
 
+fn get_default_column_type(job_type: &EmbeddingJobType) -> String {
+    match job_type {
+        &EmbeddingJobType::Completion => "TEXT".to_owned(),
+        &EmbeddingJobType::Embedding => "REAL[]".to_owned(),
+    }
+}
+
 pub async fn create_embeddings_from_db(
     args: cli::EmbeddingArgs,
     track_progress: bool,
@@ -472,6 +480,11 @@ pub async fn create_embeddings_from_db(
     let column = args.column.clone();
     let schema = args.schema.clone();
     let table = args.table.clone();
+    let job_type = args.job_type.clone().unwrap_or(EmbeddingJobType::Embedding);
+    let column_type = args
+        .column_type
+        .clone()
+        .unwrap_or(get_default_column_type(&job_type));
     let full_table_name = get_full_table_name(&schema, &table);
 
     let filter_sql = if args.filter.is_some() {
@@ -515,7 +528,7 @@ pub async fn create_embeddings_from_db(
         args.clone(),
         embedding_rx,
         item_cnt,
-        "REAL[]".to_owned(),
+        column_type,
         progress_cb,
         logger.clone(),
     )
@@ -527,7 +540,7 @@ pub async fn create_embeddings_from_db(
             args.clone(),
             producer_rx,
             embedding_tx,
-            EmbeddingJobType::Embedding,
+            job_type,
             cancel_token,
             logger.clone(),
         ),

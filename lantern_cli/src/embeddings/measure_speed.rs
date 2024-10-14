@@ -47,6 +47,8 @@ async fn measure_model_speed(
             visual: false,
             limit: Some(limit.clone()),
             filter: None,
+            column_type: None,
+            job_type: None,
         };
         let start = Instant::now();
         let (processed, _) = super::create_embeddings_from_db(
