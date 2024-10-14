@@ -48,7 +48,6 @@ impl EmbeddingRecord {
     fn from_string(pk: String, value: String) -> EmbeddingRecord {
         let mut buf = BytesMut::from(value.as_bytes());
 
-        println!("pk -> {pk}, value -> {value}");
         if value.len() > 0 {
             buf = BytesMut::from(value.as_bytes())
         } else {
@@ -194,7 +193,7 @@ async fn embedding_worker(
                 let mut response_data = Vec::with_capacity(rows.len());
 
                 match job_type {
-                    EmbeddingJobType::Embedding => {
+                    EmbeddingJobType::EmbeddingGeneration => {
                         let embedding_response = runtime.process(&model, &inputs).await?;
                         processed_tokens += embedding_response.processed_tokens;
                         let mut embeddings = embedding_response.embeddings;
@@ -454,7 +453,7 @@ pub fn get_default_batch_size(model: &str) -> usize {
 fn get_default_column_type(job_type: &EmbeddingJobType) -> String {
     match job_type {
         &EmbeddingJobType::Completion => "TEXT".to_owned(),
-        &EmbeddingJobType::Embedding => "REAL[]".to_owned(),
+        &EmbeddingJobType::EmbeddingGeneration => "REAL[]".to_owned(),
     }
 }
 
@@ -480,7 +479,10 @@ pub async fn create_embeddings_from_db(
     let column = args.column.clone();
     let schema = args.schema.clone();
     let table = args.table.clone();
-    let job_type = args.job_type.clone().unwrap_or(EmbeddingJobType::Embedding);
+    let job_type = args
+        .job_type
+        .clone()
+        .unwrap_or(EmbeddingJobType::EmbeddingGeneration);
     let column_type = args
         .column_type
         .clone()

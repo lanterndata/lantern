@@ -147,6 +147,8 @@ pub async fn startup_hook(
     results_table_def: Option<&str>,
     usage_table_name: Option<&str>,
     usage_table_def: Option<&str>,
+    failure_table_name: Option<&str>,
+    failure_table_def: Option<&str>,
     migration: Option<&str>,
     channel: &str,
     logger: Arc<Logger>,
@@ -267,6 +269,17 @@ pub async fn startup_hook(
             .batch_execute(&format!(
                 "CREATE TABLE IF NOT EXISTS {usage_table_name} ({usage_table_def});
                  CREATE INDEX IF NOT EXISTS embedding_usage_date_idx ON {usage_table_name}(created_at);"
+            ))
+            .await?;
+    }
+
+    if failure_table_name.is_some() && failure_table_def.is_some() {
+        let failure_table_name = get_full_table_name(schema, failure_table_name.unwrap());
+        let failure_table_def = failure_table_def.unwrap();
+        transaction
+            .batch_execute(&format!(
+                "CREATE TABLE IF NOT EXISTS {failure_table_name} ({failure_table_def});
+                 CREATE INDEX IF NOT EXISTS embedding_failures_job_id_row_id ON {failure_table_name}(job_id, row_id);"
             ))
             .await?;
     }

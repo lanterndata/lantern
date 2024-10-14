@@ -3,8 +3,19 @@ use clap::{Parser, ValueEnum};
 
 #[derive(ValueEnum, Debug, Clone)]
 pub enum EmbeddingJobType {
-    Embedding,
+    EmbeddingGeneration,
     Completion,
+}
+
+impl TryFrom<&str> for EmbeddingJobType {
+    type Error = anyhow::Error;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "embedding_generation" => Ok(EmbeddingJobType::EmbeddingGeneration),
+            "completion" => Ok(EmbeddingJobType::Completion),
+            _ => anyhow::bail!("Invalid job_type {value}"),
+        }
+    }
 }
 
 #[derive(Parser, Debug)]
