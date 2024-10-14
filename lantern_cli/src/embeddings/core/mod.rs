@@ -5,7 +5,7 @@ pub mod ort_runtime;
 pub mod runtime;
 pub mod utils;
 
-use std::str::FromStr;
+use std::{str::FromStr, sync::Arc};
 use strum::{EnumIter, IntoEnumIterator};
 
 use cohere_runtime::CohereRuntime;
@@ -13,7 +13,7 @@ use openai_runtime::OpenAiRuntime;
 use ort_runtime::OrtRuntime;
 use runtime::EmbeddingRuntimeT;
 
-use self::runtime::EmbeddingResult;
+use self::runtime::{BatchCompletionResult, CompletionResult, EmbeddingResult};
 
 fn default_logger(text: &str) {
     println!("{}", text);
@@ -93,6 +93,32 @@ impl<'a> EmbeddingRuntime<'a> {
             EmbeddingRuntime::Cohere(runtime) => runtime.process(model_name, inputs).await,
             EmbeddingRuntime::OpenAi(runtime) => runtime.process(model_name, inputs).await,
             EmbeddingRuntime::Ort(runtime) => runtime.process(model_name, inputs).await,
+        }
+    }
+
+    pub async fn completion(
+        &self,
+        model_name: &str,
+        query: &str,
+    ) -> Result<CompletionResult, anyhow::Error> {
+        match self {
+            EmbeddingRuntime::OpenAi(runtime) => {
+                runtime.completion(model_name, query, Some(1)).await
+            }
+            _ => anyhow::bail!("completion is not available for this runtime"),
+        }
+    }
+
+    pub async fn batch_completion(
+        &self,
+        model_name: &str,
+        queries: &Vec<&str>,
+    ) -> Result<BatchCompletionResult, anyhow::Error> {
+        match self {
+            EmbeddingRuntime::OpenAi(runtime) => {
+                OpenAiRuntime::batch_completion(Arc::new(runtime), model_name, queries).await
+            }
+            _ => anyhow::bail!("completion is not available for this runtime"),
         }
     }
 

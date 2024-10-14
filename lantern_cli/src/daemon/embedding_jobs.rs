@@ -456,7 +456,6 @@ async fn embedding_worker(
                     visual: false,
                     stream: true,
                     create_column: false,
-                    out_csv: None,
                     filter: job_clone.filter.clone(),
                     limit: None,
                 },

@@ -56,10 +56,6 @@ pub struct EmbeddingArgs {
     #[arg(long, default_value_t = false)]
     pub visual: bool,
 
-    /// Output csv path. If specified result will be written in csv instead of database
-    #[arg(short, long)]
-    pub out_csv: Option<String>,
-
     /// Filter which will be used when getting data from source table
     #[arg(short, long)]
     pub filter: Option<String>,

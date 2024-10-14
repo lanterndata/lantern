@@ -78,12 +78,6 @@ lantern-cli create-embeddings  --model 'clip/ViT-B-32-textual'  --uri 'postgresq
 
 > The output database, table and column names can be specified via `--out-table`, `--out-uri`, `--out-column` arguments. Check `help` for more info.
 
-or you can export to csv file
-
-```bash
-lantern-cli create-embeddings  --model 'clip/ViT-B-32-textual'  --uri 'postgresql://postgres:postgres@localhost:5432/test' --table "articles" --column "description" --out-column embedding --out-csv "embeddings.csv" --schema "public"
-```
-
 ### Image Embedding Example
 
 1. Create table with image uris data

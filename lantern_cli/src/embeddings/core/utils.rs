@@ -6,9 +6,7 @@ use std::sync::Arc;
 use std::{fs::create_dir_all, io::Cursor, time::Duration};
 use sysinfo::{System, SystemExt};
 
-use super::runtime::EmbeddingResult;
-
-type GetResponseFn = Box<dyn Fn(Vec<u8>) -> Result<EmbeddingResult, anyhow::Error> + Send + Sync>;
+type GetResponseFn<T> = Box<dyn Fn(Vec<u8>) -> Result<T, anyhow::Error> + Send + Sync>;
 
 pub async fn download_file(url: &str, path: &PathBuf) -> Result<(), anyhow::Error> {
     let client = reqwest::Client::builder()
@@ -78,13 +76,13 @@ pub fn percent_gpu_memory_used() -> Result<f64, anyhow::Error> {
     Ok((mem_info.used as f64 / mem_info.total as f64) * 100.0)
 }
 
-pub async fn post_with_retries(
+pub async fn post_with_retries<T>(
     client: Arc<reqwest::Client>,
     url: String,
     body: String,
-    get_response_fn: GetResponseFn,
+    get_response_fn: GetResponseFn<T>,
     max_retries: usize,
-) -> Result<EmbeddingResult, anyhow::Error> {
+) -> Result<T, anyhow::Error> {
     let starting_interval = 4000; // ms
     let mut last_error = "".to_string();
 

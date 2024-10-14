@@ -40,7 +40,6 @@ async fn measure_model_speed(
             schema: SCHEMA_NAME.to_owned(),
             table: table_name.to_owned(),
             out_uri: None,
-            out_csv: None,
             out_table: None,
             runtime: runtime.clone(),
             runtime_params: runtime_params.to_owned(),
