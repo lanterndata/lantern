@@ -114,14 +114,14 @@ fn add_embedding_job<'a>(
     pk: default!(&'a str, "'id'"),
     schema: default!(&'a str, "'public'"),
 ) -> Result<i32, anyhow::Error> {
-    let params = runtime_params.to_owned();
+    let mut params = runtime_params.to_owned();
     if params == "{}" {
         match runtime {
             "openai" => {
-                get_openai_runtime_params("", "", 1536)?;
+                params = get_openai_runtime_params("", "", 1536)?;
             }
             "cohere" => {
-                get_cohere_runtime_params("search_document")?;
+                params = get_cohere_runtime_params("search_document")?;
             }
             _ => {}
         }
