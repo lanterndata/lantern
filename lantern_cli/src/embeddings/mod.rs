@@ -60,6 +60,22 @@ impl EmbeddingRecord {
 
 static CONNECTION_PARAMS: &'static str = "connect_timeout=10";
 
+pub fn get_try_cast_fn_sql(schema: &str) -> String {
+    format!(
+        "
+CREATE OR REPLACE FUNCTION {schema}.ldb_try_cast(_in text, INOUT _out ANYELEMENT)
+  LANGUAGE plpgsql AS
+$func$
+BEGIN
+   EXECUTE format('SELECT %L::%s', $1, pg_typeof(_out))
+   INTO  _out;
+EXCEPTION WHEN others THEN
+END
+$func$;",
+        schema = quote_ident(schema)
+    )
+}
+
 // Helper function to calculate progress using total and processed row count
 fn calculate_progress(total: i64, processed: usize) -> u8 {
     if total <= 0 {
@@ -242,6 +258,123 @@ async fn embedding_worker(
     Ok(processed_tokens)
 }
 
+fn get_update_query_and_col_type(
+    args: Arc<cli::EmbeddingArgs>,
+    full_table_name: &str,
+    temp_table_name: &str,
+    column_type: &str,
+) -> (String, String) {
+    let column = args.out_column.clone();
+    let cast_fn_name = get_full_table_name(&args.internal_schema, "ldb_try_cast");
+    let mut tmp_col_type = column_type.to_owned();
+    let mut type_check_sql = "".to_owned();
+    let mut failed_rows_sql = "SELECT 1 WHERE FALSE;".to_owned(); // nop operation
+    let mut temp_table_subquery = temp_table_name.to_owned(); // nop operation
+
+    if let Some(failed_rows_table) = &args.failed_rows_table {
+        let failed_rows_table = get_full_table_name(&args.internal_schema, failed_rows_table);
+        failed_rows_sql = format!(
+            "
+            INSERT INTO {failed_rows_table} (job_id, row_id, value)
+            SELECT {job_id} as job_id, row_id, value FROM failed_rows;
+        ",
+            job_id = args.job_id,
+        );
+
+        temp_table_subquery = format!(
+            "
+            (
+            SELECT * FROM {temp_table_name} tmp
+            WHERE NOT EXISTS (
+                SELECT 1 FROM failed_rows fr WHERE fr.row_id = tmp.{pk}
+            )
+        )
+",
+            temp_table_name = quote_ident(&temp_table_name),
+            pk = quote_ident(&args.pk)
+        )
+    }
+
+    if args.check_column_type {
+        tmp_col_type = "TEXT".to_owned();
+        type_check_sql = format!(
+            "
+                 failed_rows AS (
+                    DELETE FROM {temp_table_name} src
+                    WHERE {cast_fn_name}(src.{column}, NULL::{column_type}) IS NULL
+                    RETURNING src.{pk} AS row_id, src.{column} AS value
+                ),
+        ",
+            column = quote_ident(&column),
+            temp_table_name = quote_ident(&temp_table_name),
+            pk = quote_ident(&args.pk)
+        );
+    }
+
+    /*
+    * For embedding jobs the temp table will be created with REAL[] type
+    * And the type_check_sql with failed_rows_sql will be set to empty string
+    * So we will just perform update from tmp to src truncating the temp table
+    * Query will be like this:
+    *   WITH updated_rows AS (
+            UPDATE "public"."_completion_test_openai_failed_rows" dst
+            SET "chars" = src."chars"::TEXT[]
+            FROM "_lantern_tmp_861" src
+            WHERE src."id" = dst."id"
+        )
+        SELECT 1 WHERE FALSE;
+        TRUNCATE TABLE _lantern_tmp_861;
+    * ---
+    * For completion jobs it is recommended to set the check_column_type and
+    * failed_rows_table arguments.
+    * If the check_column_type will be set, we will try to delete the rows from tmp table
+    * Which do not pass the type cast (this can be because LLMs can return invalid data).
+    * Then we will perform the update operation with the remaining rows which can be casted
+    * correctly.
+    * Then the failed rows will be inserted into the failed_rows_table, so there will be
+    * visibility about the rows which were failed to cast
+    *
+    * Query will be like this:
+    *   WITH failed_rows AS (
+            DELETE FROM "_lantern_tmp_861" src
+            WHERE ldb_try_cast(src."chars", NULL::TEXT[]) IS NULL
+            RETURNING src."id" AS row_id, src."chars" AS value
+        ),
+        updated_rows AS (
+            UPDATE "public"."_completion_test_openai_failed_rows" dst
+            SET "chars" = src."chars"::TEXT[]
+            FROM (
+                SELECT * FROM "_lantern_tmp_861"
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM failed_rows fr WHERE fr.row_id = "_lantern_tmp_861"."id"
+                )
+            ) src
+            WHERE src."id" = dst."id"
+        )
+        INSERT INTO embedding_failre_info (job_id, row_id, value)
+            SELECT {args.job_id} as job_id, row_id, value FROM failed_rows;
+        TRUNCATE TABLE _lantern_tmp_861;
+    * */
+    let update_sql = format!(
+        "
+                WITH {type_check_sql} 
+                updated_rows AS (
+                    UPDATE {full_table_name} dst
+                    SET {column} = src.{column}::{column_type}
+                    FROM {temp_table_subquery} src
+                    WHERE src.{pk} = dst.{pk}
+                ) 
+                {failed_rows_sql}
+                TRUNCATE TABLE {temp_table_name};
+        ",
+        column = quote_ident(&column),
+        temp_table_name = quote_ident(&temp_table_name),
+        pk = quote_ident(&args.pk)
+    );
+
+    (update_sql, tmp_col_type)
+}
+
 // DB exporter worker will create temp table with name _lantern_tmp_${rand(0,1000)}
 // Then it will create writer stream which will COPY bytes from stdin to that table
 // After that it will receiver the output embeddings mapped with row ids over the channel
@@ -288,18 +421,32 @@ async fn db_exporter_worker(
         anyhow::bail!("User does not have write permissions to target table");
     }
 
+    if args.create_cast_fn {
+        transaction
+            .execute(&get_try_cast_fn_sql(&args.internal_schema), &[])
+            .await?;
+    }
+
+    let (update_sql, tmp_col_type) = get_update_query_and_col_type(
+        args.clone(),
+        &full_table_name,
+        &temp_table_name,
+        &column_type,
+    );
+
     transaction.commit().await?;
     let handle = tokio::spawn(async move {
         let transaction = client.transaction().await?;
         transaction
             .execute(
                 &format!(
-                    "CREATE TEMPORARY TABLE {temp_table_name} AS SELECT {pk}, {column} FROM {full_table_name} LIMIT 0",
+                    "CREATE TEMPORARY TABLE {temp_table_name} AS SELECT {pk}, {column}::{tmp_col_type} FROM {full_table_name} LIMIT 0",
                     pk=quote_ident(&pk),
                     column=quote_ident(&column)
                 ),
                 &[],
             ).await?;
+
         transaction.commit().await?;
 
         let mut transaction = client.transaction().await?;
@@ -312,7 +459,6 @@ async fn db_exporter_worker(
         );
         let chunk_size = 1024 * 1024 * 10; // 10 MB
         let mut buf = BytesMut::with_capacity(chunk_size * 2);
-        let update_sql = &format!("UPDATE {full_table_name} dest SET {column} = src.{column} FROM {temp_table_name} src WHERE src.{pk} = dest.{pk}", column=quote_ident(&column), temp_table_name=quote_ident(&temp_table_name), pk=quote_ident(&pk));
 
         let flush_interval = 10;
         let min_flush_rows = 50;
@@ -364,14 +510,7 @@ async fn db_exporter_worker(
                     writer_sink.send(buf.split().freeze()).await?;
                 }
                 writer_sink.as_mut().finish().await?;
-                transaction
-                    .batch_execute(&format!(
-                        "
-                    {update_sql};
-                    TRUNCATE TABLE {temp_table_name};
-                "
-                    ))
-                    .await?;
+                transaction.batch_execute(&update_sql).await?;
                 transaction.commit().await?;
                 transaction = client.transaction().await?;
                 writer_sink = Box::pin(
@@ -405,7 +544,7 @@ async fn db_exporter_worker(
             writer_sink.send(buf.split().freeze()).await?
         }
         writer_sink.as_mut().finish().await?;
-        transaction.execute(update_sql, &[]).await?;
+        transaction.batch_execute(&update_sql).await?;
         transaction.commit().await?;
         logger.info(&format!(
             "Embeddings exported to table {} under column {}",

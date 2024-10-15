@@ -96,6 +96,26 @@ pub struct EmbeddingArgs {
     /// Create destination column if not exists
     #[arg(long, default_value_t = false)]
     pub create_column: bool,
+
+    /// Create ldb_try_cast function for type checking
+    #[arg(long, default_value_t = false)]
+    pub create_cast_fn: bool,
+
+    /// Check column type for each row before inserting to the table
+    #[arg(long, default_value_t = false)]
+    pub check_column_type: bool,
+
+    /// Schema name where the failed rows table and ldb_try_cast function are located
+    #[arg(long, default_value = "public")]
+    pub internal_schema: String,
+
+    /// Table to insert the rows which were not casted successfully
+    #[arg(long)]
+    pub failed_rows_table: Option<String>,
+
+    /// Job ID is only needed when run from daemon
+    #[arg(long, default_value_t = 0)]
+    pub job_id: i32,
 }
 
 impl EmbeddingArgs {

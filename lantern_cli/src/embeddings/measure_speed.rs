@@ -49,6 +49,11 @@ async fn measure_model_speed(
             filter: None,
             column_type: None,
             job_type: None,
+            check_column_type: false,
+            create_cast_fn: false,
+            failed_rows_table: None,
+            internal_schema: "".to_owned(),
+            job_id: 0,
         };
         let start = Instant::now();
         let (processed, _) = super::create_embeddings_from_db(

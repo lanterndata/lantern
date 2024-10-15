@@ -64,8 +64,8 @@ pub struct EmbeddingJob {
     pub pk: String,
     pub filter: Option<String>,
     pub label: Option<String>,
-    pub job_type: Option<EmbeddingJobType>,
-    pub column_type: Option<String>,
+    pub job_type: EmbeddingJobType,
+    pub column_type: String,
     pub out_column: String,
     pub model: String,
     pub runtime_params: String,
@@ -100,14 +100,13 @@ impl EmbeddingJob {
             row_ids: None,
             is_init: true,
             batch_size: None,
-            job_type: Some(EmbeddingJobType::try_from(
+            job_type: EmbeddingJobType::try_from(
                 row.get::<&str, Option<&str>>("job_type")
                     .unwrap_or("embedding"),
-            )?),
-            column_type: Some(
-                row.get::<&str, Option<String>>("column_type")
-                    .unwrap_or("REAL[]".to_owned()),
-            ),
+            )?,
+            column_type: row
+                .get::<&str, Option<String>>("column_type")
+                .unwrap_or("REAL[]".to_owned()),
         })
     }
 
