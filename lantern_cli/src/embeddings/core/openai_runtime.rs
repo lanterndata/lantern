@@ -209,7 +209,7 @@ impl<'a> OpenAiRuntime<'a> {
             return Ok((OpenAiDeployment::Azure, base_url.clone()));
         }
 
-        anyhow::bail!("Invalid base url for OpenAi Runtime: {base_url}");
+        return Ok((OpenAiDeployment::OpenAi, base_url.clone()));
     }
 
     fn group_vectors_by_token_count(
