@@ -33,6 +33,7 @@ pub unsafe extern "C" fn _PG_init() {
         .set_restart_time(Some(Duration::from_secs(5)))
         .enable_spi_access()
         .load();
+    #[cfg(any(feature = "pg15", feature = "pg16"))]
     unsafe {
         use pg_sys::AsPgCStr;
         pg_sys::MarkGUCPrefixReserved("lantern_extras".as_pg_cstr());
@@ -128,9 +129,12 @@ pub mod tests {
     // query fails. So, the rust interface as no Error representation for a failed query.
     // As a last resort we can ensure the test panics with the expected message.
     // https://www.postgresql.org/docs/current/spi.html
+    #[cfg(any(feature = "pg15", feature = "pg16"))]
     #[pg_test]
     #[should_panic(expected = "invalid configuration parameter name")]
     fn lantern_extras_prefix_reserved() {
-        let res = Spi::run("SET lantern_extras.aldkjalsdkj_invalid_param = 42").unwrap();
+        Spi::run("SET lantern_extras.aldkjalsdkj_invalid_param = 42").unwrap();
+
+        error!("Managed to update a reserved-prefix variable. This should never be reached");
     }
 }
