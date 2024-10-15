@@ -199,7 +199,7 @@ This will return a table with the following columns:
 To add a new completion job, use the `add_completion_job` function:
 
 ```sql
-SELECT add_embedding_job(
+SELECT add_completion_job(
     'table_name',        -- Name of the table
     'src_column',        -- Source column for embeddings
     'dst_column',        -- Destination column for embeddings
