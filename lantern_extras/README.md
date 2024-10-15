@@ -207,7 +207,7 @@ SELECT add_embedding_job(
     'column_type',       -- Target column type to be used for destination (default: TEXT)
     'model',             -- LLM model to use (default: 'gpt4-o')
     'runtime',           -- Runtime environment (default: 'openai')
-    'runtime_params',    -- Runtime parameters (default: '{}' inferret from GUC variables)
+    'runtime_params',    -- Runtime parameters (default: '{}' inferred from GUC variables)
     'pk',                -- Primary key column (default: 'id')
     'schema'             -- Schema name (default: 'public')
 );
