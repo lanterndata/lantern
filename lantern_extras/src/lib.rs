@@ -33,6 +33,10 @@ pub unsafe extern "C" fn _PG_init() {
         .set_restart_time(Some(Duration::from_secs(5)))
         .enable_spi_access()
         .load();
+    unsafe {
+        use pg_sys::AsPgCStr;
+        pg_sys::MarkGUCPrefixReserved("lantern_extras".as_pg_cstr());
+    }
 
     GucRegistry::define_string_guc(
         "lantern_extras.llm_token",
@@ -110,5 +114,23 @@ pub mod pg_test {
             "lantern_extras.daemon_databases='pgrx_tests'",
             "lantern_extras.enable_daemon=true",
         ]
+    }
+}
+
+#[cfg(any(test, feature = "pg_test"))]
+#[pg_schema]
+pub mod tests {
+    use crate::*;
+
+    // note: this will not get to unwrap, since the failure in the result only represents
+    // failures in the SPI machinery.
+    // Postgres aborts the transaction and returns an error message to the client when the SPI
+    // query fails. So, the rust interface as no Error representation for a failed query.
+    // As a last resort we can ensure the test panics with the expected message.
+    // https://www.postgresql.org/docs/current/spi.html
+    #[pg_test]
+    #[should_panic(expected = "invalid configuration parameter name")]
+    fn lantern_extras_prefix_reserved() {
+        let res = Spi::run("SET lantern_extras.aldkjalsdkj_invalid_param = 42").unwrap();
     }
 }
