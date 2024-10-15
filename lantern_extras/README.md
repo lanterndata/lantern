@@ -195,6 +195,38 @@ This will return a table with the following columns:
 - `progress`: The progress of the job as a percentage.
 - `error`: Any error message if the job failed.
 
+**Adding a Completion Job**  
+To add a new completion job, use the `add_completion_job` function:
+
+```sql
+SELECT add_embedding_job(
+    'table_name',        -- Name of the table
+    'src_column',        -- Source column for embeddings
+    'dst_column',        -- Destination column for embeddings
+    'context',           -- System prompt to be used for LLM (default: lantern_extras.completion_context GUC)
+    'column_type',       -- Target column type to be used for destination (default: TEXT)
+    'model',             -- LLM model to use (default: 'gpt4-o')
+    'runtime',           -- Runtime environment (default: 'openai')
+    'runtime_params',    -- Runtime parameters (default: '{}' inferret from GUC variables)
+    'pk',                -- Primary key column (default: 'id')
+    'schema'             -- Schema name (default: 'public')
+);
+```
+
+**Getting All Completion Jobs**  
+To get the status of all completion jobs, use the `get_completion_jobs` function:
+
+```sql
+SELECT * FROM get_completion_jobs();
+
+```
+This will return a table with the following columns:
+
+- `id`: Id of the job
+- `status`: The current status of the job.
+- `progress`: The progress of the job as a percentage.
+- `error`: Any error message if the job failed.
+
 **Canceling an Embedding Job**  
 To cancel an embedding job, use the `cancel_embedding_job` function:
 
@@ -208,6 +240,18 @@ To resume a paused embedding job, use the `resume_embedding_job` function:
 ```sql
 SELECT resume_embedding_job(job_id);
 ```
+
+**Getting All Failed Rows for Completion Job**  
+To get failed rows for completion job, use the `get_completion_job_failures(job_id)` function:
+
+```sql
+SELECT * FROM get_completion_job_failures(1);
+
+```
+This will return a table with the following columns:
+
+- `row_id`: Primary key of the failed row in source table
+- `value`: The value returned from LLM response
 
 ### LLM Query
 

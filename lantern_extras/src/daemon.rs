@@ -152,6 +152,55 @@ fn add_embedding_job<'a>(
     Ok(id.unwrap())
 }
 
+#[pg_extern(immutable, parallel_unsafe, security_definer)]
+fn add_completion_job<'a>(
+    table: &'a str,
+    src_column: &'a str,
+    dst_column: &'a str,
+    context: default!(&'a str, "''"),
+    column_type: default!(&'a str, "'TEXT'"),
+    embedding_model: default!(&'a str, "'gpt4-o'"),
+    runtime: default!(&'a str, "'openai'"),
+    runtime_params: default!(&'a str, "'{}'"),
+    pk: default!(&'a str, "'id'"),
+    schema: default!(&'a str, "'public'"),
+) -> Result<i32, anyhow::Error> {
+    let mut params = runtime_params.to_owned();
+    if params == "{}" {
+        match runtime {
+            "openai" => {
+                params = get_openai_runtime_params("", context, 0)?;
+            }
+            _ => anyhow::bail!("Runtime {runtime} does not support completion jobs"),
+        }
+    }
+
+    let id: Option<i32> = Spi::get_one_with_args(
+        &format!(
+            r#"
+          ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {dst_column} {column_type};
+          INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("table", "schema", pk, src_column, dst_column, embedding_model, runtime, runtime_params, column_type, job_type) VALUES
+          ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, 'completion') RETURNING id;
+        "#,
+            table = get_full_table_name(schema, table),
+            dst_column = quote_ident(dst_column)
+        ),
+        vec![
+            (PgBuiltInOids::TEXTOID.oid(), table.into_datum()),
+            (PgBuiltInOids::TEXTOID.oid(), schema.into_datum()),
+            (PgBuiltInOids::TEXTOID.oid(), pk.into_datum()),
+            (PgBuiltInOids::TEXTOID.oid(), src_column.into_datum()),
+            (PgBuiltInOids::TEXTOID.oid(), dst_column.into_datum()),
+            (PgBuiltInOids::TEXTOID.oid(), embedding_model.into_datum()),
+            (PgBuiltInOids::TEXTOID.oid(), runtime.into_datum()),
+            (PgBuiltInOids::TEXTOID.oid(), params.into_datum()),
+            (PgBuiltInOids::TEXTOID.oid(), column_type.into_datum()),
+        ],
+    )?;
+
+    Ok(id.unwrap())
+}
+
 #[pg_extern(immutable, parallel_safe, security_definer)]
 fn get_embedding_job_status<'a>(
     job_id: i32,
@@ -192,6 +241,20 @@ fn get_embedding_job_status<'a>(
 }
 
 #[pg_extern(immutable, parallel_safe, security_definer)]
+fn get_completion_job_failures<'a>(
+    job_id: i32,
+) -> Result<
+    TableIterator<'static, (name!(row_id, Option<i32>), name!(value, Option<String>))>,
+    anyhow::Error,
+> {
+    Spi::connect(|client| {
+        client.select("SELECT row_id, value FROM _lantern_extras_internal.embedding_failure_info WHERE job_id=$1", None, Some(vec![(PgBuiltInOids::INT4OID.oid(), job_id.into_datum())]))?
+            .map(|row| Ok((row["row_id"].value()?, row["value"].value()?)))
+            .collect::<Result<Vec<_>, _>>()
+    }).map(TableIterator::new)
+}
+
+#[pg_extern(immutable, parallel_safe, security_definer)]
 fn get_embedding_jobs<'a>() -> Result<
     TableIterator<
         'static,
@@ -205,7 +268,27 @@ fn get_embedding_jobs<'a>() -> Result<
     anyhow::Error,
 > {
     Spi::connect(|client| {
-        client.select("SELECT id, (get_embedding_job_status(id)).* FROM _lantern_extras_internal.embedding_generation_jobs", None, None)?
+        client.select("SELECT id, (get_embedding_job_status(id)).* FROM _lantern_extras_internal.embedding_generation_jobs WHERE job_type = 'embedding_generation'", None, None)?
+            .map(|row| Ok((row["id"].value()?, row["status"].value()?, row["progress"].value()?, row["error"].value()?)))
+            .collect::<Result<Vec<_>, _>>()
+    }).map(TableIterator::new)
+}
+
+#[pg_extern(immutable, parallel_safe, security_definer)]
+fn get_completion_jobs<'a>() -> Result<
+    TableIterator<
+        'static,
+        (
+            name!(id, Option<i32>),
+            name!(status, Option<String>),
+            name!(progress, Option<i16>),
+            name!(error, Option<String>),
+        ),
+    >,
+    anyhow::Error,
+> {
+    Spi::connect(|client| {
+        client.select("SELECT id, (get_embedding_job_status(id)).* FROM _lantern_extras_internal.embedding_generation_jobs WHERE job_type = 'completion'", None, None)?
             .map(|row| Ok((row["id"].value()?, row["status"].value()?, row["progress"].value()?, row["error"].value()?)))
             .collect::<Result<Vec<_>, _>>()
     }).map(TableIterator::new)
@@ -262,6 +345,140 @@ pub mod tests {
             let id: Option<i32> = id.first().get(1)?;
 
             assert_eq!(id.is_none(), false);
+            Ok::<(), anyhow::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[pg_test]
+    fn test_add_daemon_completion_job() {
+        Spi::connect(|mut client| {
+            // wait for daemon
+            std::thread::sleep(Duration::from_secs(5));
+            client.update(
+                "
+                CREATE TABLE t1 (id serial primary key, title text);
+                SET lantern_extras.openai_token='test';
+                ",
+                None,
+                None,
+            )?;
+            let id = client.select(
+                "
+                SELECT add_completion_job('t1', 'title', 'title_embedding', 'my test context','TEXT[]');
+                ",
+                None,
+                None,
+            )?;
+
+            let id: Option<i32> = id.first().get(1)?;
+            assert_eq!(id.is_none(), false);
+            
+            let row = client.select(
+                "SELECT column_type, job_type, runtime, embedding_model, (runtime_params->'context')::text as context FROM _lantern_extras_internal.embedding_generation_jobs WHERE id=$1",
+                None,
+                Some(vec![(PgBuiltInOids::INT4OID.oid(), id.into_datum())])
+            )?;
+            
+            let row = row.first();
+
+            assert_eq!(row.get::<&str>(1)?.unwrap(), "TEXT[]");
+            assert_eq!(row.get::<&str>(2)?.unwrap(), "completion");
+            assert_eq!(row.get::<&str>(3)?.unwrap(), "openai");
+            assert_eq!(row.get::<&str>(4)?.unwrap(), "gpt4-o");
+            assert_eq!(row.get::<&str>(5)?.unwrap(), "\"my test context\"");
+
+            Ok::<(), anyhow::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[pg_test]
+    fn test_get_daemon_completion_job() {
+        Spi::connect(|mut client| {
+            // wait for daemon
+            std::thread::sleep(Duration::from_secs(5));
+            client.update(
+                "
+                CREATE TABLE t1 (id serial primary key, title text);
+                SET lantern_extras.openai_token='test';
+                ",
+                None,
+                None,
+            )?;
+            let id = client.select(
+                "
+                SELECT add_completion_job('t1', 'title', 'title_embedding', 'my test context','TEXT[]');
+                ",
+                None,
+                None,
+            )?;
+
+            let id: Option<i32> = id.first().get(1)?;
+            assert_eq!(id.is_none(), false);
+            
+            let row = client.select(
+                "SELECT id, status, progress, error FROM get_completion_jobs() WHERE id=$1",
+                None,
+                Some(vec![(PgBuiltInOids::INT4OID.oid(), id.into_datum())])
+            )?;
+            
+            let row = row.first();
+
+            assert_eq!(row.get::<i32>(1)?.unwrap(), id.unwrap());
+
+            Ok::<(), anyhow::Error>(())
+        })
+        .unwrap();
+    }
+    
+    #[pg_test]
+    fn test_get_completion_job_failures() {
+        Spi::connect(|mut client| {
+            // wait for daemon
+            std::thread::sleep(Duration::from_secs(5));
+            client.update(
+                "
+                INSERT INTO _lantern_extras_internal.embedding_failure_info (job_id, row_id, value) VALUES 
+                (1, 1, '1test1'),
+                (1, 2, '1test2'),
+                (2, 1, '2test1');
+                ",
+                None,
+                None,
+            )?;
+            
+            let mut rows = client.select(
+                "SELECT row_id, value FROM get_completion_job_failures($1)",
+                None,
+                Some(vec![(PgBuiltInOids::INT4OID.oid(), 1.into_datum())])
+            )?;
+            
+            assert_eq!(rows.len(), 2);
+
+            let row = rows.next().unwrap();
+
+            assert_eq!(row.get::<i32>(1)?.unwrap(), 1);
+            assert_eq!(row.get::<&str>(2)?.unwrap(), "1test1");
+            
+            let row = rows.next().unwrap();
+
+            assert_eq!(row.get::<i32>(1)?.unwrap(), 2);
+            assert_eq!(row.get::<&str>(2)?.unwrap(), "1test2");
+            
+            let mut rows = client.select(
+                "SELECT row_id, value FROM get_completion_job_failures($1)",
+                None,
+                Some(vec![(PgBuiltInOids::INT4OID.oid(), 2.into_datum())])
+            )?;
+            
+            assert_eq!(rows.len(), 1);
+            
+            let row = rows.next().unwrap();
+
+            assert_eq!(row.get::<i32>(1)?.unwrap(), 1);
+            assert_eq!(row.get::<&str>(2)?.unwrap(), "2test1");
+
             Ok::<(), anyhow::Error>(())
         })
         .unwrap();
