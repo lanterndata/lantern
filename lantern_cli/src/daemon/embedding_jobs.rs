@@ -8,12 +8,13 @@ use super::types::{
     JobEventHandlersMap, JobInsertNotification, JobRunArgs, JobUpdateNotification,
 };
 use crate::daemon::helpers::anyhow_wrap_connection;
-use crate::embeddings::cli::EmbeddingArgs;
+use crate::embeddings::cli::{EmbeddingArgs, EmbeddingJobType};
 use crate::embeddings::get_default_batch_size;
 use crate::logger::Logger;
 use crate::utils::{get_common_embedding_ignore_filters, get_full_table_name, quote_ident};
 use crate::{embeddings, types::*};
 use std::collections::HashMap;
+use std::ops::Deref;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -61,8 +62,7 @@ pub const FAILURE_TABLE_DEFINITION: &'static str = r#"
 "id" SERIAL PRIMARY KEY,
 "job_id" INT NOT NULL,
 "row_id" INT NOT NULL,
-"tokens" INT NOT NULL,
-"error" TEXT,
+"value" TEXT,
 "created_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
 "#;
 
@@ -448,6 +448,16 @@ async fn embedding_worker(
                 logger.level.clone(),
             );
             let job_clone = job.clone();
+            let mut failed_rows_table = None;
+            let mut check_column_type = false;
+
+            match job_clone.job_type {
+                EmbeddingJobType::Completion => {
+                    failed_rows_table = Some(EMB_FAILURE_TABLE_NAME.to_owned());
+                    check_column_type = true;
+                },
+                _ => {}
+            };
 
             let (tx, mut rx) = mpsc::channel(1);
             embedding_processor_tx.send(
@@ -470,8 +480,13 @@ async fn embedding_worker(
                     create_column: false,
                     filter: job_clone.filter.clone(),
                     limit: None,
-                    job_type: job_clone.job_type.clone(),
-                    column_type: job_clone.column_type.clone()
+                    job_type: Some(job_clone.job_type.clone()),
+                    column_type: Some(job_clone.column_type.clone()),
+                    create_cast_fn: false,
+                    check_column_type,
+                    job_id: job_clone.id,
+                    internal_schema: schema.deref().clone(),
+                    failed_rows_table
                 },
                 tx,
                 task_logger

@@ -2,6 +2,7 @@ use super::types::{
     EmbeddingJob, JobEvent, JobEventHandlersMap, JobInsertNotification, JobTaskEventTx,
     JobUpdateNotification,
 };
+use crate::embeddings::get_try_cast_fn_sql;
 use crate::logger::Logger;
 use crate::types::{AnyhowVoidResult, JOB_CANCELLED_MESSAGE};
 use crate::utils::{get_common_embedding_ignore_filters, get_full_table_name, quote_ident};
@@ -278,8 +279,12 @@ pub async fn startup_hook(
         let failure_table_def = failure_table_def.unwrap();
         transaction
             .batch_execute(&format!(
-                "CREATE TABLE IF NOT EXISTS {failure_table_name} ({failure_table_def});
-                 CREATE INDEX IF NOT EXISTS embedding_failures_job_id_row_id ON {failure_table_name}(job_id, row_id);"
+                "
+                -- this function is used for completion jobs
+                {ldb_try_cast_fn}
+                 CREATE TABLE IF NOT EXISTS {failure_table_name} ({failure_table_def});
+                 CREATE INDEX IF NOT EXISTS embedding_failures_job_id_row_id ON {failure_table_name}(job_id, row_id);",
+            ldb_try_cast_fn = get_try_cast_fn_sql(&schema)
             ))
             .await?;
     }
