@@ -1,6 +1,9 @@
-use lantern_cli::embeddings::core::{
-    cohere_runtime::CohereRuntimeParams, openai_runtime::OpenAiRuntimeParams, EmbeddingRuntime,
-    LoggerFn, Runtime,
+use lantern_cli::embeddings::{
+    cli::EmbeddingJobType,
+    core::{
+        cohere_runtime::CohereRuntimeParams, openai_runtime::OpenAiRuntimeParams, EmbeddingRuntime,
+        LoggerFn, Runtime,
+    },
 };
 use pgrx::prelude::*;
 
@@ -175,9 +178,13 @@ fn clip_image<'a>(path_or_url: &'a str) -> Result<Vec<f32>, anyhow::Error> {
 }
 
 #[pg_extern(immutable, parallel_safe, create_or_replace)]
-fn get_available_models<'a>(runtime: default!(&'a str, "'ort'")) -> Result<String, anyhow::Error> {
+fn get_available_models<'a>(
+    runtime: default!(&'a str, "'ort'"),
+    job_type: default!(&'a str, "'embedding_generation'"),
+) -> Result<String, anyhow::Error> {
     let runtime_name = Runtime::try_from(runtime)?;
     let runtime_params = get_dummy_runtime_params(&runtime_name);
+    let job_type = EmbeddingJobType::try_from(job_type)?;
     let runtime = EmbeddingRuntime::new(
         &runtime_name,
         Some(&(notice_fn as LoggerFn)),
@@ -186,7 +193,7 @@ fn get_available_models<'a>(runtime: default!(&'a str, "'ort'")) -> Result<Strin
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
-    return Ok(rt.block_on(runtime.get_available_models()).0);
+    return Ok(rt.block_on(runtime.get_available_models(job_type)).0);
 }
 
 #[pg_extern(immutable, parallel_safe, create_or_replace)]
@@ -199,7 +206,7 @@ fn get_available_runtimes() -> Result<String, anyhow::Error> {
 #[pg_extern(immutable, parallel_safe, create_or_replace)]
 fn openai_completion<'a>(
     text: &'a str,
-    model_name: default!(&'a str, "'gpt-4o'"),
+    model_name: default!(&'a str, "'openai/gpt-4o'"),
     context: default!(&'a str, "''"),
     base_url: default!(&'a str, "''"),
 ) -> Result<String, anyhow::Error> {

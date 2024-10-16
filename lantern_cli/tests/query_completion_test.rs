@@ -82,9 +82,9 @@ macro_rules! query_completion_test_multiple {
 }
 
 query_completion_test! {
-  query_completion_openai: (Runtime::OpenAi, "gpt-4o-mini", r#"{"x": "working!"}"#, "working!", 49),
+  query_completion_openai: (Runtime::OpenAi, "openai/gpt-4o-mini", r#"{"x": "working!"}"#, "working!", 49),
 }
 
 query_completion_test_multiple! {
-  query_completion_openai_batch: (Runtime::OpenAi, "gpt-4o-mini", r#"{"x": "working!"}"#, r#"{"x": "working2!"}"#, "working!", "working2!", 2, 100),
+  query_completion_openai_batch: (Runtime::OpenAi, "openai/gpt-4o-mini", r#"{"x": "working!"}"#, r#"{"x": "working2!"}"#, "working!", "working2!", 2, 100),
 }

@@ -121,3 +121,19 @@ pub async fn post_with_retries<T>(
         "All {max_retries} requests failed. Last error was: {last_error}"
     ))
 }
+
+#[macro_export]
+macro_rules! check_and_get_model {
+    ($a:expr, $b: expr) => {{
+        let model_info = $a.get($b);
+        if model_info.is_none() {
+            anyhow::bail!(
+                "Unsupported model {}\nAvailable models: {}",
+                $b,
+                $a.keys().join(", ")
+            );
+        }
+
+        model_info.unwrap()
+    }};
+}

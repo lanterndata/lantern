@@ -205,7 +205,7 @@ SELECT add_completion_job(
     'dst_column',        -- Destination column for embeddings
     'context',           -- System prompt to be used for LLM (default: lantern_extras.completion_context GUC)
     'column_type',       -- Target column type to be used for destination (default: TEXT)
-    'model',             -- LLM model to use (default: 'gpt4-o')
+    'model',             -- LLM model to use (default: 'openai/gpt-4o')
     'runtime',           -- Runtime environment (default: 'openai')
     'runtime_params',    -- Runtime parameters (default: '{}' inferred from GUC variables)
     'pk',                -- Primary key column (default: 'id')

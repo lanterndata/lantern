@@ -1,6 +1,9 @@
 use std::{cmp, time::Instant};
 
-use super::core::{EmbeddingRuntime, Runtime};
+use super::{
+    cli::EmbeddingJobType,
+    core::{EmbeddingRuntime, Runtime},
+};
 use crate::logger::{LogLevel, Logger};
 use postgres::NoTls;
 use tokio_util::sync::CancellationToken;
@@ -121,7 +124,7 @@ pub async fn start_speed_test(
     let runtime = EmbeddingRuntime::new(&args.runtime, None, &args.runtime_params)?;
 
     let models: Vec<_> = runtime
-        .get_available_models()
+        .get_available_models(EmbeddingJobType::EmbeddingGeneration)
         .await
         .1
         .iter()
