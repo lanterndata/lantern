@@ -159,7 +159,7 @@ fn add_completion_job<'a>(
     dst_column: &'a str,
     context: default!(&'a str, "''"),
     column_type: default!(&'a str, "'TEXT'"),
-    embedding_model: default!(&'a str, "'gpt4-o'"),
+    embedding_model: default!(&'a str, "'openai/gpt-4o'"),
     runtime: default!(&'a str, "'openai'"),
     runtime_params: default!(&'a str, "'{}'"),
     pk: default!(&'a str, "'id'"),
@@ -385,7 +385,7 @@ pub mod tests {
             assert_eq!(row.get::<&str>(1)?.unwrap(), "TEXT[]");
             assert_eq!(row.get::<&str>(2)?.unwrap(), "completion");
             assert_eq!(row.get::<&str>(3)?.unwrap(), "openai");
-            assert_eq!(row.get::<&str>(4)?.unwrap(), "gpt4-o");
+            assert_eq!(row.get::<&str>(4)?.unwrap(), "openai/gpt-4o");
             assert_eq!(row.get::<&str>(5)?.unwrap(), "\"my test context\"");
 
             Ok::<(), anyhow::Error>(())

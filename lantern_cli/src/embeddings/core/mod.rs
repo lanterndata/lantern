@@ -15,6 +15,8 @@ use runtime::EmbeddingRuntimeT;
 
 use self::runtime::{BatchCompletionResult, CompletionResult, EmbeddingResult};
 
+use super::cli::EmbeddingJobType;
+
 fn default_logger(text: &str) {
     println!("{}", text);
 }
@@ -122,11 +124,14 @@ impl<'a> EmbeddingRuntime<'a> {
         }
     }
 
-    pub async fn get_available_models(&self) -> (String, Vec<(String, bool)>) {
+    pub async fn get_available_models(
+        &self,
+        job_type: EmbeddingJobType,
+    ) -> (String, Vec<(String, bool)>) {
         match self {
-            EmbeddingRuntime::Cohere(runtime) => runtime.get_available_models().await,
-            EmbeddingRuntime::OpenAi(runtime) => runtime.get_available_models().await,
-            EmbeddingRuntime::Ort(runtime) => runtime.get_available_models().await,
+            EmbeddingRuntime::Cohere(runtime) => runtime.get_available_models(job_type).await,
+            EmbeddingRuntime::OpenAi(runtime) => runtime.get_available_models(job_type).await,
+            EmbeddingRuntime::Ort(runtime) => runtime.get_available_models(job_type).await,
         }
     }
 }

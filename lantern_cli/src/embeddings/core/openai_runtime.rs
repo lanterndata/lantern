@@ -1,13 +1,14 @@
 use itertools::Itertools;
 use regex::Regex;
 use serde_json::json;
-use std::{collections::HashMap, sync::RwLock};
+use std::collections::HashMap;
+use tokio::sync::RwLock;
 
 use super::{
     runtime::{BatchCompletionResult, CompletionResult, EmbeddingResult, EmbeddingRuntimeT},
     LoggerFn,
 };
-use crate::HTTPRuntime;
+use crate::{check_and_get_model, embeddings::cli::EmbeddingJobType, HTTPRuntime};
 use serde::{Deserialize, Serialize};
 use tiktoken_rs::{cl100k_base, CoreBPE};
 
@@ -70,31 +71,64 @@ enum OpenAiDeployment {
 static AZURE_OPENAI_REGEX: &'static str = r"^https:\/\/[a-zA-Z0-9_\-]+\.openai\.azure\.com\/openai\/deployments\/[a-zA-Z0-9_\-]+\/embeddings\?api-version=2023-05-15$";
 
 impl ModelInfo {
-    pub fn new(model_name: &str) -> Result<Self, anyhow::Error> {
+    pub fn new(model_name: &str, job_type: EmbeddingJobType) -> Result<Self, anyhow::Error> {
         let name = model_name.split("/").last().unwrap().to_owned();
-        match model_name {
-            "openai/text-embedding-ada-002" => Ok(Self {
-                name,
-                tokenizer: cl100k_base()?,
-                sequence_len: 8190,
-                dimensions: 1536,
-                var_dimension: false,
-            }),
-            "openai/text-embedding-3-small" => Ok(Self {
-                name,
-                tokenizer: cl100k_base()?,
-                sequence_len: 8190,
-                dimensions: 1536,
-                var_dimension: true,
-            }),
-            "openai/text-embedding-3-large" => Ok(Self {
-                name,
-                tokenizer: cl100k_base()?,
-                sequence_len: 8190,
-                dimensions: 3072,
-                var_dimension: true,
-            }),
-            _ => anyhow::bail!("Unsupported model {model_name}"),
+        match job_type {
+            EmbeddingJobType::EmbeddingGeneration => match model_name {
+                "openai/text-embedding-ada-002" => Ok(Self {
+                    name,
+                    tokenizer: cl100k_base()?,
+                    sequence_len: 8190,
+                    dimensions: 1536,
+                    var_dimension: false,
+                }),
+                "openai/text-embedding-3-small" => Ok(Self {
+                    name,
+                    tokenizer: cl100k_base()?,
+                    sequence_len: 8190,
+                    dimensions: 1536,
+                    var_dimension: true,
+                }),
+                "openai/text-embedding-3-large" => Ok(Self {
+                    name,
+                    tokenizer: cl100k_base()?,
+                    sequence_len: 8190,
+                    dimensions: 3072,
+                    var_dimension: true,
+                }),
+                _ => anyhow::bail!("Unsupported model {model_name}"),
+            },
+            EmbeddingJobType::Completion => match model_name {
+                "openai/gpt-4" => Ok(Self {
+                    name,
+                    tokenizer: cl100k_base()?,
+                    sequence_len: 128000,
+                    dimensions: 0,
+                    var_dimension: false,
+                }),
+                "openai/gpt-4o" => Ok(Self {
+                    name,
+                    tokenizer: cl100k_base()?,
+                    sequence_len: 128000,
+                    dimensions: 0,
+                    var_dimension: false,
+                }),
+                "openai/gpt-4o-mini" => Ok(Self {
+                    name,
+                    tokenizer: cl100k_base()?,
+                    sequence_len: 128000,
+                    dimensions: 0,
+                    var_dimension: false,
+                }),
+                "openai/gpt-4-turbo" => Ok(Self {
+                    name,
+                    tokenizer: cl100k_base()?,
+                    sequence_len: 128000,
+                    dimensions: 0,
+                    var_dimension: false,
+                }),
+                _ => anyhow::bail!("Unsupported model {model_name}"),
+            },
         }
     }
 }
@@ -104,15 +138,46 @@ lazy_static! {
         RwLock::new(HashMap::from([
             (
                 "openai/text-embedding-ada-002",
-                ModelInfo::new("openai/text-embedding-ada-002").unwrap()
+                ModelInfo::new(
+                    "openai/text-embedding-ada-002",
+                    EmbeddingJobType::EmbeddingGeneration
+                )
+                .unwrap()
             ),
             (
                 "openai/text-embedding-3-small",
-                ModelInfo::new("openai/text-embedding-3-small").unwrap()
+                ModelInfo::new(
+                    "openai/text-embedding-3-small",
+                    EmbeddingJobType::EmbeddingGeneration
+                )
+                .unwrap()
             ),
             (
                 "openai/text-embedding-3-large",
-                ModelInfo::new("openai/text-embedding-3-large").unwrap()
+                ModelInfo::new(
+                    "openai/text-embedding-3-large",
+                    EmbeddingJobType::EmbeddingGeneration
+                )
+                .unwrap()
+            ),
+        ]));
+    static ref COMPLETION_MODEL_INFO_MAP: RwLock<HashMap<&'static str, ModelInfo>> =
+        RwLock::new(HashMap::from([
+            (
+                "openai/gpt-4",
+                ModelInfo::new("openai/gpt-4", EmbeddingJobType::Completion).unwrap()
+            ),
+            (
+                "openai/gpt-4-turbo",
+                ModelInfo::new("openai/gpt-4-turbo", EmbeddingJobType::Completion).unwrap()
+            ),
+            (
+                "openai/gpt-4o",
+                ModelInfo::new("openai/gpt-4o", EmbeddingJobType::Completion).unwrap()
+            ),
+            (
+                "openai/gpt-4o-mini",
+                ModelInfo::new("openai/gpt-4o-mini", EmbeddingJobType::Completion).unwrap()
             ),
         ]));
 }
@@ -244,22 +309,13 @@ impl<'a> OpenAiRuntime<'a> {
         result
     }
 
-    fn chunk_inputs(
+    async fn chunk_inputs(
         &self,
         model_name: &str,
         inputs: &Vec<&str>,
     ) -> Result<Vec<String>, anyhow::Error> {
-        let model_map = MODEL_INFO_MAP.read().unwrap();
-        let model_info = model_map.get(model_name);
-
-        if model_info.is_none() {
-            anyhow::bail!(
-                "Unsupported model {model_name}\nAvailable models: {}",
-                model_map.keys().join(", ")
-            );
-        }
-
-        let model_info = model_info.unwrap();
+        let model_map = MODEL_INFO_MAP.read().await;
+        let model_info = check_and_get_model!(model_map, model_name);
         let token_groups: Vec<Vec<usize>> = inputs
             .iter()
             .map(|input| {
@@ -305,6 +361,9 @@ impl<'a> OpenAiRuntime<'a> {
         query: &str,
         retries: Option<usize>,
     ) -> Result<CompletionResult, anyhow::Error> {
+        let model_map = COMPLETION_MODEL_INFO_MAP.read().await;
+        let model_info = check_and_get_model!(model_map, model_name);
+
         let client = Arc::new(self.get_client()?);
         let url = Url::parse(&self.base_url)?
             .join("/v1/chat/completions")?
@@ -313,7 +372,7 @@ impl<'a> OpenAiRuntime<'a> {
             client,
             url,
             serde_json::to_string(&json!({
-            "model": model_name,
+            "model": model_info.name,
             "messages": [
               self.context,
               { "role": "user", "content": query }
@@ -332,6 +391,9 @@ impl<'a> OpenAiRuntime<'a> {
         model_name: &str,
         queries: &Vec<&str>,
     ) -> Result<BatchCompletionResult, anyhow::Error> {
+        let model_map = COMPLETION_MODEL_INFO_MAP.read().await;
+        check_and_get_model!(model_map, model_name);
+
         let mut processed_tokens = 0;
 
         let completion_futures = queries.into_iter().map(|query| {
@@ -421,8 +483,15 @@ impl<'a> EmbeddingRuntimeT for OpenAiRuntime<'a> {
             .await
     }
 
-    async fn get_available_models(&self) -> (String, Vec<(String, bool)>) {
-        let map = MODEL_INFO_MAP.read().unwrap();
+    async fn get_available_models(
+        &self,
+        job_type: EmbeddingJobType,
+    ) -> (String, Vec<(String, bool)>) {
+        let map = match job_type {
+            EmbeddingJobType::EmbeddingGeneration => MODEL_INFO_MAP.read().await,
+            EmbeddingJobType::Completion => COMPLETION_MODEL_INFO_MAP.read().await,
+        };
+
         let mut res = String::new();
         let mut models = Vec::with_capacity(map.len());
         for (key, value) in &*map {

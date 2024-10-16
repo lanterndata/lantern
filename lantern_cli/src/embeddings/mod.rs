@@ -46,12 +46,19 @@ impl EmbeddingRecord {
 
     #[allow(dead_code)]
     fn from_string(pk: String, value: String) -> EmbeddingRecord {
-        let mut buf = BytesMut::from(value.as_bytes());
-
+        let buf: BytesMut;
+        println!("Pk: {pk}, value: {value}");
         if value.len() > 0 {
-            buf = BytesMut::from(value.as_bytes())
+            buf = BytesMut::from(
+                value
+                    .replace('\\', "\\\\")
+                    .replace('\n', "\\n")
+                    .replace('\r', "\\r")
+                    .replace('\t', "\\t")
+                    .as_bytes(),
+            )
         } else {
-            buf.extend_from_slice("NULL".as_bytes());
+            buf = BytesMut::from("NULL".as_bytes());
         }
 
         EmbeddingRecord { pk, record: buf }
@@ -453,7 +460,7 @@ async fn db_exporter_worker(
         let mut writer_sink = Box::pin(
             transaction
                 .copy_in(&format!(
-                    "COPY {temp_table_name} FROM stdin WITH NULL AS 'NULL'"
+                    "COPY {temp_table_name} FROM stdin WITH NULL AS 'NULL' "
                 ))
                 .await?,
         );
@@ -585,6 +592,12 @@ pub fn get_default_batch_size(model: &str) -> usize {
         | "cohere/embed-english-v2.0"
         | "cohere/embed-english-light-v2.0"
         | "cohere/embed-multilingual-v2.0" => 5000,
+
+        // Completion models
+        "openai/gpt-4" => 2,
+        "openai/gpt-4o" => 2,
+        "openai/gpt-4-turbo" => 2,
+        "openai/gpt-4o-mini" => 10,
         _ => 100,
     }
 }
@@ -710,7 +723,16 @@ pub async fn show_available_models(
     let logger = logger.unwrap_or(Logger::new("Lantern Embeddings", LogLevel::Info));
     logger.info("Available Models\n");
     let runtime = EmbeddingRuntime::new(&args.runtime, None, &args.runtime_params)?;
-    logger.print_raw(&runtime.get_available_models().await.0);
+    logger.print_raw(
+        &runtime
+            .get_available_models(
+                args.job_type
+                    .clone()
+                    .unwrap_or(EmbeddingJobType::EmbeddingGeneration),
+            )
+            .await
+            .0,
+    );
     Ok(())
 }
 

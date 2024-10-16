@@ -20,6 +20,8 @@ use tokenizers::{PaddingParams, Tokenizer, TruncationParams};
 use tokio::{fs, sync::Mutex};
 use url::Url;
 
+use crate::embeddings::cli::EmbeddingJobType;
+
 use super::runtime::{EmbeddingResult, EmbeddingRuntimeT};
 use super::utils::{download_file, get_available_memory, percent_gpu_memory_used};
 use super::LoggerFn;
@@ -1012,7 +1014,10 @@ impl<'a> EmbeddingRuntimeT for OrtRuntime<'a> {
         }
     }
 
-    async fn get_available_models(&self) -> (String, Vec<(String, bool)>) {
+    async fn get_available_models(
+        &self,
+        _job_type: EmbeddingJobType,
+    ) -> (String, Vec<(String, bool)>) {
         let map = MODEL_INFO_MAP.lock().await;
         let mut res = String::new();
         let data_path = &self.data_path;

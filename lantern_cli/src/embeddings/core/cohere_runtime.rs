@@ -1,11 +1,12 @@
 use itertools::Itertools;
-use std::{collections::HashMap, sync::RwLock};
+use std::collections::HashMap;
+use tokio::sync::RwLock;
 
 use super::{
     runtime::{EmbeddingResult, EmbeddingRuntimeT},
     LoggerFn,
 };
-use crate::HTTPRuntime;
+use crate::{check_and_get_model, embeddings::cli::EmbeddingJobType, HTTPRuntime};
 use serde::{Deserialize, Serialize};
 
 struct ModelInfo {
@@ -150,21 +151,14 @@ impl<'a> CohereRuntime<'a> {
         })
     }
 
-    fn chunk_inputs(
+    async fn chunk_inputs(
         &self,
         model_name: &str,
         inputs: &Vec<&str>,
     ) -> Result<Vec<String>, anyhow::Error> {
-        let model_map = MODEL_INFO_MAP.read().unwrap();
-        let model_info = model_map.get(model_name);
+        let model_map = MODEL_INFO_MAP.read().await;
+        let model_info = check_and_get_model!(model_map, model_name);
 
-        if model_info.is_none() {
-            anyhow::bail!(
-                "Unsupported model {model_name}\nAvailable models: {}",
-                model_map.keys().join(", ")
-            );
-        }
-        let model_info = model_info.unwrap();
         let name = &model_info.name;
 
         let batch_tokens: Vec<String> = inputs
@@ -216,8 +210,11 @@ impl<'a> EmbeddingRuntimeT for CohereRuntime<'a> {
         self.post_request("/v1/embed", model_name, inputs).await
     }
 
-    async fn get_available_models(&self) -> (String, Vec<(String, bool)>) {
-        let map = MODEL_INFO_MAP.read().unwrap();
+    async fn get_available_models(
+        &self,
+        _job_type: EmbeddingJobType,
+    ) -> (String, Vec<(String, bool)>) {
+        let map = MODEL_INFO_MAP.read().await;
         let mut res = String::new();
         let mut models = Vec::with_capacity(map.len());
         for (key, value) in &*map {

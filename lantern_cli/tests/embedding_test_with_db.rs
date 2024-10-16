@@ -124,7 +124,7 @@ async fn test_embedding_generation_from_db() {
 }
 
 #[tokio::test]
-async fn test_openai_query_from_db() {
+async fn test_openai_completion_from_db() {
     let db_url = env::var("DB_URL").expect("`DB_URL` not specified");
     let api_token = env::var("OPENAI_TOKEN").unwrap_or("".to_owned());
 
@@ -149,7 +149,7 @@ async fn test_openai_query_from_db() {
 
     let (processed_rows, _) = embeddings::create_embeddings_from_db(
         cli::EmbeddingArgs {
-            model: "gpt-4o".to_owned(),
+            model: "openai/gpt-4o".to_owned(),
             uri: db_url.clone(),
             pk: "id".to_owned(),
             column: "content".to_owned(),
@@ -202,7 +202,85 @@ async fn test_openai_query_from_db() {
 }
 
 #[tokio::test]
-async fn test_openai_query_failed_rows_from_db() {
+async fn test_openai_completion_special_chars_from_db() {
+    let db_url = env::var("DB_URL").expect("`DB_URL` not specified");
+    let api_token = env::var("OPENAI_TOKEN").unwrap_or("".to_owned());
+
+    if api_token == "" {
+        return;
+    }
+
+    let table_name = String::from("_completion_test_openai_special_chars");
+    let failure_table_name = format!("{table_name}_failure_info");
+    let (mut db_client, connection) = tokio_postgres::connect(&db_url, NoTls)
+        .await
+        .expect("Can not connect to database");
+    tokio::spawn(async move { connection.await.unwrap() });
+    setup_db_tables(&mut db_client, &table_name).await;
+
+    let final_progress = Arc::new(AtomicU8::new(0));
+    let final_progress_r1 = final_progress.clone();
+
+    let callback = move |progress: u8| {
+        final_progress_r1.store(progress, Ordering::SeqCst);
+    };
+
+    let (processed_rows, _) = embeddings::create_embeddings_from_db(
+        cli::EmbeddingArgs {
+            model: "openai/gpt-4o".to_owned(),
+            uri: db_url.clone(),
+            pk: "id".to_owned(),
+            column: "content".to_owned(),
+            table: table_name.clone(),
+            schema: "public".to_owned(),
+            out_uri: None,
+            out_column: "chars".to_owned(),
+            batch_size: None,
+            visual: false,
+            out_table: None,
+            limit: Some(2),
+            filter: None,
+            runtime: Runtime::OpenAi,
+            runtime_params: format!(r#"{{"api_token": "{api_token}", "context": "for any input return multi line text which will contain escape characters which can potentially break postgres COPY" }}"#),
+            create_column: true,
+            stream: true,
+            job_type: Some(EmbeddingJobType::Completion),
+            column_type: Some("TEXT".to_owned()),
+            failed_rows_table: Some(failure_table_name.clone()),
+            internal_schema: "public".to_owned(),
+            create_cast_fn: false,
+            check_column_type: true,
+            job_id: 0
+        },
+        true,
+        Some(Box::new(callback)),
+        CancellationToken::new(),
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(processed_rows, 2);
+
+    let cnt = db_client
+        .query_one(
+            &format!(
+                "SELECT COUNT(id) FROM {table_name} WHERE id < 3 AND chars is not null AND chars not ilike 'error%'"
+            ),
+            &[],
+        )
+        .await
+        .unwrap();
+
+    let cnt = cnt.get::<usize, i64>(0);
+
+    drop_db_tables(&mut db_client, &table_name).await;
+
+    assert_eq!(cnt, 2);
+    assert_eq!(final_progress.load(Ordering::SeqCst), 100);
+}
+
+#[tokio::test]
+async fn test_openai_completion_failed_rows_from_db() {
     let db_url = env::var("DB_URL").expect("`DB_URL` not specified");
     let api_token = env::var("OPENAI_TOKEN").unwrap_or("".to_owned());
 
@@ -227,7 +305,7 @@ async fn test_openai_query_failed_rows_from_db() {
 
     let (processed_rows, _) = embeddings::create_embeddings_from_db(
         cli::EmbeddingArgs {
-            model: "gpt-4o".to_owned(),
+            model: "openai/gpt-4o".to_owned(),
             uri: db_url.clone(),
             pk: "id".to_owned(),
             column: "content".to_owned(),

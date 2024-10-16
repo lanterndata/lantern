@@ -141,6 +141,10 @@ pub struct ShowModelsArgs {
     /// Runtime Params JSON string
     #[arg(long, default_value = "{}")]
     pub runtime_params: String,
+
+    /// Generate embeddings or get chat completion
+    #[arg(long)]
+    pub job_type: Option<EmbeddingJobType>,
 }
 
 #[derive(Parser, Debug)]
