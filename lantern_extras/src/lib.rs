@@ -9,6 +9,7 @@ pub mod daemon;
 pub mod dotvecs;
 pub mod embeddings;
 pub mod external_index;
+pub mod stemmers;
 
 pub static OPENAI_TOKEN: GucSetting<Option<&'static CStr>> =
     GucSetting::<Option<&'static CStr>>::new(None);
