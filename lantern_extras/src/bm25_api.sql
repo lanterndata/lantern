@@ -1,9 +1,10 @@
-CREATE OR REPLACE FUNCTION create_bm25_table(table_name TEXT, id_column TEXT, index_columns TEXT[])
+CREATE OR REPLACE FUNCTION create_bm25_table(table_name TEXT, id_column TEXT, index_columns TEXT[], drop_if_exists BOOLEAN DEFAULT FALSE)
 RETURNS VOID AS $$
 DECLARE
     source_column TEXT;
     src_table_exists BOOLEAN;
     dest_table_exists BOOLEAN;
+    drop_if_exists_sql TEXT := '';
 BEGIN
     -- Concatenate the index columns into a single source column
     source_column := index_columns[1];
@@ -17,11 +18,15 @@ BEGIN
     IF NOT src_table_exists THEN
         RAISE EXCEPTION 'Table "%" does not exist', table_name;
     END IF;
-    IF dest_table_exists THEN
+    IF drop_if_exists THEN
+        drop_if_exists_sql := 'DROP TABLE IF EXISTS ' || table_name || '_bm25;';
+    ELSIF dest_table_exists THEN
         RAISE EXCEPTION 'Table "%" already exists', table_name || '_bm25';
     END IF;
 
+    -- Ideally, would want this to be in a transaction, but transaction blocks in EXECUTE are not implemented
     EXECUTE format('
+        %4$s; -- Optionally, drop the table if it exists
         CREATE UNLOGGED TABLE %1$I_bm25 AS
         SELECT term,
             -- number of documents containing the term. this is identical to doc_ids_len at bulk construction, but as inserts happen, the two will diverge
@@ -38,7 +43,7 @@ BEGIN
 
         CREATE INDEX ON %1$I_bm25 USING hash(term);
         UPDATE %1$I_bm25 SET doc_ids_bloom = array_to_bloom(doc_ids) WHERE cardinality(doc_ids) > 8000;
-    ', table_name, id_column, source_column);
+    ', table_name, id_column, source_column, drop_if_exists_sql);
 END;
 $$ LANGUAGE plpgsql;
 

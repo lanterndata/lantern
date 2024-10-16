@@ -83,6 +83,28 @@ pub mod tests {
         )?;
         assert_eq!(num_distinct_doc_lens.unwrap(), 1);
 
+        // insert more documents and check reindexing
+        let content = "pomegranate pomegranate pomegranate";
+
+        Spi::run_with_args(
+            "INSERT INTO documents (doc_id, content, stemmed_content) VALUES
+                (5, $1, text_to_stem_array($1::text));",
+            Some(vec![(PgBuiltInOids::TEXTOID.oid(), content.into_datum())]),
+        )?;
+
+        let prev_len = Spi::get_one::<i64>("SELECT COUNT(*) FROM documents_bm25;")?.unwrap();
+        Spi::run(
+            "SELECT create_bm25_table(
+                table_name => 'documents',
+                id_column => 'doc_id',
+                index_columns => ARRAY['stemmed_content'],
+                drop_if_exists => TRUE
+            );",
+        )?;
+
+        let new_len = Spi::get_one::<i64>("SELECT COUNT(*) FROM documents_bm25;")?.unwrap();
+        // the added row had one new word, so the bm25 table must grow by 1
+        assert_eq!(new_len, prev_len + 1);
         //TODO: Add insert triggers on source table and test consolidate function
 
         Ok(())
