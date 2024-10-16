@@ -584,7 +584,7 @@ mod tests {
                 ORDER BY doc_ids_len ASC
             ))).* AS res FROM terms
         )
-        SELECT res.doc_id::INT, res.bm25::FLOAT FROM agg;
+        SELECT agg.doc_id::INT, agg.bm25::REAL FROM agg ORDER BY bm25 DESC;
         ",
         bm25_query = bm25_query,
         limit = limit,
