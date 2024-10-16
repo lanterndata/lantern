@@ -8,6 +8,7 @@ pub mod daemon;
 pub mod dotvecs;
 pub mod embeddings;
 pub mod external_index;
+pub mod stemmers;
 
 // this will be deprecated and removed on upcoming releases
 pub static OPENAI_TOKEN: GucSetting<Option<&'static CStr>> =
