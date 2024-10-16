@@ -561,7 +561,7 @@ mod tests {
         // Compute corpus size and average document length
         let corpus_size = Spi::get_one::<i64>("SELECT COUNT(*) FROM documents;")?.unwrap();
         let avg_doc_len =
-            Spi::get_one::<f32>("SELECT AVG(cardinality(stemmed_content)) FROM documents;")?
+            Spi::get_one::<f32>("SELECT AVG(cardinality(stemmed_content))::real FROM documents;")?
                 .unwrap();
         // Set the limit for BM25 results
         let limit = 10;
