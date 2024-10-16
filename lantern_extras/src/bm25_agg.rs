@@ -571,7 +571,7 @@ mod tests {
         let sql_query = format!(
         "
         WITH terms AS (
-            SELECT * FROM documents_bm25 WHERE term = ANY(text_to_token_array('{bm25_query}')) ORDER BY cardinality(doc_ids) DESC
+            SELECT * FROM documents_bm25 WHERE term = ANY(text_to_stem_array('{bm25_query}')) ORDER BY cardinality(doc_ids) DESC
         ),
         agg AS (
             SELECT (unnest(bm25_agg(
