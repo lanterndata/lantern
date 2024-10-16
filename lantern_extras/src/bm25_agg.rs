@@ -568,6 +568,11 @@ mod tests {
 
         let bm25_query = "apple banana";
         // Now, execute the BM25 query
+        assert!(corpus_size > 0, "Corpus size must be positive.");
+        assert!(
+            avg_doc_len > 0.0,
+            "Average document length must be positive."
+        );
         let sql_query = format!(
         "
         WITH terms AS (
@@ -595,6 +600,21 @@ mod tests {
         // Fetch results
         let results = Spi::get_two::<i32, f32>(sql_query.as_str())?;
 
+        Spi::connect(|client| {
+            // for execute
+            use spi::Query;
+            let mut res = client
+                .prepare(sql_query.as_str(), None)
+                .expect("Failed to prepare query")
+                .execute(&client, None, None)
+                .expect("Failed to execute query");
+            while let Some(row) = res.next() {
+                let doc_id = row.get::<i32>(1).unwrap_or(Some(42)).unwrap_or(44);
+                let bm25 = row.get::<f32>(2).unwrap().unwrap();
+                info!("doc_id: {}, bm25: {}", doc_id, bm25);
+            }
+        });
+
         // Perform assertions to check correctness
         // Since we know the test data and the expected behavior, we can write specific assertions
         // For example, we expect document 2 to have the highest BM25 score for 'apple banana'
@@ -603,6 +623,7 @@ mod tests {
             2,
             "Expected Doc ID 2 to have the highest BM25 score."
         );
+        assert!(results.1.unwrap() > 0.0, "BM25 score must be positive.");
 
         Ok(())
     }
