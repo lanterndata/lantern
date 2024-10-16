@@ -24,12 +24,29 @@ fn stopwords_file_path() -> String {
 #[pg_extern]
 fn set_user_stopwords(arr: Option<Vec<String>>) -> String {
     let file_path = stopwords_file_path();
-    // note: create truncats the file if it exists
-    let mut file = File::create(&file_path).unwrap();
-    for s in arr.unwrap_or(vec![]) {
-        writeln!(file, "{}", s).unwrap();
+    match File::create(&file_path) {
+        Ok(mut file) => {
+            for s in arr.unwrap_or(vec![]) {
+                writeln!(file, "{}", s).unwrap();
+            }
+            file_path
+        }
+        Err(e) => match e.kind() {
+            std::io::ErrorKind::PermissionDenied => {
+                error!(
+                    "Permission denied to create file: {} for writing custom stopwords",
+                    file_path
+                )
+            }
+            _ => {
+                error!(
+                    "Unknown error {} when creating file: {} for writing custom stopwords",
+                    e.to_string(),
+                    file_path
+                )
+            }
+        },
     }
-    file_path
 }
 
 #[pg_extern]
@@ -39,7 +56,7 @@ fn get_user_stopwords() -> SetOfIterator<'static, String> {
         Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => {
             return SetOfIterator::new(std::iter::empty())
         }
-        Err(e) => panic!("Error opening file: {:?}", e),
+        Err(e) => error!("Error opening file: {:?}", e),
     };
     let reader = std::io::BufReader::new(file);
     SetOfIterator::new(reader.lines().map(|line| line.unwrap()))
