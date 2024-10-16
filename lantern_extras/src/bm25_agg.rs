@@ -71,7 +71,8 @@ fn calculate_bm25(
 ) -> f32 {
     let doc_len = doc_len as f32;
     let fq = fq as f32;
-    let idf = ((corpus_size as f32 - term_freq + 0.5) / (term_freq + 0.5)).ln();
+    let idf = ((corpus_size as f32 - term_freq + 0.5) / (term_freq + 0.5) + 1.).ln();
+    assert!(idf >= 0.0, "idf must be non-negative");
     let bm25: f32 = idf
         * (
             (fq * (bm25_k1 + 1.0))
