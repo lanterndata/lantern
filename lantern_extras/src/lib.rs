@@ -5,6 +5,7 @@ use tokio_util::sync::CancellationToken;
 
 pgrx::pg_module_magic!();
 pub mod bloom;
+pub mod bm25_agg;
 pub mod bm25_api;
 pub mod daemon;
 pub mod dotvecs;
