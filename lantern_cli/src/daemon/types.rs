@@ -85,6 +85,12 @@ impl EmbeddingJob {
                 .unwrap_or("{}".to_owned())
         };
 
+        let batch_size = if let Some(batch_size) = row.get::<&str, Option<i32>>("batch_size") {
+            Some(batch_size as usize)
+        } else {
+            None
+        };
+
         Ok(Self {
             id: row.get::<&str, i32>("id"),
             pk: row.get::<&str, String>("pk"),
@@ -100,7 +106,7 @@ impl EmbeddingJob {
             filter: None,
             row_ids: None,
             is_init: true,
-            batch_size: None,
+            batch_size,
             job_type: EmbeddingJobType::try_from(
                 row.get::<&str, Option<&str>>("job_type")
                     .unwrap_or("embedding"),

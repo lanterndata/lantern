@@ -48,6 +48,7 @@ async fn test_daemon_autotune_with_create_index() {
                 target_db: Some(vec![new_connection_uri]),
                 log_level: LogLevel::Debug,
                 data_path: None,
+                inside_postgres: false,
             },
             None,
             cancel_token_clone,
