@@ -36,6 +36,7 @@ pub const JOB_TABLE_DEFINITION: &'static str = r#"
 "column_type" text DEFAULT 'REAL[]',
 "runtime" text NOT NULL DEFAULT 'ort',
 "runtime_params" jsonb,
+"batch_size" int NULL,
 "src_column" text NOT NULL,
 "dst_column" text NOT NULL,
 "embedding_model" text NOT NULL,
@@ -648,7 +649,7 @@ async fn job_insert_processor(
     // batch jobs for the rows. This will optimize embedding generation as if there will be lots of
     // inserts to the table between 10 seconds all that rows will be batched.
     let full_table_name = Arc::new(get_full_table_name(&schema, &table));
-    let job_query_sql = Arc::new(format!("SELECT id, pk, label, src_column as \"column\", dst_column, \"table\", \"schema\", embedding_model as model, runtime, runtime_params::text, init_finished_at, job_type, column_type FROM {0}", &full_table_name));
+    let job_query_sql = Arc::new(format!("SELECT id, pk, label, src_column as \"column\", dst_column, \"table\", \"schema\", embedding_model as model, runtime, runtime_params::text, init_finished_at, job_type, column_type, batch_size FROM {0}", &full_table_name));
 
     let db_uri_r1 = db_uri.clone();
     let full_table_name_r1 = full_table_name.clone();

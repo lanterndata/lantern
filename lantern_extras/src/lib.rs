@@ -1,7 +1,6 @@
 use core::ffi::CStr;
 use pgrx::{bgworkers::*, prelude::*, GucContext, GucFlags, GucRegistry, GucSetting};
 use std::time::Duration;
-use tokio_util::sync::CancellationToken;
 
 pgrx::pg_module_magic!();
 pub mod daemon;
@@ -119,24 +118,9 @@ pub extern "C" fn lantern_daemon_worker() {
 
     BackgroundWorker::connect_worker_to_spi(Some("postgres"), None);
 
-    let mut cancellation_token = CancellationToken::new();
-    let mut started = false;
-
-    if ENABLE_DAEMON.get() {
-        daemon::start_daemon(true, false, false, cancellation_token.clone()).unwrap();
-        started = true;
-    }
-
     while BackgroundWorker::wait_latch(Some(Duration::from_secs(10))) {
-        if BackgroundWorker::sighup_received() {
-            if ENABLE_DAEMON.get() && !started {
-                cancellation_token = CancellationToken::new();
-                daemon::start_daemon(true, false, false, cancellation_token.clone()).unwrap();
-                started = true;
-            } else if !ENABLE_DAEMON.get() && started {
-                cancellation_token.cancel();
-                started = false;
-            }
+        if ENABLE_DAEMON.get() {
+            daemon::start_daemon(true, false, false).unwrap();
         }
     }
 }

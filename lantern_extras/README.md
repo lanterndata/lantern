@@ -255,8 +255,8 @@ This will return a table with the following columns:
 
 ### LLM Query
 
-***Calling Chat OpenAI Completion API***
+***Calling LLM Completion API***
 ```sql
 SET lantern_extras.llm_token='xxxx';
-SELECT llm_completion(query, [model, context, base_url]);
+SELECT llm_completion(query, [model, context, base_url, runtime]);
 ```

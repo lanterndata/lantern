@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use lantern_cli::{
     daemon::{cli::DaemonArgs, start},
     embeddings::core::ort_runtime::DATA_PATH,
@@ -6,19 +8,17 @@ use lantern_cli::{
     utils::{get_full_table_name, quote_ident},
 };
 use pgrx::{bgworkers::BackgroundWorker, prelude::*};
-use tokio::runtime::Runtime;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
     embeddings::{get_cohere_runtime_params, get_openai_runtime_params},
-    DAEMON_DATABASES,
+    DAEMON_DATABASES, ENABLE_DAEMON,
 };
 
 pub fn start_daemon(
     embeddings: bool,
     indexing: bool,
     autotune: bool,
-    cancellation_token: CancellationToken,
 ) -> Result<(), anyhow::Error> {
     let (db, user, socket_path, port) = BackgroundWorker::transaction(|| {
         Spi::connect(|client| {
@@ -73,10 +73,11 @@ pub fn start_daemon(
         target_dbs.push(connection_string);
     }
 
-    std::thread::spawn(move || {
-        let logger = Logger::new("Lantern Daemon", LogLevel::Debug);
-        let rt = Runtime::new().unwrap();
-        let res = rt.block_on(start(
+    let logger = Logger::new("Lantern Daemon", LogLevel::Debug);
+    let cancellation_token = CancellationToken::new();
+    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();// Runtime::new().unwrap();
+    rt.block_on(async {
+        start(
             DaemonArgs {
                 label: None,
                 embeddings,
@@ -89,16 +90,31 @@ pub fn start_daemon(
                 schema: String::from("_lantern_extras_internal"),
                 target_db: Some(target_dbs.clone()),
                 data_path: Some(DATA_PATH.to_owned()),
+                inside_postgres: true
             },
             Some(logger.clone()),
             cancellation_token.clone(),
-        ));
+        ).await?;
 
-        if let Err(e) = res {
-            eprintln!("{e}");
-            logger.error(&format!("{e}"));
+        tokio::select! {
+            _ = cancellation_token.cancelled() => {
+                anyhow::bail!("cancelled");
+            }
+            _ = async {
+                loop {
+                    if BackgroundWorker::sighup_received() && !ENABLE_DAEMON.get() {
+                        cancellation_token.cancel();
+                        break;
+                    }
+
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                }
+            } => {}
         }
-    });
+
+        Ok::<(), anyhow::Error>(())
+    })?;
+
 
     Ok(())
 }
@@ -160,6 +176,7 @@ fn add_completion_job<'a>(
     context: default!(&'a str, "''"),
     column_type: default!(&'a str, "'TEXT'"),
     embedding_model: default!(&'a str, "'gpt-4o'"),
+    batch_size: default!(i32, -1),
     runtime: default!(&'a str, "'openai'"),
     runtime_params: default!(&'a str, "'{}'"),
     pk: default!(&'a str, "'id'"),
@@ -175,12 +192,13 @@ fn add_completion_job<'a>(
         }
     }
 
+    let batch_size = if batch_size == -1 { "NULL".to_string() } else { batch_size.to_string() };
     let id: Option<i32> = Spi::get_one_with_args(
         &format!(
             r#"
           ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {dst_column} {column_type};
-          INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("table", "schema", pk, src_column, dst_column, embedding_model, runtime, runtime_params, column_type, job_type) VALUES
-          ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, 'completion') RETURNING id;
+          INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("table", "schema", pk, src_column, dst_column, embedding_model, runtime, runtime_params, column_type, batch_size, job_type) VALUES
+          ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, {batch_size}, 'completion') RETURNING id;
         "#,
             table = get_full_table_name(schema, table),
             dst_column = quote_ident(dst_column)
@@ -375,7 +393,7 @@ pub mod tests {
             assert_eq!(id.is_none(), false);
             
             let row = client.select(
-                "SELECT column_type, job_type, runtime, embedding_model, (runtime_params->'context')::text as context FROM _lantern_extras_internal.embedding_generation_jobs WHERE id=$1",
+                "SELECT column_type, job_type, runtime, embedding_model, (runtime_params->'context')::text as context, batch_size FROM _lantern_extras_internal.embedding_generation_jobs WHERE id=$1",
                 None,
                 Some(vec![(PgBuiltInOids::INT4OID.oid(), id.into_datum())])
             )?;
@@ -387,6 +405,51 @@ pub mod tests {
             assert_eq!(row.get::<&str>(3)?.unwrap(), "openai");
             assert_eq!(row.get::<&str>(4)?.unwrap(), "gpt-4o");
             assert_eq!(row.get::<&str>(5)?.unwrap(), "\"my test context\"");
+            assert_eq!(row.get::<i32>(6)?.is_none(), true);
+
+            Ok::<(), anyhow::Error>(())
+        })
+        .unwrap();
+    }
+    
+    #[pg_test]
+    fn test_add_daemon_completion_job_batch_size() {
+        Spi::connect(|mut client| {
+            // wait for daemon
+            std::thread::sleep(Duration::from_secs(5));
+            client.update(
+                "
+                CREATE TABLE t1 (id serial primary key, title text);
+                SET lantern_extras.openai_token='test';
+                ",
+                None,
+                None,
+            )?;
+            let id = client.select(
+                "
+                SELECT add_completion_job('t1', 'title', 'title_embedding', 'my test context','TEXT[]', 'gpt-4o', 15);
+                ",
+                None,
+                None,
+            )?;
+
+            let id: Option<i32> = id.first().get(1)?;
+            assert_eq!(id.is_none(), false);
+            
+            let row = client.select(
+                "SELECT column_type, job_type, runtime, embedding_model, (runtime_params->'context')::text as context, batch_size FROM _lantern_extras_internal.embedding_generation_jobs WHERE id=$1",
+                None,
+                Some(vec![(PgBuiltInOids::INT4OID.oid(), id.into_datum())])
+            )?;
+            
+            let row = row.first();
+
+            assert_eq!(row.get::<&str>(1)?.unwrap(), "TEXT[]");
+            assert_eq!(row.get::<&str>(2)?.unwrap(), "completion");
+            assert_eq!(row.get::<&str>(3)?.unwrap(), "openai");
+            assert_eq!(row.get::<&str>(4)?.unwrap(), "gpt-4o");
+            assert_eq!(row.get::<&str>(5)?.unwrap(), "\"my test context\"");
+            assert_eq!(row.get::<i32>(6)?.unwrap(), 15);
 
             Ok::<(), anyhow::Error>(())
         })
