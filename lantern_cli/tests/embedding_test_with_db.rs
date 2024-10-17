@@ -149,7 +149,7 @@ async fn test_openai_completion_from_db() {
 
     let (processed_rows, _) = embeddings::create_embeddings_from_db(
         cli::EmbeddingArgs {
-            model: "openai/gpt-4o".to_owned(),
+            model: "gpt-4o".to_owned(),
             uri: db_url.clone(),
             pk: "id".to_owned(),
             column: "content".to_owned(),
@@ -227,7 +227,7 @@ async fn test_openai_completion_special_chars_from_db() {
 
     let (processed_rows, _) = embeddings::create_embeddings_from_db(
         cli::EmbeddingArgs {
-            model: "openai/gpt-4o".to_owned(),
+            model: "gpt-4o".to_owned(),
             uri: db_url.clone(),
             pk: "id".to_owned(),
             column: "content".to_owned(),
@@ -305,7 +305,7 @@ async fn test_openai_completion_failed_rows_from_db() {
 
     let (processed_rows, _) = embeddings::create_embeddings_from_db(
         cli::EmbeddingArgs {
-            model: "openai/gpt-4o".to_owned(),
+            model: "gpt-4o".to_owned(),
             uri: db_url.clone(),
             pk: "id".to_owned(),
             column: "content".to_owned(),

@@ -75,21 +75,21 @@ impl ModelInfo {
         let name = model_name.split("/").last().unwrap().to_owned();
         match job_type {
             EmbeddingJobType::EmbeddingGeneration => match model_name {
-                "openai/text-embedding-ada-002" => Ok(Self {
+                "text-embedding-ada-002" => Ok(Self {
                     name,
                     tokenizer: cl100k_base()?,
                     sequence_len: 8190,
                     dimensions: 1536,
                     var_dimension: false,
                 }),
-                "openai/text-embedding-3-small" => Ok(Self {
+                "text-embedding-3-small" => Ok(Self {
                     name,
                     tokenizer: cl100k_base()?,
                     sequence_len: 8190,
                     dimensions: 1536,
                     var_dimension: true,
                 }),
-                "openai/text-embedding-3-large" => Ok(Self {
+                "text-embedding-3-large" => Ok(Self {
                     name,
                     tokenizer: cl100k_base()?,
                     sequence_len: 8190,
@@ -99,28 +99,28 @@ impl ModelInfo {
                 _ => anyhow::bail!("Unsupported model {model_name}"),
             },
             EmbeddingJobType::Completion => match model_name {
-                "openai/gpt-4" => Ok(Self {
+                "gpt-4" => Ok(Self {
                     name,
                     tokenizer: cl100k_base()?,
                     sequence_len: 128000,
                     dimensions: 0,
                     var_dimension: false,
                 }),
-                "openai/gpt-4o" => Ok(Self {
+                "gpt-4o" => Ok(Self {
                     name,
                     tokenizer: cl100k_base()?,
                     sequence_len: 128000,
                     dimensions: 0,
                     var_dimension: false,
                 }),
-                "openai/gpt-4o-mini" => Ok(Self {
+                "gpt-4o-mini" => Ok(Self {
                     name,
                     tokenizer: cl100k_base()?,
                     sequence_len: 128000,
                     dimensions: 0,
                     var_dimension: false,
                 }),
-                "openai/gpt-4-turbo" => Ok(Self {
+                "gpt-4-turbo" => Ok(Self {
                     name,
                     tokenizer: cl100k_base()?,
                     sequence_len: 128000,
@@ -137,25 +137,25 @@ lazy_static! {
     static ref MODEL_INFO_MAP: RwLock<HashMap<&'static str, ModelInfo>> =
         RwLock::new(HashMap::from([
             (
-                "openai/text-embedding-ada-002",
+                "text-embedding-ada-002",
                 ModelInfo::new(
-                    "openai/text-embedding-ada-002",
+                    "text-embedding-ada-002",
                     EmbeddingJobType::EmbeddingGeneration
                 )
                 .unwrap()
             ),
             (
-                "openai/text-embedding-3-small",
+                "text-embedding-3-small",
                 ModelInfo::new(
-                    "openai/text-embedding-3-small",
+                    "text-embedding-3-small",
                     EmbeddingJobType::EmbeddingGeneration
                 )
                 .unwrap()
             ),
             (
-                "openai/text-embedding-3-large",
+                "text-embedding-3-large",
                 ModelInfo::new(
-                    "openai/text-embedding-3-large",
+                    "text-embedding-3-large",
                     EmbeddingJobType::EmbeddingGeneration
                 )
                 .unwrap()
@@ -164,20 +164,20 @@ lazy_static! {
     static ref COMPLETION_MODEL_INFO_MAP: RwLock<HashMap<&'static str, ModelInfo>> =
         RwLock::new(HashMap::from([
             (
-                "openai/gpt-4",
-                ModelInfo::new("openai/gpt-4", EmbeddingJobType::Completion).unwrap()
+                "gpt-4",
+                ModelInfo::new("gpt-4", EmbeddingJobType::Completion).unwrap()
             ),
             (
-                "openai/gpt-4-turbo",
-                ModelInfo::new("openai/gpt-4-turbo", EmbeddingJobType::Completion).unwrap()
+                "gpt-4-turbo",
+                ModelInfo::new("gpt-4-turbo", EmbeddingJobType::Completion).unwrap()
             ),
             (
-                "openai/gpt-4o",
-                ModelInfo::new("openai/gpt-4o", EmbeddingJobType::Completion).unwrap()
+                "gpt-4o",
+                ModelInfo::new("gpt-4o", EmbeddingJobType::Completion).unwrap()
             ),
             (
-                "openai/gpt-4o-mini",
-                ModelInfo::new("openai/gpt-4o-mini", EmbeddingJobType::Completion).unwrap()
+                "gpt-4o-mini",
+                ModelInfo::new("gpt-4o-mini", EmbeddingJobType::Completion).unwrap()
             ),
         ]));
 }

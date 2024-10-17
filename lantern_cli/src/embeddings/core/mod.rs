@@ -21,7 +21,7 @@ fn default_logger(text: &str) {
     println!("{}", text);
 }
 
-#[derive(Debug, PartialEq, Clone, EnumIter)]
+#[derive(Debug, PartialEq, Clone, EnumIter, Copy)]
 pub enum Runtime {
     Ort,
     OpenAi,

@@ -582,22 +582,19 @@ pub fn get_default_batch_size(model: &str) -> usize {
         "naver/splade-v3" => 150,
         "microsoft/all-mpnet-base-v2" => 400,
         "transformers/multi-qa-mpnet-base-dot-v1" => 300,
-        "openai/text-embedding-ada-002" => 500,
-        "openai/text-embedding-3-small" => 500,
-        "openai/text-embedding-3-large" => 500,
-        "cohere/embed-english-v3.0"
-        | "cohere/embed-multilingual-v3.0"
-        | "cohere/embed-english-light-v3.0"
-        | "cohere/embed-multilingual-light-v3.0"
-        | "cohere/embed-english-v2.0"
-        | "cohere/embed-english-light-v2.0"
-        | "cohere/embed-multilingual-v2.0" => 5000,
-
+        // Openai Models
+        "text-embedding-ada-002" | "text-embedding-3-small" | "text-embedding-3-large" => 500,
+        // Cohere Models
+        "embed-english-v3.0"
+        | "embed-multilingual-v3.0"
+        | "embed-english-light-v3.0"
+        | "embed-multilingual-light-v3.0"
+        | "embed-english-v2.0"
+        | "embed-english-light-v2.0"
+        | "embed-multilingual-v2.0" => 5000,
         // Completion models
-        "openai/gpt-4" => 2,
-        "openai/gpt-4o" => 2,
-        "openai/gpt-4-turbo" => 2,
-        "openai/gpt-4o-mini" => 10,
+        "gpt-4" | "gpt-4o" | "gpt-4-turbo" => 2,
+        "gpt-4o-mini" => 10,
         _ => 100,
     }
 }
