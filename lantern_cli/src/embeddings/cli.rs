@@ -1,5 +1,22 @@
 pub use super::core::Runtime;
-use clap::Parser;
+use clap::{Parser, ValueEnum};
+
+#[derive(ValueEnum, Debug, Clone)]
+pub enum EmbeddingJobType {
+    EmbeddingGeneration,
+    Completion,
+}
+
+impl TryFrom<&str> for EmbeddingJobType {
+    type Error = anyhow::Error;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "embedding_generation" => Ok(EmbeddingJobType::EmbeddingGeneration),
+            "completion" => Ok(EmbeddingJobType::Completion),
+            _ => anyhow::bail!("Invalid job_type {value}"),
+        }
+    }
+}
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -44,6 +61,14 @@ pub struct EmbeddingArgs {
     #[arg(short, long)]
     pub batch_size: Option<usize>,
 
+    /// Generate embeddings or get chat completion
+    #[arg(long)]
+    pub job_type: Option<EmbeddingJobType>,
+
+    /// Type of destination column
+    #[arg(long)]
+    pub column_type: Option<String>,
+
     /// Runtime
     #[arg(long, default_value_t = Runtime::Ort)]
     pub runtime: Runtime,
@@ -55,10 +80,6 @@ pub struct EmbeddingArgs {
     /// If model is visual
     #[arg(long, default_value_t = false)]
     pub visual: bool,
-
-    /// Output csv path. If specified result will be written in csv instead of database
-    #[arg(short, long)]
-    pub out_csv: Option<String>,
 
     /// Filter which will be used when getting data from source table
     #[arg(short, long)]
@@ -75,6 +96,26 @@ pub struct EmbeddingArgs {
     /// Create destination column if not exists
     #[arg(long, default_value_t = false)]
     pub create_column: bool,
+
+    /// Create ldb_try_cast function for type checking
+    #[arg(long, default_value_t = false)]
+    pub create_cast_fn: bool,
+
+    /// Check column type for each row before inserting to the table
+    #[arg(long, default_value_t = false)]
+    pub check_column_type: bool,
+
+    /// Schema name where the failed rows table and ldb_try_cast function are located
+    #[arg(long, default_value = "public")]
+    pub internal_schema: String,
+
+    /// Table to insert the rows which were not casted successfully
+    #[arg(long)]
+    pub failed_rows_table: Option<String>,
+
+    /// Job ID is only needed when run from daemon
+    #[arg(long, default_value_t = 0)]
+    pub job_id: i32,
 }
 
 impl EmbeddingArgs {
@@ -100,6 +141,10 @@ pub struct ShowModelsArgs {
     /// Runtime Params JSON string
     #[arg(long, default_value = "{}")]
     pub runtime_params: String,
+
+    /// Generate embeddings or get chat completion
+    #[arg(long)]
+    pub job_type: Option<EmbeddingJobType>,
 }
 
 #[derive(Parser, Debug)]

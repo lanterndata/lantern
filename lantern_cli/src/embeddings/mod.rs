@@ -3,7 +3,6 @@ use crate::types::*;
 use crate::utils::{append_params_to_uri, get_full_table_name, quote_ident};
 use bytes::BytesMut;
 use core::get_available_runtimes;
-use csv::Writer;
 use futures::SinkExt;
 use rand::Rng;
 use std::sync::Arc;
@@ -14,15 +13,75 @@ use tokio_util::sync::CancellationToken;
 
 use tokio_postgres::{Client, NoTls, Row};
 
+use self::cli::EmbeddingJobType;
 use self::core::EmbeddingRuntime;
 
 pub mod cli;
 pub mod core;
 pub mod measure_speed;
 
-type EmbeddingRecord = (String, Vec<f32>);
+struct EmbeddingRecord {
+    pk: String,
+    record: BytesMut,
+}
+
+impl EmbeddingRecord {
+    fn from_vec(pk: String, value: Vec<f32>) -> EmbeddingRecord {
+        let mut buf = BytesMut::with_capacity(4);
+
+        if value.len() > 0 {
+            let chunk_size = 1024 * 1024; // 1 MB
+            buf = BytesMut::with_capacity(chunk_size);
+            buf.extend_from_slice("{".as_bytes());
+            let row_str: String = value.iter().map(|&x| x.to_string() + ",").collect();
+            buf.extend_from_slice(row_str[0..row_str.len() - 1].as_bytes());
+            drop(row_str);
+            buf.extend_from_slice("}".as_bytes());
+        } else {
+            buf.extend_from_slice("NULL".as_bytes());
+        }
+
+        EmbeddingRecord { pk, record: buf }
+    }
+
+    #[allow(dead_code)]
+    fn from_string(pk: String, value: String) -> EmbeddingRecord {
+        let buf: BytesMut;
+        println!("Pk: {pk}, value: {value}");
+        if value.len() > 0 {
+            buf = BytesMut::from(
+                value
+                    .replace('\\', "\\\\")
+                    .replace('\n', "\\n")
+                    .replace('\r', "\\r")
+                    .replace('\t', "\\t")
+                    .as_bytes(),
+            )
+        } else {
+            buf = BytesMut::from("NULL".as_bytes());
+        }
+
+        EmbeddingRecord { pk, record: buf }
+    }
+}
 
 static CONNECTION_PARAMS: &'static str = "connect_timeout=10";
+
+pub fn get_try_cast_fn_sql(schema: &str) -> String {
+    format!(
+        "
+CREATE OR REPLACE FUNCTION {schema}.ldb_try_cast(_in text, INOUT _out ANYELEMENT)
+  LANGUAGE plpgsql AS
+$func$
+BEGIN
+   EXECUTE format('SELECT %L::%s', $1, pg_typeof(_out))
+   INTO  _out;
+EXCEPTION WHEN others THEN
+END
+$func$;",
+        schema = quote_ident(schema)
+    )
+}
 
 // Helper function to calculate progress using total and processed row count
 fn calculate_progress(total: i64, processed: usize) -> u8 {
@@ -116,6 +175,7 @@ async fn embedding_worker(
     args: Arc<cli::EmbeddingArgs>,
     mut rx: Receiver<Vec<Row>>,
     tx: Sender<Vec<EmbeddingRecord>>,
+    job_type: EmbeddingJobType,
     cancel_token: CancellationToken,
     logger: Arc<Logger>,
 ) -> AnyhowUsizeResult {
@@ -137,34 +197,45 @@ async fn embedding_worker(
                     start = Instant::now();
                 }
 
-                let mut input_vectors: Vec<&str> = Vec::with_capacity(rows.len());
+                let mut inputs: Vec<&str> = Vec::with_capacity(rows.len());
                 let mut input_ids: Vec<String> = Vec::with_capacity(rows.len());
 
                 for row in &rows {
                     if let Ok(Some(src_data)) = row.try_get::<usize, Option<&str>>(1) {
                         if src_data.trim() != "" {
-                            input_vectors.push(src_data);
+                            inputs.push(src_data);
                             input_ids.push(row.get::<usize, String>(0));
                         }
                     }
                 }
 
-                if input_vectors.len() == 0 {
+                if inputs.len() == 0 {
                     continue;
                 }
 
-                let embedding_response = runtime.process(&model, &input_vectors).await;
+                let mut response_data = Vec::with_capacity(rows.len());
 
-                if let Err(e) = embedding_response {
-                    anyhow::bail!("{}", e);
+                match job_type {
+                    EmbeddingJobType::EmbeddingGeneration => {
+                        let embedding_response = runtime.process(&model, &inputs).await?;
+                        processed_tokens += embedding_response.processed_tokens;
+                        let mut embeddings = embedding_response.embeddings;
+
+                        count += embeddings.len();
+                        for _ in 0..embeddings.len() {
+                            response_data.push(EmbeddingRecord::from_vec(input_ids.pop().unwrap(), embeddings.pop().unwrap()))
+                        }
+                    },
+                    EmbeddingJobType::Completion => {
+                        let embedding_response = runtime.batch_completion(&model, &inputs).await?;
+                        processed_tokens += embedding_response.processed_tokens;
+                        let mut messages = embedding_response.messages;
+                        count += messages.len();
+                        for _ in 0..messages.len() {
+                            response_data.push(EmbeddingRecord::from_string(input_ids.pop().unwrap(), messages.pop().unwrap()))
+                        }
+                    }
                 }
-
-                let embedding_response = embedding_response.unwrap();
-
-                processed_tokens += embedding_response.processed_tokens;
-                let mut embeddings = embedding_response.embeddings;
-
-                count += embeddings.len();
 
                 let duration = start.elapsed().as_secs();
                 // avoid division by zero error
@@ -174,12 +245,6 @@ async fn embedding_worker(
                     count,
                     count / duration as usize
                 ));
-
-                let mut response_data = Vec::with_capacity(rows.len());
-
-                for _ in 0..embeddings.len() {
-                    response_data.push((input_ids.pop().unwrap(), embeddings.pop().unwrap()));
-                }
 
                 if tx.send(response_data).await.is_err() {
                     // Error occured in exporter worker and channel has been closed
@@ -200,6 +265,123 @@ async fn embedding_worker(
     Ok(processed_tokens)
 }
 
+fn get_update_query_and_col_type(
+    args: Arc<cli::EmbeddingArgs>,
+    full_table_name: &str,
+    temp_table_name: &str,
+    column_type: &str,
+) -> (String, String) {
+    let column = args.out_column.clone();
+    let cast_fn_name = get_full_table_name(&args.internal_schema, "ldb_try_cast");
+    let mut tmp_col_type = column_type.to_owned();
+    let mut type_check_sql = "".to_owned();
+    let mut failed_rows_sql = "SELECT 1 WHERE FALSE;".to_owned(); // nop operation
+    let mut temp_table_subquery = temp_table_name.to_owned(); // nop operation
+
+    if let Some(failed_rows_table) = &args.failed_rows_table {
+        let failed_rows_table = get_full_table_name(&args.internal_schema, failed_rows_table);
+        failed_rows_sql = format!(
+            "
+            INSERT INTO {failed_rows_table} (job_id, row_id, value)
+            SELECT {job_id} as job_id, row_id, value FROM failed_rows;
+        ",
+            job_id = args.job_id,
+        );
+
+        temp_table_subquery = format!(
+            "
+            (
+            SELECT * FROM {temp_table_name} tmp
+            WHERE NOT EXISTS (
+                SELECT 1 FROM failed_rows fr WHERE fr.row_id = tmp.{pk}
+            )
+        )
+",
+            temp_table_name = quote_ident(&temp_table_name),
+            pk = quote_ident(&args.pk)
+        )
+    }
+
+    if args.check_column_type {
+        tmp_col_type = "TEXT".to_owned();
+        type_check_sql = format!(
+            "
+                 failed_rows AS (
+                    DELETE FROM {temp_table_name} src
+                    WHERE {cast_fn_name}(src.{column}, NULL::{column_type}) IS NULL
+                    RETURNING src.{pk} AS row_id, src.{column} AS value
+                ),
+        ",
+            column = quote_ident(&column),
+            temp_table_name = quote_ident(&temp_table_name),
+            pk = quote_ident(&args.pk)
+        );
+    }
+
+    /*
+    * For embedding jobs the temp table will be created with REAL[] type
+    * And the type_check_sql with failed_rows_sql will be set to empty string
+    * So we will just perform update from tmp to src truncating the temp table
+    * Query will be like this:
+    *   WITH updated_rows AS (
+            UPDATE "public"."_completion_test_openai_failed_rows" dst
+            SET "chars" = src."chars"::TEXT[]
+            FROM "_lantern_tmp_861" src
+            WHERE src."id" = dst."id"
+        )
+        SELECT 1 WHERE FALSE;
+        TRUNCATE TABLE _lantern_tmp_861;
+    * ---
+    * For completion jobs it is recommended to set the check_column_type and
+    * failed_rows_table arguments.
+    * If the check_column_type will be set, we will try to delete the rows from tmp table
+    * Which do not pass the type cast (this can be because LLMs can return invalid data).
+    * Then we will perform the update operation with the remaining rows which can be casted
+    * correctly.
+    * Then the failed rows will be inserted into the failed_rows_table, so there will be
+    * visibility about the rows which were failed to cast
+    *
+    * Query will be like this:
+    *   WITH failed_rows AS (
+            DELETE FROM "_lantern_tmp_861" src
+            WHERE ldb_try_cast(src."chars", NULL::TEXT[]) IS NULL
+            RETURNING src."id" AS row_id, src."chars" AS value
+        ),
+        updated_rows AS (
+            UPDATE "public"."_completion_test_openai_failed_rows" dst
+            SET "chars" = src."chars"::TEXT[]
+            FROM (
+                SELECT * FROM "_lantern_tmp_861"
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM failed_rows fr WHERE fr.row_id = "_lantern_tmp_861"."id"
+                )
+            ) src
+            WHERE src."id" = dst."id"
+        )
+        INSERT INTO embedding_failre_info (job_id, row_id, value)
+            SELECT {args.job_id} as job_id, row_id, value FROM failed_rows;
+        TRUNCATE TABLE _lantern_tmp_861;
+    * */
+    let update_sql = format!(
+        "
+                WITH {type_check_sql} 
+                updated_rows AS (
+                    UPDATE {full_table_name} dst
+                    SET {column} = src.{column}::{column_type}
+                    FROM {temp_table_subquery} src
+                    WHERE src.{pk} = dst.{pk}
+                ) 
+                {failed_rows_sql}
+                TRUNCATE TABLE {temp_table_name};
+        ",
+        column = quote_ident(&column),
+        temp_table_name = quote_ident(&temp_table_name),
+        pk = quote_ident(&args.pk)
+    );
+
+    (update_sql, tmp_col_type)
+}
+
 // DB exporter worker will create temp table with name _lantern_tmp_${rand(0,1000)}
 // Then it will create writer stream which will COPY bytes from stdin to that table
 // After that it will receiver the output embeddings mapped with row ids over the channel
@@ -211,6 +393,7 @@ async fn db_exporter_worker(
     args: Arc<cli::EmbeddingArgs>,
     mut rx: Receiver<Vec<EmbeddingRecord>>,
     item_count: i64,
+    column_type: String,
     progress_cb: Option<ProgressCbFn>,
     logger: Arc<Logger>,
 ) -> Result<JoinHandle<AnyhowUsizeResult>, anyhow::Error> {
@@ -230,7 +413,7 @@ async fn db_exporter_worker(
         transaction
             .execute(
                 &format!(
-                    "ALTER TABLE {full_table_name} ADD COLUMN IF NOT EXISTS {column} REAL[]",
+                    "ALTER TABLE {full_table_name} ADD COLUMN IF NOT EXISTS {column} {column_type}",
                     column = quote_ident(&column)
                 ),
                 &[],
@@ -245,31 +428,44 @@ async fn db_exporter_worker(
         anyhow::bail!("User does not have write permissions to target table");
     }
 
+    if args.create_cast_fn {
+        transaction
+            .execute(&get_try_cast_fn_sql(&args.internal_schema), &[])
+            .await?;
+    }
+
+    let (update_sql, tmp_col_type) = get_update_query_and_col_type(
+        args.clone(),
+        &full_table_name,
+        &temp_table_name,
+        &column_type,
+    );
+
     transaction.commit().await?;
     let handle = tokio::spawn(async move {
         let transaction = client.transaction().await?;
         transaction
             .execute(
                 &format!(
-                    "CREATE TEMPORARY TABLE {temp_table_name} AS SELECT {pk}, '{{}}'::REAL[] AS {column} FROM {full_table_name} LIMIT 0",
+                    "CREATE TEMPORARY TABLE {temp_table_name} AS SELECT {pk}, {column}::{tmp_col_type} FROM {full_table_name} LIMIT 0",
                     pk=quote_ident(&pk),
                     column=quote_ident(&column)
                 ),
                 &[],
             ).await?;
+
         transaction.commit().await?;
 
         let mut transaction = client.transaction().await?;
         let mut writer_sink = Box::pin(
             transaction
                 .copy_in(&format!(
-                    "COPY {temp_table_name} FROM stdin WITH NULL AS 'NULL'"
+                    "COPY {temp_table_name} FROM stdin WITH NULL AS 'NULL' "
                 ))
                 .await?,
         );
         let chunk_size = 1024 * 1024 * 10; // 10 MB
         let mut buf = BytesMut::with_capacity(chunk_size * 2);
-        let update_sql = &format!("UPDATE {full_table_name} dest SET {column} = src.{column} FROM {temp_table_name} src WHERE src.{pk} = dest.{pk}", column=quote_ident(&column), temp_table_name=quote_ident(&temp_table_name), pk=quote_ident(&pk));
 
         let flush_interval = 10;
         let min_flush_rows = 50;
@@ -281,17 +477,9 @@ async fn db_exporter_worker(
 
         while let Some(rows) = rx.recv().await {
             for row in &rows {
-                buf.extend_from_slice(row.0.as_bytes());
+                buf.extend_from_slice(row.pk.as_bytes());
                 buf.extend_from_slice("\t".as_bytes());
-                if row.1.len() > 0 {
-                    buf.extend_from_slice("{".as_bytes());
-                    let row_str: String = row.1.iter().map(|&x| x.to_string() + ",").collect();
-                    buf.extend_from_slice(row_str[0..row_str.len() - 1].as_bytes());
-                    drop(row_str);
-                    buf.extend_from_slice("}".as_bytes());
-                } else {
-                    buf.extend_from_slice("NULL".as_bytes());
-                }
+                buf.extend_from_slice(&row.record);
                 buf.extend_from_slice("\n".as_bytes());
                 collected_row_cnt += 1;
             }
@@ -329,14 +517,7 @@ async fn db_exporter_worker(
                     writer_sink.send(buf.split().freeze()).await?;
                 }
                 writer_sink.as_mut().finish().await?;
-                transaction
-                    .batch_execute(&format!(
-                        "
-                    {update_sql};
-                    TRUNCATE TABLE {temp_table_name};
-                "
-                    ))
-                    .await?;
+                transaction.batch_execute(&update_sql).await?;
                 transaction.commit().await?;
                 transaction = client.transaction().await?;
                 writer_sink = Box::pin(
@@ -370,7 +551,7 @@ async fn db_exporter_worker(
             writer_sink.send(buf.split().freeze()).await?
         }
         writer_sink.as_mut().finish().await?;
-        transaction.execute(update_sql, &[]).await?;
+        transaction.batch_execute(&update_sql).await?;
         transaction.commit().await?;
         logger.info(&format!(
             "Embeddings exported to table {} under column {}",
@@ -380,37 +561,6 @@ async fn db_exporter_worker(
         Ok(processed_row_cnt)
     });
 
-    Ok(handle)
-}
-
-async fn csv_exporter_worker(
-    args: Arc<cli::EmbeddingArgs>,
-    mut rx: Receiver<Vec<EmbeddingRecord>>,
-    logger: Arc<Logger>,
-) -> Result<JoinHandle<AnyhowUsizeResult>, anyhow::Error> {
-    let handle = tokio::spawn(async move {
-        let csv_path = args.out_csv.as_ref().unwrap();
-        let mut wtr = Writer::from_path(&csv_path).unwrap();
-        let mut processed_row_cnt = 0;
-        while let Some(rows) = rx.recv().await {
-            for row in &rows {
-                let vector_string = &format!(
-                    "{{{}}}",
-                    row.1
-                        .iter()
-                        .map(|f| f.to_string())
-                        .collect::<Vec<String>>()
-                        .join(",")
-                );
-                wtr.write_record(&[&row.0.to_string(), vector_string])
-                    .unwrap();
-                processed_row_cnt += rows.len();
-            }
-        }
-        wtr.flush().unwrap();
-        logger.info(&format!("Embeddings exported to {}", &csv_path));
-        Ok(processed_row_cnt)
-    });
     Ok(handle)
 }
 
@@ -432,17 +582,27 @@ pub fn get_default_batch_size(model: &str) -> usize {
         "naver/splade-v3" => 150,
         "microsoft/all-mpnet-base-v2" => 400,
         "transformers/multi-qa-mpnet-base-dot-v1" => 300,
-        "openai/text-embedding-ada-002" => 500,
-        "openai/text-embedding-3-small" => 500,
-        "openai/text-embedding-3-large" => 500,
-        "cohere/embed-english-v3.0"
-        | "cohere/embed-multilingual-v3.0"
-        | "cohere/embed-english-light-v3.0"
-        | "cohere/embed-multilingual-light-v3.0"
-        | "cohere/embed-english-v2.0"
-        | "cohere/embed-english-light-v2.0"
-        | "cohere/embed-multilingual-v2.0" => 5000,
+        // Openai Models
+        "text-embedding-ada-002" | "text-embedding-3-small" | "text-embedding-3-large" => 500,
+        // Cohere Models
+        "embed-english-v3.0"
+        | "embed-multilingual-v3.0"
+        | "embed-english-light-v3.0"
+        | "embed-multilingual-light-v3.0"
+        | "embed-english-v2.0"
+        | "embed-english-light-v2.0"
+        | "embed-multilingual-v2.0" => 5000,
+        // Completion models
+        "gpt-4" | "gpt-4o" | "gpt-4-turbo" => 2,
+        "gpt-4o-mini" => 10,
         _ => 100,
+    }
+}
+
+fn get_default_column_type(job_type: &EmbeddingJobType) -> String {
+    match job_type {
+        &EmbeddingJobType::Completion => "TEXT".to_owned(),
+        &EmbeddingJobType::EmbeddingGeneration => "REAL[]".to_owned(),
     }
 }
 
@@ -468,6 +628,14 @@ pub async fn create_embeddings_from_db(
     let column = args.column.clone();
     let schema = args.schema.clone();
     let table = args.table.clone();
+    let job_type = args
+        .job_type
+        .clone()
+        .unwrap_or(EmbeddingJobType::EmbeddingGeneration);
+    let column_type = args
+        .column_type
+        .clone()
+        .unwrap_or(get_default_column_type(&job_type));
     let full_table_name = get_full_table_name(&schema, &table);
 
     let filter_sql = if args.filter.is_some() {
@@ -506,20 +674,16 @@ pub async fn create_embeddings_from_db(
     ) = mpsc::channel(1);
 
     // Create exporter based on provided args
-    // For now we only have csv and db exporters
-    let exporter_handle = if args.out_csv.is_some() {
-        csv_exporter_worker(args.clone(), embedding_rx, logger.clone()).await?
-    } else {
-        db_exporter_worker(
-            &uri,
-            args.clone(),
-            embedding_rx,
-            item_cnt,
-            progress_cb,
-            logger.clone(),
-        )
-        .await?
-    };
+    let exporter_handle = db_exporter_worker(
+        &uri,
+        args.clone(),
+        embedding_rx,
+        item_cnt,
+        column_type,
+        progress_cb,
+        logger.clone(),
+    )
+    .await?;
 
     let (exporter_result, embedding_result, producer_result) = tokio::join!(
         exporter_handle,
@@ -527,6 +691,7 @@ pub async fn create_embeddings_from_db(
             args.clone(),
             producer_rx,
             embedding_tx,
+            job_type,
             cancel_token,
             logger.clone(),
         ),
@@ -555,7 +720,16 @@ pub async fn show_available_models(
     let logger = logger.unwrap_or(Logger::new("Lantern Embeddings", LogLevel::Info));
     logger.info("Available Models\n");
     let runtime = EmbeddingRuntime::new(&args.runtime, None, &args.runtime_params)?;
-    logger.print_raw(&runtime.get_available_models().await.0);
+    logger.print_raw(
+        &runtime
+            .get_available_models(
+                args.job_type
+                    .clone()
+                    .unwrap_or(EmbeddingJobType::EmbeddingGeneration),
+            )
+            .await
+            .0,
+    );
     Ok(())
 }
 

@@ -1,27 +1,24 @@
+use std::time::Duration;
+
 use lantern_cli::{
     daemon::{cli::DaemonArgs, start},
-    embeddings::core::{
-        cohere_runtime::CohereRuntimeParams, openai_runtime::OpenAiRuntimeParams,
-        ort_runtime::DATA_PATH,
-    },
+    embeddings::core::ort_runtime::DATA_PATH,
     logger::{LogLevel, Logger},
     types::AnyhowVoidResult,
     utils::{get_full_table_name, quote_ident},
 };
 use pgrx::{bgworkers::BackgroundWorker, prelude::*};
-use tokio::runtime::Runtime;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    COHERE_TOKEN, DAEMON_DATABASES, OPENAI_AZURE_API_TOKEN, OPENAI_AZURE_ENTRA_TOKEN,
-    OPENAI_DEPLOYMENT_URL, OPENAI_TOKEN,
+    embeddings::{get_cohere_runtime_params, get_openai_runtime_params},
+    DAEMON_DATABASES, ENABLE_DAEMON,
 };
 
 pub fn start_daemon(
     embeddings: bool,
     indexing: bool,
     autotune: bool,
-    cancellation_token: CancellationToken,
 ) -> Result<(), anyhow::Error> {
     let (db, user, socket_path, port) = BackgroundWorker::transaction(|| {
         Spi::connect(|client| {
@@ -76,10 +73,11 @@ pub fn start_daemon(
         target_dbs.push(connection_string);
     }
 
-    std::thread::spawn(move || {
-        let logger = Logger::new("Lantern Daemon", LogLevel::Debug);
-        let rt = Runtime::new().unwrap();
-        let res = rt.block_on(start(
+    let logger = Logger::new("Lantern Daemon", LogLevel::Debug);
+    let cancellation_token = CancellationToken::new();
+    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();// Runtime::new().unwrap();
+    rt.block_on(async {
+        start(
             DaemonArgs {
                 label: None,
                 embeddings,
@@ -92,16 +90,31 @@ pub fn start_daemon(
                 schema: String::from("_lantern_extras_internal"),
                 target_db: Some(target_dbs.clone()),
                 data_path: Some(DATA_PATH.to_owned()),
+                inside_postgres: true
             },
             Some(logger.clone()),
             cancellation_token.clone(),
-        ));
+        ).await?;
 
-        if let Err(e) = res {
-            eprintln!("{e}");
-            logger.error(&format!("{e}"));
+        tokio::select! {
+            _ = cancellation_token.cancelled() => {
+                anyhow::bail!("cancelled");
+            }
+            _ = async {
+                loop {
+                    if BackgroundWorker::sighup_received() && !ENABLE_DAEMON.get() {
+                        cancellation_token.cancel();
+                        break;
+                    }
+
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                }
+            } => {}
         }
-    });
+
+        Ok::<(), anyhow::Error>(())
+    })?;
+
 
     Ok(())
 }
@@ -121,49 +134,10 @@ fn add_embedding_job<'a>(
     if params == "{}" {
         match runtime {
             "openai" => {
-                let base_url = if let Some(deployment_url) = OPENAI_DEPLOYMENT_URL.get() {
-                    Some(deployment_url.to_str().unwrap().to_owned())
-                } else {
-                    None
-                };
-
-                let api_token = if let Some(api_token) = OPENAI_TOKEN.get() {
-                    Some(api_token.to_str().unwrap().to_owned())
-                } else {
-                    None
-                };
-
-                let azure_api_token = if let Some(api_token) = OPENAI_AZURE_API_TOKEN.get() {
-                    Some(api_token.to_str().unwrap().to_owned())
-                } else {
-                    None
-                };
-
-                let azure_entra_token = if let Some(api_token) = OPENAI_AZURE_ENTRA_TOKEN.get() {
-                    Some(api_token.to_str().unwrap().to_owned())
-                } else {
-                    None
-                };
-
-                params = serde_json::to_string(&OpenAiRuntimeParams {
-                    dimensions: Some(1536),
-                    base_url,
-                    api_token,
-                    azure_api_token,
-                    azure_entra_token,
-                })?;
+                params = get_openai_runtime_params("", "", 1536)?;
             }
             "cohere" => {
-                let api_token = if let Some(api_token) = COHERE_TOKEN.get() {
-                    Some(api_token.to_str().unwrap().to_owned())
-                } else {
-                    None
-                };
-
-                params = serde_json::to_string(&CohereRuntimeParams {
-                    api_token,
-                    input_type: Some("search_document".to_owned()),
-                })?;
+                params = get_cohere_runtime_params("search_document")?;
             }
             _ => {}
         }
@@ -188,6 +162,57 @@ fn add_embedding_job<'a>(
             (PgBuiltInOids::TEXTOID.oid(), embedding_model.into_datum()),
             (PgBuiltInOids::TEXTOID.oid(), runtime.into_datum()),
             (PgBuiltInOids::TEXTOID.oid(), params.into_datum()),
+        ],
+    )?;
+
+    Ok(id.unwrap())
+}
+
+#[pg_extern(immutable, parallel_unsafe, security_definer)]
+fn add_completion_job<'a>(
+    table: &'a str,
+    src_column: &'a str,
+    dst_column: &'a str,
+    context: default!(&'a str, "''"),
+    column_type: default!(&'a str, "'TEXT'"),
+    embedding_model: default!(&'a str, "'gpt-4o'"),
+    batch_size: default!(i32, -1),
+    runtime: default!(&'a str, "'openai'"),
+    runtime_params: default!(&'a str, "'{}'"),
+    pk: default!(&'a str, "'id'"),
+    schema: default!(&'a str, "'public'"),
+) -> Result<i32, anyhow::Error> {
+    let mut params = runtime_params.to_owned();
+    if params == "{}" {
+        match runtime {
+            "openai" => {
+                params = get_openai_runtime_params("", context, 0)?;
+            }
+            _ => anyhow::bail!("Runtime {runtime} does not support completion jobs"),
+        }
+    }
+
+    let batch_size = if batch_size == -1 { "NULL".to_string() } else { batch_size.to_string() };
+    let id: Option<i32> = Spi::get_one_with_args(
+        &format!(
+            r#"
+          ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {dst_column} {column_type};
+          INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("table", "schema", pk, src_column, dst_column, embedding_model, runtime, runtime_params, column_type, batch_size, job_type) VALUES
+          ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, {batch_size}, 'completion') RETURNING id;
+        "#,
+            table = get_full_table_name(schema, table),
+            dst_column = quote_ident(dst_column)
+        ),
+        vec![
+            (PgBuiltInOids::TEXTOID.oid(), table.into_datum()),
+            (PgBuiltInOids::TEXTOID.oid(), schema.into_datum()),
+            (PgBuiltInOids::TEXTOID.oid(), pk.into_datum()),
+            (PgBuiltInOids::TEXTOID.oid(), src_column.into_datum()),
+            (PgBuiltInOids::TEXTOID.oid(), dst_column.into_datum()),
+            (PgBuiltInOids::TEXTOID.oid(), embedding_model.into_datum()),
+            (PgBuiltInOids::TEXTOID.oid(), runtime.into_datum()),
+            (PgBuiltInOids::TEXTOID.oid(), params.into_datum()),
+            (PgBuiltInOids::TEXTOID.oid(), column_type.into_datum()),
         ],
     )?;
 
@@ -234,6 +259,20 @@ fn get_embedding_job_status<'a>(
 }
 
 #[pg_extern(immutable, parallel_safe, security_definer)]
+fn get_completion_job_failures<'a>(
+    job_id: i32,
+) -> Result<
+    TableIterator<'static, (name!(row_id, Option<i32>), name!(value, Option<String>))>,
+    anyhow::Error,
+> {
+    Spi::connect(|client| {
+        client.select("SELECT row_id, value FROM _lantern_extras_internal.embedding_failure_info WHERE job_id=$1", None, Some(vec![(PgBuiltInOids::INT4OID.oid(), job_id.into_datum())]))?
+            .map(|row| Ok((row["row_id"].value()?, row["value"].value()?)))
+            .collect::<Result<Vec<_>, _>>()
+    }).map(TableIterator::new)
+}
+
+#[pg_extern(immutable, parallel_safe, security_definer)]
 fn get_embedding_jobs<'a>() -> Result<
     TableIterator<
         'static,
@@ -247,7 +286,27 @@ fn get_embedding_jobs<'a>() -> Result<
     anyhow::Error,
 > {
     Spi::connect(|client| {
-        client.select("SELECT id, (get_embedding_job_status(id)).* FROM _lantern_extras_internal.embedding_generation_jobs", None, None)?
+        client.select("SELECT id, (get_embedding_job_status(id)).* FROM _lantern_extras_internal.embedding_generation_jobs WHERE job_type = 'embedding_generation'", None, None)?
+            .map(|row| Ok((row["id"].value()?, row["status"].value()?, row["progress"].value()?, row["error"].value()?)))
+            .collect::<Result<Vec<_>, _>>()
+    }).map(TableIterator::new)
+}
+
+#[pg_extern(immutable, parallel_safe, security_definer)]
+fn get_completion_jobs<'a>() -> Result<
+    TableIterator<
+        'static,
+        (
+            name!(id, Option<i32>),
+            name!(status, Option<String>),
+            name!(progress, Option<i16>),
+            name!(error, Option<String>),
+        ),
+    >,
+    anyhow::Error,
+> {
+    Spi::connect(|client| {
+        client.select("SELECT id, (get_embedding_job_status(id)).* FROM _lantern_extras_internal.embedding_generation_jobs WHERE job_type = 'completion'", None, None)?
             .map(|row| Ok((row["id"].value()?, row["status"].value()?, row["progress"].value()?, row["error"].value()?)))
             .collect::<Result<Vec<_>, _>>()
     }).map(TableIterator::new)
@@ -304,6 +363,185 @@ pub mod tests {
             let id: Option<i32> = id.first().get(1)?;
 
             assert_eq!(id.is_none(), false);
+            Ok::<(), anyhow::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[pg_test]
+    fn test_add_daemon_completion_job() {
+        Spi::connect(|mut client| {
+            // wait for daemon
+            std::thread::sleep(Duration::from_secs(5));
+            client.update(
+                "
+                CREATE TABLE t1 (id serial primary key, title text);
+                SET lantern_extras.openai_token='test';
+                ",
+                None,
+                None,
+            )?;
+            let id = client.select(
+                "
+                SELECT add_completion_job('t1', 'title', 'title_embedding', 'my test context','TEXT[]');
+                ",
+                None,
+                None,
+            )?;
+
+            let id: Option<i32> = id.first().get(1)?;
+            assert_eq!(id.is_none(), false);
+            
+            let row = client.select(
+                "SELECT column_type, job_type, runtime, embedding_model, (runtime_params->'context')::text as context, batch_size FROM _lantern_extras_internal.embedding_generation_jobs WHERE id=$1",
+                None,
+                Some(vec![(PgBuiltInOids::INT4OID.oid(), id.into_datum())])
+            )?;
+            
+            let row = row.first();
+
+            assert_eq!(row.get::<&str>(1)?.unwrap(), "TEXT[]");
+            assert_eq!(row.get::<&str>(2)?.unwrap(), "completion");
+            assert_eq!(row.get::<&str>(3)?.unwrap(), "openai");
+            assert_eq!(row.get::<&str>(4)?.unwrap(), "gpt-4o");
+            assert_eq!(row.get::<&str>(5)?.unwrap(), "\"my test context\"");
+            assert_eq!(row.get::<i32>(6)?.is_none(), true);
+
+            Ok::<(), anyhow::Error>(())
+        })
+        .unwrap();
+    }
+    
+    #[pg_test]
+    fn test_add_daemon_completion_job_batch_size() {
+        Spi::connect(|mut client| {
+            // wait for daemon
+            std::thread::sleep(Duration::from_secs(5));
+            client.update(
+                "
+                CREATE TABLE t1 (id serial primary key, title text);
+                SET lantern_extras.openai_token='test';
+                ",
+                None,
+                None,
+            )?;
+            let id = client.select(
+                "
+                SELECT add_completion_job('t1', 'title', 'title_embedding', 'my test context','TEXT[]', 'gpt-4o', 15);
+                ",
+                None,
+                None,
+            )?;
+
+            let id: Option<i32> = id.first().get(1)?;
+            assert_eq!(id.is_none(), false);
+            
+            let row = client.select(
+                "SELECT column_type, job_type, runtime, embedding_model, (runtime_params->'context')::text as context, batch_size FROM _lantern_extras_internal.embedding_generation_jobs WHERE id=$1",
+                None,
+                Some(vec![(PgBuiltInOids::INT4OID.oid(), id.into_datum())])
+            )?;
+            
+            let row = row.first();
+
+            assert_eq!(row.get::<&str>(1)?.unwrap(), "TEXT[]");
+            assert_eq!(row.get::<&str>(2)?.unwrap(), "completion");
+            assert_eq!(row.get::<&str>(3)?.unwrap(), "openai");
+            assert_eq!(row.get::<&str>(4)?.unwrap(), "gpt-4o");
+            assert_eq!(row.get::<&str>(5)?.unwrap(), "\"my test context\"");
+            assert_eq!(row.get::<i32>(6)?.unwrap(), 15);
+
+            Ok::<(), anyhow::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[pg_test]
+    fn test_get_daemon_completion_job() {
+        Spi::connect(|mut client| {
+            // wait for daemon
+            std::thread::sleep(Duration::from_secs(5));
+            client.update(
+                "
+                CREATE TABLE t1 (id serial primary key, title text);
+                SET lantern_extras.openai_token='test';
+                ",
+                None,
+                None,
+            )?;
+            let id = client.select(
+                "
+                SELECT add_completion_job('t1', 'title', 'title_embedding', 'my test context','TEXT[]');
+                ",
+                None,
+                None,
+            )?;
+
+            let id: Option<i32> = id.first().get(1)?;
+            assert_eq!(id.is_none(), false);
+            
+            let row = client.select(
+                "SELECT id, status, progress, error FROM get_completion_jobs() WHERE id=$1",
+                None,
+                Some(vec![(PgBuiltInOids::INT4OID.oid(), id.into_datum())])
+            )?;
+            
+            let row = row.first();
+
+            assert_eq!(row.get::<i32>(1)?.unwrap(), id.unwrap());
+
+            Ok::<(), anyhow::Error>(())
+        })
+        .unwrap();
+    }
+    
+    #[pg_test]
+    fn test_get_completion_job_failures() {
+        Spi::connect(|mut client| {
+            // wait for daemon
+            std::thread::sleep(Duration::from_secs(5));
+            client.update(
+                "
+                INSERT INTO _lantern_extras_internal.embedding_failure_info (job_id, row_id, value) VALUES 
+                (1, 1, '1test1'),
+                (1, 2, '1test2'),
+                (2, 1, '2test1');
+                ",
+                None,
+                None,
+            )?;
+            
+            let mut rows = client.select(
+                "SELECT row_id, value FROM get_completion_job_failures($1)",
+                None,
+                Some(vec![(PgBuiltInOids::INT4OID.oid(), 1.into_datum())])
+            )?;
+            
+            assert_eq!(rows.len(), 2);
+
+            let row = rows.next().unwrap();
+
+            assert_eq!(row.get::<i32>(1)?.unwrap(), 1);
+            assert_eq!(row.get::<&str>(2)?.unwrap(), "1test1");
+            
+            let row = rows.next().unwrap();
+
+            assert_eq!(row.get::<i32>(1)?.unwrap(), 2);
+            assert_eq!(row.get::<&str>(2)?.unwrap(), "1test2");
+            
+            let mut rows = client.select(
+                "SELECT row_id, value FROM get_completion_job_failures($1)",
+                None,
+                Some(vec![(PgBuiltInOids::INT4OID.oid(), 2.into_datum())])
+            )?;
+            
+            assert_eq!(rows.len(), 1);
+            
+            let row = rows.next().unwrap();
+
+            assert_eq!(row.get::<i32>(1)?.unwrap(), 1);
+            assert_eq!(row.get::<&str>(2)?.unwrap(), "2test1");
+
             Ok::<(), anyhow::Error>(())
         })
         .unwrap();

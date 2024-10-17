@@ -1,4 +1,5 @@
-use crate::embeddings::cli::{EmbeddingArgs, Runtime};
+use crate::embeddings::cli::{EmbeddingArgs, EmbeddingJobType, Runtime};
+use crate::embeddings::core::utils::get_clean_model_name;
 use crate::external_index::cli::CreateIndexArgs;
 use crate::index_autotune::cli::IndexAutotuneArgs;
 use crate::logger::Logger;
@@ -64,6 +65,8 @@ pub struct EmbeddingJob {
     pub pk: String,
     pub filter: Option<String>,
     pub label: Option<String>,
+    pub job_type: EmbeddingJobType,
+    pub column_type: String,
     pub out_column: String,
     pub model: String,
     pub runtime_params: String,
@@ -82,6 +85,12 @@ impl EmbeddingJob {
                 .unwrap_or("{}".to_owned())
         };
 
+        let batch_size = if let Some(batch_size) = row.get::<&str, Option<i32>>("batch_size") {
+            Some(batch_size as usize)
+        } else {
+            None
+        };
+
         Ok(Self {
             id: row.get::<&str, i32>("id"),
             pk: row.get::<&str, String>("pk"),
@@ -91,13 +100,20 @@ impl EmbeddingJob {
             table: row.get::<&str, String>("table"),
             column: row.get::<&str, String>("column"),
             out_column: row.get::<&str, String>("dst_column"),
-            model: row.get::<&str, String>("model"),
+            model: get_clean_model_name(row.get::<&str, &str>("model"), runtime),
             runtime,
             runtime_params,
             filter: None,
             row_ids: None,
             is_init: true,
-            batch_size: None,
+            batch_size,
+            job_type: EmbeddingJobType::try_from(
+                row.get::<&str, Option<&str>>("job_type")
+                    .unwrap_or("embedding"),
+            )?,
+            column_type: row
+                .get::<&str, Option<String>>("column_type")
+                .unwrap_or("REAL[]".to_owned()),
         })
     }
 
@@ -208,6 +224,7 @@ pub struct JobInsertNotification {
     pub generate_missing: bool,
     pub row_id: Option<String>,
     pub filter: Option<String>,
+    #[allow(dead_code)]
     pub limit: Option<u32>,
 }
 

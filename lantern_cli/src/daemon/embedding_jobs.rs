@@ -8,12 +8,13 @@ use super::types::{
     JobEventHandlersMap, JobInsertNotification, JobRunArgs, JobUpdateNotification,
 };
 use crate::daemon::helpers::anyhow_wrap_connection;
-use crate::embeddings::cli::EmbeddingArgs;
+use crate::embeddings::cli::{EmbeddingArgs, EmbeddingJobType};
 use crate::embeddings::get_default_batch_size;
 use crate::logger::Logger;
 use crate::utils::{get_common_embedding_ignore_filters, get_full_table_name, quote_ident};
 use crate::{embeddings, types::*};
 use std::collections::HashMap;
+use std::ops::Deref;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -31,8 +32,11 @@ pub const JOB_TABLE_DEFINITION: &'static str = r#"
 "table" text NOT NULL,
 "pk" text NOT NULL DEFAULT 'id',
 "label" text NULL,
+"job_type" text DEFAULT 'embedding_generation',
+"column_type" text DEFAULT 'REAL[]',
 "runtime" text NOT NULL DEFAULT 'ort',
 "runtime_params" jsonb,
+"batch_size" int NULL,
 "src_column" text NOT NULL,
 "dst_column" text NOT NULL,
 "embedding_model" text NOT NULL,
@@ -55,7 +59,16 @@ pub const USAGE_TABLE_DEFINITION: &'static str = r#"
 "created_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
 "#;
 
+pub const FAILURE_TABLE_DEFINITION: &'static str = r#"
+"id" SERIAL PRIMARY KEY,
+"job_id" INT NOT NULL,
+"row_id" INT NOT NULL,
+"value" TEXT,
+"created_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+"#;
+
 const EMB_USAGE_TABLE_NAME: &'static str = "embedding_usage_info";
+const EMB_FAILURE_TABLE_NAME: &'static str = "embedding_failure_info";
 const EMB_LOCK_TABLE_NAME: &'static str = "_lantern_emb_job_locks";
 
 async fn lock_row(
@@ -302,7 +315,9 @@ async fn stream_job(
         let mut progress = 0;
         let mut processed_rows = 0;
 
-        let batch_size = embeddings::get_default_batch_size(&job.model) as i32;
+        let batch_size =
+            job.batch_size
+                .unwrap_or(embeddings::get_default_batch_size(&job.model)) as i32;
         loop {
             // poll batch_size rows from portal and send it to embedding thread via channel
             let rows = job_client
@@ -436,6 +451,16 @@ async fn embedding_worker(
                 logger.level.clone(),
             );
             let job_clone = job.clone();
+            let mut failed_rows_table = None;
+            let mut check_column_type = false;
+
+            match job_clone.job_type {
+                EmbeddingJobType::Completion => {
+                    failed_rows_table = Some(EMB_FAILURE_TABLE_NAME.to_owned());
+                    check_column_type = true;
+                },
+                _ => {}
+            };
 
             let (tx, mut rx) = mpsc::channel(1);
             embedding_processor_tx.send(
@@ -456,9 +481,15 @@ async fn embedding_worker(
                     visual: false,
                     stream: true,
                     create_column: false,
-                    out_csv: None,
                     filter: job_clone.filter.clone(),
                     limit: None,
+                    job_type: Some(job_clone.job_type.clone()),
+                    column_type: Some(job_clone.column_type.clone()),
+                    create_cast_fn: false,
+                    check_column_type,
+                    job_id: job_clone.id,
+                    internal_schema: schema.deref().clone(),
+                    failed_rows_table
                 },
                 tx,
                 task_logger
@@ -618,7 +649,7 @@ async fn job_insert_processor(
     // batch jobs for the rows. This will optimize embedding generation as if there will be lots of
     // inserts to the table between 10 seconds all that rows will be batched.
     let full_table_name = Arc::new(get_full_table_name(&schema, &table));
-    let job_query_sql = Arc::new(format!("SELECT id, pk, label, src_column as \"column\", dst_column, \"table\", \"schema\", embedding_model as model, runtime, runtime_params::text, init_finished_at FROM {0}", &full_table_name));
+    let job_query_sql = Arc::new(format!("SELECT id, pk, label, src_column as \"column\", dst_column, \"table\", \"schema\", embedding_model as model, runtime, runtime_params::text, init_finished_at, job_type, column_type, batch_size FROM {0}", &full_table_name));
 
     let db_uri_r1 = db_uri.clone();
     let full_table_name_r1 = full_table_name.clone();
@@ -1049,6 +1080,8 @@ pub async fn start(
         None,
         Some(EMB_USAGE_TABLE_NAME),
         Some(USAGE_TABLE_DEFINITION),
+        Some(EMB_FAILURE_TABLE_NAME),
+        Some(FAILURE_TABLE_DEFINITION),
         None,
         &notification_channel,
         logger.clone(),

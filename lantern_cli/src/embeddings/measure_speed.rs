@@ -1,6 +1,9 @@
 use std::{cmp, time::Instant};
 
-use super::core::{EmbeddingRuntime, Runtime};
+use super::{
+    cli::EmbeddingJobType,
+    core::{EmbeddingRuntime, Runtime},
+};
 use crate::logger::{LogLevel, Logger};
 use postgres::NoTls;
 use tokio_util::sync::CancellationToken;
@@ -40,7 +43,6 @@ async fn measure_model_speed(
             schema: SCHEMA_NAME.to_owned(),
             table: table_name.to_owned(),
             out_uri: None,
-            out_csv: None,
             out_table: None,
             runtime: runtime.clone(),
             runtime_params: runtime_params.to_owned(),
@@ -48,6 +50,13 @@ async fn measure_model_speed(
             visual: false,
             limit: Some(limit.clone()),
             filter: None,
+            column_type: None,
+            job_type: None,
+            check_column_type: false,
+            create_cast_fn: false,
+            failed_rows_table: None,
+            internal_schema: "".to_owned(),
+            job_id: 0,
         };
         let start = Instant::now();
         let (processed, _) = super::create_embeddings_from_db(
@@ -115,7 +124,7 @@ pub async fn start_speed_test(
     let runtime = EmbeddingRuntime::new(&args.runtime, None, &args.runtime_params)?;
 
     let models: Vec<_> = runtime
-        .get_available_models()
+        .get_available_models(EmbeddingJobType::EmbeddingGeneration)
         .await
         .1
         .iter()

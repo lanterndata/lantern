@@ -109,7 +109,15 @@ async fn spawn_job(
     let mut last_retry = Instant::now();
 
     loop {
-        let cancel_token = parent_cancel_token.child_token();
+        // If run inside postgres, in case of error
+        // We will cancel the parent task and let bgworker
+        // handle the task restart
+        let cancel_token = if args.inside_postgres {
+            parent_cancel_token.clone()
+        } else {
+            parent_cancel_token.child_token()
+        };
+
         let mut jobs = JOBS.write().await;
         jobs.insert(target_db.name.clone(), cancel_token.clone());
         drop(jobs);
@@ -414,8 +422,6 @@ pub async fn start(
         )
         .await?;
     }
-
-    cancel_token.cancelled().await;
 
     Ok(())
 }

@@ -50,10 +50,10 @@ macro_rules! HTTPRuntime {
                 let processed_tokens = Arc::new(AtomicUsize::new(0));
                 let processed_tokens_clone = processed_tokens.clone();
 
-                for request_body in self.chunk_inputs(model_name, inputs)? {
+                for request_body in self.chunk_inputs(model_name, inputs).await? {
                     let client = client.clone();
                     let url = url.clone();
-                    let embedding_response =
+                    let embedding_response: super::runtime::EmbeddingResult =
                         post_with_retries(client, url, request_body, Box::new($a::get_response), 5)
                             .await?;
                     processed_tokens_clone
