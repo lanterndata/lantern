@@ -1,14 +1,14 @@
 use lantern_cli::embeddings::{
     cli::EmbeddingJobType,
     core::{
-        cohere_runtime::CohereRuntimeParams, openai_runtime::OpenAiRuntimeParams, EmbeddingRuntime,
-        LoggerFn, Runtime,
+        cohere_runtime::CohereRuntimeParams, openai_runtime::OpenAiRuntimeParams,
+        utils::get_clean_model_name, EmbeddingRuntime, LoggerFn, Runtime,
     },
 };
 use pgrx::prelude::*;
 
 use crate::{
-    COHERE_TOKEN, COMPLETION_CONTEXT, OPENAI_AZURE_API_TOKEN, OPENAI_AZURE_ENTRA_TOKEN,
+    COHERE_TOKEN, COMPLETION_CONTEXT, LLM_TOKEN, OPENAI_AZURE_API_TOKEN, OPENAI_AZURE_ENTRA_TOKEN,
     OPENAI_DEPLOYMENT_URL, OPENAI_TOKEN,
 };
 
@@ -31,10 +31,11 @@ pub fn get_openai_runtime_params(
     dimensions: i32,
 ) -> Result<String, anyhow::Error> {
     if OPENAI_TOKEN.get().is_none()
+        && LLM_TOKEN.get().is_none()
         && OPENAI_AZURE_API_TOKEN.get().is_none()
         && OPENAI_AZURE_ENTRA_TOKEN.get().is_none()
     {
-        error!("'lantern_extras.openai_token', 'lantern_extras.openai_azure_api_token' or 'lantern_extras.openai_azure_entra_token' is required for 'openai' runtime");
+        error!("'lantern_extras.openai_token/lantern_extras.llm_token', 'lantern_extras.openai_azure_api_token' or 'lantern_extras.openai_azure_entra_token' is required for 'openai' runtime");
     }
 
     let dimensions = if dimensions > 0 {
@@ -53,11 +54,15 @@ pub fn get_openai_runtime_params(
         Some(base_url.to_owned())
     };
 
-    let api_token = if let Some(api_token) = OPENAI_TOKEN.get() {
+    let mut api_token = if let Some(api_token) = OPENAI_TOKEN.get() {
         Some(api_token.to_str().unwrap().to_owned())
     } else {
         None
     };
+
+    if api_token.is_none() && LLM_TOKEN.get().is_some() {
+        api_token = Some(LLM_TOKEN.get().unwrap().to_str().unwrap().to_owned());
+    }
 
     let azure_api_token = if let Some(api_token) = OPENAI_AZURE_API_TOKEN.get() {
         Some(api_token.to_str().unwrap().to_owned())
@@ -94,11 +99,22 @@ pub fn get_openai_runtime_params(
 }
 
 pub fn get_cohere_runtime_params(input_type: &str) -> Result<String, anyhow::Error> {
-    if COHERE_TOKEN.get().is_none() {
-        error!("'lantern_extras.cohere_token' is required for 'cohere' runtime");
+    if COHERE_TOKEN.get().is_none() && LLM_TOKEN.get().is_none() {
+        error!("'lantern_extras.cohere_token/lantern_extras.llm_token' is required for 'cohere' runtime");
     }
+
+    let mut api_token = if let Some(api_token) = COHERE_TOKEN.get() {
+        Some(api_token.to_str().unwrap().to_owned())
+    } else {
+        None
+    };
+
+    if api_token.is_none() && LLM_TOKEN.get().is_some() {
+        api_token = Some(LLM_TOKEN.get().unwrap().to_str().unwrap().to_owned());
+    }
+
     let runtime_params = serde_json::to_string(&CohereRuntimeParams {
-        api_token: Some(COHERE_TOKEN.get().unwrap().to_str().unwrap().to_owned()),
+        api_token,
         input_type: Some(input_type.to_owned()),
     })?;
 
@@ -136,7 +152,11 @@ fn openai_embedding<'a>(
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
-    let mut res = rt.block_on(runtime.process(model_name, &vec![text]))?;
+
+    let mut res = rt.block_on(runtime.process(
+        &get_clean_model_name(model_name, Runtime::OpenAi),
+        &vec![text],
+    ))?;
     Ok(res.embeddings.pop().unwrap())
 }
 
@@ -155,7 +175,10 @@ fn cohere_embedding<'a>(
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
-    let mut res = rt.block_on(runtime.process(model_name, &vec![text]))?;
+    let mut res = rt.block_on(runtime.process(
+        &get_clean_model_name(model_name, Runtime::Cohere),
+        &vec![text],
+    ))?;
     Ok(res.embeddings.pop().unwrap())
 }
 
@@ -204,25 +227,24 @@ fn get_available_runtimes() -> Result<String, anyhow::Error> {
 }
 
 #[pg_extern(immutable, parallel_safe, create_or_replace)]
-fn openai_completion<'a>(
+fn llm_completion<'a>(
     text: &'a str,
-    model_name: default!(&'a str, "'openai/gpt-4o'"),
+    model_name: default!(&'a str, "'gpt-4o'"),
     context: default!(&'a str, "''"),
     base_url: default!(&'a str, "''"),
+    runtime: default!(&'a str, "'openai'"),
 ) -> Result<String, anyhow::Error> {
     let runtime_params = get_openai_runtime_params(base_url, context, 0)?;
 
-    let runtime = EmbeddingRuntime::new(
-        &Runtime::OpenAi,
-        Some(&(notice_fn as LoggerFn)),
-        &runtime_params,
-    )?;
+    let runtime = Runtime::try_from(runtime)?;
+    let embedding_runtime =
+        EmbeddingRuntime::new(&runtime, Some(&(notice_fn as LoggerFn)), &runtime_params)?;
 
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
 
-    let res = rt.block_on(runtime.completion(model_name, text))?;
+    let res = rt.block_on(embedding_runtime.completion(model_name, text))?;
     Ok(res.message)
 }
 
@@ -398,7 +420,7 @@ pub mod tests {
 
         Spi::connect(|mut client| {
             client.update(
-                &format!("SET lantern_extras.openai_token='{openai_token}'"),
+                &format!("SET lantern_extras.llm_token='{openai_token}'"),
                 None,
                 None,
             )?;
@@ -411,7 +433,7 @@ pub mod tests {
                 .select(
                     &format!(
                         "
-                         SELECT openai_completion('{{\"x\": \"test1\"}}') as response
+                         SELECT llm_completion('{{\"x\": \"test1\"}}') as response
                      "
                     ),
                     None,

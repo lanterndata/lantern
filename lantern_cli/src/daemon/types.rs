@@ -1,4 +1,5 @@
 use crate::embeddings::cli::{EmbeddingArgs, EmbeddingJobType, Runtime};
+use crate::embeddings::core::utils::get_clean_model_name;
 use crate::external_index::cli::CreateIndexArgs;
 use crate::index_autotune::cli::IndexAutotuneArgs;
 use crate::logger::Logger;
@@ -93,7 +94,7 @@ impl EmbeddingJob {
             table: row.get::<&str, String>("table"),
             column: row.get::<&str, String>("column"),
             out_column: row.get::<&str, String>("dst_column"),
-            model: row.get::<&str, String>("model"),
+            model: get_clean_model_name(row.get::<&str, &str>("model"), runtime),
             runtime,
             runtime_params,
             filter: None,

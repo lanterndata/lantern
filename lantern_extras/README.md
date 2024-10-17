@@ -205,7 +205,7 @@ SELECT add_completion_job(
     'dst_column',        -- Destination column for embeddings
     'context',           -- System prompt to be used for LLM (default: lantern_extras.completion_context GUC)
     'column_type',       -- Target column type to be used for destination (default: TEXT)
-    'model',             -- LLM model to use (default: 'openai/gpt-4o')
+    'model',             -- LLM model to use (default: 'gpt-4o')
     'runtime',           -- Runtime environment (default: 'openai')
     'runtime_params',    -- Runtime parameters (default: '{}' inferred from GUC variables)
     'pk',                -- Primary key column (default: 'id')
@@ -257,6 +257,6 @@ This will return a table with the following columns:
 
 ***Calling Chat OpenAI Completion API***
 ```sql
-SET lantern_extras.openai_token='xxxx';
-SELECT openai_completion(query, [model, context, base_url]);
+SET lantern_extras.llm_token='xxxx';
+SELECT llm_completion(query, [model, context, base_url]);
 ```

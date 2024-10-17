@@ -314,7 +314,9 @@ async fn stream_job(
         let mut progress = 0;
         let mut processed_rows = 0;
 
-        let batch_size = embeddings::get_default_batch_size(&job.model) as i32;
+        let batch_size =
+            job.batch_size
+                .unwrap_or(embeddings::get_default_batch_size(&job.model)) as i32;
         loop {
             // poll batch_size rows from portal and send it to embedding thread via channel
             let rows = job_client

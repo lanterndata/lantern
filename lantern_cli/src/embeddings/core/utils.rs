@@ -1,3 +1,4 @@
+use super::Runtime;
 use anyhow::anyhow;
 use nvml_wrapper::Nvml;
 use reqwest::redirect::Policy;
@@ -120,6 +121,18 @@ pub async fn post_with_retries<T>(
     Err(anyhow!(
         "All {max_retries} requests failed. Last error was: {last_error}"
     ))
+}
+
+pub fn get_clean_model_name(name: &str, runtime: Runtime) -> String {
+    // This is for backward compatabilty
+    // Previously openai and cohere models were prefixed
+    // With openai/ and cohere/ , but then it was removed
+    // So to not break existing jobs we will accept both forms
+    match runtime {
+        Runtime::OpenAi => name.replace("openai/", ""),
+        Runtime::Cohere => name.replace("cohere/", ""),
+        Runtime::Ort => name.to_owned(),
+    }
 }
 
 #[macro_export]

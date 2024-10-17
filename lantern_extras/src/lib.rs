@@ -11,6 +11,8 @@ pub mod external_index;
 
 pub static OPENAI_TOKEN: GucSetting<Option<&'static CStr>> =
     GucSetting::<Option<&'static CStr>>::new(None);
+pub static LLM_TOKEN: GucSetting<Option<&'static CStr>> =
+    GucSetting::<Option<&'static CStr>>::new(None);
 pub static OPENAI_DEPLOYMENT_URL: GucSetting<Option<&'static CStr>> =
     GucSetting::<Option<&'static CStr>>::new(None);
 pub static OPENAI_AZURE_API_TOKEN: GucSetting<Option<&'static CStr>> =
@@ -36,6 +38,14 @@ pub unsafe extern "C" fn _PG_init() {
         .enable_spi_access()
         .load();
 
+    GucRegistry::define_string_guc(
+        "lantern_extras.llm_token",
+        "LLM API token.",
+        "Used when generating embeddings with OpenAI/Cohere/Llama models",
+        &LLM_TOKEN,
+        GucContext::Userset,
+        GucFlags::NO_SHOW_ALL,
+    );
     GucRegistry::define_string_guc(
         "lantern_extras.openai_token",
         "OpenAI API token.",
