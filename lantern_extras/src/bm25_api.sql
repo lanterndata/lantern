@@ -47,6 +47,46 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+
+CREATE OR REPLACE FUNCTION search_bm25(table_name TEXT, id_column TEXT, index_columns TEXT[], query TEXT, result_limit INT DEFAULT 10)
+RETURNS TABLE(doc_id INT, content_stemmed TEXT[], bm25_score REAL) AS $$
+DECLARE
+    source_column TEXT;
+    join_sql TEXT := '';
+BEGIN
+    -- Concatenate the index columns into a single source column
+    source_column := index_columns[1];
+    IF cardinality(index_columns) > 1 THEN
+        raise exception 'Multiple index columns not supported yet';
+    END IF;
+
+    -- TODO:: text_to_stem_array should not be hard-coded
+    -- TODO: get rid of potentially expensive queries on source `table_name` from below
+    RETURN QUERY EXECUTE format('
+        WITH terms AS (
+            SELECT * FROM %1$I_bm25 WHERE term = ANY(text_to_stem_array(%4$L))
+        ),
+        agg AS (
+            SELECT (unnest(bm25_agg(
+                terms.*,
+                %5$s, -- limit - number of returned results
+                (SELECT count(*)::integer from %1$I),
+                (SELECT AVG(cardinality(%3$I))::real FROM %1$I),
+                1.2,   -- k1 parameter
+                0.75   -- b parameter
+                ORDER BY doc_ids_len ASC
+            ))).* AS res FROM terms
+        )
+        SELECT agg.doc_id::INT, %1$I.content_stemmed, agg.bm25::REAL
+        FROM agg
+        LEFT JOIN %1$I
+        ON agg.doc_id = %1$I.%2$I
+        ORDER BY bm25 DESC
+    ', table_name, id_column, source_column, query, result_limit);
+END;
+$$ LANGUAGE plpgsql;
+
+
 DROP FUNCTION IF EXISTS consolidate_corpus_bm25;
 CREATE FUNCTION consolidate_bm25_table(table_name TEXT, N integer DEFAULT NULL)
 RETURNS void AS $$
