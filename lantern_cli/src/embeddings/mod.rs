@@ -47,7 +47,6 @@ impl EmbeddingRecord {
     #[allow(dead_code)]
     fn from_string(pk: String, value: String) -> EmbeddingRecord {
         let buf: BytesMut;
-        println!("Pk: {pk}, value: {value}");
         if value.len() > 0 {
             buf = BytesMut::from(
                 value
