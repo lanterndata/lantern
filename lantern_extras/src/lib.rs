@@ -12,7 +12,7 @@ pub static OPENAI_TOKEN: GucSetting<Option<&'static CStr>> =
     GucSetting::<Option<&'static CStr>>::new(None);
 pub static LLM_TOKEN: GucSetting<Option<&'static CStr>> =
     GucSetting::<Option<&'static CStr>>::new(None);
-pub static OPENAI_DEPLOYMENT_URL: GucSetting<Option<&'static CStr>> =
+pub static LLM_DEPLOYMENT_URL: GucSetting<Option<&'static CStr>> =
     GucSetting::<Option<&'static CStr>>::new(None);
 pub static OPENAI_AZURE_API_TOKEN: GucSetting<Option<&'static CStr>> =
     GucSetting::<Option<&'static CStr>>::new(None);
@@ -54,10 +54,10 @@ pub unsafe extern "C" fn _PG_init() {
         GucFlags::NO_SHOW_ALL,
     );
     GucRegistry::define_string_guc(
-        "lantern_extras.openai_deployment_url",
+        "lantern_extras.llm_deployment_url",
         "OpenAI Deployment URL.",
-        "Currently only Azure deployments of API version 2023-05-15 are supported",
-        &OPENAI_DEPLOYMENT_URL,
+        "This can be set to any OpenAI compatible API url",
+        &LLM_DEPLOYMENT_URL,
         GucContext::Userset,
         GucFlags::NO_SHOW_ALL,
     );

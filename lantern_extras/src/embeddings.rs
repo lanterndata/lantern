@@ -8,8 +8,8 @@ use lantern_cli::embeddings::{
 use pgrx::prelude::*;
 
 use crate::{
-    COHERE_TOKEN, COMPLETION_CONTEXT, LLM_TOKEN, OPENAI_AZURE_API_TOKEN, OPENAI_AZURE_ENTRA_TOKEN,
-    OPENAI_DEPLOYMENT_URL, OPENAI_TOKEN,
+    COHERE_TOKEN, COMPLETION_CONTEXT, LLM_DEPLOYMENT_URL, LLM_TOKEN, OPENAI_AZURE_API_TOKEN,
+    OPENAI_AZURE_ENTRA_TOKEN, OPENAI_TOKEN,
 };
 
 pub static ORT_RUNTIME_PARAMS: &'static str = r#"{ "cache": true }"#;
@@ -45,7 +45,7 @@ pub fn get_openai_runtime_params(
     };
 
     let base_url = if base_url == "" {
-        if let Some(deployment_url) = OPENAI_DEPLOYMENT_URL.get() {
+        if let Some(deployment_url) = LLM_DEPLOYMENT_URL.get() {
             Some(deployment_url.to_str().unwrap().to_owned())
         } else {
             None
