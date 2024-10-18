@@ -206,6 +206,7 @@ SELECT add_completion_job(
     'context',           -- System prompt to be used for LLM (default: lantern_extras.completion_context GUC)
     'column_type',       -- Target column type to be used for destination (default: TEXT)
     'model',             -- LLM model to use (default: 'gpt-4o')
+    'batch_size',        -- Batch size to use when sending batch requests (default: 2)
     'runtime',           -- Runtime environment (default: 'openai')
     'runtime_params',    -- Runtime parameters (default: '{}' inferred from GUC variables)
     'pk',                -- Primary key column (default: 'id')
