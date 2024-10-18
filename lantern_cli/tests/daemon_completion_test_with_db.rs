@@ -3,30 +3,32 @@ use lantern_cli::{
         self,
         cli::{DaemonArgs, LogLevel},
     },
-    utils::test_utils::daemon_test_utils::{setup_test, wait_for_completion},
+    utils::test_utils::daemon_test_utils::{setup_test, wait_for_completion, CLIENT_TABLE_NAME},
 };
+use std::env;
 use tokio_util::sync::CancellationToken;
 
-static CLIENT_TABLE_NAME: &'static str = "_lantern_cloud_client1";
-
 #[tokio::test]
-async fn test_daemon_autotune_with_create_index() {
+async fn test_daemon_completion_init_job() {
+    let api_token = env::var("OPENAI_TOKEN").unwrap_or("".to_owned());
+    if api_token == "" {
+        return;
+    }
+
     let (new_connection_uri, mut new_db_client) =
-        setup_test("test_daemon_autotune_with_create_index")
-            .await
-            .unwrap();
+        setup_test("test_daemon_completion_init_job").await.unwrap();
     new_db_client
         .batch_execute(&format!(
             r#"
-    INSERT INTO {CLIENT_TABLE_NAME} (title, title_embedding)
-    VALUES ('Test1', '{{0,0,0}}'),
-           ('Test2', '{{0,0,1}}'),
-           ('Test3', '{{0,0,2}}'),
-           ('Test4', '{{0,0,3}}'),
-           ('Test5', '{{0,0,4}}');
+    INSERT INTO {CLIENT_TABLE_NAME} (title)
+    VALUES ('Test1'),
+           ('Test2'),
+           ('Test3'),
+           ('Test4'),
+           ('Test5');
 
-    INSERT INTO _lantern_extras_internal.autotune_jobs ("id", "table", "column", "operator", target_recall, k, n, create_index)
-    VALUES (1, '{CLIENT_TABLE_NAME}', 'title_embedding', 'dist_cos_ops', 95.0, 10, 1000, true);
+    INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model, runtime, runtime_params, job_type, column_type)
+    VALUES (1, '{CLIENT_TABLE_NAME}', 'title', 'num', 'openai/gpt-4o', 'openai', '{{"api_token": "{api_token}", "context": "Given text testN, return the N as number without any quotes, so for Test1 you should return 1, Test105 you should return 105" }}', 'completion', 'INT');
      "#
         ))
         .await
@@ -40,8 +42,8 @@ async fn test_daemon_autotune_with_create_index() {
                 label: None,
                 master_db: None,
                 master_db_schema: String::new(),
-                embeddings: false,
-                autotune: true,
+                embeddings: true,
+                autotune: false,
                 external_index: false,
                 databases_table: String::new(),
                 schema: "_lantern_extras_internal".to_owned(),
@@ -59,7 +61,7 @@ async fn test_daemon_autotune_with_create_index() {
 
     wait_for_completion(
         &mut new_db_client,
-        &format!("SELECT COUNT(*)=1 FROM pg_indexes WHERE indexdef LIKE '%lantern_hnsw%'"),
+        &format!("SELECT COUNT(*)=5 FROM {CLIENT_TABLE_NAME} WHERE num = substring(title, 5)::INT"),
         30,
     )
     .await
@@ -67,5 +69,3 @@ async fn test_daemon_autotune_with_create_index() {
 
     cancel_token.cancel();
 }
-
-// TODO:: Test failure cases, Validate target recall

@@ -1,3 +1,4 @@
+use super::Runtime;
 use anyhow::anyhow;
 use nvml_wrapper::Nvml;
 use reqwest::redirect::Policy;
@@ -6,9 +7,7 @@ use std::sync::Arc;
 use std::{fs::create_dir_all, io::Cursor, time::Duration};
 use sysinfo::{System, SystemExt};
 
-use super::runtime::EmbeddingResult;
-
-type GetResponseFn = Box<dyn Fn(Vec<u8>) -> Result<EmbeddingResult, anyhow::Error> + Send + Sync>;
+type GetResponseFn<T> = Box<dyn Fn(Vec<u8>) -> Result<T, anyhow::Error> + Send + Sync>;
 
 pub async fn download_file(url: &str, path: &PathBuf) -> Result<(), anyhow::Error> {
     let client = reqwest::Client::builder()
@@ -78,13 +77,13 @@ pub fn percent_gpu_memory_used() -> Result<f64, anyhow::Error> {
     Ok((mem_info.used as f64 / mem_info.total as f64) * 100.0)
 }
 
-pub async fn post_with_retries(
+pub async fn post_with_retries<T>(
     client: Arc<reqwest::Client>,
     url: String,
     body: String,
-    get_response_fn: GetResponseFn,
+    get_response_fn: GetResponseFn<T>,
     max_retries: usize,
-) -> Result<EmbeddingResult, anyhow::Error> {
+) -> Result<T, anyhow::Error> {
     let starting_interval = 4000; // ms
     let mut last_error = "".to_string();
 
@@ -122,4 +121,32 @@ pub async fn post_with_retries(
     Err(anyhow!(
         "All {max_retries} requests failed. Last error was: {last_error}"
     ))
+}
+
+pub fn get_clean_model_name(name: &str, runtime: Runtime) -> String {
+    // This is for backward compatabilty
+    // Previously openai and cohere models were prefixed
+    // With openai/ and cohere/ , but then it was removed
+    // So to not break existing jobs we will accept both forms
+    match runtime {
+        Runtime::OpenAi => name.replace("openai/", ""),
+        Runtime::Cohere => name.replace("cohere/", ""),
+        Runtime::Ort => name.to_owned(),
+    }
+}
+
+#[macro_export]
+macro_rules! check_and_get_model {
+    ($a:expr, $b: expr) => {{
+        let model_info = $a.get($b);
+        if model_info.is_none() {
+            anyhow::bail!(
+                "Unsupported model {}\nAvailable models: {}",
+                $b,
+                $a.keys().join(", ")
+            );
+        }
+
+        model_info.unwrap()
+    }};
 }

@@ -74,4 +74,8 @@ pub struct DaemonArgs {
     /// Log level
     #[arg(long, value_enum, default_value_t = LogLevel::Info)] // arg_enum here
     pub log_level: LogLevel,
+
+    /// Is being run inside postgres
+    #[arg(long, default_value_t = false)]
+    pub inside_postgres: bool,
 }

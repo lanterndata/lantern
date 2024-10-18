@@ -78,12 +78,6 @@ lantern-cli create-embeddings  --model 'clip/ViT-B-32-textual'  --uri 'postgresq
 
 > The output database, table and column names can be specified via `--out-table`, `--out-uri`, `--out-column` arguments. Check `help` for more info.
 
-or you can export to csv file
-
-```bash
-lantern-cli create-embeddings  --model 'clip/ViT-B-32-textual'  --uri 'postgresql://postgres:postgres@localhost:5432/test' --table "articles" --column "description" --out-column embedding --out-csv "embeddings.csv" --schema "public"
-```
-
 ### Image Embedding Example
 
 1. Create table with image uris data
@@ -105,10 +99,10 @@ Lantern CLI also supports generating OpenAI and Cohere embeddings via API. For t
 
 ```bash
 # OpenAI
-lantern-cli create-embeddings  --model 'openai/text-embedding-ada-002' --uri 'postgresql://postgres:postgres@localhost:5432/test' --table "images" --column "url" --out-column "embedding" --schema "public" --runtime openai --runtime-params '{ "api_token": "sk-xxx-xxxx" }'
+lantern-cli create-embeddings  --model 'text-embedding-ada-002' --uri 'postgresql://postgres:postgres@localhost:5432/test' --table "images" --column "url" --out-column "embedding" --schema "public" --runtime openai --runtime-params '{ "api_token": "sk-xxx-xxxx" }'
 
 # Cohere
-lantern-cli create-embeddings  --model 'openai/text-embedding-ada-002' --uri 'postgresql://postgres:postgres@localhost:5432/test' --table "images" --column "url" --out-column "embedding" --schema "public" --runtime cohere --runtime-params '{ "api_token": "xxx-xxxx" }'
+lantern-cli create-embeddings  --model 'embed-english-v3.0' --uri 'postgresql://postgres:postgres@localhost:5432/test' --table "images" --column "url" --out-column "embedding" --schema "public" --runtime cohere --runtime-params '{ "api_token": "xxx-xxxx" }'
 ```
 
 |> To get available runtimes use `bash lantern-cli show-runtimes`
