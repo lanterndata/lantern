@@ -92,9 +92,6 @@ jobs:
           pattern: lantern-extras-*.tar
           merge-multiple: true
           path: /tmp/lantern-extras-package
-      - uses: geekyeggo/delete-artifact@v4
-        with:
-          name: lantern-extras*.tar
       - uses: actions/download-artifact@v4
         with:
           pattern: lantern-cli-*
@@ -105,9 +102,6 @@ jobs:
           pattern: lantern-*.tar
           merge-multiple: true
           path: /tmp/lantern-package
-      - uses: geekyeggo/delete-artifact@v4
-        with:
-          name: lantern-*.tar
       - name: Create universal package
         id: package
         run: sudo sh -c "GITHUB_OUTPUT=$GITHUB_OUTPUT PACKAGE_EXTRAS=1 GITHUB_TOKEN=$GITHUB_TOKEN ./ci/scripts/universal-package.sh"

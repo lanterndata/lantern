@@ -43,6 +43,8 @@ package_extension
 rm -rf $PACKAGE_DIR
 
 PACKAGE_DIR=/tmp/lantern-package
+rm -rf $PACKAGE_DIR/lantern-extras* || true
+rm -rf $PACKAGE_DIR/lantern-cli* || true
 PACKAGE_VERSION=$(ls -t $PACKAGE_DIR | head -1 | sed -E "s#lantern-(.*)-postgres.*#\1#")
 PACKAGE_NAME=lantern-${PACKAGE_VERSION}
 OUTPUT_DIR=/tmp/$PACKAGE_NAME
