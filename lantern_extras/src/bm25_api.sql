@@ -27,7 +27,7 @@ BEGIN
     -- Ideally, would want this to be in a transaction, but transaction blocks in EXECUTE are not implemented
     EXECUTE format('
         %4$s; -- Optionally, drop the table if it exists
-        CREATE UNLOGGED TABLE %1$I_bm25 AS
+        CREATE TABLE %1$I_bm25 AS
         SELECT term,
             -- number of documents containing the term. this is identical to doc_ids_len at bulk construction, but as inserts happen, the two will diverge
             count(%2$I)::integer as term_freq,
