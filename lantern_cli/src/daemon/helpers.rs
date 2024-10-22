@@ -167,20 +167,22 @@ pub async fn startup_hook(
         .await?;
     // create schema and table if not exists
     transaction
-        .execute(
-            &format!(
-                "CREATE SCHEMA IF NOT EXISTS {schema}",
-                schema = quote_ident(schema)
-            ),
-            &[],
-        )
+        .batch_execute(&format!(
+            "
+                CREATE SCHEMA IF NOT EXISTS {schema};
+                GRANT USAGE ON SCHEMA {schema} TO PUBLIC;
+                ",
+            schema = quote_ident(schema)
+        ))
         .await?;
     let full_table_name = get_full_table_name(schema, table);
     transaction
-        .execute(
-            &format!("CREATE TABLE IF NOT EXISTS {full_table_name} ({table_def})"),
-            &[],
-        )
+        .batch_execute(&format!(
+            "
+            CREATE TABLE IF NOT EXISTS {full_table_name} ({table_def});
+            GRANT SELECT ON {full_table_name} TO PUBLIC;
+            "
+        ))
         .await?;
 
     if let Some(migration_sql) = migration {
@@ -256,10 +258,12 @@ pub async fn startup_hook(
         let results_table_def = results_table_def.unwrap();
 
         transaction
-            .execute(
-                &format!("CREATE TABLE IF NOT EXISTS {results_table_name} ({results_table_def})"),
-                &[],
-            )
+            .batch_execute(&format!(
+                "
+                    CREATE TABLE IF NOT EXISTS {results_table_name} ({results_table_def});
+                    GRANT SELECT ON {results_table_name} TO PUBLIC;
+                "
+            ))
             .await?;
     }
 
@@ -269,7 +273,9 @@ pub async fn startup_hook(
         transaction
             .batch_execute(&format!(
                 "CREATE TABLE IF NOT EXISTS {usage_table_name} ({usage_table_def});
-                 CREATE INDEX IF NOT EXISTS embedding_usage_date_idx ON {usage_table_name}(created_at);"
+                 CREATE INDEX IF NOT EXISTS embedding_usage_date_idx ON {usage_table_name}(created_at);
+                 GRANT SELECT ON {usage_table_name} TO PUBLIC;
+                "
             ))
             .await?;
     }
@@ -283,7 +289,9 @@ pub async fn startup_hook(
                 -- this function is used for completion jobs
                 {ldb_try_cast_fn}
                  CREATE TABLE IF NOT EXISTS {failure_table_name} ({failure_table_def});
-                 CREATE INDEX IF NOT EXISTS embedding_failures_job_id_row_id ON {failure_table_name}(job_id, row_id);",
+                 CREATE INDEX IF NOT EXISTS embedding_failures_job_id_row_id ON {failure_table_name}(job_id, row_id);
+                 GRANT SELECT ON {failure_table_name} TO PUBLIC;
+            ",
             ldb_try_cast_fn = get_try_cast_fn_sql(&schema)
             ))
             .await?;
