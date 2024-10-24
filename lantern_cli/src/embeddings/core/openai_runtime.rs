@@ -63,9 +63,11 @@ struct OpenAiChatResponse {
     usage: OpenAiUsage,
 }
 
+#[derive(PartialEq, Debug)]
 enum OpenAiDeployment {
     Azure,
     OpenAi,
+    Custom,
 }
 
 static AZURE_OPENAI_REGEX: &'static str = r"^https:\/\/[a-zA-Z0-9_\-]+\.openai\.azure\.com\/openai\/deployments\/[a-zA-Z0-9_\-]+\/embeddings\?api-version=2023-05-15$";
@@ -188,6 +190,7 @@ pub struct OpenAiRuntime<'a> {
     headers: Vec<(String, String)>,
     context: serde_json::Value,
     dimensions: Option<usize>,
+    deployment_type: OpenAiDeployment,
     #[allow(dead_code)]
     logger: &'a LoggerFn,
 }
@@ -209,7 +212,7 @@ impl<'a> OpenAiRuntime<'a> {
         let (deployment, base_url) = Self::get_base_url(&runtime_params.base_url)?;
 
         let auth_header = match deployment {
-            OpenAiDeployment::OpenAi => {
+            OpenAiDeployment::OpenAi | OpenAiDeployment::Custom => {
                 if runtime_params.api_token.is_none() {
                     anyhow::bail!("'api_token' is required for OpenAi runtime");
                 }
@@ -248,6 +251,7 @@ impl<'a> OpenAiRuntime<'a> {
             base_url,
             logger,
             request_timeout: 120,
+            deployment_type: deployment,
             headers: vec![
                 ("Content-Type".to_owned(), "application/json".to_owned()),
                 auth_header,
@@ -274,7 +278,7 @@ impl<'a> OpenAiRuntime<'a> {
             return Ok((OpenAiDeployment::Azure, base_url.clone()));
         }
 
-        return Ok((OpenAiDeployment::OpenAi, base_url.clone()));
+        return Ok((OpenAiDeployment::Custom, base_url.clone()));
     }
 
     fn group_vectors_by_token_count(
@@ -314,6 +318,19 @@ impl<'a> OpenAiRuntime<'a> {
         model_name: &str,
         inputs: &Vec<&str>,
     ) -> Result<Vec<String>, anyhow::Error> {
+        if self.deployment_type == OpenAiDeployment::Custom {
+            let json_string = serde_json::to_string(inputs).unwrap();
+            let batch_input = vec![format!(
+                r#"
+                 {{
+                   "input": {json_string},
+                   "model": "{model_name}"
+                 }}
+                "#
+            )];
+            return Ok(batch_input);
+        };
+
         let model_map = MODEL_INFO_MAP.read().await;
         let model_info = check_and_get_model!(model_map, model_name);
         let token_groups: Vec<Vec<usize>> = inputs
@@ -361,9 +378,6 @@ impl<'a> OpenAiRuntime<'a> {
         query: &str,
         retries: Option<usize>,
     ) -> Result<CompletionResult, anyhow::Error> {
-        let model_map = COMPLETION_MODEL_INFO_MAP.read().await;
-        let model_info = check_and_get_model!(model_map, model_name);
-
         let client = Arc::new(self.get_client()?);
         let url = Url::parse(&self.base_url)?
             .join("/v1/chat/completions")?
@@ -372,7 +386,7 @@ impl<'a> OpenAiRuntime<'a> {
             client,
             url,
             serde_json::to_string(&json!({
-            "model": model_info.name,
+            "model": model_name,
             "messages": [
               self.context,
               { "role": "user", "content": query }
@@ -391,8 +405,10 @@ impl<'a> OpenAiRuntime<'a> {
         model_name: &str,
         queries: &Vec<&str>,
     ) -> Result<BatchCompletionResult, anyhow::Error> {
-        let model_map = COMPLETION_MODEL_INFO_MAP.read().await;
-        check_and_get_model!(model_map, model_name);
+        if self.deployment_type != OpenAiDeployment::Custom {
+            let model_map = COMPLETION_MODEL_INFO_MAP.read().await;
+            check_and_get_model!(model_map, model_name);
+        }
 
         let mut processed_tokens = 0;
 

@@ -125,6 +125,7 @@ fn add_embedding_job<'a>(
     src_column: &'a str,
     dst_column: &'a str,
     embedding_model: &'a str,
+    batch_size: default!(i32, -1),
     runtime: default!(&'a str, "'ort'"),
     runtime_params: default!(&'a str, "'{}'"),
     pk: default!(&'a str, "'id'"),
@@ -143,12 +144,13 @@ fn add_embedding_job<'a>(
         }
     }
 
+    let batch_size = if batch_size == -1 { "NULL".to_string() } else { batch_size.to_string() };
     let id: Option<i32> = Spi::get_one_with_args(
         &format!(
             r#"
           ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {dst_column} REAL[];
-          INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("table", "schema", pk, src_column, dst_column, embedding_model, runtime, runtime_params) VALUES
-          ($1, $2, $3, $4, $5, $6, $7, $8::jsonb) RETURNING id;
+          INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("table", "schema", pk, src_column, dst_column, embedding_model, runtime, runtime_params, batch_size) VALUES
+          ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, {batch_size}) RETURNING id;
         "#,
             table = get_full_table_name(schema, table),
             dst_column = quote_ident(dst_column)
@@ -358,7 +360,7 @@ pub mod tests {
                 None,
                 None,
             )?;
-            let id = client.select("SELECT add_embedding_job('t1', 'title', 'title_embedding', 'BAAI/bge-small-en', 'ort', '{}', 'id', 'public')", None, None)?;
+            let id = client.select("SELECT add_embedding_job('t1', 'title', 'title_embedding', 'BAAI/bge-small-en', -1, 'ort', '{}', 'id', 'public')", None, None)?;
 
             let id: Option<i32> = id.first().get(1)?;
 
@@ -561,7 +563,7 @@ pub mod tests {
                 None,
                 None,
             )?;
-            let id = client.select("SELECT add_embedding_job('t1', 'title', 'title_embedding', 'BAAI/bge-small-en', 'openai', '{}', 'id', 'public')", None, None)?;
+            let id = client.select("SELECT add_embedding_job('t1', 'title', 'title_embedding', 'BAAI/bge-small-en', -1, 'openai', '{}', 'id', 'public')", None, None)?;
 
             let id: Option<i32> = id.first().get(1)?;
 
@@ -572,7 +574,7 @@ pub mod tests {
 
             assert_eq!(api_token.unwrap(), "\"test_openai\"".to_owned());
 
-            let id = client.select("SELECT add_embedding_job('t1', 'title', 'title_embedding', 'BAAI/bge-small-en', 'cohere', '{}', 'id', 'public')", None, None)?;
+            let id = client.select("SELECT add_embedding_job('t1', 'title', 'title_embedding', 'BAAI/bge-small-en', -1, 'cohere', '{}', 'id', 'public')", None, None)?;
 
             let id: Option<i32> = id.first().get(1)?;
 
@@ -600,7 +602,7 @@ pub mod tests {
                 None,
             )?;
 
-            let id = client.update("SELECT add_embedding_job('t1', 'title', 'title_embedding', 'BAAI/bge-small-en', 'ort', '{}', 'id', 'public')", None, None)?;
+            let id = client.update("SELECT add_embedding_job('t1', 'title', 'title_embedding', 'BAAI/bge-small-en', -1, 'ort', '{}', 'id', 'public')", None, None)?;
             let id: i32 = id.first().get(1)?.unwrap();
 
             // queued
@@ -686,8 +688,8 @@ pub mod tests {
                 None,
             )?;
 
-            client.update("SELECT add_embedding_job('t1', 'title', 'title_embedding', 'BAAI/bge-small-en', 'ort', '{}', 'id', 'public')", None, None)?;
-            client.update("SELECT add_embedding_job('t1', 'title', 'title_embedding2', 'BAAI/bge-small-en', 'ort', '{}', 'id', 'public')", None, None)?;
+            client.update("SELECT add_embedding_job('t1', 'title', 'title_embedding', 'BAAI/bge-small-en', -1, 'ort', '{}', 'id', 'public')", None, None)?;
+            client.update("SELECT add_embedding_job('t1', 'title', 'title_embedding2', 'BAAI/bge-small-en', -1, 'ort', '{}', 'id', 'public')", None, None)?;
 
             // queued
             let rows = client.select("SELECT status, progress, error FROM get_embedding_jobs()", None, None)?;
@@ -718,7 +720,7 @@ pub mod tests {
                 None,
                 None,
             )?;
-            let id = client.update("SELECT add_embedding_job('t1', 'title', 'title_embedding', 'BAAI/bge-small-en', 'ort', '{}', 'id', 'public')", None, None)?;
+            let id = client.update("SELECT add_embedding_job('t1', 'title', 'title_embedding', 'BAAI/bge-small-en', -1, 'ort', '{}', 'id', 'public')", None, None)?;
             let id: i32 = id.first().get(1)?.unwrap();
             client.update("SELECT cancel_embedding_job($1)", None, Some(vec![(PgBuiltInOids::INT4OID.oid(), id.into_datum())]))?;
             let rows = client.select("SELECT status, progress, error FROM get_embedding_job_status($1)", None, Some(vec![(PgBuiltInOids::INT4OID.oid(), id.into_datum())]))?;
@@ -748,7 +750,7 @@ pub mod tests {
                 None,
                 None,
             )?;
-            let id = client.update("SELECT add_embedding_job('t1', 'title', 'title_embedding', 'BAAI/bge-small-en', 'ort', '{}', 'id', 'public')", None, None)?;
+            let id = client.update("SELECT add_embedding_job('t1', 'title', 'title_embedding', 'BAAI/bge-small-en', -1, 'ort', '{}', 'id', 'public')", None, None)?;
             let id: i32 = id.first().get(1)?.unwrap();
             client.update("SELECT cancel_embedding_job($1)", None, Some(vec![(PgBuiltInOids::INT4OID.oid(), id.into_datum())]))?;
             client.update("SELECT resume_embedding_job($1)", None, Some(vec![(PgBuiltInOids::INT4OID.oid(), id.into_datum())]))?;
