@@ -33,3 +33,4 @@ lantern_hnsw/build
 **/*.rs.bk
 Cargo.lock
 .ldb_extras_data
+*.profraw
