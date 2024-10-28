@@ -55,16 +55,24 @@ END;
 $$ LANGUAGE plpgsql;
 
 
-CREATE OR REPLACE FUNCTION search_bm25(table_name TEXT, id_column TEXT, index_columns TEXT[], query TEXT, result_limit INT DEFAULT 10)
+CREATE OR REPLACE FUNCTION search_bm25(table_name TEXT, id_column TEXT, index_columns TEXT[], query TEXT, result_limit INT DEFAULT 10, join_content BOOLEAN DEFAULT TRUE)
 RETURNS TABLE(doc_id INT, content_stemmed TEXT[], bm25_score REAL) AS $$
 DECLARE
     source_column TEXT;
+    -- the next two store LEFT JOIN clause and corresponding SELECT column, when
+    -- those are requested
     join_sql TEXT := '';
+    join_sql_select TEXT := ',NULL::TEXT[]';
 BEGIN
     -- Concatenate the index columns into a single source column
     source_column := index_columns[1];
     IF cardinality(index_columns) > 1 THEN
         raise exception 'Multiple index columns not supported yet';
+    END IF;
+
+    IF join_content THEN
+        join_sql := format('LEFT JOIN %1$I ON agg.doc_id = %1$I.%2$I', table_name, id_column);
+        join_sql_select := format(', %1$I.%2$I', table_name, source_column);
     END IF;
 
     -- TODO:: text_to_stem_array should not be hard-coded
@@ -86,12 +94,9 @@ BEGIN
                 ORDER BY doc_ids_len ASC
             ))).* AS res FROM terms
         )
-        SELECT agg.doc_id::INT, %1$I.content_stemmed, agg.bm25::REAL
-        FROM agg
-        LEFT JOIN %1$I
-        ON agg.doc_id = %1$I.%2$I
-        ORDER BY bm25 DESC
-    ', table_name, id_column, source_column, query, result_limit);
+        SELECT agg.doc_id::INT %6$s, agg.bm25::REAL
+        FROM agg %7$s
+    ', table_name, id_column, source_column, query, result_limit, join_sql_select, join_sql);
 END;
 $$ LANGUAGE plpgsql;
 
