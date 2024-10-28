@@ -41,7 +41,14 @@ BEGIN
             FROM %1$I, unnest(%3$I) AS term) alias
             GROUP BY term;
 
+        -- Store corpus wide stats in _bm25 table, by repurposing some of the columns:
+        INSERT INTO %1$I_bm25 (term_freq, doc_ids_len) VALUES
+        ((SELECT COUNT(*) FROM %1$I),
+            (SELECT AVG(cardinality(%3$I)) * 100 FROM %1$I));
+
         CREATE INDEX ON %1$I_bm25 USING hash(term);
+        -- make random access to the NULL row very very fast, since we use it in every call of bm25_agg to retrieve corpus-wide stats
+        CREATE INDEX ON %1$I_bm25 ((true)) WHERE term IS NULL;
         UPDATE %1$I_bm25 SET doc_ids_bloom = array_to_bloom(doc_ids) WHERE cardinality(doc_ids) > 8000;
     ', table_name, id_column, source_column, drop_if_exists_sql);
 END;
@@ -61,17 +68,19 @@ BEGIN
     END IF;
 
     -- TODO:: text_to_stem_array should not be hard-coded
-    -- TODO: get rid of potentially expensive queries on source `table_name` from below
     RETURN QUERY EXECUTE format('
         WITH terms AS (
-            SELECT * FROM %1$I_bm25 WHERE term = ANY(text_to_stem_array(%4$L))
+            SELECT * FROM %1$I_bm25 WHERE term = ANY(text_to_stem_array(%4$L)) ORDER BY cardinality(doc_ids) DESC
+        ),
+        corpus_stats AS (
+            SELECT term_freq AS num_docs, doc_ids_len / 100.0 AS avg_doc_len FROM %1$I_bm25 WHERE term IS NULL
         ),
         agg AS (
             SELECT (unnest(bm25_agg(
                 terms.*,
                 %5$s, -- limit - number of returned results
-                (SELECT count(*)::integer from %1$I),
-                (SELECT AVG(cardinality(%3$I))::real FROM %1$I),
+                (SELECT num_docs from corpus_stats),
+                (SELECT avg_doc_len FROM corpus_stats),
                 1.2,   -- k1 parameter
                 0.75   -- b parameter
                 ORDER BY doc_ids_len ASC
