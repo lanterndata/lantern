@@ -221,7 +221,7 @@ ALTER TEXT SEARCH CONFIGURATION custom_english
             "the", "quick", "brown", "fox", "jumps", "over", "the", "lazy", "dog",
         ];
         let expected = vec!["quick", "brown", "fox", "jump", "lazi", "dog"];
-        let result = Spi::get_one_with_args::<Vec<&str>>(
+        let result = Spi::get_one_with_args::<Vec<String>>(
             "SELECT text_to_stem_array($1, 'tsvector')",
             vec![(PgBuiltInOids::TEXTOID.oid(), input.into_datum())],
         )
@@ -232,7 +232,7 @@ ALTER TEXT SEARCH CONFIGURATION custom_english
         Spi::run("SELECT set_user_stopwords(ARRAY['the', 'over', 'quick'])").unwrap();
         let mut expected = expected.clone();
         expected.remove(0);
-        let result = Spi::get_one_with_args::<Vec<&str>>(
+        let result = Spi::get_one_with_args::<Vec<String>>(
             "SELECT text_to_stem_array($1, 'tsvector', tsvector_strategy => 'custom_english')",
             vec![(PgBuiltInOids::TEXTOID.oid(), input.into_datum())],
         )
@@ -241,7 +241,7 @@ ALTER TEXT SEARCH CONFIGURATION custom_english
 
         assert_eq!(result, expected);
 
-        let result = Spi::get_one_with_args::<Vec<&str>>(
+        let result = Spi::get_one_with_args::<Vec<String>>(
             "SELECT text_to_stem_array($1, 'tsvector', tsvector_strategy => 'simple')",
             vec![(PgBuiltInOids::TEXTOID.oid(), input.into_datum())],
         )
@@ -257,23 +257,25 @@ ALTER TEXT SEARCH CONFIGURATION custom_english
     fn test_text_to_stem_array_rust_engine() {
         let input = "The quick brown fox jumps over the lazy dog.";
         let expected = vec!["quick", "brown", "fox", "jump", "over", "lazi", "dog"];
-        let result = Spi::get_one_with_args::<Vec<&str>>(
+        let result = Spi::get_one_with_args::<Vec<String>>(
             "SELECT text_to_stem_array($1, 'rust')",
             vec![(PgBuiltInOids::TEXTOID.oid(), input.into_datum())],
         )
+        .unwrap()
         .unwrap();
-        assert_eq!(result, Some(expected));
+        assert_eq!(result, expected);
     }
 
     #[pg_test]
     fn test_text_to_stem_array_tsvector_engine() {
         let input = "The quick brown fox jumps over the lazy dog.";
         let expected = vec!["quick", "brown", "fox", "jump", "lazi", "dog"];
-        let result = Spi::get_one_with_args::<Vec<&str>>(
+        let result = Spi::get_one_with_args::<Vec<String>>(
             "SELECT text_to_stem_array($1, 'tsvector')",
             vec![(PgBuiltInOids::TEXTOID.oid(), input.into_datum())],
         )
+        .unwrap()
         .unwrap();
-        assert_eq!(result, Some(expected));
+        assert_eq!(result, expected);
     }
 }
