@@ -16,7 +16,7 @@ function setup_rust() {
   if [ ! -f /tmp/rustup.sh ]; then
     curl -k -o /tmp/rustup.sh https://sh.rustup.rs
     chmod +x /tmp/rustup.sh
-    /tmp/rustup.sh -y --default-toolchain=1.78.0
+    /tmp/rustup.sh -y --default-toolchain=1.82.0
   fi
   . "$HOME/.cargo/env"
 }
