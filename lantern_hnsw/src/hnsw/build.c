@@ -455,7 +455,7 @@ static void BuildIndexCleanup(ldb_HnswBuildState *buildstate)
         buildstate->external_socket->close(buildstate->external_socket);
     }
 
-    if(buildstate->index_file_fd != -1) {
+    if(buildstate->index_file_fd > 0) {
         // index_file_fd will only exist when we mmap the index file to memory
         if(!buildstate->external && buildstate->index_buffer) {
             int munmap_ret = munmap(buildstate->index_buffer, buildstate->index_buffer_size);

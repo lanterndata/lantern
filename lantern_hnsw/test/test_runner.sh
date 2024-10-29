@@ -46,6 +46,7 @@ function run_regression_test {
                     -e 's! Average  Peak Memory: [0-9]\{1,\}kB!!' \
                     -e 's! time=[0-9]\+\.[0-9]\+\.\.[0-9]\+\.[0-9]\+!!' | \
                grep -v 'DEBUG:  rehashing catalog cache id' | \
+               grep -v 'WARNING:  this hook is experimental and can cause undefined behaviour' | \
                grep -Gv '^ Planning Time:' | \
                grep -Gv '^ Execution Time:' | \
                # ignore lines in explain(format json) output that differ among pg12-pg16

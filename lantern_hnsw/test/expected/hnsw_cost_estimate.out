@@ -63,7 +63,6 @@ INFO:  done init usearch index
 INFO:  inserted 0 elements
 INFO:  done saving 0 vectors
 SET _lantern_internal.is_test = true;
-WARNING:  this hook is experimental and can cause undefined behaviour
 SELECT is_cost_estimate_within_error('EXPLAIN SELECT * FROM empty_table ORDER BY v <?> ''{1,2}'' LIMIT 10', 0.47);
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
