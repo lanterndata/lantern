@@ -8,6 +8,7 @@ INFO:  done saving 2 vectors
 -- should rewrite operator
 SET lantern.pgvector_compat=FALSE;
 SELECT * FROM op_test ORDER BY v <?> ARRAY[1,1,1];
+WARNING:  this hook is experimental and can cause undefined behaviour
     v    
 ---------
  {1,1,1}

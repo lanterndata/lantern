@@ -51,6 +51,7 @@ EXPLAIN (COSTS FALSE) SELECT id FROM sift_base1k order by v <-> :'v777' LIMIT 10
 
 SET lantern.pgvector_compat=FALSE;
 EXPLAIN (COSTS FALSE) SELECT id FROM sift_base1k order by v <?> :'v777' LIMIT 10;
+WARNING:  this hook is experimental and can cause undefined behaviour
                                                                                                                                                                                 QUERY PLAN                                                                                                                                                                                 
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit

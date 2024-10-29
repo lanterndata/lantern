@@ -22,6 +22,7 @@ SELECT
     l2sq_dist(v, '{0,0}') AS dist
 FROM
     small_world;
+WARNING:  this hook is experimental and can cause undefined behaviour
 -- Get the results with the index
 CREATE TEMP TABLE results_w_index AS
 SELECT

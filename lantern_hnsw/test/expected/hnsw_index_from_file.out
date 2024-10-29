@@ -55,6 +55,7 @@ SELECT * FROM ldb_get_indexes('sift_base1k');
 SET enable_seqscan=FALSE;
 SET lantern.pgvector_compat=FALSE;
 SELECT v AS v777 FROM sift_base1k WHERE id = 777 \gset
+WARNING:  this hook is experimental and can cause undefined behaviour
 EXPLAIN (COSTS FALSE) SELECT ROUND(l2sq_dist(v, :'v777')::numeric, 2) FROM sift_base1k order by v <?> :'v777' LIMIT 10;
                                                                                                                                                                                 QUERY PLAN                                                                                                                                                                                 
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------

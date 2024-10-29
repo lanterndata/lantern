@@ -17,6 +17,7 @@ void                  CheckExtensionVersions();
 uint32                EstimateRowCount(Relation heap);
 int32                 GetColumnAttributeNumber(Relation rel, const char *columnName);
 usearch_metric_kind_t GetMetricKindFromStr(char *metric_kind_str);
+Oid                   TypenameGetVectorTypid();
 
 // hoping to throw the error via an assertion, if those are on, before elog(ERROR)-ing as a last resort
 // We prefer Assert() because this function is used in contexts where the stack contains non-POD types

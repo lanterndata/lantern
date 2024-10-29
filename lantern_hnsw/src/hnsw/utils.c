@@ -2,14 +2,18 @@
 
 #include "utils.h"
 
+#include <access/heapam.h>
 #include <assert.h>
-#include <catalog/pg_type_d.h>
+#include <catalog/namespace.h>
+#include <catalog/pg_proc.h>
 #include <executor/spi.h>
 #include <math.h>
 #include <miscadmin.h>
 #include <regex.h>
 #include <string.h>
 #include <utils/builtins.h>
+#include <utils/rel.h>
+#include <utils/syscache.h>
 
 #if PG_VERSION_NUM >= 130000
 #include <utils/memutils.h>
@@ -270,4 +274,26 @@ usearch_metric_kind_t GetMetricKindFromStr(char *metric_kind_str)
     }
 
     elog(ERROR, "Unsupported metric kind: %s . Should be one of (l2sq, cos, hamming)", metric_kind_str);
+}
+
+/*
+ * We are not using existing TypenameGetTypid because after Postgres 17
+ * The maintenance operations have restricted search_path for namepsaces (pg_catalog, pg_temp)
+ * Thus if the type will be installed in public schema, it will not be able to find the type
+ * Here we will call SQL function defined in lantern.sql file, which will lookup pg_type relation
+ */
+Oid TypenameGetVectorTypid()
+{
+    Oid function_oid = GetSysCacheOid(PROCNAMEARGSNSP,
+                                      Anum_pg_proc_oid,
+                                      CStringGetDatum("get_vector_type_oid"),
+                                      PointerGetDatum(buildoidvector(NULL, 0)),
+                                      ObjectIdGetDatum(get_namespace_oid("_lantern_internal", false)),
+                                      0);
+
+    if(!OidIsValid(function_oid)) {
+        elog(ERROR, "Please update lantern extension");
+    }
+
+    return DatumGetObjectId(OidFunctionCall0(function_oid));
 }

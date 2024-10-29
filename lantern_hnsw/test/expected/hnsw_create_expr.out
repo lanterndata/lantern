@@ -67,10 +67,16 @@ SET enable_seqscan = false;
 SET lantern.pgvector_compat=FALSE;
 -- This should success
 CREATE INDEX ON test_table USING lantern_hnsw (int_to_fixed_binary_real_array(id)) WITH (M=2);
+WARNING:  this hook is experimental and can cause undefined behaviour
+WARNING:  this hook is experimental and can cause undefined behaviour
+WARNING:  this hook is experimental and can cause undefined behaviour
+WARNING:  this hook is experimental and can cause undefined behaviour
+WARNING:  this hook is experimental and can cause undefined behaviour
 INFO:  done init usearch index
 INFO:  inserted 3 elements
 INFO:  done saving 3 vectors
 SELECT _lantern_internal.validate_index('test_table_int_to_fixed_binary_real_array_idx', false);
+WARNING:  this hook is experimental and can cause undefined behaviour
 INFO:  validate_index() start for test_table_int_to_fixed_binary_real_array_idx
 INFO:  validate_index() done, no issues found.
  validate_index 

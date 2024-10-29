@@ -92,7 +92,7 @@ BEGIN
     LOOP
         real_array := array_append(real_array, CAST(substring(binary_string, i, 1) AS REAL));
     END LOOP;
-    RETURN real_array::vector;
+    RETURN real_array::public.vector;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
