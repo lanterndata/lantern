@@ -10,11 +10,14 @@
 #include <parser/parse_oper.h>
 #include <utils/catcache.h>
 #include <utils/guc.h>
+#include <utils/memutils.h>
 
 #include "../hnsw/options.h"
 #include "utils.h"
 
 post_parse_analyze_hook_type original_post_parse_analyze_hook = NULL;
+
+List *oidList;
 
 typedef struct
 {
@@ -176,7 +179,13 @@ void post_parse_analyze_hook_with_operator_check(ParseState *pstate,
         return;
     }
 
-    List *oidList = ldb_get_operator_oids();
+    if(!oidList) {
+        elog(WARNING, "this hook is experimental and can cause undefined behaviour");
+        MemoryContext oldCtx = MemoryContextSwitchTo(CacheMemoryContext);
+        oidList = ldb_get_operator_oids();
+        MemoryContextSwitchTo(oldCtx);
+    }
+
     Node *query_as_node = (Node *)query;
     if(is_operator_used(query_as_node, oidList)) {
         List *sort_group_refs = get_sort_group_refs(query_as_node);
@@ -185,5 +194,4 @@ void post_parse_analyze_hook_with_operator_check(ParseState *pstate,
         }
         list_free(sort_group_refs);
     }
-    list_free(oidList);
 }
