@@ -1,5 +1,5 @@
 use futures::StreamExt;
-use image::{imageops::FilterType, io::Reader as ImageReader, GenericImageView};
+use image::{imageops::FilterType, GenericImageView, ImageReader};
 use itertools::Itertools;
 use ndarray::{s, Array2, Array4, ArrayBase, Axis, CowArray, CowRepr, Dim, IxDynImpl};
 use ort::session::Session;
