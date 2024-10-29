@@ -29,7 +29,6 @@ jobs:
           - postgres: 14
           - postgres: 13
           - postgres: 12
-          - postgres: 11
     steps:
       - uses: actions/checkout@v4
         with:
