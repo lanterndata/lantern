@@ -10,7 +10,6 @@ RESET client_min_messages;
 SET lantern.pgvector_compat=FALSE;
 -- Verify basic functionality of pgvector
 SELECT '[1,2,3]'::vector;
-WARNING:  this hook is experimental and can cause undefined behaviour
  vector  
 ---------
  [1,2,3]

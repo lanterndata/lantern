@@ -71,7 +71,6 @@ CREATE TABLE IF NOT EXISTS sift_base10k (
 \copy sift_base10k (v) FROM '/tmp/lantern/vector_datasets/siftsmall_base_arrays.csv' with csv;
 SET lantern.pgvector_compat=FALSE;
 CREATE INDEX hnsw_idx ON sift_base10k USING lantern_hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=4, dim=128);
-WARNING:  this hook is experimental and can cause undefined behaviour
 INFO:  done init usearch index
 INFO:  inserted 10000 elements
 INFO:  done saving 10000 vectors
