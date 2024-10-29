@@ -136,9 +136,9 @@ struct BatchJobResponse {
 fn run_batch_job(logger: &Logger, task_body: &str, parent: &str) -> AnyhowVoidResult {
     let url = format!("https://batch.googleapis.com/v1/{parent}/jobs");
     let runtime = Runtime::new()?;
-    let authentication_manager = runtime.block_on(gcp_auth::AuthenticationManager::new())?;
+    let authentication_manager = runtime.block_on(gcp_auth::provider())?;
     let token = runtime.block_on(
-        authentication_manager.get_token(&["https://www.googleapis.com/auth/cloud-platform"]),
+        authentication_manager.token(&["https://www.googleapis.com/auth/cloud-platform"]),
     )?;
     let token_str = token.as_str();
 
@@ -178,7 +178,7 @@ fn run_batch_job(logger: &Logger, task_body: &str, parent: &str) -> AnyhowVoidRe
     logger.info(&format!("Job {} created. Waiting to succeed", job_name));
     loop {
         let token = runtime.block_on(
-            authentication_manager.get_token(&["https://www.googleapis.com/auth/cloud-platform"]),
+            authentication_manager.token(&["https://www.googleapis.com/auth/cloud-platform"]),
         )?;
         let token_str = token.as_str();
 
