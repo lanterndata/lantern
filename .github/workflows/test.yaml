@@ -177,6 +177,7 @@ jobs:
         run: |
           cargo install cargo-pgrx --version 0.12.7
           cargo pgrx init "--pg$PG_VERSION" /usr/bin/pg_config
+          sed -i -e "s/default = .*/default=[\"pg${PG_VERSION}\"]/" lantern_extras/Cargo.toml
           RUSTFLAGS="--cfg profile=\"ci-build\"" cargo pgrx install --sudo --pg-config /usr/bin/pg_config --package lantern_extras
         env:
           PG_VERSION: ${{ matrix.postgres }}
@@ -186,8 +187,10 @@ jobs:
           PG_VERSION: ${{ matrix.postgres }}
       - name: Setup permissions
         run: |
-          sudo chmod 777 -R /usr/lib/postgresql/15/lib/
-          sudo chmod 777 -R /usr/share/postgresql/15/extension/
+          sudo chmod 777 -R "/usr/lib/postgresql/${PG_VERSION}/lib/"
+          sudo chmod 777 -R "/usr/share/postgresql/${PG_VERSION}/extension/"
+        env:
+          PG_VERSION: ${{ matrix.postgres }}
       - name: Run tests
         run: cargo llvm-cov --workspace --lcov --output-path lantern-extras-lcov.info
         env:
@@ -196,7 +199,7 @@ jobs:
           DB_URL: "postgres://postgres@127.0.0.1:5432/postgres"
       - name: Upload lantern_extras coverage
         uses: actions/upload-artifact@v4
-        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        if: ${{ startsWith(matrix.os, 'ubuntu') && matrix.postgres == 15}}
         with:
           name: lantern-extras-lcov.info
           path: ./lantern-extras-lcov.info
