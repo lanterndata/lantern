@@ -22,7 +22,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-22.04, ubicloud-standard-4-arm, macos-13]
-        postgres: [12, 13, 14, 15, 16]
+        postgres: [12, 13, 14, 15, 16, 17]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -148,7 +148,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-22.04, ubicloud-standard-4-arm]
-        postgres: [15]
+        postgres: [15, 17]
     steps:
       - uses: actions/checkout@v4
         with:
