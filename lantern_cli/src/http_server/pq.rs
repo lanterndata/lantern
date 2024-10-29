@@ -32,7 +32,7 @@ pub struct CreatePQInput {
     post,
     path = "/collections/{name}/pq",
     request_body  (
-        content = CreateIndexInput,
+        content = CreatePQInput,
         example = json!(r#"{ "column": "vector", "clusters": 2, "splits": 1 }"#),
     ),
     responses(
