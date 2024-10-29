@@ -133,7 +133,7 @@ pub mod pg_test {
 
     pub fn postgresql_conf_options() -> Vec<&'static str> {
         vec![
-            "shared_preload_libraries='lantern_extras.so'",
+            "shared_preload_libraries='lantern_extras'",
             "lantern_extras.daemon_databases='pgrx_tests'",
             "lantern_extras.enable_daemon=true",
         ]
