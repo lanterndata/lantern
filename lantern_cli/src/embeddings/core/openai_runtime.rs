@@ -283,9 +283,9 @@ impl<'a> OpenAiRuntime<'a> {
 
     fn group_vectors_by_token_count(
         &self,
-        input: Vec<Vec<usize>>,
+        input: Vec<Vec<u32>>,
         max_token_count: usize,
-    ) -> Vec<Vec<Vec<usize>>> {
+    ) -> Vec<Vec<Vec<u32>>> {
         let mut result = Vec::new();
         let mut current_group = Vec::new();
         let mut current_group_token_count = 0;
@@ -333,7 +333,7 @@ impl<'a> OpenAiRuntime<'a> {
 
         let model_map = MODEL_INFO_MAP.read().await;
         let model_info = check_and_get_model!(model_map, model_name);
-        let token_groups: Vec<Vec<usize>> = inputs
+        let token_groups: Vec<Vec<u32>> = inputs
             .iter()
             .map(|input| {
                 let mut tokens = model_info.tokenizer.encode_with_special_tokens(input);
