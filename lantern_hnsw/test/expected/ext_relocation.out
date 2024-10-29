@@ -38,6 +38,7 @@ ORDER BY 1, 3, 2;
  schema1   | create_pq_codebook             | _lantern_internal
  schema1   | failure_point_enable           | _lantern_internal
  schema1   | forbid_table_change            | _lantern_internal
+ schema1   | get_vector_type_oid            | _lantern_internal
  schema1   | mask_arrays                    | _lantern_internal
  schema1   | mask_order_by_in_plan          | _lantern_internal
  schema1   | quantize_vector                | _lantern_internal
@@ -62,7 +63,7 @@ ORDER BY 1, 3, 2;
  schema1   | ldb_pqvec_send                 | schema1
  schema1   | quantize_table                 | schema1
  schema1   | quantize_vector                | schema1
-(28 rows)
+(29 rows)
 
 -- show all the extension operators
 SELECT ne.nspname AS extschema, op.oprname, np.nspname AS proschema

@@ -452,7 +452,7 @@ HnswColumnType GetColumnTypeFromOid(Oid oid)
 
     if(oid == FLOAT4ARRAYOID) {
         return REAL_ARRAY;
-    } else if(oid == TypenameGetTypid("vector")) {
+    } else if(oid == TypenameGetVectorTypid()) {
         return VECTOR;
     } else if(oid == INT4ARRAYOID) {
         return INT_ARRAY;

@@ -38,6 +38,7 @@ SET enable_seqscan=FALSE;
 SET lantern.pgvector_compat=FALSE;
 -- Verify that the distance functions work (check distances)
 SELECT ROUND(l2sq_dist(v, '{0,1,0}')::numeric, 2) FROM small_world_l2 ORDER BY v <?> '{0,1,0}';
+WARNING:  this hook is experimental and can cause undefined behaviour
  round 
 -------
   0.00

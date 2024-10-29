@@ -22,6 +22,7 @@ INFO:  done init usearch index
 INFO:  inserted 8 elements
 INFO:  done saving 8 vectors
 SELECT _lantern_internal.validate_index('small_world_l2_vector_idx', false);
+WARNING:  this hook is experimental and can cause undefined behaviour
 INFO:  validate_index() start for small_world_l2_vector_idx
 INFO:  validate_index() done, no issues found.
  validate_index 
