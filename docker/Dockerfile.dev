@@ -1,7 +1,7 @@
 ARG VERSION=15
 ARG PGVECTOR_VERSION=0.5.1
   #fix pg_cron at the latest commit of the time
-ARG PG_CRON_COMMIT_SHA=7e91e72b1bebc5869bb900d9253cc9e92518b33f
+ARG PG_CRON_COMMIT_SHA=9490f9cc9803f75105f2f7d89839a998f011f8d8
 
 # If you want to build the base image for different versions use Dockerfile.pg
 # To use GDB inside container run docker like this:
