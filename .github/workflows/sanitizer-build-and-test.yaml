@@ -56,7 +56,7 @@ jobs:
       fail-fast: false
       matrix:
         os: ["ubuntu-22.04"]
-        pg: ["11.21", "12.16", "13.12", "14.9", "15.4", "16.0"]
+        pg: ["12.16", "13.12", "14.9", "15.4", "16.0"]
     steps:
     - name: Enable UBSan if this is a release
       if: ${{ github.event_name == 'release' }}

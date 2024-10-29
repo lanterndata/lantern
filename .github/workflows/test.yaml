@@ -22,7 +22,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-22.04, ubicloud-standard-4-arm, macos-13]
-        postgres: [11, 12, 13, 14, 15, 16]
+        postgres: [12, 13, 14, 15, 16]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -119,8 +119,7 @@ jobs:
         run: ./ci/scripts/run-tests-mac.sh
         env:
           PG_VERSION: ${{ matrix.postgres }}
-        # postgresql@11 seems broken on brew on Ventura used in the runner https://github.com/orgs/Homebrew/discussions/5263
-        if: ${{ startsWith(matrix.os, 'mac') && matrix.postgres != 11 }}
+        if: ${{ startsWith(matrix.os, 'mac') }}
       - name: Run integration tests mac
         id: integration-test-mac
         run: |
@@ -128,7 +127,7 @@ jobs:
           echo "Done with integration tests"
         env:
           PG_VERSION: ${{ matrix.postgres }}
-        if: ${{ startsWith(matrix.os, 'mac') && matrix.postgres != 11 }}
+        if: ${{ startsWith(matrix.os, 'mac') }}
       - name: Upload Postgres logs
         if: failure()
         uses: actions/upload-artifact@v4
