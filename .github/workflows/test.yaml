@@ -176,7 +176,7 @@ jobs:
           PG_VERSION: ${{ matrix.postgres }}
       - name: Install extension
         run: |
-          cargo install cargo-pgrx --version 0.11.3
+          cargo install cargo-pgrx --version 0.12.7
           cargo pgrx init "--pg$PG_VERSION" /usr/bin/pg_config
           RUSTFLAGS="--cfg profile=\"ci-build\"" cargo pgrx install --sudo --pg-config /usr/bin/pg_config --package lantern_extras
         env:

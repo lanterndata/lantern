@@ -18,7 +18,7 @@ function setup_cargo_deps() {
   echo "[target.$(rustc -vV | sed -n 's|host: ||p')]" > .cargo/config
   echo 'rustflags = ["-Clink-arg=-Wl,-undefined,dynamic_lookup"]' >> .cargo/config
 
-  cargo install cargo-pgrx --version 0.11.3
+  cargo install cargo-pgrx --version 0.12.7
   cargo pgrx init "--pg$PG_VERSION" $(which pg_config)
 }
 

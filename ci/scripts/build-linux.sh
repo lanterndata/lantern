@@ -20,7 +20,7 @@ function setup_cargo_deps() {
   	mkdir .cargo
   fi
   echo "[target.$(rustc -vV | sed -n 's|host: ||p')]" >> .cargo/config
-  cargo install cargo-pgrx --version 0.11.3
+  cargo install cargo-pgrx --version 0.12.7
   cargo pgrx init "--pg$PG_VERSION" /usr/bin/pg_config
 }
 
