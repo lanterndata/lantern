@@ -5,7 +5,7 @@ use reqwest::redirect::Policy;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fs::create_dir_all, io::Cursor, time::Duration};
-use sysinfo::{System, SystemExt};
+use sysinfo::System;
 
 type GetResponseFn<T> = Box<dyn Fn(Vec<u8>) -> Result<T, anyhow::Error> + Send + Sync>;
 

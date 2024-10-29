@@ -15,7 +15,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use sysinfo::{System, SystemExt};
+use sysinfo::System;
 use tokenizers::{PaddingParams, Tokenizer, TruncationParams};
 use tokio::{fs, sync::Mutex};
 use url::Url;
