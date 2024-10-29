@@ -9,7 +9,7 @@ function setup_environment() {
   export GITHUB_OUTPUT=${GITHUB_OUTPUT:-/dev/null}
   export PGVECTOR_VERSION=0.7.4-lanterncloud
   #fix pg_cron at the latest commit of the time
-  export PG_CRON_COMMIT_SHA=7e91e72b1bebc5869bb900d9253cc9e92518b33f
+  export PG_CRON_COMMIT_SHA=9490f9cc9803f75105f2f7d89839a998f011f8d8
 }
 
 function setup_rust() {
