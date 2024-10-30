@@ -49,7 +49,8 @@ class Version:
         return self.version
 
 INCOMPATIBLE_VERSIONS = {
-    '16': [Version('0.0.4')]
+    '16': [Version('0.0.4')],
+    '17': [Version('0.3.0'), Version('0.3.1'), Version('0.3.2'), Version('0.3.3'), Version('0.3.4'), Version('0.4.0'), Version('0.4.1')],
 }
 
 def shell(cmd, exit_on_error=True):
