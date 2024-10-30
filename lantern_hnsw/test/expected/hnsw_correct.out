@@ -46,7 +46,6 @@ WHERE
     a.id != b.id;
  row_num | id_with_index | id_without_index | dist_with_index | dist_without_index 
 ---------+---------------+------------------+-----------------+--------------------
-(0 rows)
 
 -- Validate the index data structures
 SELECT _lantern_internal.validate_index('small_world_v_idx', false);
@@ -55,5 +54,4 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 

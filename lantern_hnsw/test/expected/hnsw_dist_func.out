@@ -48,7 +48,6 @@ SELECT ROUND(l2sq_dist(v, '{0,1,0}')::numeric, 2) FROM small_world_l2 ORDER BY v
   2.00
   2.00
   3.00
-(8 rows)
 
 SELECT ROUND(cos_dist(v, '{0,1,0}')::numeric, 2) FROM small_world_cos ORDER BY v <?> '{0,1,0}';
  round 
@@ -61,7 +60,6 @@ SELECT ROUND(cos_dist(v, '{0,1,0}')::numeric, 2) FROM small_world_cos ORDER BY v
   1.00
   1.00
   1.00
-(8 rows)
 
 SELECT ROUND(hamming_dist(v, '{0,1,0}')::numeric, 2) FROM small_world_ham ORDER BY v <?> '{0,1,0}';
  round 
@@ -74,7 +72,6 @@ SELECT ROUND(hamming_dist(v, '{0,1,0}')::numeric, 2) FROM small_world_ham ORDER 
   2.00
   2.00
   3.00
-(8 rows)
 
 -- Verify that the distance functions work (check IDs)
 SELECT ARRAY_AGG(id ORDER BY id), ROUND(l2sq_dist(v, '{0,1,0}')::numeric, 2) FROM small_world_l2 GROUP BY 2 ORDER BY 2;
@@ -84,7 +81,6 @@ SELECT ARRAY_AGG(id ORDER BY id), ROUND(l2sq_dist(v, '{0,1,0}')::numeric, 2) FRO
  {000,011,110} |  1.00
  {001,100,111} |  2.00
  {101}         |  3.00
-(4 rows)
 
 SELECT ARRAY_AGG(id ORDER BY id), ROUND(cos_dist(v, '{0,1,0}')::numeric, 2) FROM small_world_cos GROUP BY 2 ORDER BY 2;
      array_agg     | round 
@@ -93,7 +89,6 @@ SELECT ARRAY_AGG(id ORDER BY id), ROUND(cos_dist(v, '{0,1,0}')::numeric, 2) FROM
  {011,110}         |  0.29
  {111}             |  0.42
  {000,001,100,101} |  1.00
-(4 rows)
 
 SELECT ARRAY_AGG(id ORDER BY id), ROUND(hamming_dist(v, '{0,1,0}')::numeric, 2) FROM small_world_ham GROUP BY 2 ORDER BY 2;
    array_agg   | round 
@@ -102,7 +97,6 @@ SELECT ARRAY_AGG(id ORDER BY id), ROUND(hamming_dist(v, '{0,1,0}')::numeric, 2) 
  {000,011,110} |  1.00
  {001,100,111} |  2.00
  {101}         |  3.00
-(4 rows)
 
 -- Verify that the indexes is being used
 EXPLAIN (COSTS false) SELECT id FROM small_world_l2 ORDER BY v <?> '{0,1,0}';
@@ -110,21 +104,18 @@ EXPLAIN (COSTS false) SELECT id FROM small_world_l2 ORDER BY v <?> '{0,1,0}';
 ---------------------------------------------------------
  Index Scan using small_world_l2_v_idx on small_world_l2
    Order By: (v <?> '{0,1,0}'::real[])
-(2 rows)
 
 EXPLAIN (COSTS false) SELECT id FROM small_world_cos ORDER BY v <?> '{0,1,0}';
                         QUERY PLAN                         
 -----------------------------------------------------------
  Index Scan using small_world_cos_v_idx on small_world_cos
    Order By: (v <?> '{0,1,0}'::real[])
-(2 rows)
 
 EXPLAIN (COSTS false) SELECT id FROM small_world_ham ORDER BY v <?> '{0,1,0}';
                         QUERY PLAN                         
 -----------------------------------------------------------
  Index Scan using small_world_ham_v_idx on small_world_ham
    Order By: (v <?> '{0,1,0}'::integer[])
-(2 rows)
 
 \set ON_ERROR_STOP off
 -- Expect errors due to mismatching vector dimensions
@@ -161,13 +152,11 @@ SELECT 0 + 1;
  ?column? 
 ----------
         1
-(1 row)
 
 SELECT 1 FROM test1 WHERE id = 0 + 1;
  ?column? 
 ----------
         1
-(1 row)
 
 \set ON_ERROR_STOP off
 -- Expect errors due to incorrect usage
@@ -295,7 +284,6 @@ LIMIT
  101 | {101,001,100,111} | {0,1,1,1}
  110 | {110,010,100,111} | {0,1,1,1}
  111 | {111,011,101,110} | {0,1,1,1}
-(8 rows)
 
 -- Check that hamming distance query results are sorted correctly
 CREATE TABLE extra_small_world_ham (
@@ -314,7 +302,6 @@ SELECT ROUND(hamming_dist(v, '{0,0}')::numeric, 2) FROM extra_small_world_ham OR
   2.00
   2.00
   4.00
-(4 rows)
 
 SELECT _lantern_internal.validate_index('small_world_l2_v_idx', false);
 INFO:  validate_index() start for small_world_l2_v_idx
@@ -322,7 +309,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 SELECT _lantern_internal.validate_index('small_world_cos_v_idx', false);
 INFO:  validate_index() start for small_world_cos_v_idx
@@ -330,7 +316,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 SELECT _lantern_internal.validate_index('small_world_ham_v_idx', false);
 INFO:  validate_index() start for small_world_ham_v_idx
@@ -338,7 +323,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 SELECT _lantern_internal.validate_index('extra_small_world_ham_v_idx', false);
 INFO:  validate_index() start for extra_small_world_ham_v_idx
@@ -346,5 +330,4 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 

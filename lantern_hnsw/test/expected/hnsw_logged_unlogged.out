@@ -28,7 +28,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 -- Query
 SET enable_seqscan = false;
@@ -43,7 +42,6 @@ SELECT id, l2sq_dist(vector, '{0, 0, 0, 0}'), vector  FROM small_world ORDER BY 
  101 |         6 | {1,2,0,1}
  110 |         7 | {1,2,1,1}
  111 |        12 | {2,2,2,0}
-(8 rows)
 
 -- Switch table to be unlogged
 ALTER TABLE small_world SET UNLOGGED;
@@ -62,7 +60,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 SELECT _lantern_internal.validate_index('small_world_idx2', false);
 INFO:  validate_index() start for small_world_idx2
@@ -70,7 +67,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 -- Insert
 INSERT INTO small_world (id, vector) VALUES ('002', '{0,3,1,1}');
@@ -87,7 +83,6 @@ SELECT id, l2sq_dist(vector, '{0, 0, 0, 0}'), vector  FROM small_world ORDER BY 
  110 |         7 | {1,2,1,1}
  002 |        11 | {0,3,1,1}
  111 |        12 | {2,2,2,0}
-(9 rows)
 
 -- Switch table to be logged again
 ALTER TABLE small_world SET LOGGED;
@@ -109,7 +104,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 SELECT _lantern_internal.validate_index('small_world_idx2', false);
 INFO:  validate_index() start for small_world_idx2
@@ -117,7 +111,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 SELECT _lantern_internal.validate_index('small_world_idx3', false);
 INFO:  validate_index() start for small_world_idx3
@@ -125,7 +118,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 -- Insert
 INSERT INTO small_world (id, vector) VALUES ('020', '{0,0,4,0}');
@@ -143,7 +135,6 @@ SELECT id, l2sq_dist(vector, '{0, 0, 0, 0}'), vector  FROM small_world ORDER BY 
  002 |        11 | {0,3,1,1}
  111 |        12 | {2,2,2,0}
  020 |        16 | {0,0,4,0}
-(10 rows)
 
 -- --------------------------
 -- Start with unlogged table
@@ -175,7 +166,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 -- Query
 SET enable_seqscan = false;
@@ -190,7 +180,6 @@ SELECT id, l2sq_dist(vector, '{0, 0, 0, 0}'), vector FROM small_world ORDER BY v
  101 |         6 | {1,2,0,1}
  110 |         7 | {1,2,1,1}
  111 |        12 | {2,2,2,0}
-(8 rows)
 
 -- Switch table to be logged
 ALTER TABLE small_world SET LOGGED;
@@ -209,7 +198,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 SELECT _lantern_internal.validate_index('small_world_idx2', false);
 INFO:  validate_index() start for small_world_idx2
@@ -217,7 +205,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 -- Insert
 INSERT INTO small_world (id, vector) VALUES ('002', '{0,3,1,1}');
@@ -234,7 +221,6 @@ SELECT id, l2sq_dist(vector, '{0, 0, 0, 0}'), vector FROM small_world ORDER BY v
  110 |         7 | {1,2,1,1}
  002 |        11 | {0,3,1,1}
  111 |        12 | {2,2,2,0}
-(9 rows)
 
 -- Switch table to be unlogged again
 ALTER TABLE small_world SET UNLOGGED;
@@ -256,7 +242,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 SELECT _lantern_internal.validate_index('small_world_idx2', false);
 INFO:  validate_index() start for small_world_idx2
@@ -264,7 +249,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 SELECT _lantern_internal.validate_index('small_world_idx3', false);
 INFO:  validate_index() start for small_world_idx3
@@ -272,7 +256,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 -- Insert
 INSERT INTO small_world (id, vector) VALUES ('020', '{0,0,4,0}');
@@ -290,5 +273,4 @@ SELECT id, l2sq_dist(vector, '{0, 0, 0, 0}'), vector FROM small_world ORDER BY v
  002 |        11 | {0,3,1,1}
  111 |        12 | {2,2,2,0}
  020 |        16 | {0,0,4,0}
-(10 rows)
 

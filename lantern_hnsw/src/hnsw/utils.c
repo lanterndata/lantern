@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <catalog/namespace.h>
 #include <catalog/pg_proc.h>
+#include <catalog/pg_type_d.h>
 #include <executor/spi.h>
 #include <math.h>
 #include <miscadmin.h>

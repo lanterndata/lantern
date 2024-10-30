@@ -15,7 +15,6 @@ SELECT id, ROUND((v <-> :'v444')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'
  557 | 91664.00
   62 | 93497.00
   58 | 93637.00
-(6 rows)
 
 CREATE INDEX to_be_reindexed ON sift_base1k USING lantern_hnsw (v) WITH (dim=128, M=8);
 INFO:  done init usearch index
@@ -25,7 +24,6 @@ SELECT * FROM ldb_get_indexes('sift_base1k');
     indexname    |  size  |                                          indexdef                                          | indisvalid 
 -----------------+--------+--------------------------------------------------------------------------------------------+------------
  to_be_reindexed | 680 kB | CREATE INDEX to_be_reindexed ON sift_base1k USING lantern_hnsw (v) WITH (dim='128', m='8') | t
-(1 row)
 
 SELECT _lantern_internal.validate_index('to_be_reindexed', false);
 INFO:  validate_index() start for to_be_reindexed
@@ -33,7 +31,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 REINDEX INDEX CONCURRENTLY to_be_reindexed;
 INFO:  done init usearch index
@@ -46,13 +43,11 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 SELECT * FROM ldb_get_indexes('sift_base1k');
     indexname    |  size  |                                          indexdef                                          | indisvalid 
 -----------------+--------+--------------------------------------------------------------------------------------------+------------
  to_be_reindexed | 680 kB | CREATE INDEX to_be_reindexed ON sift_base1k USING lantern_hnsw (v) WITH (dim='128', m='8') | t
-(1 row)
 
 set enable_seqscan=FALSE;
 -- 6 closest vectors to the vector with ID 444. note all the duplicate results because of bad handling of REINDEX
@@ -65,5 +60,4 @@ SELECT id, ROUND((v <-> :'v444')::numeric, 2) FROM sift_base1k ORDER BY v <-> :'
  557 | 91664.00
   62 | 93497.00
   58 | 93637.00
-(6 rows)
 

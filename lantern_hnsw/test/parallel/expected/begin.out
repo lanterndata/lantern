@@ -4,7 +4,6 @@ SELECT pg_reload_conf();
  pg_reload_conf 
 ----------------
  t
-(1 row)
 
 \ir utils/sift10k_array.sql
 CREATE TABLE IF NOT EXISTS sift_base10k (
@@ -34,7 +33,6 @@ SELECT id, ROUND((v <-> :'v444')::numeric, 2) FROM sift_base10k ORDER BY v <-> :
  1336 | 73429.00
  2654 | 78240.00
  7642 | 78451.00
-(6 rows)
 
 CREATE INDEX to_be_reindexed ON sift_base10k  USING lantern_hnsw (v) WITH (M=7, ef=20, ef_construction=20);
 INFO:  done init usearch index
@@ -49,7 +47,6 @@ SELECT id, ROUND((v <-> :'v444')::numeric, 2) FROM sift_base10k ORDER BY v <-> :
  1336 | 73429.00
  2654 | 78240.00
  9185 | 78983.00
-(6 rows)
 
 REINDEX INDEX CONCURRENTLY to_be_reindexed;
 INFO:  done init usearch index

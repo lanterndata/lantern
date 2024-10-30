@@ -29,7 +29,6 @@ SELECT id, ROUND((v <-> :'v4')::numeric, 2) as dist FROM sift_Base1k ORDER BY v 
  183 | 259.18
  254 | 263.45
  116 | 264.64
-(10 rows)
 
 SELECT id, ROUND((v <-> :'v44')::numeric, 2) as dist FROM sift_Base1k ORDER BY v <-> :'v44' LIMIT 10;
  id  |  dist  
@@ -44,14 +43,12 @@ SELECT id, ROUND((v <-> :'v44')::numeric, 2) as dist FROM sift_Base1k ORDER BY v
  950 | 338.17
  744 | 343.25
  539 | 344.02
-(10 rows)
 
 -- Make sure the function does not modify the global hnsw.ef_search
 SHOW hnsw.ef_search;
  hnsw.ef_search 
 ----------------
  40
-(1 row)
 
 SELECT id, ROUND((v <-> :'v4')::numeric, 2) as v4_dist, ROUND((v <-> :'v44')::numeric, 2) v44_dist
 FROM lantern.weighted_vector_search(CAST(NULL as "sift_base1k"), max_dist => 750., debug_output => true, exact => false,
@@ -170,7 +167,6 @@ WARNING:   weighted vector search explain: [
  44 |  634.43 |     0.00
   2 |  122.45 |   611.24
  15 |  141.39 |   607.78
-(4 rows)
 
 SELECT id, ROUND((v <-> :'v4')::numeric, 2) as v4_dist, ROUND((v <-> :'v44')::numeric, 2) v44_dist
 FROM lantern.weighted_vector_search(CAST(NULL as "sift_base1k"), max_dist => 750., debug_output => true, exact => true,
@@ -205,14 +201,12 @@ WARNING:  weighted vector search explain(exact=true): [
  44 |  634.43 |     0.00
   2 |  122.45 |   611.24
  15 |  141.39 |   607.78
-(4 rows)
 
 -- Make sure the function does not modify the global hnsw.ef_search
 SHOW hnsw.ef_search;
  hnsw.ef_search 
 ----------------
  40
-(1 row)
 
 SELECT *, 0.03 * v4_dist + 0.45 * v44_dist + 0.52 * v444_dist as weighted_dist
  FROM (SELECT id, ROUND((v <-> :'v4')::numeric, 2) as v4_dist, ROUND((v <-> :'v44')::numeric, 2) v44_dist, ROUND((v <-> :'v444')::numeric, 2) v444_dist
@@ -361,7 +355,6 @@ WARNING:   weighted vector search explain: [
  830 |  437.72 |   586.69 |    214.16 |      388.5053
   77 |  615.89 |   218.82 |    595.58 |      426.6473
   76 |  316.78 |   569.97 |    313.14 |      428.8227
-(5 rows)
 
 SELECT *, 0.03 * v4_dist + 0.45 * v44_dist + 0.52 * v444_dist as weighted_dist
  FROM (SELECT id, ROUND((v <-> :'v4')::numeric, 2) as v4_dist, ROUND((v <-> :'v44')::numeric, 2) v44_dist, ROUND((v <-> :'v444')::numeric, 2) v444_dist
@@ -400,7 +393,6 @@ WARNING:  weighted vector search explain(exact=true): [
  830 |  437.72 |   586.69 |    214.16 |      388.5053
   77 |  615.89 |   218.82 |    595.58 |      426.6473
   76 |  316.78 |   569.97 |    313.14 |      428.8227
-(5 rows)
 
 -- when max_dist is not specified, number of returned values dicreases with smaller ef
 SELECT count(*)
@@ -433,7 +425,6 @@ WARNING:  weighted vector search explain(exact=true): [
  count 
 -------
   1000
-(1 row)
 
 SELECT count(*)
   FROM lantern.weighted_vector_search(CAST(NULL as "sift_base1k"), exact => false, ef => 100, -- default
@@ -444,7 +435,6 @@ SELECT count(*)
  count 
 -------
    272
-(1 row)
 
 SELECT count(*)
   FROM lantern.weighted_vector_search(CAST(NULL as "sift_base1k"), exact => false, ef => 10,
@@ -455,7 +445,6 @@ SELECT count(*)
  count 
 -------
     30
-(1 row)
 
 SELECT count(*)
   FROM lantern.weighted_vector_search(CAST(NULL as "sift_base1k"), exact => false, ef => 5,
@@ -466,7 +455,6 @@ SELECT count(*)
  count 
 -------
     15
-(1 row)
 
 CREATE INDEX ON sift_base1k USING hnsw (v vector_cosine_ops) WITH (M=5, ef_construction=128);
 SELECT count(*)
@@ -478,7 +466,6 @@ SELECT count(*)
  count 
 -------
     15
-(1 row)
 
 -- test the API-shortcut helper (should be same as the one above)
 SELECT count(*)
@@ -490,7 +477,6 @@ SELECT count(*)
  count 
 -------
     15
-(1 row)
 
 -- Make sure API still works when the table stores real[] for vectors
 ALTER TABLE sift_base1k ADD COLUMN v_real real[];
@@ -509,7 +495,6 @@ SELECT count(*)
  count 
 -------
     15
-(1 row)
 
 SELECT count(*)
   FROM lantern.weighted_vector_search_cos(CAST(NULL as "sift_base1k"), exact => false, ef => 5,
@@ -520,7 +505,6 @@ SELECT count(*)
  count 
 -------
     15
-(1 row)
 
 -- create non superuser and test the function
 SET client_min_messages = WARNING;
@@ -540,5 +524,4 @@ SELECT count(*)
  count 
 -------
     15
-(1 row)
 

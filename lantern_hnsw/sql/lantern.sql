@@ -928,10 +928,7 @@ END $$ LANGUAGE plpgsql;
 CREATE FUNCTION _lantern_internal.get_vector_type_oid() RETURNS OID AS $$
 DECLARE
   type_oid OID;
-  pg_version INT;
 BEGIN
-  pg_version := (SELECT setting FROM pg_settings WHERE name = 'server_version_num');
-
   type_oid := (SELECT pg_type.oid FROM pg_type
                 JOIN pg_depend ON pg_type.oid = pg_depend.objid
                 JOIN pg_extension ON pg_depend.refobjid = pg_extension.oid 

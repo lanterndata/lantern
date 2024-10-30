@@ -25,7 +25,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 -- Insert rows with valid vector data
 INSERT INTO small_world (v) VALUES ('{0,0,1}'), ('{0,1,0}');
@@ -92,14 +91,12 @@ ORDER BY
   2.00
   3.00
   6.00
-(9 rows)
 
 -- Ensure the index size remains consistent after inserts
 SELECT * from ldb_get_indexes('small_world');
      indexname     | size  |                                      indexdef                                       | indisvalid 
 -------------------+-------+-------------------------------------------------------------------------------------+------------
  small_world_v_idx | 16 kB | CREATE INDEX small_world_v_idx ON small_world USING lantern_hnsw (v) WITH (dim='3') | t
-(1 row)
 
 -- Ensure the query plan remains consistent after inserts
 EXPLAIN (COSTS FALSE)
@@ -115,7 +112,6 @@ LIMIT 10;
  Limit
    ->  Index Scan using small_world_v_idx on small_world
          Order By: (v <?> '{0,0,0}'::real[])
-(3 rows)
 
 SELECT _lantern_internal.validate_index('small_world_v_idx', false);
 INFO:  validate_index() start for small_world_v_idx
@@ -123,7 +119,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 -- Test the index with a larger number of vectors
 CREATE UNLOGGED TABLE sift_base10k (
@@ -141,7 +136,6 @@ EXPLAIN (COSTS FALSE) SELECT * FROM sift_base10k order by v <?> :'v4444';
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Index Scan using hnsw_idx on sift_base10k
    Order By: (v <?> '{55,61,11,4,5,2,13,24,65,49,13,9,23,37,94,38,54,11,14,14,40,31,50,44,53,4,0,0,27,17,8,34,12,10,4,4,22,52,68,53,9,2,0,0,2,116,119,64,119,2,0,0,2,30,119,119,116,5,0,8,47,9,5,60,7,7,10,23,56,50,23,5,28,68,6,18,24,65,50,9,119,75,3,0,1,8,12,85,119,11,4,6,8,9,5,74,25,11,8,20,18,12,2,21,11,90,25,32,33,15,2,9,84,67,8,4,22,31,11,33,119,30,3,6,0,0,0,26}'::real[])
-(2 rows)
 
 SELECT _lantern_internal.validate_index('hnsw_idx', false);
 INFO:  validate_index() start for hnsw_idx
@@ -149,5 +143,4 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
