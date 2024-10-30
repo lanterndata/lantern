@@ -13,7 +13,6 @@ SELECT '[1,2,3]'::vector;
  vector  
 ---------
  [1,2,3]
-(1 row)
 
 -- Test index creation x2 on empty table and subsequent inserts
 CREATE TABLE items (id SERIAL PRIMARY KEY, trait_ai VECTOR(3));
@@ -34,7 +33,6 @@ SELECT * FROM items ORDER BY trait_ai <?> '[0,0,0]' LIMIT 3;
   1 | [1,2,3]
   2 | [4,5,6]
   3 | [6,7,8]
-(3 rows)
 
 SELECT * FROM ldb_get_indexes('items');
       indexname      | size  |                                           indexdef                                            | indisvalid 
@@ -42,7 +40,6 @@ SELECT * FROM ldb_get_indexes('items');
  items_pkey          | 16 kB | CREATE UNIQUE INDEX items_pkey ON items USING btree (id)                                      | t
  items_trait_ai_idx  | 16 kB | CREATE INDEX items_trait_ai_idx ON items USING lantern_hnsw (trait_ai) WITH (dim='3', m='2')  | t
  items_trait_ai_idx1 | 16 kB | CREATE INDEX items_trait_ai_idx1 ON items USING lantern_hnsw (trait_ai) WITH (dim='3', m='4') | t
-(3 rows)
 
 -- Test index creation on table with existing data
 \ir utils/small_world_vector.sql
@@ -69,7 +66,6 @@ SELECT * FROM ldb_get_indexes('small_world');
      indexname     | size  |                                                         indexdef                                                          | indisvalid 
 -------------------+-------+---------------------------------------------------------------------------------------------------------------------------+------------
  small_world_v_idx | 16 kB | CREATE INDEX small_world_v_idx ON small_world USING lantern_hnsw (v) WITH (dim='3', m='5', ef='20', ef_construction='20') | t
-(1 row)
 
 INSERT INTO small_world (v) VALUES ('[99,99,2]');
 INSERT INTO small_world (v) VALUES (NULL);
@@ -85,7 +81,6 @@ FROM small_world ORDER BY v <?> '[0,1,0]'::VECTOR LIMIT 7;
  2.00
  2.00
  2.00
-(7 rows)
 
 EXPLAIN (COSTS FALSE) SELECT ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <?> '[0,1,0]'::VECTOR LIMIT 7;
@@ -94,7 +89,6 @@ FROM small_world ORDER BY v <?> '[0,1,0]'::VECTOR LIMIT 7;
  Limit
    ->  Index Scan using small_world_v_idx on small_world
          Order By: (v <?> '[0,1,0]'::vector)
-(3 rows)
 
 SELECT ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <?> '[0,1,0]'::VECTOR LIMIT 7;
@@ -107,7 +101,6 @@ FROM small_world ORDER BY v <?> '[0,1,0]'::VECTOR LIMIT 7;
  2.00
  2.00
  2.00
-(7 rows)
 
 EXPLAIN (COSTS FALSE) SELECT ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <?> '[0,1,0]'::VECTOR LIMIT 7;
@@ -116,7 +109,6 @@ FROM small_world ORDER BY v <?> '[0,1,0]'::VECTOR LIMIT 7;
  Limit
    ->  Index Scan using small_world_v_idx on small_world
          Order By: (v <?> '[0,1,0]'::vector)
-(3 rows)
 
 -- Verify that index creation on a large vector produces an error
 CREATE TABLE large_vector (v VECTOR(2001));
@@ -141,7 +133,6 @@ EXPLAIN (COSTS FALSE) SELECT * FROM sift_base10k ORDER BY v <?> :'v4444' LIMIT 1
  Limit
    ->  Index Scan using hnsw_idx on sift_base10k
          Order By: (v <?> '[55,61,11,4,5,2,13,24,65,49,13,9,23,37,94,38,54,11,14,14,40,31,50,44,53,4,0,0,27,17,8,34,12,10,4,4,22,52,68,53,9,2,0,0,2,116,119,64,119,2,0,0,2,30,119,119,116,5,0,8,47,9,5,60,7,7,10,23,56,50,23,5,28,68,6,18,24,65,50,9,119,75,3,0,1,8,12,85,119,11,4,6,8,9,5,74,25,11,8,20,18,12,2,21,11,90,25,32,33,15,2,9,84,67,8,4,22,31,11,33,119,30,3,6,0,0,0,26]'::vector)
-(3 rows)
 
 -- Ensure we can query an index for more elements than the value of init_k
 SET lantern_hnsw.init_k = 4;
@@ -151,7 +142,6 @@ WITH neighbors AS (
  count 
 -------
      3
-(1 row)
 
 WITH neighbors AS (
     SELECT * FROM small_world order by v <?> '[1,0,0]' LIMIT 15
@@ -159,7 +149,6 @@ WITH neighbors AS (
  count 
 -------
      9
-(1 row)
 
 RESET client_min_messages;
 \set ON_ERROR_STOP off
@@ -204,7 +193,6 @@ EXPLAIN (COSTS FALSE) SELECT id FROM small_world_arr ORDER BY v <?> ARRAY[0,0,0]
 --------------------------------------------
  Index Scan using l2_idx on small_world_arr
    Order By: (v <?> '{0,0,0}'::real[])
-(2 rows)
 
 SELECT id FROM small_world_arr ORDER BY v <?> ARRAY[0,0,0];
  id 
@@ -212,7 +200,6 @@ SELECT id FROM small_world_arr ORDER BY v <?> ARRAY[0,0,0];
   1
   2
   3
-(3 rows)
 
 DROP INDEX l2_idx;
 CREATE INDEX cos_idx ON small_world_arr USING lantern_hnsw(v) WITH (m=2);
@@ -225,7 +212,6 @@ SELECT id FROM small_world_arr ORDER BY v <?> ARRAY[0,0,0];
   1
   2
   3
-(3 rows)
 
 DROP INDEX cos_idx;
 CREATE INDEX ham_idx ON small_world_arr USING lantern_hnsw(v) WITH (m=3);
@@ -238,7 +224,6 @@ SELECT id FROM small_world_arr ORDER BY v <?> ARRAY[0,0,0];
   1
   2
   3
-(3 rows)
 
 -- Test pgvector in lantern.pgvector_compat=TRUE mode
 DROP TABLE small_world;
@@ -280,7 +265,6 @@ FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
  2.00
  2.00
  2.00
-(7 rows)
 
 EXPLAIN (COSTS FALSE) SELECT ROUND(l2sq_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
@@ -289,7 +273,6 @@ FROM small_world ORDER BY v <-> '[0,1,0]'::VECTOR LIMIT 7;
  Limit
    ->  Index Scan using l2_idx on small_world
          Order By: (v <-> '[0,1,0]'::vector)
-(3 rows)
 
 -- cosine index
 CREATE INDEX cos_idx ON small_world  USING lantern_hnsw (v dist_vec_cos_ops);
@@ -307,7 +290,6 @@ FROM small_world ORDER BY v <=> '[0,1,0]'::VECTOR LIMIT 7;
  1.00
  1.00
  1.00
-(7 rows)
 
 EXPLAIN (COSTS FALSE) SELECT ROUND(cos_dist(v, '[0,1,0]'::VECTOR)::numeric, 2) as dist
 FROM small_world ORDER BY v <=> '[0,1,0]'::VECTOR LIMIT 7;
@@ -316,5 +298,4 @@ FROM small_world ORDER BY v <=> '[0,1,0]'::VECTOR LIMIT 7;
  Limit
    ->  Index Scan using cos_idx on small_world
          Order By: (v <=> '[0,1,0]'::vector)
-(3 rows)
 

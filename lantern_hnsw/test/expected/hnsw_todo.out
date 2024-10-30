@@ -27,7 +27,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 -- this should be supported
 CREATE INDEX ON small_world_l2 USING lantern_hnsw (vector_int dist_l2sq_int_ops);
@@ -46,7 +45,6 @@ ORDER BY vector_int <?> array[0,1,0] LIMIT 7;
          ->  Sort
                Sort Key: (l2sq_dist(vector_int, '{0,1,0}'::integer[]))
                ->  Seq Scan on small_world_l2
-(5 rows)
 
 --- Test scenarious ---
 -----------------------------------------
@@ -77,14 +75,12 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 -- The 1001 and 1002 vectors will be ignored in search, so the first row will not be 0 in result
 SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <?> :'v1001' LIMIT 1;
    round   
 -----------
  249249.00
-(1 row)
 
 -- Case:
 -- Index is created externally
@@ -108,7 +104,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 -- The first row will not be 0 now as the vector under id=777 was updated to 1,1,1,1... but it was indexed with different vector
 -- So the usearch index can not find 1,1,1,1,1.. vector in the index and wrong results will be returned
@@ -117,7 +112,6 @@ SELECT ROUND(l2sq_dist(v, :'v1001')::numeric, 2) FROM sift_base1k order by v <?>
    round   
 -----------
  249249.00
-(1 row)
 
 ---- Query on expression based index is failing to check correct <?> operator usage --------
 CREATE OR REPLACE FUNCTION int_to_fixed_binary_real_array(n INT) RETURNS REAL[] AS $$

@@ -76,7 +76,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 \set ON_ERROR_STOP off
 -- This should result in an error that dimensions does not match
@@ -94,5 +93,4 @@ SELECT id FROM test_table ORDER BY int_to_fixed_binary_real_array(id) <?> '{0,0,
 ----
   0
   1
-(2 rows)
 

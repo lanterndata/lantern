@@ -103,19 +103,16 @@ INFO:  Compressing vectors...
  quantize_table 
 ----------------
  
-(1 row)
 
 SELECT COUNT(DISTINCT subvector_id) FROM _lantern_internal.pq_small_world_pq_v;
  count 
 -------
      4
-(1 row)
 
 SELECT COUNT(DISTINCT centroid_id) FROM _lantern_internal.pq_small_world_pq_v;
  count 
 -------
     10
-(1 row)
 
 ALTER TABLE small_world_pq ADD COLUMN v_pq_dec REAL[];
 UPDATE small_world_pq SET v_pq_dec=dequantize_vector(v_pq, '_lantern_internal.pq_small_world_pq_v');
@@ -132,19 +129,16 @@ EXPLAIN (COSTS FALSE) SELECT id, v, v_pq, v_pq_dec FROM small_world_pq ORDER BY 
  Limit
    ->  Index Scan using hnsw_l2_index on small_world_pq
          Order By: (v <-> '{0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4}'::real[])
-(3 rows)
 
 SELECT id FROM small_world_pq ORDER BY v <-> :'v4' LIMIT 1;
  id 
 ----
   4
-(1 row)
 
 SELECT * FROM ldb_get_indexes('small_world_pq');
    indexname   | size  |                                       indexdef                                        | indisvalid 
 ---------------+-------+---------------------------------------------------------------------------------------+------------
  hnsw_l2_index | 16 kB | CREATE INDEX hnsw_l2_index ON small_world_pq USING lantern_hnsw (v) WITH (pq='false') | t
-(1 row)
 
 DROP INDEX hnsw_l2_index;
 -- index with pq
@@ -158,7 +152,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 EXPLAIN (COSTS FALSE) SELECT id, v, v_pq, v_pq_dec, (v <-> :'v4') as dist, (v_pq_dec <-> :'v4') real_dist FROM small_world_pq ORDER BY dist LIMIT 1;
                                               QUERY PLAN                                               
@@ -166,13 +159,11 @@ EXPLAIN (COSTS FALSE) SELECT id, v, v_pq, v_pq_dec, (v <-> :'v4') as dist, (v_pq
  Limit
    ->  Index Scan using hnsw_pq_l2_index on small_world_pq
          Order By: (v <-> '{0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4}'::real[])
-(3 rows)
 
 SELECT id FROM small_world_pq ORDER BY v <-> :'v4' LIMIT 1;
  id 
 ----
   4
-(1 row)
 
 ALTER TABLE small_world_pq DROP COLUMN v_pq;
 ALTER TABLE small_world_pq DROP COLUMN v_pq_dec;
@@ -186,7 +177,6 @@ INFO:  Compressing vectors...
  quantize_table 
 ----------------
  
-(1 row)
 
 ALTER TABLE small_world_pq ADD COLUMN v_pq_dec REAL[]; --  GENERATED ALWAYS AS (dequantize_vector("v_pq", '_lanternpq_small_world_pq')) STORED; -- << cannot do because genrated columns cannot refer to other generated columns
 UPDATE small_world_pq SET v_pq_dec=dequantize_vector(v_pq, '_lantern_internal.pq_small_world_pq_v');
@@ -200,7 +190,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 EXPLAIN (COSTS FALSE) SELECT id, v, v_pq, v_pq_dec, (v <-> :'v4') as dist, (v_pq_dec <-> :'v4') real_dist FROM small_world_pq ORDER BY dist LIMIT 1;
                                               QUERY PLAN                                               
@@ -208,7 +197,6 @@ EXPLAIN (COSTS FALSE) SELECT id, v, v_pq, v_pq_dec, (v <-> :'v4') as dist, (v_pq
  Limit
    ->  Index Scan using hnsw_pq_l2_index on small_world_pq
          Order By: (v <-> '{0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4}'::real[])
-(3 rows)
 
 -- add another entry with vector v4, and search for it again
 INSERT INTO small_world_pq(id, v) VALUES (42, :'v4');
@@ -227,7 +215,6 @@ INFO:  Compressing vectors...
  quantize_table 
 ----------------
  
-(1 row)
 
 ALTER TABLE small_world_pq ADD COLUMN v_pq_dec REAL[];
 UPDATE small_world_pq SET v_pq_dec=dequantize_vector(v_pq, '_lantern_internal.pq_small_world_pq_v');
@@ -241,7 +228,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 -- we had inserted a value with id=42 and vector=:'v4' above, before making the table unlogged
 -- disable these since they are flaky, depending on the the quality of the codebook
@@ -261,7 +247,6 @@ INFO:  Compressing vectors...
  quantize_table 
 ----------------
  
-(1 row)
 
 SELECT v as v1 FROM sift_base1k WHERE id=1 \gset
 SELECT v_pq as v1_pq FROM sift_base1k WHERE id=1 \gset
@@ -296,7 +281,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 SELECT calculate_table_recall('sift_base1k', 'sift_query1k', 'sift_truth1k', 'v', 10, 100) as recall_pq_index \gset
 SELECT (:'recall_pq'::float - :'recall_pq_index'::float)::float as recall_diff \gset
@@ -306,7 +290,6 @@ SELECT :recall_diff >= 0 AND :recall_diff <= 0.1 as recall_within_range;
  recall_within_range 
 ---------------------
  t
-(1 row)
 
 -- inserts
 SELECT v as v2 FROM sift_base1k WHERE id=2 \gset
@@ -318,14 +301,12 @@ SELECT SUM(id1002::int) = 1 as contains_id_1002 FROM (SELECT id = 1002 as id1002
  contains_id_1002 
 ------------------
  t
-(1 row)
 
 -- the top two results must be the vectors corresponding to v2
 SELECT ARRAY_AGG(id ORDER BY id) FROM (SELECT id FROM sift_base1k ORDER BY v <-> :'v2' LIMIT 2) b;
  array_agg 
 -----------
  {2,1001}
-(1 row)
 
 -- since codebook are generated each time and are non deterministic, we cannot print them in regression tests.
 -- run something like the following to view the results

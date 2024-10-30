@@ -74,7 +74,6 @@ DEBUG:  LANTERN - ---------------------
  is_cost_estimate_within_error 
 -------------------------------
  t
-(1 row)
 
 SELECT _lantern_internal.validate_index('empty_idx', false);
 INFO:  validate_index() start for empty_idx
@@ -82,7 +81,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 DROP INDEX empty_idx;
 -- Case 1, more data in index.
@@ -102,7 +100,6 @@ DEBUG:  LANTERN - ---------------------
  is_cost_estimate_within_error 
 -------------------------------
  t
-(1 row)
 
 SELECT _lantern_internal.validate_index('hnsw_idx', false);
 INFO:  validate_index() start for hnsw_idx
@@ -110,7 +107,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 DROP INDEX hnsw_idx;
 -- Case 2, higher M.
@@ -130,7 +126,6 @@ DEBUG:  LANTERN - ---------------------
  is_cost_estimate_within_error 
 -------------------------------
  t
-(1 row)
 
 SELECT _lantern_internal.validate_index('hnsw_idx', false);
 INFO:  validate_index() start for hnsw_idx
@@ -138,7 +133,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 DROP INDEX hnsw_idx;
 -- Case 3, higher ef.
@@ -158,7 +152,6 @@ DEBUG:  LANTERN - ---------------------
  is_cost_estimate_within_error 
 -------------------------------
  t
-(1 row)
 
 SELECT _lantern_internal.validate_index('hnsw_idx', false);
 INFO:  validate_index() start for hnsw_idx
@@ -166,7 +159,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 DROP INDEX hnsw_idx;
 -- Goal: Test cost estimation when number of pages in index is likely less than number of blockmaps allocated
@@ -191,7 +183,6 @@ SELECT COUNT(*) FROM views_vec10k WHERE views < 100;
  count 
 -------
     58
-(1 row)
 
 -- Create partial lantern index with (views < 100) filter
 CREATE INDEX hnsw_partial_views_100 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (M=8, dim=6) WHERE views < 100;
@@ -212,7 +203,6 @@ DEBUG:  LANTERN - ---------------------
  Limit
    ->  Index Scan using hnsw_partial_views_100 on views_vec10k
          Order By: (vec <-> '{0,1,2,3,4,5}'::real[])
-(3 rows)
 
 -- Goal: Test that the index selectivity being calculated for partial indexes is correct
 -- note that these boundaries are selected so that mac num_pages and cost values align
@@ -226,7 +216,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 CREATE INDEX hnsw_partial_views_2000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (M=9, dim=6) WHERE views < 2000;
 INFO:  done init usearch index
@@ -238,7 +227,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 CREATE INDEX hnsw_partial_views_3000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (M=9, dim=6) WHERE views < 3000;
 INFO:  done init usearch index
@@ -250,7 +238,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 CREATE INDEX hnsw_partial_views_4000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (M=9, dim=6) WHERE views < 4000;
 INFO:  done init usearch index
@@ -262,7 +249,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 CREATE INDEX hnsw_partial_views_6000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (M=9, dim=6) WHERE views < 6000;
 INFO:  done init usearch index
@@ -274,7 +260,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 CREATE INDEX hnsw_partial_views_8000 ON views_vec10k USING lantern_hnsw (vec dist_l2sq_ops) WITH (M=9, dim=6) WHERE views < 8000;
 INFO:  done init usearch index
@@ -286,7 +271,6 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
 -- Trigger each partial index by using its exact filter in a filtered query
 -- Each indexSelectivity value for a partial index with the filter (views < N) should be around N/20000
@@ -341,5 +325,4 @@ DEBUG:  LANTERN - ---------------------
  Limit
    ->  Index Scan using hnsw_partial_views_1000 on views_vec10k
          Order By: (vec <-> '{0,1,2,3,4,5}'::real[])
-(3 rows)
 

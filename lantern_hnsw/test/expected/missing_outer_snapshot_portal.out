@@ -26,11 +26,9 @@ EXPLAIN (COSTS false) SELECT COUNT(*) FROM ourtable;
          Workers Planned: 4
          ->  Partial Aggregate
                ->  Parallel Seq Scan on ourtable
-(5 rows)
 
 SELECT COUNT(*) FROM ourtable;
  count 
 -------
  10000
-(1 row)
 

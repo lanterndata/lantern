@@ -37,6 +37,7 @@ function run_regression_test {
      # Exclude debug/inconsistent output from psql
      # So tests will always have the same output
      psql -U ${DB_USER} \
+          -P footer=off \
           -v ON_ERROR_STOP=1 \
           -v VERBOSITY=terse \
           -v ECHO=all \
@@ -47,6 +48,8 @@ function run_regression_test {
                     -e 's! time=[0-9]\+\.[0-9]\+\.\.[0-9]\+\.[0-9]\+!!' | \
                grep -v 'DEBUG:  rehashing catalog cache id' | \
                grep -v 'WARNING:  this hook is experimental and can cause undefined behaviour' | \
+               grep -Ev '^[[:space:]]*Disabled:' | \
+               grep -Gv '"Disabled": \(true\|false\),' | \
                grep -Gv '^ Planning Time:' | \
                grep -Gv '^ Execution Time:' | \
                # ignore lines in explain(format json) output that differ among pg12-pg16

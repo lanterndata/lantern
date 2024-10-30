@@ -27,14 +27,12 @@ SELECT * FROM ldb_get_indexes('small_world');
      indexname     | size  |                                      indexdef                                       | indisvalid 
 -------------------+-------+-------------------------------------------------------------------------------------+------------
  small_world_v_idx | 16 kB | CREATE INDEX small_world_v_idx ON small_world USING lantern_hnsw (v) WITH (dim='3') | t
-(1 row)
 
 -- Verify that lantern_hnsw.init_k exists after index creation
 SHOW lantern_hnsw.init_k;
  lantern_hnsw.init_k 
 ---------------------
  10
-(1 row)
 
 -- Modify lantern_hnsw.init_k and verify that it was modified
 SET lantern_hnsw.init_k = 45;
@@ -42,7 +40,6 @@ SHOW lantern_hnsw.init_k;
  lantern_hnsw.init_k 
 ---------------------
  45
-(1 row)
 
 -- Reset all parameters and verify that lantern_hnsw.init_k was reset
 RESET ALL;
@@ -50,7 +47,6 @@ SHOW lantern_hnsw.init_k;
  lantern_hnsw.init_k 
 ---------------------
  10
-(1 row)
 
 -- Validate the index data structures
 SELECT _lantern_internal.validate_index('small_world_v_idx', false);
@@ -59,5 +55,4 @@ INFO:  validate_index() done, no issues found.
  validate_index 
 ----------------
  
-(1 row)
 
