@@ -66,7 +66,7 @@ jobs:
       - name: Build Lantern CLI
         id: build_cli
         run: sudo sh -c "PACKAGE_CLI=1 GITHUB_OUTPUT=$GITHUB_OUTPUT ./ci/scripts/build-extras.sh"
-        if: ${{ matrix.postgres == 15 }} # run only once
+        if: ${{ matrix.postgres == 17 }} # run only once
       - name: Upload archive package artifacts
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_release }}
         uses: actions/upload-artifact@v4
@@ -74,7 +74,7 @@ jobs:
           name: ${{ steps.build.outputs.archive_package_name }}
           path: ${{ steps.build.outputs.archive_package_path }}
       - name: Upload Lantern CLI artifacts
-        if: ${{ matrix.postgres == 15 && github.event_name == 'workflow_dispatch' && inputs.create_release }} # run only once
+        if: ${{ matrix.postgres == 17 && github.event_name == 'workflow_dispatch' && inputs.create_release }} # run only once
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.build_cli.outputs.cli_package_name }}

@@ -65,13 +65,13 @@ jobs:
         env:
           PG_VERSION: ${{ matrix.postgres }}
           BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
-          ENABLE_COVERAGE: ${{ (startsWith(matrix.os, 'ubuntu') && matrix.postgres == 15) && '1' || '0' }}
+          ENABLE_COVERAGE: ${{ (startsWith(matrix.os, 'ubuntu') && matrix.postgres == 17) && '1' || '0' }}
       - name: Run tests linux
         id: test-linux
         run: sudo su postgres -c "PG_VERSION=$PG_VERSION ./ci/scripts/run-tests-linux.sh"
         env:
           PG_VERSION: ${{ matrix.postgres }}
-          ENABLE_COVERAGE: ${{ (startsWith(matrix.os, 'ubuntu') && matrix.postgres == 15) && '1' || '0' }}
+          ENABLE_COVERAGE: ${{ (startsWith(matrix.os, 'ubuntu') && matrix.postgres == 17) && '1' || '0' }}
         if: ${{ !startsWith(matrix.os, 'mac') }}
       # integration tests
       - name: Set LANTERN_CLI_PATH variable
@@ -92,7 +92,7 @@ jobs:
       - name: Collect coverage files
         id: collect-cov-files
         run: sudo su postgres -c "cd /tmp/lantern/lantern_hnsw/build && make cover"
-        if: ${{ startsWith(matrix.os, 'ubuntu') && matrix.postgres == 15 }}
+        if: ${{ startsWith(matrix.os, 'ubuntu') && matrix.postgres == 17 }}
 
       - name: Run update tests linux
         id: update-test-linux
@@ -137,7 +137,7 @@ jobs:
             /tmp/pg-out.log
             /tmp/pg-error.log
       - name: Upload lantern coverage
-        if: ${{ startsWith(matrix.os, 'ubuntu') && matrix.postgres == 15 }}
+        if: ${{ startsWith(matrix.os, 'ubuntu') && matrix.postgres == 17 }}
         uses: actions/upload-artifact@v4
         with:
           name: lantern-lcov.info
@@ -167,8 +167,6 @@ jobs:
           workspaces: |
             lantern_cli
             lantern_extras
-      - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
       - name: Setup test env
         run: sudo su -c "PG_VERSION=$PG_VERSION SETUP_ENV=1 SETUP_POSTGRES=1 SETUP_TESTS=1 USE_SOURCE=1 ./ci/scripts/build-extras.sh"
         env:
@@ -178,7 +176,9 @@ jobs:
           cargo install cargo-pgrx --version 0.12.7
           cargo pgrx init "--pg$PG_VERSION" /usr/bin/pg_config
           sed -i -e "s/default = .*/default=[\"pg${PG_VERSION}\"]/" lantern_extras/Cargo.toml
-          RUSTFLAGS="--cfg profile=\"ci-build\"" cargo pgrx install --sudo --pg-config /usr/bin/pg_config --package lantern_extras
+          export RUSTFLAGS='--cfg profile="ci-build" -C instrument-coverage'
+          export LLVM_PROFILE_FILE="$(pwd)/coverage-%p-%m.profraw"
+          cargo pgrx install --sudo --pg-config /usr/bin/pg_config --package lantern_extras
         env:
           PG_VERSION: ${{ matrix.postgres }}
       - name: Run postgres
@@ -192,14 +192,23 @@ jobs:
         env:
           PG_VERSION: ${{ matrix.postgres }}
       - name: Run tests
-        run: cargo llvm-cov --workspace --lcov --output-path lantern-extras-lcov.info
+        run: |
+          export RUSTFLAGS='--cfg profile="ci-build" -C instrument-coverage'
+          export LLVM_PROFILE_FILE="$(pwd)/coverage-%p-%m.profraw"
+          cargo test
         env:
           OPENAI_TOKEN: ${{ secrets.OPENAI_TOKEN }}
           COHERE_TOKEN: ${{ secrets.COHERE_TOKEN }}
           DB_URL: "postgres://postgres@127.0.0.1:5432/postgres"
+      - name: Collect coverage
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        run: |
+          cargo install grcov
+          rustup component add llvm-tools-preview
+          grcov *.profraw -s . --binary-path target/debug -t lcov --branch -o lantern-extras-lcov.info --ignore "{target/debug/build/*,lantern_cli/tests/*,lantern_cli/src/main.rs}"
       - name: Upload lantern_extras coverage
         uses: actions/upload-artifact@v4
-        if: ${{ startsWith(matrix.os, 'ubuntu') && matrix.postgres == 15}}
+        if: ${{ startsWith(matrix.os, 'ubuntu') && matrix.postgres == 17}}
         with:
           name: lantern-extras-lcov.info
           path: ./lantern-extras-lcov.info
