@@ -5,7 +5,7 @@ use super::{
     core::{EmbeddingRuntime, Runtime},
 };
 use crate::logger::{LogLevel, Logger};
-use postgres::NoTls;
+use tokio_postgres::NoTls;
 use tokio_util::sync::CancellationToken;
 
 use super::cli::MeasureModelSpeedArgs;

@@ -1,13 +1,14 @@
-use std::process;
-
-use crate::logger::{LogLevel, Logger};
-use clap::Parser;
-use lantern_cli::*;
+#[cfg(feature = "cli")]
 mod cli;
 
 #[cfg(feature = "cli")]
 #[tokio::main]
 async fn main() {
+    use std::process;
+
+    use clap::Parser;
+    use lantern_cli::logger::{LogLevel, Logger};
+    use lantern_cli::*;
     use tokio_util::sync::CancellationToken;
 
     rustls::crypto::aws_lc_rs::default_provider()

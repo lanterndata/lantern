@@ -3,8 +3,8 @@ use super::helpers::{
     index_job_update_processor, remove_job_handle, set_job_handle, startup_hook,
 };
 use super::types::{
-    AutotuneJob, AutotuneProcessorArgs, JobEvent, JobEventHandlersMap, JobInsertNotification,
-    JobRunArgs, JobUpdateNotification,
+    AutotuneProcessorArgs, JobEvent, JobEventHandlersMap, JobInsertNotification, JobRunArgs,
+    JobUpdateNotification,
 };
 use crate::daemon::helpers::anyhow_wrap_connection;
 use crate::external_index::cli::UMetricKind;
@@ -20,7 +20,7 @@ use tokio::sync::{
     mpsc,
     mpsc::{Receiver, Sender, UnboundedReceiver, UnboundedSender},
 };
-use tokio_postgres::{Client, NoTls};
+use tokio_postgres::{Client, NoTls, Row};
 use tokio_util::sync::CancellationToken;
 
 pub const JOB_TABLE_DEFINITION: &'static str = r#"
@@ -54,6 +54,41 @@ recall DOUBLE PRECISION NOT NULL,
 latency DOUBLE PRECISION NOT NULL,
 build_time DOUBLE PRECISION NULL
 "#;
+
+#[derive(Debug)]
+pub struct AutotuneJob {
+    pub id: i32,
+    pub is_init: bool,
+    pub db_uri: String,
+    pub schema: String,
+    pub table: String,
+    pub column: String,
+    pub metric_kind: String,
+    pub model_name: Option<String>,
+    pub recall: f64,
+    pub k: u16,
+    pub sample_size: usize,
+    pub create_index: bool,
+}
+
+impl AutotuneJob {
+    pub fn new(row: Row, db_uri: &str) -> AutotuneJob {
+        Self {
+            id: row.get::<&str, i32>("id"),
+            db_uri: db_uri.to_owned(),
+            schema: row.get::<&str, String>("schema"),
+            table: row.get::<&str, String>("table"),
+            column: row.get::<&str, String>("column"),
+            metric_kind: row.get::<&str, String>("metric_kind"),
+            model_name: row.get::<&str, Option<String>>("model"),
+            recall: row.get::<&str, f64>("target_recall"),
+            k: row.get::<&str, i32>("k") as u16,
+            sample_size: row.get::<&str, i32>("sample_size") as usize,
+            create_index: row.get::<&str, bool>("create_index"),
+            is_init: true,
+        }
+    }
+}
 
 pub async fn autotune_job_processor(
     mut rx: Receiver<AutotuneProcessorArgs>,

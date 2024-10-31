@@ -3,8 +3,8 @@ use super::helpers::{
     index_job_update_processor, startup_hook,
 };
 use super::types::{
-    ExternalIndexJob, ExternalIndexProcessorArgs, JobEvent, JobEventHandlersMap,
-    JobInsertNotification, JobRunArgs, JobTaskEventTx, JobUpdateNotification,
+    ExternalIndexProcessorArgs, JobEvent, JobEventHandlersMap, JobInsertNotification, JobRunArgs,
+    JobTaskEventTx, JobUpdateNotification,
 };
 use crate::daemon::helpers::anyhow_wrap_connection;
 use crate::external_index::cli::{CreateIndexArgs, UMetricKind};
@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use tokio::sync::mpsc::{self, Receiver, Sender, UnboundedReceiver, UnboundedSender};
 use tokio::sync::RwLock;
-use tokio_postgres::{Client, NoTls};
+use tokio_postgres::{Client, NoTls, Row};
 use tokio_util::sync::CancellationToken;
 
 pub const JOB_TABLE_DEFINITION: &'static str = r#"
@@ -38,6 +38,37 @@ pub const JOB_TABLE_DEFINITION: &'static str = r#"
 "failure_reason" text,
 "progress" INT2 DEFAULT 0
 "#;
+
+#[derive(Debug)]
+pub struct ExternalIndexJob {
+    pub id: i32,
+    pub db_uri: String,
+    pub schema: String,
+    pub table: String,
+    pub column: String,
+    pub operator_class: String,
+    pub index_name: Option<String>,
+    pub ef: usize,
+    pub efc: usize,
+    pub m: usize,
+}
+
+impl ExternalIndexJob {
+    pub fn new(row: Row, db_uri: &str) -> ExternalIndexJob {
+        Self {
+            id: row.get::<&str, i32>("id"),
+            db_uri: db_uri.to_owned(),
+            schema: row.get::<&str, String>("schema"),
+            table: row.get::<&str, String>("table"),
+            column: row.get::<&str, String>("column"),
+            operator_class: row.get::<&str, String>("operator"),
+            index_name: row.get::<&str, Option<String>>("index"),
+            ef: row.get::<&str, i32>("ef") as usize,
+            efc: row.get::<&str, i32>("efc") as usize,
+            m: row.get::<&str, i32>("m") as usize,
+        }
+    }
+}
 
 async fn set_job_handle(
     jobs_map: Arc<JobEventHandlersMap>,

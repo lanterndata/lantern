@@ -9,7 +9,7 @@ use std::{
 use lantern_cli::embeddings::{self, cli::EmbeddingJobType};
 use lantern_cli::embeddings::{core::Runtime, get_try_cast_fn_sql};
 use lantern_cli::{daemon::embedding_jobs::FAILURE_TABLE_DEFINITION, embeddings::cli};
-use postgres::IsolationLevel;
+use tokio_postgres::IsolationLevel;
 use tokio_postgres::{Client, NoTls};
 use tokio_util::sync::CancellationToken;
 
