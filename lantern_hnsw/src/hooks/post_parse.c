@@ -179,6 +179,12 @@ void post_parse_analyze_hook_with_operator_check(ParseState *pstate,
         return;
     }
 
+    const char *current_mode = GetConfigOption("plan_cache_mode", false, false);
+
+    if(strcmp(current_mode, "force_custom_plan") != 0) {
+        SetConfigOption("plan_cache_mode", "force_custom_plan", PGC_SUSET, PGC_S_SESSION);
+    }
+
     if(!oidList) {
         elog(WARNING, "this hook is experimental and can cause undefined behaviour");
         MemoryContext oldCtx = MemoryContextSwitchTo(CacheMemoryContext);
