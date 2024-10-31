@@ -1,19 +1,17 @@
 use super::types::{
-    EmbeddingJob, JobEvent, JobEventHandlersMap, JobInsertNotification, JobTaskEventTx,
-    JobUpdateNotification,
+    JobEvent, JobEventHandlersMap, JobInsertNotification, JobTaskEventTx, JobUpdateNotification,
 };
-use crate::embeddings::get_try_cast_fn_sql;
 use crate::logger::Logger;
-use crate::types::{AnyhowVoidResult, JOB_CANCELLED_MESSAGE};
+use crate::types::AnyhowVoidResult;
 use crate::utils::{get_common_embedding_ignore_filters, get_full_table_name, quote_ident};
 use futures::StreamExt;
-use postgres::tls::MakeTlsConnect;
-use postgres::{IsolationLevel, Socket};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
-use tokio::sync::mpsc::{Sender, UnboundedReceiver, UnboundedSender};
+use std::time::Duration;
+use tokio::sync::mpsc::UnboundedSender;
+use tokio_postgres::tls::MakeTlsConnect;
 use tokio_postgres::Client;
 use tokio_postgres::{AsyncMessage, Connection};
+use tokio_postgres::{IsolationLevel, Socket};
 use tokio_util::sync::CancellationToken;
 
 pub async fn check_table_exists(client: Arc<Client>, table: &str) -> AnyhowVoidResult {
@@ -283,6 +281,11 @@ pub async fn startup_hook(
     if failure_table_name.is_some() && failure_table_def.is_some() {
         let failure_table_name = get_full_table_name(schema, failure_table_name.unwrap());
         let failure_table_def = failure_table_def.unwrap();
+        #[cfg(not(feature = "embeddings"))]
+        let try_cast_fn = "";
+        #[cfg(feature = "embeddings")]
+        let try_cast_fn = crate::embeddings::get_try_cast_fn_sql(&schema);
+
         transaction
             .batch_execute(&format!(
                 "
@@ -292,7 +295,7 @@ pub async fn startup_hook(
                  CREATE INDEX IF NOT EXISTS embedding_failures_job_id_row_id ON {failure_table_name}(job_id, row_id);
                  GRANT SELECT ON {failure_table_name} TO PUBLIC;
             ",
-            ldb_try_cast_fn = get_try_cast_fn_sql(&schema)
+            ldb_try_cast_fn = try_cast_fn
             ))
             .await?;
     }
@@ -302,6 +305,7 @@ pub async fn startup_hook(
     Ok(())
 }
 
+#[cfg(any(feature = "autotune", feature = "external-index"))]
 pub async fn collect_pending_index_jobs(
     client: Arc<Client>,
     insert_notification_tx: UnboundedSender<JobInsertNotification>,
@@ -325,16 +329,17 @@ pub async fn collect_pending_index_jobs(
             // and some job will be terminated while running
             // on next start of daemon the job will not be picked as
             // it will already have started_at set
-            generate_missing: row.get::<usize, Option<SystemTime>>(1).is_some(),
+            generate_missing: row.get::<usize, Option<std::time::SystemTime>>(1).is_some(),
         })?;
     }
 
     Ok(())
 }
 
+#[cfg(any(feature = "autotune", feature = "external-index"))]
 pub async fn index_job_update_processor(
     client: Arc<Client>,
-    mut update_queue_rx: UnboundedReceiver<JobUpdateNotification>,
+    mut update_queue_rx: tokio::sync::mpsc::UnboundedReceiver<JobUpdateNotification>,
     schema: String,
     table: String,
     job_cancelleation_handlers: Arc<JobEventHandlersMap>,
@@ -350,7 +355,7 @@ pub async fn index_job_update_processor(
                 )
                 .await?;
 
-            let canceled_at: Option<SystemTime> = row.get("canceled_at");
+            let canceled_at: Option<std::time::SystemTime> = row.get("canceled_at");
 
             if canceled_at.is_some() {
                 // Cancel ongoing job
@@ -358,8 +363,10 @@ pub async fn index_job_update_processor(
                 let job = jobs.get(&id);
 
                 if let Some(tx) = job {
-                    tx.send(JobEvent::Errored(JOB_CANCELLED_MESSAGE.to_owned()))
-                        .await?;
+                    tx.send(JobEvent::Errored(
+                        crate::types::JOB_CANCELLED_MESSAGE.to_owned(),
+                    ))
+                    .await?;
                 }
                 drop(jobs);
             }
@@ -370,13 +377,16 @@ pub async fn index_job_update_processor(
     Ok(())
 }
 
+#[cfg(any(feature = "autotune", feature = "external-index"))]
 pub async fn cancel_all_jobs(map: Arc<JobEventHandlersMap>) -> AnyhowVoidResult {
     let mut jobs_map = map.write().await;
     let jobs: Vec<(i32, JobTaskEventTx)> = jobs_map.drain().collect();
 
     for (_, tx) in jobs {
-        tx.send(JobEvent::Errored(JOB_CANCELLED_MESSAGE.to_owned()))
-            .await?;
+        tx.send(JobEvent::Errored(
+            crate::types::JOB_CANCELLED_MESSAGE.to_owned(),
+        ))
+        .await?;
     }
 
     Ok(())
@@ -406,10 +416,11 @@ pub fn get_missing_rows_filter(src_column: &str, out_column: &str) -> String {
     )
 }
 
+#[cfg(feature = "embeddings")]
 pub async fn schedule_job_retry(
     logger: Arc<Logger>,
-    job: EmbeddingJob,
-    tx: Sender<EmbeddingJob>,
+    job: super::embedding_jobs::EmbeddingJob,
+    tx: tokio::sync::mpsc::Sender<super::embedding_jobs::EmbeddingJob>,
     retry_after: Duration,
 ) {
     tokio::spawn(async move {

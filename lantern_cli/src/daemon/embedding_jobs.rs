@@ -4,15 +4,19 @@ use super::helpers::{
     remove_job_handle, schedule_job_retry, set_job_handle, startup_hook,
 };
 use super::types::{
-    ClientJobsMap, EmbeddingJob, EmbeddingProcessorArgs, JobBatchingHashMap, JobEvent,
-    JobEventHandlersMap, JobInsertNotification, JobRunArgs, JobUpdateNotification,
+    ClientJobsMap, EmbeddingProcessorArgs, JobBatchingHashMap, JobEvent, JobEventHandlersMap,
+    JobInsertNotification, JobRunArgs, JobUpdateNotification,
 };
 use crate::daemon::helpers::anyhow_wrap_connection;
-use crate::embeddings::cli::{EmbeddingArgs, EmbeddingJobType};
+use crate::embeddings::cli::{EmbeddingArgs, EmbeddingJobType, Runtime};
+use crate::embeddings::core::utils::get_clean_model_name;
 use crate::embeddings::get_default_batch_size;
 use crate::logger::Logger;
-use crate::utils::{get_common_embedding_ignore_filters, get_full_table_name, quote_ident};
+use crate::utils::{
+    get_common_embedding_ignore_filters, get_full_table_name, quote_ident, quote_literal,
+};
 use crate::{embeddings, types::*};
+use itertools::Itertools;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::path::Path;
@@ -22,8 +26,7 @@ use std::time::SystemTime;
 use tokio::fs;
 use tokio::sync::mpsc::{Receiver, Sender, UnboundedReceiver, UnboundedSender};
 use tokio::sync::{mpsc, Mutex, RwLock};
-use tokio_postgres::types::ToSql;
-use tokio_postgres::{Client, NoTls};
+use tokio_postgres::{types::ToSql, Client, NoTls, Row};
 use tokio_util::sync::CancellationToken;
 
 pub const JOB_TABLE_DEFINITION: &'static str = r#"
@@ -70,6 +73,104 @@ pub const FAILURE_TABLE_DEFINITION: &'static str = r#"
 const EMB_USAGE_TABLE_NAME: &'static str = "embedding_usage_info";
 const EMB_FAILURE_TABLE_NAME: &'static str = "embedding_failure_info";
 const EMB_LOCK_TABLE_NAME: &'static str = "_lantern_emb_job_locks";
+
+#[derive(Debug, Clone)]
+pub struct EmbeddingJob {
+    pub id: i32,
+    pub is_init: bool,
+    pub db_uri: String,
+    pub schema: String,
+    pub table: String,
+    pub column: String,
+    pub pk: String,
+    pub filter: Option<String>,
+    pub label: Option<String>,
+    pub job_type: EmbeddingJobType,
+    pub column_type: String,
+    pub out_column: String,
+    pub model: String,
+    pub runtime_params: String,
+    pub runtime: Runtime,
+    pub batch_size: Option<usize>,
+    pub row_ids: Option<Vec<String>>,
+}
+
+impl EmbeddingJob {
+    pub fn new(row: Row, data_path: &str, db_uri: &str) -> Result<EmbeddingJob, anyhow::Error> {
+        let runtime = Runtime::try_from(row.get::<&str, Option<&str>>("runtime").unwrap_or("ort"))?;
+        let runtime_params = if runtime == Runtime::Ort {
+            format!(r#"{{ "data_path": "{data_path}" }}"#)
+        } else {
+            row.get::<&str, Option<String>>("runtime_params")
+                .unwrap_or("{}".to_owned())
+        };
+
+        let batch_size = if let Some(batch_size) = row.get::<&str, Option<i32>>("batch_size") {
+            Some(batch_size as usize)
+        } else {
+            None
+        };
+
+        Ok(Self {
+            id: row.get::<&str, i32>("id"),
+            pk: row.get::<&str, String>("pk"),
+            label: row.get::<&str, Option<String>>("label"),
+            db_uri: db_uri.to_owned(),
+            schema: row.get::<&str, String>("schema"),
+            table: row.get::<&str, String>("table"),
+            column: row.get::<&str, String>("column"),
+            out_column: row.get::<&str, String>("dst_column"),
+            model: get_clean_model_name(row.get::<&str, &str>("model"), runtime),
+            runtime,
+            runtime_params,
+            filter: None,
+            row_ids: None,
+            is_init: true,
+            batch_size,
+            job_type: EmbeddingJobType::try_from(
+                row.get::<&str, Option<&str>>("job_type")
+                    .unwrap_or("embedding"),
+            )?,
+            column_type: row
+                .get::<&str, Option<String>>("column_type")
+                .unwrap_or("REAL[]".to_owned()),
+        })
+    }
+
+    pub fn set_filter(&mut self, filter: &str) {
+        self.filter = Some(filter.to_owned());
+    }
+
+    pub fn set_is_init(&mut self, is_init: bool) {
+        self.is_init = is_init;
+    }
+
+    pub fn set_row_ids(&mut self, row_ids: Vec<String>) {
+        self.row_ids = Some(row_ids);
+    }
+
+    #[allow(dead_code)]
+    pub fn set_ctid_filter(&mut self, row_ids: &Vec<String>) {
+        let row_ctids_str = row_ids
+            .iter()
+            .map(|r| {
+                format!(
+                    "currtid2('{table_name}','{r}'::tid)",
+                    table_name = &self.table
+                )
+            })
+            .join(",");
+        self.set_filter(&format!("ctid IN ({row_ctids_str})"));
+    }
+
+    pub fn set_id_filter(&mut self, row_ids: &Vec<String>) {
+        let row_ctids_str = row_ids.iter().map(|s| quote_literal(s)).join(",");
+        self.set_filter(&format!(
+            "id IN ({row_ctids_str}) AND {common_filter}",
+            common_filter = get_common_embedding_ignore_filters(&self.column)
+        ));
+    }
+}
 
 async fn lock_row(
     client: Arc<Client>,

@@ -27,7 +27,6 @@ url = "2.5"
 lantern_cli = { path = "../lantern_cli", default-features = false, features = [
   "external-index",
   "embeddings",
-  "autotune",
   "daemon",
 ] }
 anyhow = "1.0.91"

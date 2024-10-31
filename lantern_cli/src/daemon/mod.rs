@@ -1,7 +1,11 @@
+#[cfg(feature = "autotune")]
 pub mod autotune_jobs;
 pub mod cli;
+#[cfg(feature = "embeddings")]
 mod client_embedding_jobs;
+#[cfg(feature = "embeddings")]
 pub mod embedding_jobs;
+#[cfg(feature = "external-index")]
 pub mod external_index_jobs;
 mod helpers;
 mod types;
@@ -21,9 +25,6 @@ use crate::types::AnyhowVoidResult;
 use crate::{logger::Logger, utils::get_full_table_name};
 use types::{DaemonJobHandlerMap, JobRunArgs, TargetDB};
 
-use autotune_jobs::autotune_job_processor;
-use embedding_jobs::embedding_job_processor;
-use external_index_jobs::external_index_job_processor;
 use types::{AutotuneProcessorArgs, EmbeddingProcessorArgs, ExternalIndexProcessorArgs, JobType};
 
 lazy_static! {
@@ -92,7 +93,7 @@ async fn spawn_job(
     args: Arc<cli::DaemonArgs>,
     job_type: JobType,
     parent_cancel_token: CancellationToken,
-) {
+) -> AnyhowVoidResult {
     let mut retry_interval = 5;
 
     let log_label = match job_type {
@@ -122,7 +123,8 @@ async fn spawn_job(
         jobs.insert(target_db.name.clone(), cancel_token.clone());
         drop(jobs);
 
-        let result = match &job_type {
+        let result: Result<(), anyhow::Error> = match &job_type {
+            #[cfg(feature = "embeddings")]
             JobType::Embeddings(processor_tx) => {
                 embedding_jobs::start(
                     JobRunArgs {
@@ -139,6 +141,11 @@ async fn spawn_job(
                 )
                 .await
             }
+            #[cfg(not(feature = "embeddings"))]
+            JobType::Embeddings(_) => {
+                anyhow::bail!("Embedding jobs are not enabled");
+            }
+            #[cfg(feature = "external-index")]
             JobType::ExternalIndex(processor_tx) => {
                 external_index_jobs::start(
                     JobRunArgs {
@@ -155,6 +162,11 @@ async fn spawn_job(
                 )
                 .await
             }
+            #[cfg(not(feature = "external-index"))]
+            JobType::ExternalIndex(_) => {
+                anyhow::bail!("External Index jobs are not enabled");
+            }
+            #[cfg(feature = "autotune")]
             JobType::Autotune(processor_tx) => {
                 autotune_jobs::start(
                     JobRunArgs {
@@ -170,6 +182,10 @@ async fn spawn_job(
                     cancel_token.clone(),
                 )
                 .await
+            }
+            #[cfg(not(feature = "autotune"))]
+            JobType::Autotune(_) => {
+                anyhow::bail!("Autotune jobs are not enabled");
             }
         };
 
@@ -190,6 +206,8 @@ async fn spawn_job(
 
         break;
     }
+
+    Ok(())
 }
 
 async fn spawn_jobs(
@@ -371,30 +389,39 @@ pub async fn start(
 
     let args_arc = Arc::new(args);
     let args_arc_clone = args_arc.clone();
-    let (embedding_tx, embedding_rx): (
+    let embedding_channel: (
         Sender<EmbeddingProcessorArgs>,
         Receiver<EmbeddingProcessorArgs>,
     ) = mpsc::channel(1);
-    let (autotune_tx, autotune_rx): (
+    let autotune_channel: (
         Sender<AutotuneProcessorArgs>,
         Receiver<AutotuneProcessorArgs>,
     ) = mpsc::channel(1);
-    let (external_index_tx, external_index_rx): (
+    let external_index_channel: (
         Sender<ExternalIndexProcessorArgs>,
         Receiver<ExternalIndexProcessorArgs>,
     ) = mpsc::channel(1);
 
+    #[cfg(feature = "embeddings")]
     if args_arc.embeddings {
-        tokio::spawn(embedding_job_processor(embedding_rx, cancel_token.clone()));
+        tokio::spawn(embedding_jobs::embedding_job_processor(
+            embedding_channel.1,
+            cancel_token.clone(),
+        ));
     }
 
+    #[cfg(feature = "autotune")]
     if args_arc.autotune {
-        tokio::spawn(autotune_job_processor(autotune_rx, cancel_token.clone()));
+        tokio::spawn(autotune_jobs::autotune_job_processor(
+            autotune_channel.1,
+            cancel_token.clone(),
+        ));
     }
 
+    #[cfg(feature = "external-index")]
     if args_arc.external_index {
-        tokio::spawn(external_index_job_processor(
-            external_index_rx,
+        tokio::spawn(external_index_jobs::external_index_job_processor(
+            external_index_channel.1,
             cancel_token.clone(),
         ));
     }
@@ -403,9 +430,9 @@ pub async fn start(
         spawn_jobs(
             target_db,
             args_arc_clone.clone(),
-            embedding_tx.clone(),
-            autotune_tx.clone(),
-            external_index_tx.clone(),
+            embedding_channel.0.clone(),
+            autotune_channel.0.clone(),
+            external_index_channel.0.clone(),
             cancel_token.clone(),
         )
         .await;
@@ -414,9 +441,9 @@ pub async fn start(
     if args_arc.master_db.is_some() {
         db_change_listener(
             args_arc.clone(),
-            embedding_tx.clone(),
-            autotune_tx.clone(),
-            external_index_tx.clone(),
+            embedding_channel.0.clone(),
+            autotune_channel.0.clone(),
+            external_index_channel.0.clone(),
             logger.clone(),
             cancel_token.clone(),
         )

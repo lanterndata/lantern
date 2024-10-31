@@ -1,10 +1,26 @@
 pub mod daemon_test_utils {
-    use crate::{daemon, types::AnyhowVoidResult};
+    use crate::types::AnyhowVoidResult;
     use std::{env, time::Duration};
     use tokio_postgres::{Client, NoTls};
 
     pub static CLIENT_TABLE_NAME: &'static str = "_lantern_cloud_client1";
     pub static CLIENT_TABLE_NAME_2: &'static str = "_lantern_cloud_client2";
+
+    #[cfg(not(feature = "autotune"))]
+    pub static AUTOTUNE_JOB_TABLE_DEF: &'static str = "(id INT)";
+    #[cfg(feature = "autotune")]
+    pub static AUTOTUNE_JOB_TABLE_DEF: &'static str =
+        crate::daemon::autotune_jobs::JOB_TABLE_DEFINITION;
+    #[cfg(not(feature = "external-index"))]
+    pub static EXTERNAL_INDEX_JOB_TABLE_DEF: &'static str = "(id INT)";
+    #[cfg(feature = "external-index")]
+    pub static EXTERNAL_INDEX_JOB_TABLE_DEF: &'static str =
+        crate::daemon::external_index_jobs::JOB_TABLE_DEFINITION;
+    #[cfg(not(feature = "embeddings"))]
+    pub static EMBEDDING_JOB_TABLE_DEF: &'static str = "(id INT)";
+    #[cfg(feature = "embeddings")]
+    pub static EMBEDDING_JOB_TABLE_DEF: &'static str =
+        crate::daemon::embedding_jobs::JOB_TABLE_DEFINITION;
 
     async fn drop_db(client: &mut Client, name: &str) -> AnyhowVoidResult {
         client
@@ -58,9 +74,9 @@ pub mod daemon_test_utils {
     CREATE TABLE _lantern_extras_internal.external_index_jobs ({indexing_job_table_def});
     
      "#,
-                embedding_job_table_def = daemon::embedding_jobs::JOB_TABLE_DEFINITION,
-                autotune_job_table_def = daemon::autotune_jobs::JOB_TABLE_DEFINITION,
-                indexing_job_table_def = daemon::external_index_jobs::JOB_TABLE_DEFINITION,
+                embedding_job_table_def = EMBEDDING_JOB_TABLE_DEF,
+                autotune_job_table_def = AUTOTUNE_JOB_TABLE_DEF,
+                indexing_job_table_def = EXTERNAL_INDEX_JOB_TABLE_DEF,
             ))
             .await?;
 
