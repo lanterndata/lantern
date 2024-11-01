@@ -15,9 +15,6 @@
 #include <utils/rel.h>  // RelationData
 #include <utils/syscache.h>
 
-#include "../hooks/executor_start.h"
-#include "../hooks/post_parse.h"
-
 // We import this header file
 // to access the op class support function pointers
 #include "../hnsw.h"
@@ -53,10 +50,6 @@ int   ldb_hnsw_ef_search;
 int   ldb_external_index_port;
 char *ldb_external_index_host;
 bool  ldb_external_index_secure;
-
-// if this variable is set to true
-// our operator rewriting hooks will be disabled
-bool ldb_pgvector_compat;
 
 // this variable is only set during testing and controls whether
 // certain elog() calls are made
@@ -366,17 +359,6 @@ void _PG_init(void)
                              NULL,
                              NULL);
 
-    DefineCustomBoolVariable("lantern.pgvector_compat",
-                             "Whether or not the operator <-> should automatically detect the right distance function",
-                             "set this to 1 to disable operator rewriting hooks",
-                             &ldb_pgvector_compat,
-                             true,
-                             PGC_USERSET,
-                             0,
-                             NULL,
-                             NULL,
-                             NULL);
-
     DefineCustomIntVariable("lantern.external_index_port",
                             "Port for external indexing",
                             "Change this value if you run lantern daemon on different port",
@@ -417,30 +399,8 @@ void _PG_init(void)
     MarkGUCPrefixReserved("_lantern_internal");
 #endif
 
-    original_post_parse_analyze_hook = post_parse_analyze_hook;
-    original_ExecutorStart_hook = ExecutorStart_hook;
-
-    post_parse_analyze_hook = post_parse_analyze_hook_with_operator_check;
-    ExecutorStart_hook = ExecutorStart_hook_with_operator_check;
-
 #ifndef NDEBUG
     signal(SIGSEGV, ldb_wait_for_gdb);
     signal(SIGABRT, ldb_wait_for_gdb);
 #endif
-}
-
-// Called with extension unload.
-void _PG_fini(void)
-{
-    // Return back the original hook value.
-    // This check is because there might be case if while we stop the hooks (in pgvector_compat mode)
-    // Another extension will be loaded and it will overwrite the hooks
-    // And when lantern extension will be unloaded it will set the hooks to original values
-    // Overwriting the current changed hooks set by another extension
-    if(ExecutorStart_hook == ExecutorStart_hook_with_operator_check) {
-        ExecutorStart_hook = original_ExecutorStart_hook;
-    }
-    if(post_parse_analyze_hook == post_parse_analyze_hook_with_operator_check) {
-        post_parse_analyze_hook = original_post_parse_analyze_hook;
-    }
 }

@@ -347,9 +347,7 @@ static float8 vector_dist(Vector *a, Vector *b, usearch_metric_kind_t metric_kin
 PGDLLEXPORT PG_FUNCTION_INFO_V1(ldb_generic_dist);
 Datum       ldb_generic_dist(PG_FUNCTION_ARGS)
 {
-    if(ldb_pgvector_compat) {
-        elog(ERROR, "Operator can only be used when lantern.pgvector_compat=FALSE");
-    }
+    elog(ERROR, "Operator <?> is deprecated. Please explicitly use the operator that matches your distance function.");
     PG_RETURN_NULL();
 }
 

@@ -40,7 +40,6 @@ INFO:  done init usearch index
 INFO:  inserted 1 elements
 INFO:  done saving 1 vectors
 SET enable_seqscan=FALSE;
-SET lantern.pgvector_compat=FALSE;
 -- Verify that basic queries still work given our query parser and planner hooks
 SELECT 0 + 1;
  ?column? 
@@ -54,7 +53,7 @@ SELECT 1 FROM test1 WHERE id = 0 + 1;
 
 -- Verify that the index is being used
 SET _lantern_internal.is_test = true;
-EXPLAIN (COSTS FALSE) SELECT * FROM small_world order by v <?> '{1,0,0}' LIMIT 1;
+EXPLAIN (COSTS FALSE) SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 1;
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
 DEBUG:  LANTERN - Total cost: 4.015000
@@ -66,7 +65,7 @@ DEBUG:  LANTERN - ---------------------
 ---------------------------------------------------------
  Limit
    ->  Index Scan using small_world_v_idx on small_world
-         Order By: (v <?> '{1,0,0}'::real[])
+         Order By: (v <-> '{1,0,0}'::real[])
 
 -- Verify that this does not use the index
 EXPLAIN (COSTS FALSE) SELECT 1 FROM small_world WHERE v = '{0,0,0}';
@@ -77,7 +76,7 @@ EXPLAIN (COSTS FALSE) SELECT 1 FROM small_world WHERE v = '{0,0,0}';
 
 -- Ensure we can query an index for more elements than the value of init_k
 WITH neighbors AS (
-    SELECT * FROM small_world order by v <?> '{1,0,0}' LIMIT 3
+    SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 3
 ) SELECT COUNT(*) from neighbors;
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
@@ -92,7 +91,7 @@ DEBUG:  LANTERN querying index for 10 elements
      3
 
 WITH neighbors AS (
-    SELECT * FROM small_world order by v <?> '{1,0,0}' LIMIT 15
+    SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 15
 ) SELECT COUNT(*) from neighbors;
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
@@ -109,7 +108,7 @@ DEBUG:  LANTERN querying index for 10 elements
 -- Change default k and make sure the number of usearch_searchs makes sense
 SET lantern_hnsw.init_k = 4;
 WITH neighbors AS (
-    SELECT * FROM small_world order by v <?> '{1,0,0}' LIMIT 3
+    SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 3
 ) SELECT COUNT(*) from neighbors;
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
@@ -124,7 +123,7 @@ DEBUG:  LANTERN querying index for 4 elements
      3
 
 WITH neighbors AS (
-    SELECT * FROM small_world order by v <?> '{1,0,0}' LIMIT 15
+    SELECT * FROM small_world order by v <-> '{1,0,0}' LIMIT 15
 ) SELECT COUNT(*) from neighbors;
 DEBUG:  LANTERN - Query cost estimator
 DEBUG:  LANTERN - ---------------------
@@ -143,7 +142,7 @@ DEBUG:  LANTERN - querying index for 8 elements
 RESET client_min_messages;
 SET _lantern_internal.is_test = false;
 -- Verify where condition works properly and still uses index
-SELECT has_index_scan('EXPLAIN SELECT * FROM small_world WHERE b IS TRUE ORDER BY v <?> ''{0,0,0}''');
+SELECT has_index_scan('EXPLAIN SELECT * FROM small_world WHERE b IS TRUE ORDER BY v <-> ''{0,0,0}''');
  has_index_scan 
 ----------------
  t
@@ -155,215 +154,41 @@ SELECT NOT has_index_scan('EXPLAIN SELECT COUNT(*) FROM small_world');
  t
 
 -- Verify swapping order doesn't change anything and still uses index
-SELECT has_index_scan('EXPLAIN SELECT id FROM test1 ORDER BY ''{1,2}''::REAL[] <?> v');
+SELECT has_index_scan('EXPLAIN SELECT id FROM test1 ORDER BY ''{1,2}''::REAL[] <-> v');
  has_index_scan 
 ----------------
  t
 
 -- Verify group by works and uses index
-SELECT has_index_scan('EXPLAIN WITH t AS (SELECT id FROM test1 ORDER BY ''{1,2}''::REAL[] <?> v LIMIT 1) SELECT id, COUNT(*) FROM t GROUP BY 1');
+SELECT has_index_scan('EXPLAIN WITH t AS (SELECT id FROM test1 ORDER BY ''{1,2}''::REAL[] <-> v LIMIT 1) SELECT id, COUNT(*) FROM t GROUP BY 1');
  has_index_scan 
 ----------------
  t
 
 -- Validate distinct works and uses index
-SELECT has_index_scan('EXPLAIN WITH t AS (SELECT id FROM test1 ORDER BY v <?> ''{1,2}'' LIMIT 1) SELECT DISTINCT id FROM t');
+SELECT has_index_scan('EXPLAIN WITH t AS (SELECT id FROM test1 ORDER BY v <-> ''{1,2}'' LIMIT 1) SELECT DISTINCT id FROM t');
  has_index_scan 
 ----------------
  t
 
 -- Validate join lateral works and uses index
-SELECT has_index_scan('EXPLAIN SELECT t1_results.id FROM test2 t2 JOIN LATERAL (SELECT t1.id FROM test1 t1 ORDER BY t2.v <?> t1.v LIMIT 1) t1_results ON TRUE');
+SELECT has_index_scan('EXPLAIN SELECT t1_results.id FROM test2 t2 JOIN LATERAL (SELECT t1.id FROM test1 t1 ORDER BY t2.v <-> t1.v LIMIT 1) t1_results ON TRUE');
  has_index_scan 
 ----------------
  t
 
 -- Validate union works and uses index
-SELECT has_index_scan('EXPLAIN (SELECT id FROM test1 ORDER BY v <?> ''{1,4}'') UNION (SELECT id FROM test1 ORDER BY v IS NOT NULL LIMIT 1)');
+SELECT has_index_scan('EXPLAIN (SELECT id FROM test1 ORDER BY v <-> ''{1,4}'') UNION (SELECT id FROM test1 ORDER BY v IS NOT NULL LIMIT 1)');
  has_index_scan 
 ----------------
  t
 
 -- Validate CTEs work and still use index
-SELECT has_index_scan('EXPLAIN WITH t AS (SELECT id FROM test1 ORDER BY v <?> ''{1,4}'') SELECT id FROM t UNION SELECT id FROM t');
+SELECT has_index_scan('EXPLAIN WITH t AS (SELECT id FROM test1 ORDER BY v <-> ''{1,4}'') SELECT id FROM t UNION SELECT id FROM t');
  has_index_scan 
 ----------------
  t
 
--- Validate <?> is replaced with the matching function when an index is present
-set enable_seqscan = true;
-set enable_indexscan = false;
-EXPLAIN (COSTS false) SELECT * from small_world ORDER BY v <?> '{1,1,1}';
-                  QUERY PLAN                   
------------------------------------------------
- Sort
-   Sort Key: (l2sq_dist(v, '{1,1,1}'::real[]))
-   ->  Seq Scan on small_world
-
-SELECT * from small_world ORDER BY v <?> '{1,1,1}';
- id  | b |    v    
------+---+---------
- 111 | t | {1,1,1}
- 101 | f | {1,0,1}
- 110 | f | {1,1,0}
- 011 | t | {0,1,1}
- 100 | f | {1,0,0}
- 001 | t | {0,0,1}
- 010 | f | {0,1,0}
- 000 | t | {0,0,0}
-
-begin;
-INSERT INTO test2 (v) VALUES ('{1,4}');
-INSERT INTO test2 (v) VALUES ('{2,4}');
-CREATE INDEX test2_cos ON test2 USING lantern_hnsw(v dist_cos_ops);
-INFO:  done init usearch index
-INFO:  inserted 3 elements
-INFO:  done saving 3 vectors
-EXPLAIN (COSTS false) SELECT * from test2 ORDER BY v <?> '{1,4}';
-                 QUERY PLAN                 
---------------------------------------------
- Sort
-   Sort Key: (cos_dist(v, '{1,4}'::real[]))
-   ->  Seq Scan on test2
-
--- Some additional cases that trigger operator rewriting
--- SampleScan
-EXPLAIN (COSTS false) SELECT * FROM small_world TABLESAMPLE BERNOULLI (20) ORDER BY v <?> '{1,1,1}' ASC;
-                  QUERY PLAN                   
------------------------------------------------
- Sort
-   Sort Key: (l2sq_dist(v, '{1,1,1}'::real[]))
-   ->  Sample Scan on small_world
-         Sampling: bernoulli ('20'::real)
-
--- can't compare direct equality here because it's random
-SELECT results_match('EXPLAIN SELECT * FROM small_world TABLESAMPLE BERNOULLI (20) ORDER BY v <?> ''{1,1,1}'' ASC',
-    'EXPLAIN SELECT * FROM small_world TABLESAMPLE BERNOULLI (20) ORDER BY l2sq_dist(v, ''{1,1,1}'') ASC');
- results_match 
----------------
- t
-
--- SetOpt/HashSetOp
-EXPLAIN (COSTS false) (SELECT * FROM small_world ORDER BY v <?> '{1,0,1}' ASC ) EXCEPT (SELECT * FROM small_world ORDER by v <?> '{1,1,1}' ASC LIMIT 5);
-                                     QUERY PLAN                                      
--------------------------------------------------------------------------------------
- HashSetOp Except
-   ->  Append
-         ->  Subquery Scan on "*SELECT* 1"
-               ->  Sort
-                     Sort Key: (l2sq_dist(small_world.v, '{1,0,1}'::real[]))
-                     ->  Seq Scan on small_world
-         ->  Subquery Scan on "*SELECT* 2"
-               ->  Limit
-                     ->  Sort
-                           Sort Key: (l2sq_dist(small_world_1.v, '{1,1,1}'::real[]))
-                           ->  Seq Scan on small_world small_world_1
-
-SELECT results_match('(SELECT * FROM small_world ORDER BY v <?> ''{1,0,1}'' ASC ) EXCEPT (SELECT * FROM small_world ORDER by v <?> ''{1,1,1}'' ASC LIMIT 5)',
-    '(SELECT * FROM small_world ORDER BY l2sq_dist(v, ''{1,0,1}'') ASC ) EXCEPT (SELECT * FROM small_world ORDER by l2sq_dist(v, ''{1,1,1}'') ASC LIMIT 5)');
- results_match 
----------------
- t
-
--- HashAggregate
-EXPLAIN (COSTS false) SELECT v, COUNT(*) FROM small_world GROUP BY v ORDER BY v <?> '{1,1,1}';
-                  QUERY PLAN                   
------------------------------------------------
- Sort
-   Sort Key: (l2sq_dist(v, '{1,1,1}'::real[]))
-   ->  HashAggregate
-         Group Key: v
-         ->  Seq Scan on small_world
-
-SELECT results_match('SELECT v, COUNT(*) FROM small_world GROUP BY v ORDER BY v <?> ''{1,1,1}''',
-    'SELECT v, COUNT(*) FROM small_world GROUP BY v ORDER BY l2sq_dist(v, ''{1,1,1}'')');
- results_match 
----------------
- t
-
--- GroupBy this 
-EXPLAIN (COSTS false) SELECT * FROM small_world GROUP BY id, v, b ORDER BY v <?> '{1,1,1}';
-                  QUERY PLAN                   
------------------------------------------------
- Sort
-   Sort Key: (l2sq_dist(v, '{1,1,1}'::real[]))
-   ->  HashAggregate
-         Group Key: id, v, b
-         ->  Seq Scan on small_world
-
-SELECT results_match('SELECT * FROM small_world GROUP BY id, v, b ORDER BY v <?> ''{1,1,1}''',
-    'SELECT * FROM small_world GROUP BY id, v, b ORDER BY l2sq_dist(v, ''{1,1,1}'')');
- results_match 
----------------
- t
-
--- HashJoin/Hash
-CREATE TABLE small_world_2 AS (SELECT * FROM small_world);
-EXPLAIN (COSTS false) SELECT * FROM small_world JOIN small_world_2 using (v) ORDER BY v <?> '{1,1,1}';
-                        QUERY PLAN                         
------------------------------------------------------------
- Sort
-   Sort Key: (l2sq_dist(small_world.v, '{1,1,1}'::real[]))
-   ->  Hash Join
-         Hash Cond: (small_world_2.v = small_world.v)
-         ->  Seq Scan on small_world_2
-         ->  Hash
-               ->  Seq Scan on small_world
-
-SELECT results_match('SELECT * FROM small_world JOIN small_world_2 using (v) ORDER BY v <?> ''{1,1,1}''',
-    'SELECT * FROM small_world JOIN small_world_2 using (v) ORDER BY l2sq_dist(v, ''{1,1,1}'')');
- results_match 
----------------
- t
-
--- MixedAggregate (this doesn't require additional logic, but I include it here as an example of generating the path)
-EXPLAIN (COSTS false) SELECT v FROM small_world GROUP BY ROLLUP(v) ORDER BY v <?> '{1,1,1}';
-                  QUERY PLAN                   
------------------------------------------------
- Sort
-   Sort Key: (l2sq_dist(v, '{1,1,1}'::real[]))
-   ->  MixedAggregate
-         Hash Key: v
-         Group Key: ()
-         ->  Seq Scan on small_world
-
-SELECT results_match('SELECT v FROM small_world GROUP BY ROLLUP(v) ORDER BY v <?> ''{1,1,1}''',
-    'SELECT v FROM small_world GROUP BY ROLLUP(v) ORDER BY l2sq_dist(v, ''{1,1,1}'')');
- results_match 
----------------
- t
-
--- WindowAgg
-EXPLAIN (COSTS false) SELECT v, EVERY(b) OVER () FROM small_world ORDER BY v <?> '{1,1,1}';
-                  QUERY PLAN                   
------------------------------------------------
- Sort
-   Sort Key: (l2sq_dist(v, '{1,1,1}'::real[]))
-   ->  WindowAgg
-         ->  Seq Scan on small_world
-
-SELECT results_match('SELECT v, EVERY(b) OVER () FROM small_world ORDER BY v <?> ''{1,1,1}''',
-    'SELECT v, EVERY(b) OVER () FROM small_world ORDER BY l2sq_dist(v, ''{1,1,1}'')');
- results_match 
----------------
- t
-
--- LockRows
-EXPLAIN (COSTS false) SELECT * FROM small_world ORDER BY v <?> '{1,1,1}' ASC FOR UPDATE;
-                     QUERY PLAN                      
------------------------------------------------------
- LockRows
-   ->  Sort
-         Sort Key: (l2sq_dist(v, '{1,1,1}'::real[]))
-         ->  Seq Scan on small_world
-
-SELECT results_match('SELECT * FROM small_world ORDER BY v <?> ''{1,1,1}'' ASC FOR UPDATE',
-    'SELECT * FROM small_world ORDER BY l2sq_dist(v, ''{1,1,1}'') ASC FOR UPDATE');
- results_match 
----------------
- t
-
-rollback;
 set enable_indexscan = true;
 set enable_seqscan = false;
 -- test pagination in face of duplicates

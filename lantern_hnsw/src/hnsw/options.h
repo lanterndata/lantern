@@ -78,7 +78,6 @@ bytea* ldb_amoptions(Datum reloptions, bool validate);
 extern int   ldb_hnsw_init_k;
 extern int   ldb_hnsw_ef_search;
 extern bool  ldb_is_test;
-extern bool  ldb_pgvector_compat;
 extern int   ldb_external_index_port;
 extern char* ldb_external_index_host;
 extern bool  ldb_external_index_secure;
