@@ -46,7 +46,6 @@ def primary():
     node.init()
     node.append_conf("enable_seqscan = off")
     node.append_conf("maintenance_work_mem = '1GB'")
-    node.append_conf("lantern.pgvector_compat=FALSE")
     node.append_conf("checkpoint_timeout = '100min'")
     node.append_conf("min_wal_size = '1GB'")
     node.append_conf("checkpoint_completion_target = '0.9'")
@@ -158,7 +157,6 @@ def generic_vector_query(
 
     dist_with_function = f"{distance_metric}_dist(v, ({query_vector}))"
     dist_with_concrete_op = f"v {DIST_OPS[distance_metric]} ({query_vector})"
-    dist_with_generic_op = f"v <?> ({query_vector})"
 
     query_generator = (
         lambda order_by: f"""
@@ -173,8 +171,6 @@ def generic_vector_query(
         return query_generator(dist_with_function)
     elif kind == "concrete":
         return query_generator(dist_with_concrete_op)
-    elif kind == "generic":
-        return query_generator(dist_with_generic_op)
 
 
 @pytest.mark.parametrize("distance_metric", ["l2sq", "cos"], scope="session")
@@ -197,9 +193,6 @@ def test_selects(db, setup_copy_table_with_index, distance_metric, quant_bits, r
         concrete_op_query = generic_vector_query(
             table_name, distance_metric, "concrete", query_vector_id=q_vec_id
         )
-        generic_op_query = generic_vector_query(
-            table_name, distance_metric, "generic", query_vector_id=q_vec_id
-        )
 
         exact_explain_query = f"EXPLAIN {exact_query}"
         exact_plan = primary.execute("testdb", exact_explain_query)
@@ -214,7 +207,7 @@ def test_selects(db, setup_copy_table_with_index, distance_metric, quant_bits, r
             q_vec_id == exact_res[0][0]
         ), "First result in exact query result should be the query vector"
 
-        for query in [generic_op_query, concrete_op_query]:
+        for query in [concrete_op_query]:
             explain_query = f"EXPLAIN {query}"
             plan = primary.execute("testdb", explain_query)
             assert f"Index Scan using idx_{table_name}" in str(
@@ -348,9 +341,6 @@ def test_inserts(setup_copy_table_with_index, distance_metric, quant_bits, reque
         concrete_op_query = generic_vector_query(
             table_name, distance_metric, "concrete", query_vector_id=q_vec_id
         )
-        generic_op_query = generic_vector_query(
-            table_name, distance_metric, "generic", query_vector_id=q_vec_id
-        )
 
         exact_explain_query = f"EXPLAIN {exact_query}"
         for db in [primary, replica]:
@@ -367,7 +357,7 @@ def test_inserts(setup_copy_table_with_index, distance_metric, quant_bits, reque
                 exact_res[0][0] in inserted_vector_orig_ids[q_vec_id]
             ), "First result in exact query result should be the query vector"
 
-            for query in [generic_op_query, concrete_op_query]:
+            for query in [concrete_op_query]:
                 explain_query = f"EXPLAIN {query}"
                 plan = db.execute("testdb", explain_query)
                 assert f"Index Scan using idx_{table_name}" in str(

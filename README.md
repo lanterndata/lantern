@@ -106,19 +106,9 @@ FROM small_world ORDER BY vector <-> ARRAY[0,0,0] LIMIT 1;
 
 ### A note on operators and operator classes
 
-Lantern supports several distance functions in the index and it has 2 modes for operators:
+Lantern supports several distance functions in the index
 
-1. `lantern.pgvector_compat=TRUE` (default)
-   In this mode there are 3 operators available `<->` (l2sq), `<=>` (cosine), `<+>` (hamming).
-
-   Note that in this mode, you need to use right operator in order to trigger an index scan.
-
-2. `lantern.pgvector_compat=FALSE`
-   In this mode you only need to specify the distance function used for a column at index creation time. Lantern will automatically infer the distance function to use for search so you always use `<?>` operator in search queries.
-
-   Note that in this mode, the operator `<?>` is intended exclusively for use with index lookups. If you expect to not use the index in a query, use the distance function directly (e.g. `l2sq_dist(v1, v2)`)
-
-> To switch between modes set `lantern.pgvector_compat` variable to `TRUE` or `FALSE`.
+There are 3 operators available `<->` (l2sq), `<=>` (cosine), `<+>` (hamming).
 
 There are four defined operator classes that can be employed during index creation:
 

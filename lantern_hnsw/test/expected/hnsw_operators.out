@@ -1,23 +1,13 @@
--- Validate that lantern.pgvector_compat disables the operator rewriting hooks
+\set ON_ERROR_STOP off
 CREATE TABLE op_test (v REAL[]);
 INSERT INTO op_test (v) VALUES (ARRAY[0,0,0]), (ARRAY[1,1,1]);
 CREATE INDEX cos_idx ON op_test USING lantern_hnsw(v dist_cos_ops);
 INFO:  done init usearch index
 INFO:  inserted 2 elements
 INFO:  done saving 2 vectors
--- should rewrite operator
-SET lantern.pgvector_compat=FALSE;
-SELECT * FROM op_test ORDER BY v <?> ARRAY[1,1,1];
-    v    
----------
- {1,1,1}
- {0,0,0}
-
-\set ON_ERROR_STOP off
-SET lantern.pgvector_compat=TRUE;
--- should throw error
-SELECT * FROM op_test ORDER BY v <?> ARRAY[1,1,1];
-ERROR:  Operator can only be used when lantern.pgvector_compat=FALSE
+-- Expect deprecation error due to use of the <?> operator
+SELECT ARRAY[1,2,3] <?> ARRAY[3,2,1];
+ERROR:  Operator <?> is deprecated. Please explicitly use the operator that matches your distance function.
 -- should not throw error
 SELECT * FROM op_test ORDER BY v <=> ARRAY[1,1,1];
     v    
@@ -39,7 +29,6 @@ SELECT v <-> ARRAY[1,1,1] FROM op_test ORDER BY v <-> ARRAY[1,1,1];
         0
         3
 
-SET lantern.pgvector_compat=FALSE;
 SET enable_seqscan=OFF;
 \set ON_ERROR_STOP on
 -- one-off vector distance calculations should work with relevant operator
@@ -90,15 +79,6 @@ SELECT ARRAY[1,0,0] <+> ARRAY[0,1,0];
 ----------
         2
 
--- NOW THIS IS TRIGGERING INDEX SCAN AS WELL
--- BECAUSE WE ARE REGISTERING <?> FOR ALL OPERATOR CLASSES
--- IDEALLY THIS SHOULD NOT TRIGGER INDEX SCAN WHEN lantern.pgvector_compat=TRUE
-EXPLAIN (COSTS FALSE) SELECT * FROM op_test ORDER BY v <?> ARRAY[1,1,1];
-              QUERY PLAN               
----------------------------------------
- Index Scan using cos_idx on op_test
-   Order By: (v <?> '{1,1,1}'::real[])
-
 -- should sort with index
 EXPLAIN (COSTS FALSE) SELECT * FROM op_test ORDER BY v <=> ARRAY[1,1,1];
               QUERY PLAN               
@@ -138,15 +118,7 @@ SELECT v <-> ARRAY[1,1,1] FROM op_test ORDER BY v <-> ARRAY[1,1,1];
 
 RESET ALL;
 -- Set false twice to verify that no crash is happening
-SET lantern.pgvector_compat=FALSE;
 \set ON_ERROR_STOP off
--- should rewrite operator
-SELECT * FROM op_test ORDER BY v <?> ARRAY[1,1,1];
-    v    
----------
- {1,1,1}
- {0,0,0}
-
 SET enable_seqscan=OFF;
 CREATE INDEX hamming_idx ON op_test USING lantern_hnsw(cast(v as INTEGER[]) dist_hamming_ops);
 INFO:  done init usearch index

@@ -47,7 +47,6 @@ set work_mem = '10MB';
 CREATE INDEX ON small_world USING lantern_hnsw (v) WITH (dim=3);
 
 SET enable_seqscan = false;
-SET lantern.pgvector_compat = false;
 
 -- Inserting vectors of the same dimension and nulls should work
 INSERT INTO small_world (v) VALUES ('{1,1,2}');
@@ -64,7 +63,7 @@ SELECT
 FROM
     small_world
 ORDER BY
-    v <?> '{0,0,0}';
+    v <-> '{0,0,0}';
 
 -- Ensure the index size remains consistent after inserts
 SELECT * from ldb_get_indexes('small_world');
@@ -76,7 +75,7 @@ SELECT
 FROM
     small_world
 ORDER BY
-    v <?> '{0,0,0}'
+    v <-> '{0,0,0}'
 LIMIT 10;
 
 SELECT _lantern_internal.validate_index('small_world_v_idx', false);
@@ -89,6 +88,6 @@ CREATE UNLOGGED TABLE sift_base10k (
 CREATE INDEX hnsw_idx ON sift_base10k USING lantern_hnsw (v dist_l2sq_ops) WITH (M=2, ef_construction=10, ef=4, dim=128);
 \COPY sift_base10k (v) FROM '/tmp/lantern/vector_datasets/siftsmall_base_arrays.csv' WITH CSV;
 SELECT v AS v4444 FROM sift_base10k WHERE id = 4444 \gset
-EXPLAIN (COSTS FALSE) SELECT * FROM sift_base10k order by v <?> :'v4444';
+EXPLAIN (COSTS FALSE) SELECT * FROM sift_base10k order by v <-> :'v4444';
 
 SELECT _lantern_internal.validate_index('hnsw_idx', false);
