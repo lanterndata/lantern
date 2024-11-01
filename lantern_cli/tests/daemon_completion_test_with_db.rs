@@ -28,7 +28,7 @@ async fn test_daemon_completion_init_job() {
            ('Test5');
 
     INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("id", "table", src_column, dst_column, embedding_model, runtime, runtime_params, job_type, column_type)
-    VALUES (1, '{CLIENT_TABLE_NAME}', 'title', 'num', 'openai/gpt-4o', 'openai', '{{"api_token": "{api_token}", "context": "Given text testN, return the N as number without any quotes, so for Test1 you should return 1, Test105 you should return 105" }}', 'completion', 'INT');
+    VALUES (1, '{CLIENT_TABLE_NAME}', 'title', 'num', 'openai/gpt-4o', 'openai', '{{"api_token": "{api_token}", "system_prompt": "Given text testN, return the N as number without any quotes, so for Test1 you should return 1, Test105 you should return 105" }}', 'completion', 'INT');
      "#
         ))
         .await

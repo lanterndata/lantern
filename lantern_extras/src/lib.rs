@@ -8,21 +8,17 @@ pub mod dotvecs;
 pub mod embeddings;
 pub mod external_index;
 
+// this will be deprecated and removed on upcoming releases
 pub static OPENAI_TOKEN: GucSetting<Option<&'static CStr>> =
     GucSetting::<Option<&'static CStr>>::new(None);
+
 pub static LLM_TOKEN: GucSetting<Option<&'static CStr>> =
     GucSetting::<Option<&'static CStr>>::new(None);
 pub static LLM_DEPLOYMENT_URL: GucSetting<Option<&'static CStr>> =
     GucSetting::<Option<&'static CStr>>::new(None);
-pub static OPENAI_AZURE_API_TOKEN: GucSetting<Option<&'static CStr>> =
-    GucSetting::<Option<&'static CStr>>::new(None);
 pub static OPENAI_AZURE_ENTRA_TOKEN: GucSetting<Option<&'static CStr>> =
     GucSetting::<Option<&'static CStr>>::new(None);
-pub static COHERE_TOKEN: GucSetting<Option<&'static CStr>> =
-    GucSetting::<Option<&'static CStr>>::new(None);
 pub static ENABLE_DAEMON: GucSetting<bool> = GucSetting::<bool>::new(false);
-pub static COMPLETION_CONTEXT: GucSetting<Option<&'static CStr>> =
-    GucSetting::<Option<&'static CStr>>::new(None);
 
 pub static DAEMON_DATABASES: GucSetting<Option<&'static CStr>> =
     GucSetting::<Option<&'static CStr>>::new(None);
@@ -62,26 +58,10 @@ pub unsafe extern "C" fn _PG_init() {
         GucFlags::NO_SHOW_ALL,
     );
     GucRegistry::define_string_guc(
-        "lantern_extras.openai_azure_api_token",
-        "Azure API token.",
-        "Used when generating embeddings with Azure OpenAI models",
-        &OPENAI_AZURE_API_TOKEN,
-        GucContext::Userset,
-        GucFlags::NO_SHOW_ALL,
-    );
-    GucRegistry::define_string_guc(
         "lantern_extras.openai_azure_entra_token",
         "Azure Entra token.",
         "Used when generating embeddings with Azure OpenAI models",
-        &OPENAI_AZURE_API_TOKEN,
-        GucContext::Userset,
-        GucFlags::NO_SHOW_ALL,
-    );
-    GucRegistry::define_string_guc(
-        "lantern_extras.cohere_token",
-        "Cohere API token.",
-        "Used when generating embeddings with Cohere models",
-        &COHERE_TOKEN,
+        &OPENAI_AZURE_ENTRA_TOKEN,
         GucContext::Userset,
         GucFlags::NO_SHOW_ALL,
     );
@@ -99,14 +79,6 @@ pub unsafe extern "C" fn _PG_init() {
         "Flag to indicate if daemon is enabled or not",
         &ENABLE_DAEMON,
         GucContext::Sighup,
-        GucFlags::NO_SHOW_ALL,
-    );
-    GucRegistry::define_string_guc(
-        "lantern_extras.completion_context",
-        "Context to pass on LLM completion calls.",
-        "Used when calling completion method on LLMs",
-        &COMPLETION_CONTEXT,
-        GucContext::Userset,
         GucFlags::NO_SHOW_ALL,
     );
 }

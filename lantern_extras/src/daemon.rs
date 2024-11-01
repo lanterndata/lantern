@@ -15,11 +15,7 @@ use crate::{
     DAEMON_DATABASES, ENABLE_DAEMON,
 };
 
-pub fn start_daemon(
-    embeddings: bool,
-    indexing: bool,
-    autotune: bool,
-) -> Result<(), anyhow::Error> {
+pub fn start_daemon(embeddings: bool, indexing: bool, autotune: bool) -> Result<(), anyhow::Error> {
     let (db, user, socket_path, port) = BackgroundWorker::transaction(|| {
         Spi::connect(|client| {
             let row = client
@@ -75,7 +71,10 @@ pub fn start_daemon(
 
     let logger = Logger::new("Lantern Daemon", LogLevel::Debug);
     let cancellation_token = CancellationToken::new();
-    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();// Runtime::new().unwrap();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap(); // Runtime::new().unwrap();
     rt.block_on(async {
         start(
             DaemonArgs {
@@ -90,11 +89,12 @@ pub fn start_daemon(
                 schema: String::from("_lantern_extras_internal"),
                 target_db: Some(target_dbs.clone()),
                 data_path: Some(DATA_PATH.to_owned()),
-                inside_postgres: true
+                inside_postgres: true,
             },
             Some(logger.clone()),
             cancellation_token.clone(),
-        ).await?;
+        )
+        .await?;
 
         tokio::select! {
             _ = cancellation_token.cancelled() => {
@@ -115,36 +115,37 @@ pub fn start_daemon(
         Ok::<(), anyhow::Error>(())
     })?;
 
-
     Ok(())
 }
 
 #[pg_extern(immutable, parallel_unsafe, security_definer)]
 fn add_embedding_job<'a>(
-    table: &'a str,
+    table_name: &'a str,
     src_column: &'a str,
     dst_column: &'a str,
-    embedding_model: &'a str,
-    batch_size: default!(i32, -1),
-    runtime: default!(&'a str, "'ort'"),
-    runtime_params: default!(&'a str, "'{}'"),
+    model: default!(&'a str, "'text-embedding-3-small'"),
     pk: default!(&'a str, "'id'"),
     schema: default!(&'a str, "'public'"),
+    base_url: default!(&'a str, "''"),
+    batch_size: default!(i32, -1),
+    dimensions: default!(i32, 1536),
+    api_token: default!(&'a str, "''"),
+    azure_entra_token: default!(&'a str, "''"),
+    runtime: default!(&'a str, "'openai'"),
 ) -> Result<i32, anyhow::Error> {
-    let mut params = runtime_params.to_owned();
-    if params == "{}" {
-        match runtime {
-            "openai" => {
-                params = get_openai_runtime_params("", "", 1536)?;
-            }
-            "cohere" => {
-                params = get_cohere_runtime_params("search_document")?;
-            }
-            _ => {}
+    let params = match runtime {
+        "openai" => {
+            get_openai_runtime_params(api_token, azure_entra_token, base_url, "", dimensions)?
         }
-    }
+        "cohere" => get_cohere_runtime_params(api_token, "search_document")?,
+        _ => "{}".to_owned(),
+    };
 
-    let batch_size = if batch_size == -1 { "NULL".to_string() } else { batch_size.to_string() };
+    let batch_size = if batch_size == -1 {
+        "NULL".to_string()
+    } else {
+        batch_size.to_string()
+    };
     let id: Option<i32> = Spi::get_one_with_args(
         &format!(
             r#"
@@ -152,16 +153,16 @@ fn add_embedding_job<'a>(
           INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("table", "schema", pk, src_column, dst_column, embedding_model, runtime, runtime_params, batch_size) VALUES
           ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, {batch_size}) RETURNING id;
         "#,
-            table = get_full_table_name(schema, table),
+            table = get_full_table_name(schema, table_name),
             dst_column = quote_ident(dst_column)
         ),
         vec![
-            (PgBuiltInOids::TEXTOID.oid(), table.into_datum()),
+            (PgBuiltInOids::TEXTOID.oid(), table_name.into_datum()),
             (PgBuiltInOids::TEXTOID.oid(), schema.into_datum()),
             (PgBuiltInOids::TEXTOID.oid(), pk.into_datum()),
             (PgBuiltInOids::TEXTOID.oid(), src_column.into_datum()),
             (PgBuiltInOids::TEXTOID.oid(), dst_column.into_datum()),
-            (PgBuiltInOids::TEXTOID.oid(), embedding_model.into_datum()),
+            (PgBuiltInOids::TEXTOID.oid(), model.into_datum()),
             (PgBuiltInOids::TEXTOID.oid(), runtime.into_datum()),
             (PgBuiltInOids::TEXTOID.oid(), params.into_datum()),
         ],
@@ -172,29 +173,33 @@ fn add_embedding_job<'a>(
 
 #[pg_extern(immutable, parallel_unsafe, security_definer)]
 fn add_completion_job<'a>(
-    table: &'a str,
+    table_name: &'a str,
     src_column: &'a str,
     dst_column: &'a str,
-    context: default!(&'a str, "''"),
+    system_prompt: default!(&'a str, "''"),
     column_type: default!(&'a str, "'TEXT'"),
-    embedding_model: default!(&'a str, "'gpt-4o'"),
-    batch_size: default!(i32, -1),
-    runtime: default!(&'a str, "'openai'"),
-    runtime_params: default!(&'a str, "'{}'"),
+    model: default!(&'a str, "'gpt-4o'"),
     pk: default!(&'a str, "'id'"),
     schema: default!(&'a str, "'public'"),
+    base_url: default!(&'a str, "''"),
+    batch_size: default!(i32, -1),
+    api_token: default!(&'a str, "''"),
+    azure_entra_token: default!(&'a str, "''"),
+    runtime: default!(&'a str, "'openai'"),
 ) -> Result<i32, anyhow::Error> {
-    let mut params = runtime_params.to_owned();
-    if params == "{}" {
-        match runtime {
-            "openai" => {
-                params = get_openai_runtime_params("", context, 0)?;
-            }
-            _ => anyhow::bail!("Runtime {runtime} does not support completion jobs"),
+    let params = match runtime {
+        "openai" => {
+            get_openai_runtime_params(api_token, azure_entra_token, base_url, system_prompt, 0)?
         }
-    }
+        _ => anyhow::bail!("Runtime {runtime} does not support completion jobs"),
+    };
 
-    let batch_size = if batch_size == -1 { "NULL".to_string() } else { batch_size.to_string() };
+    let batch_size = if batch_size == -1 {
+        "NULL".to_string()
+    } else {
+        batch_size.to_string()
+    };
+
     let id: Option<i32> = Spi::get_one_with_args(
         &format!(
             r#"
@@ -202,16 +207,16 @@ fn add_completion_job<'a>(
           INSERT INTO _lantern_extras_internal.embedding_generation_jobs ("table", "schema", pk, src_column, dst_column, embedding_model, runtime, runtime_params, column_type, batch_size, job_type) VALUES
           ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, {batch_size}, 'completion') RETURNING id;
         "#,
-            table = get_full_table_name(schema, table),
+            table = get_full_table_name(schema, table_name),
             dst_column = quote_ident(dst_column)
         ),
         vec![
-            (PgBuiltInOids::TEXTOID.oid(), table.into_datum()),
+            (PgBuiltInOids::TEXTOID.oid(), table_name.into_datum()),
             (PgBuiltInOids::TEXTOID.oid(), schema.into_datum()),
             (PgBuiltInOids::TEXTOID.oid(), pk.into_datum()),
             (PgBuiltInOids::TEXTOID.oid(), src_column.into_datum()),
             (PgBuiltInOids::TEXTOID.oid(), dst_column.into_datum()),
-            (PgBuiltInOids::TEXTOID.oid(), embedding_model.into_datum()),
+            (PgBuiltInOids::TEXTOID.oid(), model.into_datum()),
             (PgBuiltInOids::TEXTOID.oid(), runtime.into_datum()),
             (PgBuiltInOids::TEXTOID.oid(), params.into_datum()),
             (PgBuiltInOids::TEXTOID.oid(), column_type.into_datum()),
@@ -360,7 +365,7 @@ pub mod tests {
                 None,
                 None,
             )?;
-            let id = client.select("SELECT add_embedding_job('t1', 'title', 'title_embedding', 'BAAI/bge-small-en', -1, 'ort', '{}', 'id', 'public')", None, None)?;
+            let id = client.select("SELECT add_embedding_job(table_name => 't1', src_column => 'title', dst_column => 'title_embedding', model => 'BAAI/bge-small-en', runtime => 'ort')", None, None)?;
 
             let id: Option<i32> = id.first().get(1)?;
 
@@ -385,7 +390,7 @@ pub mod tests {
             )?;
             let id = client.select(
                 "
-                SELECT add_completion_job('t1', 'title', 'title_embedding', 'my test context','TEXT[]');
+                SELECT add_completion_job(table_name => 't1', src_column => 'title', dst_column => 'title_embedding', system_prompt => 'my test prompt', column_type => 'TEXT[]');
                 ",
                 None,
                 None,
@@ -393,27 +398,27 @@ pub mod tests {
 
             let id: Option<i32> = id.first().get(1)?;
             assert_eq!(id.is_none(), false);
-            
+
             let row = client.select(
-                "SELECT column_type, job_type, runtime, embedding_model, (runtime_params->'context')::text as context, batch_size FROM _lantern_extras_internal.embedding_generation_jobs WHERE id=$1",
+                "SELECT column_type, job_type, runtime, embedding_model, (runtime_params->'system_prompt')::text as system_prompt, batch_size FROM _lantern_extras_internal.embedding_generation_jobs WHERE id=$1",
                 None,
                 Some(vec![(PgBuiltInOids::INT4OID.oid(), id.into_datum())])
             )?;
-            
+
             let row = row.first();
 
             assert_eq!(row.get::<&str>(1)?.unwrap(), "TEXT[]");
             assert_eq!(row.get::<&str>(2)?.unwrap(), "completion");
             assert_eq!(row.get::<&str>(3)?.unwrap(), "openai");
             assert_eq!(row.get::<&str>(4)?.unwrap(), "gpt-4o");
-            assert_eq!(row.get::<&str>(5)?.unwrap(), "\"my test context\"");
+            assert_eq!(row.get::<&str>(5)?.unwrap(), "\"my test prompt\"");
             assert_eq!(row.get::<i32>(6)?.is_none(), true);
 
             Ok::<(), anyhow::Error>(())
         })
         .unwrap();
     }
-    
+
     #[pg_test]
     fn test_add_daemon_completion_job_batch_size() {
         Spi::connect(|mut client| {
@@ -422,14 +427,13 @@ pub mod tests {
             client.update(
                 "
                 CREATE TABLE t1 (id serial primary key, title text);
-                SET lantern_extras.openai_token='test';
                 ",
                 None,
                 None,
             )?;
             let id = client.select(
                 "
-                SELECT add_completion_job('t1', 'title', 'title_embedding', 'my test context','TEXT[]', 'gpt-4o', 15);
+                SELECT add_completion_job(api_token => 'test', table_name => 't1', src_column => 'title', dst_column => 'title_embedding', system_prompt => 'my test prompt', column_type => 'TEXT[]', batch_size => 15, model => 'gpt-4o');
                 ",
                 None,
                 None,
@@ -437,21 +441,22 @@ pub mod tests {
 
             let id: Option<i32> = id.first().get(1)?;
             assert_eq!(id.is_none(), false);
-            
+
             let row = client.select(
-                "SELECT column_type, job_type, runtime, embedding_model, (runtime_params->'context')::text as context, batch_size FROM _lantern_extras_internal.embedding_generation_jobs WHERE id=$1",
+                "SELECT column_type, job_type, runtime, embedding_model, (runtime_params->'system_prompt')::text as system_prompt, batch_size, (runtime_params->'api_token')::text as api_token FROM _lantern_extras_internal.embedding_generation_jobs WHERE id=$1",
                 None,
                 Some(vec![(PgBuiltInOids::INT4OID.oid(), id.into_datum())])
             )?;
-            
+
             let row = row.first();
 
             assert_eq!(row.get::<&str>(1)?.unwrap(), "TEXT[]");
             assert_eq!(row.get::<&str>(2)?.unwrap(), "completion");
             assert_eq!(row.get::<&str>(3)?.unwrap(), "openai");
             assert_eq!(row.get::<&str>(4)?.unwrap(), "gpt-4o");
-            assert_eq!(row.get::<&str>(5)?.unwrap(), "\"my test context\"");
+            assert_eq!(row.get::<&str>(5)?.unwrap(), "\"my test prompt\"");
             assert_eq!(row.get::<i32>(6)?.unwrap(), 15);
+            assert_eq!(row.get::<&str>(7)?.unwrap(), "\"test\"");
 
             Ok::<(), anyhow::Error>(())
         })
@@ -473,7 +478,7 @@ pub mod tests {
             )?;
             let id = client.select(
                 "
-                SELECT add_completion_job('t1', 'title', 'title_embedding', 'my test context','TEXT[]');
+                SELECT add_completion_job(table_name => 't1', src_column => 'title', dst_column => 'title_embedding', system_prompt => 'my test prompt', column_type => 'TEXT[]');
                 ",
                 None,
                 None,
@@ -481,13 +486,13 @@ pub mod tests {
 
             let id: Option<i32> = id.first().get(1)?;
             assert_eq!(id.is_none(), false);
-            
+
             let row = client.select(
                 "SELECT id, status, progress, error FROM get_completion_jobs() WHERE id=$1",
                 None,
                 Some(vec![(PgBuiltInOids::INT4OID.oid(), id.into_datum())])
             )?;
-            
+
             let row = row.first();
 
             assert_eq!(row.get::<i32>(1)?.unwrap(), id.unwrap());
@@ -496,7 +501,7 @@ pub mod tests {
         })
         .unwrap();
     }
-    
+
     #[pg_test]
     fn test_get_completion_job_failures() {
         Spi::connect(|mut client| {
@@ -504,7 +509,7 @@ pub mod tests {
             std::thread::sleep(Duration::from_secs(5));
             client.update(
                 "
-                INSERT INTO _lantern_extras_internal.embedding_failure_info (job_id, row_id, value) VALUES 
+                INSERT INTO _lantern_extras_internal.embedding_failure_info (job_id, row_id, value) VALUES
                 (1, 1, '1test1'),
                 (1, 2, '1test2'),
                 (2, 1, '2test1');
@@ -512,33 +517,33 @@ pub mod tests {
                 None,
                 None,
             )?;
-            
+
             let mut rows = client.select(
                 "SELECT row_id, value FROM get_completion_job_failures($1)",
                 None,
                 Some(vec![(PgBuiltInOids::INT4OID.oid(), 1.into_datum())])
             )?;
-            
+
             assert_eq!(rows.len(), 2);
 
             let row = rows.next().unwrap();
 
             assert_eq!(row.get::<i32>(1)?.unwrap(), 1);
             assert_eq!(row.get::<&str>(2)?.unwrap(), "1test1");
-            
+
             let row = rows.next().unwrap();
 
             assert_eq!(row.get::<i32>(1)?.unwrap(), 2);
             assert_eq!(row.get::<&str>(2)?.unwrap(), "1test2");
-            
+
             let mut rows = client.select(
                 "SELECT row_id, value FROM get_completion_job_failures($1)",
                 None,
                 Some(vec![(PgBuiltInOids::INT4OID.oid(), 2.into_datum())])
             )?;
-            
+
             assert_eq!(rows.len(), 1);
-            
+
             let row = rows.next().unwrap();
 
             assert_eq!(row.get::<i32>(1)?.unwrap(), 1);
@@ -557,13 +562,12 @@ pub mod tests {
             client.update(
                 "
                 CREATE TABLE t1 (id serial primary key, title text);
-                SET lantern_extras.openai_token='test_openai';
-                SET lantern_extras.cohere_token='test_cohere';
+                SET lantern_extras.llm_token='test_llm_token';
                 ",
                 None,
                 None,
             )?;
-            let id = client.select("SELECT add_embedding_job('t1', 'title', 'title_embedding', 'BAAI/bge-small-en', -1, 'openai', '{}', 'id', 'public')", None, None)?;
+            let id = client.update("SELECT add_embedding_job(table_name => 't1', src_column => 'title', dst_column => 'title_embedding', runtime => 'openai')", None, None)?;
 
             let id: Option<i32> = id.first().get(1)?;
 
@@ -572,9 +576,9 @@ pub mod tests {
             let rows = client.select("SELECT (runtime_params->'api_token')::text as token FROM _lantern_extras_internal.embedding_generation_jobs WHERE id=$1", None, Some(vec![(PgBuiltInOids::INT4OID.oid(), id.into_datum())]))?;
             let api_token: Option<String> = rows.first().get(1)?;
 
-            assert_eq!(api_token.unwrap(), "\"test_openai\"".to_owned());
+            assert_eq!(api_token.unwrap(), "\"test_llm_token\"".to_owned());
 
-            let id = client.select("SELECT add_embedding_job('t1', 'title', 'title_embedding', 'BAAI/bge-small-en', -1, 'cohere', '{}', 'id', 'public')", None, None)?;
+            let id = client.select("SELECT add_embedding_job(table_name => 't1', src_column => 'title', dst_column => 'title_embedding', runtime => 'cohere')", None, None)?;
 
             let id: Option<i32> = id.first().get(1)?;
 
@@ -583,7 +587,7 @@ pub mod tests {
             let rows = client.select("SELECT (runtime_params->'api_token')::text as token FROM _lantern_extras_internal.embedding_generation_jobs WHERE id=$1", None, Some(vec![(PgBuiltInOids::INT4OID.oid(), id.into_datum())]))?;
             let api_token: Option<String> = rows.first().get(1)?;
 
-            assert_eq!(api_token.unwrap(), "\"test_cohere\"".to_owned());
+            assert_eq!(api_token.unwrap(), "\"test_llm_token\"".to_owned());
             Ok::<(), anyhow::Error>(())
         })
         .unwrap();
@@ -602,7 +606,7 @@ pub mod tests {
                 None,
             )?;
 
-            let id = client.update("SELECT add_embedding_job('t1', 'title', 'title_embedding', 'BAAI/bge-small-en', -1, 'ort', '{}', 'id', 'public')", None, None)?;
+            let id = client.update("SELECT add_embedding_job(table_name => 't1', src_column => 'title', dst_column => 'title_embedding', model => 'BAAI/bge-small-en', runtime => 'ort')", None, None)?;
             let id: i32 = id.first().get(1)?.unwrap();
 
             // queued
@@ -688,8 +692,8 @@ pub mod tests {
                 None,
             )?;
 
-            client.update("SELECT add_embedding_job('t1', 'title', 'title_embedding', 'BAAI/bge-small-en', -1, 'ort', '{}', 'id', 'public')", None, None)?;
-            client.update("SELECT add_embedding_job('t1', 'title', 'title_embedding2', 'BAAI/bge-small-en', -1, 'ort', '{}', 'id', 'public')", None, None)?;
+            client.update("SELECT add_embedding_job(table_name => 't1', src_column => 'title', dst_column => 'title_embedding', model => 'BAAI/bge-small-en', runtime => 'ort')", None, None)?;
+            client.update("SELECT add_embedding_job(table_name => 't1', src_column => 'title', dst_column => 'title_embedding2', model => 'BAAI/bge-small-en', runtime => 'ort')", None, None)?;
 
             // queued
             let rows = client.select("SELECT status, progress, error FROM get_embedding_jobs()", None, None)?;
@@ -720,7 +724,7 @@ pub mod tests {
                 None,
                 None,
             )?;
-            let id = client.update("SELECT add_embedding_job('t1', 'title', 'title_embedding', 'BAAI/bge-small-en', -1, 'ort', '{}', 'id', 'public')", None, None)?;
+            let id = client.update("SELECT add_embedding_job(table_name => 't1', src_column => 'title', dst_column => 'title_embedding', model => 'BAAI/bge-small-en', runtime => 'ort')", None, None)?;
             let id: i32 = id.first().get(1)?.unwrap();
             client.update("SELECT cancel_embedding_job($1)", None, Some(vec![(PgBuiltInOids::INT4OID.oid(), id.into_datum())]))?;
             let rows = client.select("SELECT status, progress, error FROM get_embedding_job_status($1)", None, Some(vec![(PgBuiltInOids::INT4OID.oid(), id.into_datum())]))?;
@@ -750,7 +754,7 @@ pub mod tests {
                 None,
                 None,
             )?;
-            let id = client.update("SELECT add_embedding_job('t1', 'title', 'title_embedding', 'BAAI/bge-small-en', -1, 'ort', '{}', 'id', 'public')", None, None)?;
+            let id = client.update("SELECT add_embedding_job(table_name => 't1', src_column => 'title', dst_column => 'title_embedding', model => 'BAAI/bge-small-en', runtime => 'ort')", None, None)?;
             let id: i32 = id.first().get(1)?.unwrap();
             client.update("SELECT cancel_embedding_job($1)", None, Some(vec![(PgBuiltInOids::INT4OID.oid(), id.into_datum())]))?;
             client.update("SELECT resume_embedding_job($1)", None, Some(vec![(PgBuiltInOids::INT4OID.oid(), id.into_datum())]))?;
