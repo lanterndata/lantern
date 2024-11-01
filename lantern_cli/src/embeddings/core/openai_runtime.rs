@@ -188,7 +188,7 @@ pub struct OpenAiRuntime<'a> {
     request_timeout: u64,
     base_url: String,
     headers: Vec<(String, String)>,
-    context: serde_json::Value,
+    system_prompt: serde_json::Value,
     dimensions: Option<usize>,
     deployment_type: OpenAiDeployment,
     #[allow(dead_code)]
@@ -199,9 +199,8 @@ pub struct OpenAiRuntime<'a> {
 pub struct OpenAiRuntimeParams {
     pub base_url: Option<String>,
     pub api_token: Option<String>,
-    pub azure_api_token: Option<String>,
     pub azure_entra_token: Option<String>,
-    pub context: Option<String>,
+    pub system_prompt: Option<String>,
     pub dimensions: Option<usize>,
 }
 
@@ -223,15 +222,14 @@ impl<'a> OpenAiRuntime<'a> {
             }
             OpenAiDeployment::Azure => {
                 // https://learn.microsoft.com/en-us/azure/ai-services/openai/reference
-                if runtime_params.azure_api_token.is_none()
-                    && runtime_params.azure_entra_token.is_none()
+                if runtime_params.api_token.is_none() && runtime_params.azure_entra_token.is_none()
                 {
                     anyhow::bail!(
-                        "'azure_api_key' or 'azure_entra_id' is required for Azure OpenAi runtime"
+                        "'api_token' or 'azure_entra_id' is required for Azure OpenAi runtime"
                     );
                 }
 
-                if let Some(key) = runtime_params.azure_api_token {
+                if let Some(key) = runtime_params.api_token {
                     ("api-key".to_owned(), format!("{}", key))
                 } else {
                     (
@@ -242,7 +240,7 @@ impl<'a> OpenAiRuntime<'a> {
             }
         };
 
-        let context = match &runtime_params.context {
+        let system_prompt = match &runtime_params.system_prompt {
             Some(system_prompt) => json!({ "role": "system", "content": system_prompt.clone()}),
             None => json!({ "role": "system", "content": "" }),
         };
@@ -257,7 +255,7 @@ impl<'a> OpenAiRuntime<'a> {
                 auth_header,
             ],
             dimensions: runtime_params.dimensions,
-            context,
+            system_prompt,
         })
     }
 
@@ -388,7 +386,7 @@ impl<'a> OpenAiRuntime<'a> {
             serde_json::to_string(&json!({
             "model": model_name,
             "messages": [
-              self.context,
+              self.system_prompt,
               { "role": "user", "content": query }
             ]
             }))?,

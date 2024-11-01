@@ -42,14 +42,34 @@ FROM papers;
 -- generate embeddings from other models which can be extended
 
 ```sql
+SELECT llm_embedding(
+    input => 'User input', -- User prompt to LLM model
+    model => 'gpt-4o', -- Model for runtime to use (default: 'gpt-4o')
+    base_url => 'https://api.openai.com', -- If you have custom LLM deployment provide the server url. (default: OpenAi API URL)
+    api_token => '<llm_api_token>', -- API token for LLM server. (default: inferred from lantern_extras.llm_token GUC)
+    azure_entra_token => '', -- If this is Azure deployment it supports Auth with entra token too
+    dimensions => 1536, -- For new generation OpenAi models you can provide dimensions for returned embeddings. (default: 1536)
+    input_type => 'search_query', -- Needed only for cohere runtime to indicate if this input is for search or storing. (default: 'search_query'). Can also be 'search_document'
+    runtime => 'openai' -- Runtime to use. (default: 'openai'). Use `SELECT get_available_runtimes()` for list
+);
+
 -- generate text embedding
-SELECT text_embedding('BAAI/bge-base-en', 'My text input');
+SELECT llm_embedding(model => 'BAAI/bge-base-en', input => 'My text input', runtime => 'ort');
 -- generate image embedding with image url
-SELECT image_embedding('clip/ViT-B-32-visual', 'https://link-to-your-image');
+SELECT llm_embedding(model => 'clip/ViT-B-32-visual', input => 'https://link-to-your-image', runtime => 'ort');
 -- generate image embedding with image path (this path should be accessible from postgres server)
-SELECT image_embedding('clip/ViT-B-32-visual', '/path/to/image/in-postgres-server');
+SELECT llm_embedding(model => 'clip/ViT-B-32-visual', input => '/path/to/image/in-postgres-server', runtime => 'ort');
 -- get available list of models
 SELECT get_available_models();
+-- generate openai embeddings
+SELECT llm_embedding(model => 'text-embedding-3-small', api_token => '<openai_api_token>', input => 'My text input', runtime => 'openai');
+-- generate embeddings from custom openai compatible servers
+SELECT llm_embedding(model => 'intfloat/e5-mistral-7b-instruct', api_token => '<api_token>', input => 'My text input', runtime => 'openai', base_url => 'https://my-llm-url');
+-- generate cohere embeddings
+SELECT llm_embedding(model => 'embed-multilingual-light-v3.0', api_token => '<cohere_api_token>', input => 'My text input', runtime => 'cohere');
+-- api_token can be set via GUC
+SET lantern_extras.llm_token = '<api_token>';
+SELECT llm_embedding(model => 'text-embedding-3-small', input => 'My text input', runtime => 'openai');
 ```
 
 ## Getting started
@@ -135,7 +155,7 @@ To add new textual or visual models for generating vector embeddings you can fol
 After this your model should be callable from SQL like
 
 ```sql
-SELECT text_embedding('your/model_name', 'Your text');
+SELECT llm_embedding(model => 'your/model_name', input => 'Your text', runtime => 'ort');
 ```
 
 ## Lantern Daemon in SQL
@@ -158,14 +178,18 @@ To add a new embedding job, use the `add_embedding_job` function:
 
 ```sql
 SELECT add_embedding_job(
-    'table_name',        -- Name of the table
-    'src_column',        -- Source column for embeddings
-    'dst_column',        -- Destination column for embeddings
-    'embedding_model',   -- Embedding model to use
-    'runtime',           -- Runtime environment (default: 'ort')
-    'runtime_params',    -- Runtime parameters (default: '{}')
-    'pk',                -- Primary key column (default: 'id')
-    'schema'             -- Schema name (default: 'public')
+    table => 'articles', -- Name of the table
+    src_column => 'content', -- Source column for embeddings
+    dst_column => 'content_embedding', -- Destination column for embeddings (will be created automatically)
+    model => 'text-embedding-3-small', -- Model for runtime to use (default: 'text-embedding-3-small')
+    pk => 'id', -- Primary key of the table. It is required for table to have primary key (default: id)
+    schema => 'public', -- Schema on which the table is located (default: 'public')
+    base_url => 'https://api.openai.com', -- If you have custom LLM deployment provide the server url. (default: OpenAi API URL)
+    batch_size => 500, -- Batch size for the inputs to use when requesting LLM server. This is based on your API tier. (default: determined based on model and runtime)
+    dimensions => 1536, -- For new generation OpenAi models you can provide dimensions for returned embeddings. (default: 1536)
+    api_token => '<llm_api_token>', -- API token for LLM server. (default: inferred from lantern_extras.llm_token GUC)
+    azure_entra_token => '', -- If this is Azure deployment it supports Auth with entra token too
+    runtime => 'openai' -- Runtime to use. (default: 'openai'). Use `SELECT get_available_runtimes()` for list
 );
 ```
 
@@ -200,17 +224,19 @@ To add a new completion job, use the `add_completion_job` function:
 
 ```sql
 SELECT add_completion_job(
-    'table_name',        -- Name of the table
-    'src_column',        -- Source column for embeddings
-    'dst_column',        -- Destination column for embeddings
-    'context',           -- System prompt to be used for LLM (default: lantern_extras.completion_context GUC)
-    'column_type',       -- Target column type to be used for destination (default: TEXT)
-    'model',             -- LLM model to use (default: 'gpt-4o')
-    'batch_size',        -- Batch size to use when sending batch requests (default: 2)
-    'runtime',           -- Runtime environment (default: 'openai')
-    'runtime_params',    -- Runtime parameters (default: '{}' inferred from GUC variables)
-    'pk',                -- Primary key column (default: 'id')
-    'schema'             -- Schema name (default: 'public')
+    table => 'articles', -- Name of the table
+    src_column => 'content', -- Source column for embeddings
+    dst_column => 'content_summary', -- Destination column for llm response (will be created automatically)
+    system_prompt => 'Provide short summary for the given text', -- System prompt for LLM (default: '')
+    column_type => 'TEXT', -- Destination column type
+    model => 'gpt-4o', -- Model for runtime to use (default: 'gpt-4o')
+    pk => 'id', -- Primary key of the table. It is required for table to have primary key (default: id)
+    schema => 'public', -- Schema on which the table is located (default: 'public')
+    base_url => 'https://api.openai.com', -- If you have custom LLM deployment provide the server url. (default: OpenAi API URL)
+    batch_size => 10, -- Batch size for the inputs to use when requesting LLM server. This is based on your API tier. (default: determined based on model and runtime)
+    api_token => '<llm_api_token>', -- API token for LLM server. (default: inferred from lantern_extras.llm_token GUC)
+    azure_entra_token => '', -- If this is Azure deployment it supports Auth with entra token too
+    runtime => 'openai' -- Runtime to use. (default: 'openai'). Use `SELECT get_available_runtimes()` for list
 );
 ```
 
@@ -258,6 +284,14 @@ This will return a table with the following columns:
 
 ***Calling LLM Completion API***
 ```sql
-SET lantern_extras.llm_token='xxxx';
-SELECT llm_completion(query, [model, context, base_url, runtime]);
+SET lantern_extras.llm_token='xxxx'; -- this will be used as api_token if it is not passed via arguments
+SELECT llm_completion(
+    user_prompt => 'User input', -- User prompt to LLM model
+    model => 'gpt-4o', -- Model for runtime to use (default: 'gpt-4o')
+    system_prompt => 'Provide short summary for the given text', -- System prompt for LLM (default: '')
+    base_url => 'https://api.openai.com', -- If you have custom LLM deployment provide the server url. (default: OpenAi API URL)
+    api_token => '<llm_api_token>', -- API token for LLM server. (default: inferred from lantern_extras.llm_token GUC)
+    azure_entra_token => '', -- If this is Azure deployment it supports Auth with entra token too
+    runtime => 'openai' -- Runtime to use. (default: 'openai'). Use `SELECT get_available_runtimes()` for list
+);
 ```

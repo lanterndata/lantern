@@ -1,7 +1,7 @@
 use lantern_cli::embeddings::core::{EmbeddingRuntime, Runtime};
 use std::env;
 
-static LLM_CONTEXT: &'static str = "You will be provided JSON with the following schema: {x: string}, answer to the message returning the x propery from the provided JSON object";
+static LLM_SYSTEM_PROMPT: &'static str = "You will be provided JSON with the following schema: {x: string}, answer to the message returning the x propery from the provided JSON object";
 
 macro_rules! query_completion_test {
     ($($name:ident: $value:expr,)*) => {
@@ -19,7 +19,7 @@ macro_rules! query_completion_test {
                 return;
             }
 
-            let params = format!(r#"{{"api_token": "{api_token}", "context": "{LLM_CONTEXT}"}}"#);
+            let params = format!(r#"{{"api_token": "{api_token}", "system_prompt": "{LLM_SYSTEM_PROMPT}"}}"#);
 
             let runtime = EmbeddingRuntime::new(&runtime_name, None, &params).unwrap();
             let output = runtime.completion(
@@ -62,7 +62,7 @@ macro_rules! query_completion_test_multiple {
                 expected_output.push(output);
             }
 
-            let params = format!(r#"{{"api_token": "{api_token}", "context": "{LLM_CONTEXT}"}}"#);
+            let params = format!(r#"{{"api_token": "{api_token}", "system_prompt": "{LLM_SYSTEM_PROMPT}"}}"#);
 
             let runtime = EmbeddingRuntime::new(&runtime_name, None, &params).unwrap();
             let output = runtime.batch_completion(
