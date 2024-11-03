@@ -101,11 +101,13 @@ CREATE INDEX l2_idx ON small_world_arr USING lantern_hnsw(v) WITH (dim=3, m=2);
 EXPLAIN (COSTS FALSE) SELECT id FROM small_world_arr ORDER BY v <-> ARRAY[0,0,0];
 SELECT id FROM small_world_arr ORDER BY v <-> ARRAY[0,0,0];
 DROP INDEX l2_idx;
-CREATE INDEX cos_idx ON small_world_arr USING lantern_hnsw(v) WITH (m=2);
+CREATE INDEX cos_idx ON small_world_arr USING lantern_hnsw(v dist_cos_ops) WITH (m=2);
 SELECT id FROM small_world_arr ORDER BY v <=> ARRAY[0,0,0];
 DROP INDEX cos_idx;
-CREATE INDEX ham_idx ON small_world_arr USING lantern_hnsw(v) WITH (m=3);
-SELECT id FROM small_world_arr ORDER BY v::INT[] <+> ARRAY[0,0,0];
+ALTER TABLE small_world_arr ADD COLUMN v_int INT[];
+UPDATE small_world_arr SET v_int=v::INT[];
+CREATE INDEX ham_idx ON small_world_arr USING lantern_hnsw(v_int dist_hamming_ops) WITH (m=3);
+SELECT id FROM small_world_arr ORDER BY v_int <+> ARRAY[0,0,0];
 
 DROP TABLE small_world;
 \ir utils/small_world_vector.sql
