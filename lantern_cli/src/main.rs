@@ -18,15 +18,6 @@ async fn main() {
     let cli = cli::Cli::parse();
     let mut _main_logger = None;
     let res = match cli.command {
-        cli::Commands::CreateIndex(args) => {
-            let logger = Logger::new("Lantern Index", LogLevel::Debug);
-            _main_logger = Some(logger.clone());
-            tokio::task::spawn_blocking(move || {
-                external_index::create_usearch_index(&args, None, None, Some(logger))
-            })
-            .await
-            .unwrap()
-        }
         cli::Commands::CreateEmbeddings(args) => {
             let logger = Logger::new("Lantern Embeddings", LogLevel::Debug);
             _main_logger = Some(logger.clone());

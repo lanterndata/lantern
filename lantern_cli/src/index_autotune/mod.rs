@@ -4,7 +4,6 @@ use std::{
     time::Instant,
 };
 
-use crate::external_index::cli::CreateIndexArgs;
 use crate::logger::{LogLevel, Logger};
 use crate::types::*;
 use crate::utils::{append_params_to_uri, get_full_table_name, quote_ident};
@@ -42,7 +41,7 @@ fn create_test_table(
     src_table_name: &str,
     column_name: &str,
     test_data_size: usize,
-) -> Result<(usize, i32), anyhow::Error> {
+) -> Result<i32, anyhow::Error> {
     client.batch_execute(&format!(
         "
       CREATE SCHEMA IF NOT EXISTS {INTERNAL_SCHEMA_NAME};
@@ -64,7 +63,7 @@ fn create_test_table(
     let sample_size = client.query_one(&format!("SELECT COUNT(*) FROM {tmp_table_name}"), &[])?;
     let sample_size: i64 = sample_size.get(0);
 
-    Ok((dims as usize, sample_size as i32))
+    Ok(sample_size as i32)
 }
 
 fn export_results(
@@ -304,7 +303,7 @@ pub fn autotune_index(
 
     // Create table where we will create intermediate index results
     // This temp table will contain random subset of rows in size of test_data_size from source table
-    let (column_dims, sample_size) = create_test_table(
+    let sample_size = create_test_table(
         &mut client,
         &tmp_table_full_name,
         &src_table_name,
@@ -361,7 +360,6 @@ pub fn autotune_index(
 
     // Create random index file name and job_id if not provided
     let mut rng = rand::thread_rng();
-    let index_path = format!("/tmp/index-autotune-{}.usearch", rng.gen_range(0..1000));
     let index_name = format!("lantern_autotune_idx_{}", rng.gen_range(0..1000));
     let uuid = rng.gen_range(0..1000000);
     let job_id = args.job_id.as_ref().unwrap_or(&uuid);
@@ -431,27 +429,18 @@ pub fn autotune_index(
             }
 
             let start = Instant::now();
-            crate::external_index::create_usearch_index(
-                &CreateIndexArgs {
-                    import: true,
-                    out: index_path.clone(),
-                    table: tmp_table_name.clone(),
-                    schema: INTERNAL_SCHEMA_NAME.to_owned(),
-                    metric_kind: args.metric_kind.clone(),
-                    efc: variant.ef_construction,
-                    ef: variant.ef,
-                    m: variant.m,
-                    uri: uri.clone(),
-                    column: "v".to_owned(),
-                    dims: column_dims as usize,
-                    index_name: Some(index_name.clone()),
-                    remote_database: true,
-                    pq: false,
-                },
-                None,
-                Some(is_canceled.clone()),
-                Some(Logger::new(&logger.label, LogLevel::Info)),
-            )?;
+            client.batch_execute(&format!(
+            "
+                SET lantern.external_index_host='127.0.0.1';
+                SET lantern.external_index_port=8998;
+                SET lantern.external_index_secure=false;
+                CREATE INDEX {index_name} ON {tmp_table_full_name} USING lantern_hnsw(v {op_class}) WITH (m={m}, ef={ef}, ef_construction={ef_construction}, external=true)
+            ",
+                op_class=args.metric_kind.to_ops(),
+                m=variant.m,
+                ef=variant.ef,
+                ef_construction=variant.ef_construction
+            ))?;
             let mut indexing_duration = start.elapsed().as_secs() as f64;
             indexing_duration = f64::trunc(indexing_duration * 100.0) / 100.0; // round to 2 decimal points
 
@@ -517,27 +506,17 @@ pub fn autotune_index(
             "Creating index with the best result for job {job_id}"
         ));
         let start = Instant::now();
-        crate::external_index::create_usearch_index(
-            &CreateIndexArgs {
-                import: true,
-                out: index_path.clone(),
-                table: args.table.clone(),
-                schema: args.schema.clone(),
-                metric_kind: args.metric_kind.clone(),
-                efc: best_result.ef_construction as usize,
-                ef: best_result.ef as usize,
-                m: best_result.m as usize,
-                uri: uri.clone(),
-                column: args.column.clone(),
-                dims: column_dims as usize,
-                index_name: None,
-                remote_database: true,
-                pq: false,
-            },
-            None,
-            Some(is_canceled.clone()),
-            Some(Logger::new(&logger.label, LogLevel::Info)),
-        )?;
+        client.batch_execute(&format!(
+            "
+                CREATE INDEX {index_name} ON {full_table_name} USING lantern_hnsw({column_name} {op_class}) WITH (m={m}, ef={ef}, ef_construction={ef_construction}, external=true)
+            ",
+                full_table_name=get_full_table_name(&args.schema, &args.table),
+                column_name=quote_ident(&args.column),
+                op_class=args.metric_kind.to_ops(),
+                m=best_result.m,
+                ef=best_result.ef,
+                ef_construction=best_result.ef_construction
+            ))?;
         let duration = start.elapsed().as_secs();
         logger.debug(&format!("Index for job {job_id} created in {duration}s"));
     }

@@ -14,21 +14,31 @@ Run `cargo install --path lantern_cli` to install the binary
 
 ### Usage
 
-Run `lantern-cli create-index --help` to show the cli options.
+## Lantern External Index
+Run `cargo run start-indexing-server --help` to show the cli options.
 
 ```bash
-Usage: lantern-cli create-index --uri <URI> --table <TABLE> --column <COLUMN> -m <M> --efc <EFC> --ef <EF> -d <DIMS> --metric-kind <METRIC_KIND> --out <OUT> --import
-```
+Usage: lantern-cli start-indexing-server [OPTIONS]
 
-### Example
-
-```bash
-lantern-cli create-index -u "postgresql://localhost/test" -t "small_world" -c "vec" -m 16 --ef 64 --efc 128 -d 3 --metric-kind cos --out /tmp/index.usearch --import
+Options:
+      --host <HOST>                Host to bind [default: 0.0.0.0]
+      --tmp-dir <TMP_DIR>          Temp directory to save intermediate files [default: /tmp]
+      --port <PORT>                Port to bind [default: 8998]
+      --status-port <STATUS_PORT>  Status Server Port to bind [default: 8999]
+      --cert <CERT>                SSL Certificate path
+      --key <KEY>                  SSL Certificate key path
+  -h, --help                       Print help
 ```
 
 ### Notes
 
-The index should be created from the same database on which it will be loaded, so row tids will match later.
+This will start external indexing server, which will be used when creating an index using `external=true`.
+```sql
+SET lantern.external_index_host='127.0.0.1';
+SET lantern.external_index_port='8998';
+SET lantern.external_index_secure=false;
+CREATE INDEX ON test_table USING lantern_hnsw(v) WITH (external=true);
+```
 
 ## Lantern Embeddings
 
@@ -122,7 +132,7 @@ To get full list of arguments use `bash lantern-cli autotune-index -h`
 Lantern CLI can be used in daemon mode to continousely listen to postgres table and generate embeddings, external indexes or autotune jobs.
 
 ```bash
- lantern-cli start-daemon --uri 'postgres://postgres@localhost:5432/postgres' --embedding-table embedding_jobs --autotune-table index_autotune_jobs --autotune-results-table index_parameter_experiment_results --external-index-table external_index_jobs --schema public --log-level debug
+ lantern-cli start-daemon --uri 'postgres://postgres@localhost:5432/postgres' --embedding-table embedding_jobs --autotune-table index_autotune_jobs --autotune-results-table index_parameter_experiment_results --schema public --log-level debug
 ```
 
 This will set up trigger on specified table (`lantern_jobs`) and when new row will be inserted it will start embedding generation based on row data.
@@ -133,12 +143,15 @@ The jobs table should have the following structure
 -- Embedding Jobs Table should have the following structure:
 CREATE TABLE "public"."embedding_jobs" (
     "id" SERIAL PRIMARY KEY,
-    "database_id" text NOT NULL,
-    "db_connection" text NOT NULL,
-    "schema" text NOT NULL,
+    "schema" text NOT NULL DEFAULT 'public',
     "table" text NOT NULL,
-    "runtime" text NOT NULL,
+    "pk" text NOT NULL DEFAULT 'id',
+    "label" text NULL,
+    "job_type" text DEFAULT 'embedding_generation',
+    "column_type" text DEFAULT 'REAL[]',
+    "runtime" text NOT NULL DEFAULT 'ort',
     "runtime_params" jsonb,
+    "batch_size" int NULL,
     "src_column" text NOT NULL,
     "dst_column" text NOT NULL,
     "embedding_model" text NOT NULL,
@@ -150,28 +163,6 @@ CREATE TABLE "public"."embedding_jobs" (
     "init_failed_at" timestamp,
     "init_failure_reason" text,
     "init_progress" int2 DEFAULT 0
-);
--- External Index Jobs Table should have the following structure:
-CREATE TABLE "public"."external_index_jobs" (
-    "id" SERIAL PRIMARY KEY,
-    "database_id" text NOT NULL,
-    "db_connection" text NOT NULL,
-    "schema" text NOT NULL,
-    "table" text NOT NULL,
-    "column" text NOT NULL,
-    "index" text,
-    "operator" text NOT NULL,
-    "efc" INT NOT NULL,
-    "ef" INT NOT NULL,
-    "m" INT NOT NULL,
-    "created_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "canceled_at" timestamp,
-    "started_at" timestamp,
-    "finished_at" timestamp,
-    "failed_at" timestamp,
-    "failure_reason" text,
-    "progress" INT2 DEFAULT 0
 );
 -- Autotune Jobs Table should have the following structure:
 CREATE TABLE "public"."index_autotune_jobs" (

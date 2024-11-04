@@ -1,4 +1,4 @@
-use clap::{ArgAction, Parser, ValueEnum};
+use clap::{Parser, ValueEnum};
 use usearch::ffi::*;
 
 #[derive(Debug, Clone, ValueEnum)] // ArgEnum here
@@ -121,65 +121,6 @@ impl UMetricKind {
             }
         }
     }
-}
-
-#[derive(Parser, Debug)]
-pub struct CreateIndexArgs {
-    /// Fully associated database connection string including db name
-    #[arg(short, long)]
-    pub uri: String,
-
-    /// Schema name
-    #[arg(short, long, default_value = "public")]
-    pub schema: String,
-
-    /// Table name
-    #[arg(short, long)]
-    pub table: String,
-
-    /// Column name
-    #[arg(short, long)]
-    pub column: String,
-
-    /// Use already created codebook to create product-quantized binary index
-    #[arg(short, long, default_value_t = false)]
-    pub pq: bool,
-
-    /// Number of neighbours for each vector
-    #[arg(short, default_value_t = 16)]
-    pub m: usize,
-
-    /// The size of the dynamic list for the nearest neighbors in construction
-    #[arg(long, default_value_t = 128)]
-    pub efc: usize,
-
-    /// The size of the dynamic list for the nearest neighbors in search
-    #[arg(long, default_value_t = 64)]
-    pub ef: usize,
-
-    /// Dimensions of vector
-    #[arg(short, default_value_t = 0)]
-    pub dims: usize,
-
-    /// Distance algorithm
-    #[arg(long, value_enum, default_value_t = UMetricKind::L2sq)] // arg_enum here
-    pub metric_kind: UMetricKind,
-
-    /// Index output file
-    #[arg(short, long, default_value = "index.usearch")] // arg_enum here
-    pub out: String,
-
-    /// Import index to database (should be run as db superuser to have access)
-    #[arg(short, long, default_value_t = false)]
-    pub import: bool,
-
-    /// If database is not on the same server where the job is running
-    #[arg(short, long, default_value_t = true, action = ArgAction::Set)]
-    pub remote_database: bool,
-
-    /// Index name to use when imporrting index to database
-    #[arg(long)]
-    pub index_name: Option<String>,
 }
 
 #[derive(Parser, Debug, Clone)]

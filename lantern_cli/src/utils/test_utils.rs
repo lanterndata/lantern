@@ -11,11 +11,6 @@ pub mod daemon_test_utils {
     #[cfg(feature = "autotune")]
     pub static AUTOTUNE_JOB_TABLE_DEF: &'static str =
         crate::daemon::autotune_jobs::JOB_TABLE_DEFINITION;
-    #[cfg(not(feature = "external-index"))]
-    pub static EXTERNAL_INDEX_JOB_TABLE_DEF: &'static str = "(id INT)";
-    #[cfg(feature = "external-index")]
-    pub static EXTERNAL_INDEX_JOB_TABLE_DEF: &'static str =
-        crate::daemon::external_index_jobs::JOB_TABLE_DEFINITION;
     #[cfg(not(feature = "embeddings"))]
     pub static EMBEDDING_JOB_TABLE_DEF: &'static str = "(id INT)";
     #[cfg(feature = "embeddings")]
@@ -71,12 +66,10 @@ pub mod daemon_test_utils {
 
     CREATE TABLE _lantern_extras_internal.embedding_generation_jobs ({embedding_job_table_def});
     CREATE TABLE _lantern_extras_internal.autotune_jobs ({autotune_job_table_def});
-    CREATE TABLE _lantern_extras_internal.external_index_jobs ({indexing_job_table_def});
     
      "#,
                 embedding_job_table_def = EMBEDDING_JOB_TABLE_DEF,
                 autotune_job_table_def = AUTOTUNE_JOB_TABLE_DEF,
-                indexing_job_table_def = EXTERNAL_INDEX_JOB_TABLE_DEF,
             ))
             .await?;
 

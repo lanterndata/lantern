@@ -2,7 +2,7 @@
 pub mod daemon;
 #[cfg(feature = "embeddings")]
 pub mod embeddings;
-#[cfg(feature = "external-index")]
+#[cfg(feature = "external-index-server")]
 pub mod external_index;
 #[cfg(feature = "http-server")]
 pub mod http_server;
