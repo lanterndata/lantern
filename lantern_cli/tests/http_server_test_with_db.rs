@@ -44,7 +44,6 @@ fn start_server(db_uri: String) -> Sender<()> {
             http_server::start(
                 HttpServerArgs {
                     db_uri,
-                    remote_database: true,
                     host: "127.0.0.1".to_owned(),
                     port: 7777,
                     username: Some("test".to_owned()),
@@ -284,7 +283,6 @@ async fn test_index_create() -> AnyhowVoidResult {
     assert_eq!(indexes[0].get("m").unwrap(), "16");
     assert_eq!(indexes[0].get("ef_construction").unwrap(), "128");
     assert_eq!(indexes[0].get("ef").unwrap(), "64");
-    assert_eq!(indexes[0].get("dim").unwrap(), "3");
     assert_eq!(indexes[0].get("metric").unwrap(), "cos");
     Ok(())
 }

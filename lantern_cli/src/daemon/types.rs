@@ -96,22 +96,8 @@ pub type AutotuneProcessorArgs = (
 #[cfg(not(feature = "autotune"))]
 pub type AutotuneProcessorArgs = ();
 
-#[cfg(feature = "external-index")]
-pub type ExternalIndexProcessorArgs = (
-    crate::external_index::cli::CreateIndexArgs,
-    Sender<crate::types::AnyhowVoidResult>,
-    JobTaskEventTx,
-    Option<crate::types::ProgressCbFn>,
-    std::sync::Arc<std::sync::RwLock<bool>>,
-    crate::logger::Logger,
-);
-#[cfg(not(feature = "external-index"))]
-pub type ExternalIndexProcessorArgs = ();
-
 pub enum JobType {
     Embeddings(Sender<EmbeddingProcessorArgs>),
-    #[allow(dead_code)]
-    ExternalIndex(Sender<ExternalIndexProcessorArgs>),
     #[allow(dead_code)]
     Autotune(Sender<AutotuneProcessorArgs>),
 }

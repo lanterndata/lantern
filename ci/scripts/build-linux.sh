@@ -34,7 +34,7 @@ function setup_postgres() {
   # Fix pg_config (sometimes it points to wrong version)
   rm -f /usr/bin/pg_config && ln -s /usr/lib/postgresql/$PG_VERSION/bin/pg_config /usr/bin/pg_config
   # preload pg_cron, necessary for async tasks test
-  echo "shared_preload_libraries = 'pg_cron' " >> /etc/postgresql/$PG_VERSION/main/postgresql.conf
+  echo "shared_preload_libraries = 'pg_cron,lantern_extras' " >> /etc/postgresql/$PG_VERSION/main/postgresql.conf
   # Enable auth without password
   echo "local   all             all                                     trust" >   /etc/postgresql/$PG_VERSION/main/pg_hba.conf
   echo "host    all             all             127.0.0.1/32            trust" >>  /etc/postgresql/$PG_VERSION/main/pg_hba.conf

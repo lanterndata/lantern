@@ -83,8 +83,8 @@ fn initialize() {
             external_index::server::start_tcp_server(
                 IndexServerArgs {
                     host: "127.0.0.1".to_owned(),
-                    port: 8998,
-                    status_port: 8999,
+                    port: 7998,
+                    status_port: 7999,
                     tmp_dir: "/tmp".to_owned(),
                     cert: None,
                     key: None,
@@ -141,7 +141,7 @@ fn initialize_ssl() {
 #[tokio::test]
 async fn test_external_index_server_invalid_header() {
     initialize();
-    let mut stream = TcpStream::connect("127.0.0.1:8998").unwrap();
+    let mut stream = TcpStream::connect("127.0.0.1:7998").unwrap();
     let mut uint32_buf = [0; 4];
     stream.read_exact(&mut uint32_buf).unwrap();
     assert_eq!(u32::from_le_bytes(uint32_buf), PROTOCOL_VERSION);
@@ -169,7 +169,7 @@ async fn test_external_index_server_invalid_header() {
 #[tokio::test]
 async fn test_external_index_server_short_message() {
     initialize();
-    let mut stream = TcpStream::connect("127.0.0.1:8998").unwrap();
+    let mut stream = TcpStream::connect("127.0.0.1:7998").unwrap();
     let mut uint32_buf = [0; 4];
     stream.read_exact(&mut uint32_buf).unwrap();
     assert_eq!(u32::from_le_bytes(uint32_buf), PROTOCOL_VERSION);
@@ -231,7 +231,7 @@ async fn test_external_index_server_indexing() {
         (13, vec![1.0, 1.0, 1.0]),
     ];
 
-    let mut stream = TcpStream::connect("127.0.0.1:8998").unwrap();
+    let mut stream = TcpStream::connect("127.0.0.1:7998").unwrap();
     let mut uint32_buf = [0; 4];
     stream.read_exact(&mut uint32_buf).unwrap();
     assert_eq!(u32::from_le_bytes(uint32_buf), PROTOCOL_VERSION);
@@ -261,7 +261,7 @@ async fn test_external_index_server_indexing() {
 
     assert_eq!(buf[0], 0);
 
-    let request = reqwest::get(&format!("http://127.0.0.1:8999"))
+    let request = reqwest::get(&format!("http://127.0.0.1:7999"))
         .await
         .unwrap();
     let body_json: ServerStatusResponse =
@@ -317,7 +317,7 @@ async fn test_external_index_server_indexing() {
     drop(stream);
     std::thread::sleep(Duration::from_secs(1));
 
-    let request = reqwest::get(&format!("http://127.0.0.1:8999"))
+    let request = reqwest::get(&format!("http://127.0.0.1:7999"))
         .await
         .unwrap();
     let body_json: ServerStatusResponse =
@@ -488,7 +488,7 @@ async fn test_external_index_server_indexing_scalar_quantization() {
         (13, vec![1.0, 1.0, 1.0]),
     ];
 
-    let mut stream = TcpStream::connect("127.0.0.1:8998").unwrap();
+    let mut stream = TcpStream::connect("127.0.0.1:7998").unwrap();
     let mut uint32_buf = [0; 4];
     stream.read_exact(&mut uint32_buf).unwrap();
     assert_eq!(u32::from_le_bytes(uint32_buf), PROTOCOL_VERSION);
@@ -601,7 +601,7 @@ async fn test_external_index_server_indexing_hamming_distance() {
         (13, vec![1, 1, 1]),
     ];
 
-    let mut stream = TcpStream::connect("127.0.0.1:8998").unwrap();
+    let mut stream = TcpStream::connect("127.0.0.1:7998").unwrap();
     let mut uint32_buf = [0; 4];
     stream.read_exact(&mut uint32_buf).unwrap();
     assert_eq!(u32::from_le_bytes(uint32_buf), PROTOCOL_VERSION);
@@ -721,7 +721,7 @@ async fn test_external_index_server_indexing_pq() {
         (13, vec![1.0, 1.0, 1.0]),
     ];
 
-    let mut stream = TcpStream::connect("127.0.0.1:8998").unwrap();
+    let mut stream = TcpStream::connect("127.0.0.1:7998").unwrap();
     let mut uint32_buf = [0; 4];
     stream.read_exact(&mut uint32_buf).unwrap();
     assert_eq!(u32::from_le_bytes(uint32_buf), PROTOCOL_VERSION);

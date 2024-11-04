@@ -305,7 +305,7 @@ pub async fn startup_hook(
     Ok(())
 }
 
-#[cfg(any(feature = "autotune", feature = "external-index"))]
+#[cfg(feature = "autotune")]
 pub async fn collect_pending_index_jobs(
     client: Arc<Client>,
     insert_notification_tx: UnboundedSender<JobInsertNotification>,
@@ -336,7 +336,7 @@ pub async fn collect_pending_index_jobs(
     Ok(())
 }
 
-#[cfg(any(feature = "autotune", feature = "external-index"))]
+#[cfg(feature = "autotune")]
 pub async fn index_job_update_processor(
     client: Arc<Client>,
     mut update_queue_rx: tokio::sync::mpsc::UnboundedReceiver<JobUpdateNotification>,
@@ -377,7 +377,7 @@ pub async fn index_job_update_processor(
     Ok(())
 }
 
-#[cfg(any(feature = "autotune", feature = "external-index"))]
+#[cfg(feature = "autotune")]
 pub async fn cancel_all_jobs(map: Arc<JobEventHandlersMap>) -> AnyhowVoidResult {
     let mut jobs_map = map.write().await;
     let jobs: Vec<(i32, JobTaskEventTx)> = jobs_map.drain().collect();

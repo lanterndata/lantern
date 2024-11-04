@@ -5,15 +5,8 @@ use actix_web::{
     post, web, HttpResponse, Responder, Result,
 };
 
-use crate::{
-    external_index::{
-        cli::{CreateIndexArgs, UMetricKind},
-        create_usearch_index,
-    },
-    utils::quote_ident,
-};
+use crate::{external_index::cli::UMetricKind, utils::quote_ident};
 
-use rand::Rng;
 use serde::Deserialize;
 
 use super::AppState;
@@ -73,11 +66,10 @@ async fn create_index(
     let metric_kind = UMetricKind::from(&metric).map_err(ErrorBadRequest)?;
 
     let client = data.pool.get().await?;
-    if !external {
-        client
+    client
             .execute(
                 &format!(
-                    "CREATE INDEX {index_name} ON {name} USING lantern_hnsw({column} {op_class}) WITH (m={m}, ef={ef}, ef_construction={ef_construction}, pq={pq})",
+                    "CREATE INDEX {index_name} ON {name} USING lantern_hnsw({column} {op_class}) WITH (m={m}, ef={ef}, ef_construction={ef_construction}, pq={pq}, external={external})",
                     index_name = quote_ident(&index_name),
                     name = quote_ident(&name),
                     column = quote_ident(&column),
@@ -86,54 +78,6 @@ async fn create_index(
                 &[],
             )
             .await.map_err(ErrorInternalServerError)?;
-    } else {
-        let data_dir = if !data.is_remote_database {
-            match client
-                .query_one(
-                    "SELECT setting::text FROM pg_settings WHERE name = 'data_directory'",
-                    &[],
-                )
-                .await
-            {
-                Err(e) => {
-                    return Err(ErrorInternalServerError(e));
-                }
-                Ok(row) => row.get::<usize, String>(0),
-            }
-        } else {
-            "/tmp".to_owned()
-        };
-
-        let mut rng = rand::thread_rng();
-        let index_path = format!("{data_dir}/ldb-index-{}.usearch", rng.gen_range(0..1000));
-        let body_index_name = body.name.clone();
-        tokio::task::spawn_blocking(move || {
-            create_usearch_index(
-                &CreateIndexArgs {
-                    column: column.to_owned(),
-                    metric_kind,
-                    efc: ef_construction,
-                    ef,
-                    m,
-                    dims: 0,
-                    import: true,
-                    index_name: body_index_name,
-                    uri: data.db_uri.clone(),
-                    out: index_path,
-                    schema: "public".to_owned(),
-                    table: name.clone(),
-                    pq,
-                    remote_database: data.is_remote_database,
-                },
-                None,
-                None,
-                None,
-            )
-        })
-        .await
-        .map_err(ErrorInternalServerError)?
-        .map_err(ErrorInternalServerError)?;
-    }
 
     Ok(HttpResponse::new(StatusCode::from_u16(200).unwrap()))
 }

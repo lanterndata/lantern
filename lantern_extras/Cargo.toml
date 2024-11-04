@@ -26,7 +26,6 @@ itertools = "0.13"
 backtrace = "0.3"
 url = "2.5"
 lantern_cli = { path = "../lantern_cli", default-features = false, features = [
-  "external-index",
   "external-index-server",
   "embeddings",
   "daemon",

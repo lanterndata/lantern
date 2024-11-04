@@ -52,7 +52,6 @@ pub struct AppState {
     db_uri: String,
     auth_credentials: Option<AuthCredentials>,
     pool: AppPool,
-    is_remote_database: bool,
     #[allow(dead_code)]
     logger: crate::logger::Logger,
 }
@@ -140,7 +139,6 @@ pub async fn start(
     let state = web::Data::new(AppState {
         auth_credentials,
         db_uri: args.db_uri.clone(),
-        is_remote_database: args.remote_database,
         pool: AppPool::new(pool),
         logger,
     });

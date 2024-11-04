@@ -1,6 +1,6 @@
 [package]
 name = "lantern_cli"
-version = "0.4.1"
+version = "0.4.2"
 edition = "2021"
 
 [[bin]]
@@ -37,7 +37,6 @@ image = { version = "0.25.4", features = ["jpeg", "png", "webp" ], optional = tr
 nvml-wrapper = { version = "0.10.0", optional = true }
 strum = { version = "0.26", features = ["derive"], optional = true }
 regex = { version = "1.11.1", optional = true }
-postgres-types = { version = "0.2.8", features = ["derive"], optional = true }
 usearch = { git = "https://github.com/Ngalstyan4/usearch.git", rev = "aa4f91d21230fd611b6c7741fa06be8c20acc9a9", optional = true }
 actix-web = { version = "4.9.0", optional = true }
 env_logger = { version = "0.11.5", optional = true }
@@ -55,13 +54,12 @@ glob = { version="0.3.1", optional=true }
 reqwest = { version = "0.12.9", default-features = false, features = ["json", "blocking", "rustls-tls"], optional = true }
 
 [features]
-default = ["cli", "daemon", "http-server", "autotune", "pq", "external-index", "external-index-server", "external-index-status-server", "embeddings"]
+default = ["cli", "daemon", "http-server", "autotune", "pq", "external-index-server", "external-index-status-server", "embeddings"]
 daemon = ["dep:tokio-postgres"]
 http-server = ["dep:deadpool-postgres", "dep:deadpool", "dep:bytes", "dep:utoipa", "dep:utoipa-swagger-ui", "dep:actix-web", "dep:tokio-postgres", "dep:env_logger", "dep:actix-web-httpauth", "dep:regex"]
 autotune = []
 pq = ["dep:gcp_auth", "dep:linfa", "dep:linfa-clustering", "dep:md5", "dep:rayon", "dep:reqwest", "dep:postgres", "dep:ndarray"]
 cli = []
-external-index = ["dep:postgres-types", "dep:usearch", "dep:postgres"]
 external-index-server = ["dep:bitvec", "dep:rustls", "dep:rustls-pemfile", "dep:glob", "dep:usearch"]
 external-index-status-server = ["dep:actix-web"]
 embeddings = ["dep:bytes", "dep:sysinfo", "dep:tiktoken-rs", "dep:url", "dep:num_cpus", "dep:ort", "dep:tokenizers", "dep:image", "dep:nvml-wrapper", "dep:strum", "dep:regex", "dep:reqwest", "dep:ndarray"]
