@@ -486,6 +486,12 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
 
     InitBuildState(buildstate, heap, index, indexInfo);
 
+    if(buildstate->index_file_path) {
+        elog(ERROR,
+             "Importing index from file is no longer supported.\n"
+             "If you want to use external indexing pass `external=true` in index options");
+    }
+
     opts.dimensions = buildstate->dimensions;
 
     PopulateUsearchOpts(index, &opts);
@@ -512,76 +518,46 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
     elog(INFO, "done init usearch index");
     assert(error == NULL);
 
-    if(buildstate->index_file_path) {
-        if(access(buildstate->index_file_path, F_OK) != 0) {
-            ereport(ERROR,
-                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                     errmsg("Invalid index file path. "
-                            "If this is REINDEX operation call `SELECT "
-                            "lantern_reindex_external_index('%s')` to recreate index",
-                            RelationGetRelationName(index))));
-        }
-        usearch_load(buildstate->usearch_index, buildstate->index_file_path, &error);
-        if(error != NULL) {
-            elog(ERROR, "%s", error);
-        }
-        elog(INFO, "done loading usearch index");
+    uint32_t estimated_row_count = EstimateRowCount(heap);
 
-        metadata = usearch_index_metadata(buildstate->usearch_index, &error);
-        assert(error == NULL);
-        opts.connectivity = metadata.connectivity;
-        opts.dimensions = metadata.dimensions;
-        opts.expansion_add = metadata.expansion_add;
-        opts.expansion_search = metadata.expansion_search;
-        opts.metric_kind = metadata.init_options.metric_kind;
-        opts.pq = metadata.init_options.pq;
-        opts.num_centroids = metadata.init_options.num_centroids;
-        opts.num_subvectors = metadata.init_options.num_subvectors;
+    if(buildstate->external) {
+        buildstate->external_socket = palloc0(sizeof(external_index_socket_t));
+        create_external_index_session(ldb_external_index_host,
+                                      ldb_external_index_port,
+                                      ldb_external_index_secure,
+                                      &opts,
+                                      buildstate,
+                                      estimated_row_count);
     } else {
-        uint32_t estimated_row_count = EstimateRowCount(heap);
         CheckMem(maintenance_work_mem,
                  index,
                  buildstate->usearch_index,
                  estimated_row_count,
-                 "index size exceeded maintenance_work_mem during index construction, consider increasing "
+                 "index size exceeded maintenance_work_mem during index construction, consider increasing"
                  "maintenance_work_mem");
 
-        if(buildstate->external) {
-            buildstate->external_socket = palloc0(sizeof(external_index_socket_t));
-            create_external_index_session(ldb_external_index_host,
-                                          ldb_external_index_port,
-                                          ldb_external_index_secure,
-                                          &opts,
-                                          buildstate,
-                                          estimated_row_count);
-        } else {
-            usearch_reserve(buildstate->usearch_index, estimated_row_count, &error);
+        usearch_reserve(buildstate->usearch_index, estimated_row_count, &error);
 
-            if(error != NULL) {
-                // There's not much we can do if free throws an error, but we want to preserve the contents of the first
-                // one in case it does
-                usearch_error_t local_error = NULL;
-                usearch_free(buildstate->usearch_index, &local_error);
-                elog(ERROR, "Error reserving space for index: %s", error);
-            }
+        if(error != NULL) {
+            // There's not much we can do if free throws an error, but we want to preserve the contents of the first
+            // one in case it does
+            usearch_error_t local_error = NULL;
+            usearch_free(buildstate->usearch_index, &local_error);
+            elog(ERROR, "Error reserving space for index: %s", error);
         }
+    }
 
-        UpdateProgress(PROGRESS_CREATEIDX_PHASE, LDB_PROGRESS_HNSW_PHASE_IN_MEMORY_INSERT);
-        LanternBench("build hnsw index", ScanTable(buildstate));
+    UpdateProgress(PROGRESS_CREATEIDX_PHASE, LDB_PROGRESS_HNSW_PHASE_IN_MEMORY_INSERT);
+    LanternBench("build hnsw index", ScanTable(buildstate));
 
-        if(!buildstate->external) {
-            elog(INFO, "inserted %ld elements", usearch_size(buildstate->usearch_index, &error));
-        }
-        assert(error == NULL);
+    if(!buildstate->external) {
+        elog(INFO, "inserted %ld elements", usearch_size(buildstate->usearch_index, &error));
     }
 
     metadata = usearch_index_metadata(buildstate->usearch_index, &error);
     assert(error == NULL);
 
-    if(buildstate->index_file_path) {
-        buildstate->index_file_fd = open(buildstate->index_file_path, O_RDONLY);
-        assert(buildstate->index_file_fd > 0);
-    } else if(buildstate->external) {
+    if(buildstate->external) {
         buildstate->index_buffer = palloc(USEARCH_HEADER_SIZE);
         external_index_receive_metadata(
             buildstate->external_socket, &num_added_vectors, &buildstate->index_buffer_size);
@@ -744,107 +720,4 @@ void ldb_ambuildunlogged(Relation index)
     memset(&buildstate, 0, sizeof(ldb_HnswBuildState));
     IndexInfo *indexInfo = BuildIndexInfo(index);
     BuildEmptyIndex(index, indexInfo, &buildstate);
-}
-
-void ldb_reindex_external_index(Oid indrelid)
-{
-    HnswIndexHeaderPage *headerp;
-    FmgrInfo             reindex_finfo = {0};
-    BlockNumber          HEADER_BLOCK = 0;
-    Relation             index_rel;
-    Buffer               buf;
-    Page                 page;
-    Oid                  lantern_extras_namespace_oid = InvalidOid;
-    Oid                  function_oid;
-    Oid                  function_argtypes_oid[ 7 ];
-    oidvector           *function_argtypes;
-    char                *metric_kind;
-    const char          *lantern_extras_schema = "lantern_extras";
-    uint32_t             dim = 0;
-    uint32_t             m = 0;
-    uint32_t             ef_construction = 0;
-    uint32_t             ef = 0;
-    bool                 pq = false;
-    char *ext_not_found_err = "Please install 'lantern_extras' extension or update it to the latest version";
-
-    lantern_extras_namespace_oid = get_namespace_oid(lantern_extras_schema, true);
-
-    if(!OidIsValid(lantern_extras_namespace_oid)) {
-        elog(ERROR, "%s", ext_not_found_err);
-    }
-
-    // Check if _reindex_external_index function exists in lantern schema
-    function_argtypes_oid[ 0 ] = REGCLASSOID;
-    function_argtypes_oid[ 1 ] = TEXTOID;
-    function_argtypes_oid[ 2 ] = INT4OID;
-    function_argtypes_oid[ 3 ] = INT4OID;
-    function_argtypes_oid[ 4 ] = INT4OID;
-    function_argtypes_oid[ 5 ] = INT4OID;
-    function_argtypes_oid[ 6 ] = BOOLOID;
-    function_argtypes = buildoidvector(function_argtypes_oid, 7);
-
-    function_oid = GetSysCacheOid(PROCNAMEARGSNSP,
-#if PG_VERSION_NUM >= 120000
-                                  Anum_pg_proc_oid,
-#endif
-                                  CStringGetDatum("_reindex_external_index"),
-                                  PointerGetDatum(function_argtypes),
-                                  ObjectIdGetDatum(lantern_extras_namespace_oid),
-                                  0);
-
-    if(!OidIsValid(function_oid)) {
-        elog(ERROR, "%s", ext_not_found_err);
-    }
-    // Get index params from index header page
-    index_rel = relation_open(indrelid, AccessShareLock);
-    buf = ReadBuffer(index_rel, HEADER_BLOCK);
-    LockBuffer(buf, BUFFER_LOCK_SHARE);
-    page = BufferGetPage(buf);
-    headerp = (HnswIndexHeaderPage *)PageGetContents(page);
-
-    assert(headerp->magicNumber == LDB_WAL_MAGIC_NUMBER);
-
-    // Convert metric_kind enum to string representation
-    switch(headerp->metric_kind) {
-        case usearch_metric_l2sq_k:
-            metric_kind = "l2sq";
-            break;
-        case usearch_metric_cos_k:
-            metric_kind = "cos";
-            break;
-        case usearch_metric_hamming_k:
-            metric_kind = "hamming";
-            break;
-        default:
-            metric_kind = NULL;
-            ldb_invariant(true, "Unsupported metric kind");
-    }
-
-    dim = headerp->vector_dim;
-    m = headerp->m;
-    ef = headerp->ef;
-    ef_construction = headerp->ef_construction;
-    pq = headerp->pq;
-
-    UnlockReleaseBuffer(buf);
-    relation_close(index_rel, AccessShareLock);
-
-    // We can not have external index without knowing dimensions
-    if(dim <= 0) {
-        elog(ERROR, "Column does not have dimensions: can not create external index on empty table");
-    }
-
-    // Get _reindex_external_index function info to do direct call into it
-    fmgr_info(function_oid, &reindex_finfo);
-
-    assert(reindex_finfo.fn_addr != NULL);
-
-    DirectFunctionCall7(reindex_finfo.fn_addr,
-                        ObjectIdGetDatum(indrelid),
-                        CStringGetTextDatum(metric_kind),
-                        Int32GetDatum(dim),
-                        Int32GetDatum(m),
-                        Int32GetDatum(ef_construction),
-                        Int32GetDatum(ef),
-                        BoolGetDatum(pq));
 }

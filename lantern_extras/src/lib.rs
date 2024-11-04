@@ -28,7 +28,7 @@ pub static LLM_DEPLOYMENT_URL: GucSetting<Option<&'static CStr>> =
 pub static OPENAI_AZURE_ENTRA_TOKEN: GucSetting<Option<&'static CStr>> =
     GucSetting::<Option<&'static CStr>>::new(None);
 pub static ENABLE_DAEMON: GucSetting<bool> = GucSetting::<bool>::new(false);
-pub static ENABLE_INDEXING_SERVER: GucSetting<bool> = GucSetting::<bool>::new(false);
+pub static ENABLE_INDEXING_SERVER: GucSetting<bool> = GucSetting::<bool>::new(true);
 
 pub static DAEMON_DATABASES: GucSetting<Option<&'static CStr>> =
     GucSetting::<Option<&'static CStr>>::new(None);

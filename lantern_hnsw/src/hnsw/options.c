@@ -384,9 +384,9 @@ void _PG_init(void)
 
     DefineCustomBoolVariable("lantern.external_index_secure",
                              "Use SSL connection when connecting to external index socket",
-                             "Set this to 0 to disable secure connection",
+                             "Set this to false to disable secure connection",
                              &ldb_external_index_secure,
-                             true,
+                             false,
                              PGC_USERSET,
                              0,
                              NULL,

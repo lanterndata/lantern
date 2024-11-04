@@ -425,21 +425,9 @@ Datum       lantern_internal_failure_point_enable(PG_FUNCTION_ARGS)
     PG_RETURN_VOID();
 }
 
-// todo:: remove in 0.3.1
-PGDLLEXPORT PG_FUNCTION_INFO_V1(lantern_internal_continue_blockmap_group_initialization);
-Datum       lantern_internal_continue_blockmap_group_initialization(PG_FUNCTION_ARGS)
-{
-    LDB_UNUSED(fcinfo);
-    PG_RETURN_NULL();
-}
-
+// todo:: remove in 0.5.1
 PGDLLEXPORT PG_FUNCTION_INFO_V1(lantern_reindex_external_index);
-Datum       lantern_reindex_external_index(PG_FUNCTION_ARGS)
-{
-    Oid indrelid = PG_GETARG_OID(0);
-    ldb_reindex_external_index(indrelid);
-    PG_RETURN_VOID();
-}
+Datum       lantern_reindex_external_index(PG_FUNCTION_ARGS) { PG_RETURN_VOID(); }
 
 /*
  * Get data type for give oid

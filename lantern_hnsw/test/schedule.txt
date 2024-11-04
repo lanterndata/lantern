@@ -13,4 +13,3 @@ test:   hnsw_config hnsw_correct hnsw_create hnsw_create_expr hnsw_dist_func hns
 test_pg_cron: async_tasks
 test: hnsw_pq_index
 test_pgvector: hnsw_vector weighted_search
-test_extras: hnsw_extras

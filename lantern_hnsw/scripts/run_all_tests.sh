@@ -150,10 +150,6 @@ if [[ -n "$FILTER" || -n "$EXCLUDE" ]]; then
         if [[ "$pg_cron_installed" == "1" ]]; then
             TEST_FILES="${TEST_FILES}${NEWLINE}$(cat $SCHEDULE | grep -E '^(test_pg_cron:)' | sed -e 's/^test_pg_cron:/test:/' | tr " " "\n" | sed -e '/^$/d')"
         fi
-
-        if [[ "$lantern_extras_installed" ]]; then
-            TEST_FILES="${TEST_FILES}${NEWLINE}$(cat $SCHEDULE | grep -E '^(test_extras:)' | sed -e 's/^test_extras:/test:/' | tr " " "\n" | sed -e '/^$/d')"
-        fi
     fi
 
     if [ $PG_VERSION -lt 13 ]; then
@@ -203,11 +199,6 @@ else
         elif [[ "$line" =~ ^test_pg_cron: ]]; then
             test_name=$(echo "$line" | sed -e 's/test_pg_cron://')
             if [ "$pg_cron_installed" == "1" ]; then
-                echo "test: $test_name" >> $TMP_OUTDIR/schedule.txt
-            fi
-        elif [[ "$line" =~ ^test_extras: ]]; then
-            test_name=$(echo "$line" | sed -e 's/test_extras://')
-            if [ "$lantern_extras_installed" == "1" ]; then
                 echo "test: $test_name" >> $TMP_OUTDIR/schedule.txt
             fi
         elif [[ "$line" =~ ^test_begin: ]]; then

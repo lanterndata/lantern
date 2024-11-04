@@ -45,6 +45,5 @@ IndexBuildResult *ldb_ambuild(Relation heap, Relation index, IndexInfo *indexInf
 void              ldb_ambuildunlogged(Relation index);
 int               GetHnswIndexDimensions(Relation index, IndexInfo *indexInfo);
 void              CheckHnswIndexDimensions(Relation index, Datum arrayDatum, int deimensions);
-void              ldb_reindex_external_index(Oid indrelid);
 // todo: does this render my check unnecessary
 #endif  // LDB_HNSW_BUILD_H
