@@ -55,7 +55,7 @@ glob = { version="0.3.1", optional=true }
 reqwest = { version = "0.12.9", default-features = false, features = ["json", "blocking", "rustls-tls"], optional = true }
 
 [features]
-default = ["cli", "daemon", "http-server", "autotune", "pq", "external-index", "external-index-server", "embeddings"]
+default = ["cli", "daemon", "http-server", "autotune", "pq", "external-index", "external-index-server", "external-index-status-server", "embeddings"]
 daemon = ["dep:tokio-postgres"]
 http-server = ["dep:deadpool-postgres", "dep:deadpool", "dep:bytes", "dep:utoipa", "dep:utoipa-swagger-ui", "dep:actix-web", "dep:tokio-postgres", "dep:env_logger", "dep:actix-web-httpauth", "dep:regex"]
 autotune = []
@@ -63,6 +63,7 @@ pq = ["dep:gcp_auth", "dep:linfa", "dep:linfa-clustering", "dep:md5", "dep:rayon
 cli = []
 external-index = ["dep:postgres-types", "dep:usearch", "dep:postgres"]
 external-index-server = ["dep:bitvec", "dep:rustls", "dep:rustls-pemfile", "dep:glob", "dep:usearch"]
+external-index-status-server = ["dep:actix-web"]
 embeddings = ["dep:bytes", "dep:sysinfo", "dep:tiktoken-rs", "dep:url", "dep:num_cpus", "dep:ort", "dep:tokenizers", "dep:image", "dep:nvml-wrapper", "dep:strum", "dep:regex", "dep:reqwest", "dep:ndarray"]
 
 [lib]

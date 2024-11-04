@@ -74,7 +74,7 @@ pub fn start_daemon(embeddings: bool, indexing: bool, autotune: bool) -> Result<
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .unwrap(); // Runtime::new().unwrap();
+        .unwrap();
     rt.block_on(async {
         start(
             DaemonArgs {
