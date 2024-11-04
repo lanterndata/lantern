@@ -308,7 +308,7 @@ bool ldb_amgettuple(IndexScanDesc scan, ScanDirection dir)
 #endif
 
         // todo:: there is a mid-sized designed issue with index storage
-        // labels must be large enought to store relblockno+ indexblockno
+        // labels must be large enough to store relblockno+ indexblockno
         // currently they only store relblockno
         // the second is needed so we can hold a pin in here on the index page
         // the good news is that this is not an issue until we support deletions
