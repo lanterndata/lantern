@@ -11,3 +11,6 @@ BEGIN
   RETURN COALESCE(type_oid, 0);
 END;
 $$ LANGUAGE plpgsql;
+
+DROP FUNCTION lantern_reindex_external_index;
+DROP FUNCTION _lantern_internal.reindex_lantern_indexes;
