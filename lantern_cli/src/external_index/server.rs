@@ -1,4 +1,5 @@
 use super::cli::{IndexServerArgs, UMetricKind};
+#[cfg(feature = "external-index-status-server")]
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 use glob::glob;
 use rand::Rng;
@@ -41,14 +42,14 @@ unsafe impl Sync for ThreadSafeIndex {}
 unsafe impl Send for ThreadSafeIndex {}
 
 #[derive(Clone, Copy)]
-enum ServerStatus {
+pub enum ServerStatus {
     Idle = 0,
     InProgress = 1,
     Failed = 2,
     Succeded = 3,
 }
 
-struct ServerContext {
+pub struct ServerContext {
     status: ServerStatus,
     status_updated_at: u128,
 }
@@ -522,7 +523,7 @@ fn cleanup_tmp_dir(logger: Arc<Logger>, tmp_dir: Arc<String>) {
     }
 }
 
-fn start_indexing_server(
+pub fn start_indexing_server(
     args: IndexServerArgs,
     logger: Arc<Logger>,
     ctx: Arc<RwLock<ServerContext>>,
@@ -582,6 +583,7 @@ fn start_indexing_server(
     Ok(())
 }
 
+#[cfg(feature = "external-index-status-server")]
 async fn get_status(ctx: web::Data<Arc<RwLock<ServerContext>>>) -> impl Responder {
     let ctx = ctx.read().unwrap();
     let status_json = format!(
@@ -594,6 +596,7 @@ async fn get_status(ctx: web::Data<Arc<RwLock<ServerContext>>>) -> impl Responde
         .body(status_json)
 }
 
+#[cfg(feature = "external-index-status-server")]
 fn start_status_server(
     args: IndexServerArgs,
     logger: Arc<Logger>,
@@ -629,18 +632,26 @@ pub fn start_tcp_server(args: IndexServerArgs, logger: Option<Logger>) -> Anyhow
     let logger =
         Arc::new(logger.unwrap_or(Logger::new("Lantern Indexing Server", LogLevel::Debug)));
     let logger_clone = logger.clone();
-    let logger_clone2 = logger.clone();
 
     let context = Arc::new(RwLock::new(ServerContext::new()));
     let context_clone = context.clone();
 
+    let mut handles = Vec::with_capacity(2);
+
     let indexing_server_handle =
         std::thread::spawn(move || start_indexing_server(args_clone, logger_clone, context_clone));
 
+    handles.push(indexing_server_handle);
+
+    #[cfg(feature = "external-index-status-server")]
+    let logger_clone2 = logger.clone();
+    #[cfg(feature = "external-index-status-server")]
     let status_server_handle =
         std::thread::spawn(move || start_status_server(args, logger_clone2, context));
+    #[cfg(feature = "external-index-status-server")]
+    handles.push(status_server_handle);
 
-    for handle in [indexing_server_handle, status_server_handle] {
+    for handle in handles {
         if let Err(e) = handle.join() {
             logger.error("{e}");
             anyhow::bail!("{:?}", e);
