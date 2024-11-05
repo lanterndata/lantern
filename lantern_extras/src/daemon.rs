@@ -107,7 +107,7 @@ pub fn start_daemon(embeddings: bool, indexing: bool, autotune: bool) -> Result<
                         break;
                     }
 
-                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    tokio::time::sleep(Duration::from_secs(10)).await;
                 }
             } => {}
         }
@@ -357,7 +357,7 @@ pub mod tests {
     fn test_add_daemon_job() {
         Spi::connect(|mut client| {
             // wait for daemon
-            std::thread::sleep(Duration::from_secs(5));
+            std::thread::sleep(Duration::from_secs(10));
             client.update(
                 "
                 CREATE TABLE t1 (id serial primary key, title text);
@@ -379,7 +379,7 @@ pub mod tests {
     fn test_add_daemon_completion_job() {
         Spi::connect(|mut client| {
             // wait for daemon
-            std::thread::sleep(Duration::from_secs(5));
+            std::thread::sleep(Duration::from_secs(10));
             client.update(
                 "
                 CREATE TABLE t1 (id serial primary key, title text);
@@ -423,7 +423,7 @@ pub mod tests {
     fn test_add_daemon_completion_job_batch_size() {
         Spi::connect(|mut client| {
             // wait for daemon
-            std::thread::sleep(Duration::from_secs(5));
+            std::thread::sleep(Duration::from_secs(10));
             client.update(
                 "
                 CREATE TABLE t1 (id serial primary key, title text);
@@ -467,7 +467,7 @@ pub mod tests {
     fn test_get_daemon_completion_job() {
         Spi::connect(|mut client| {
             // wait for daemon
-            std::thread::sleep(Duration::from_secs(5));
+            std::thread::sleep(Duration::from_secs(10));
             client.update(
                 "
                 CREATE TABLE t1 (id serial primary key, title text);
@@ -506,7 +506,7 @@ pub mod tests {
     fn test_get_completion_job_failures() {
         Spi::connect(|mut client| {
             // wait for daemon
-            std::thread::sleep(Duration::from_secs(5));
+            std::thread::sleep(Duration::from_secs(10));
             client.update(
                 "
                 INSERT INTO _lantern_extras_internal.embedding_failure_info (job_id, row_id, value) VALUES
@@ -558,7 +558,7 @@ pub mod tests {
     fn test_add_daemon_job_default_params() {
         Spi::connect(|mut client| {
             // wait for daemon
-            std::thread::sleep(Duration::from_secs(5));
+            std::thread::sleep(Duration::from_secs(10));
             client.update(
                 "
                 CREATE TABLE t1 (id serial primary key, title text);
@@ -597,7 +597,7 @@ pub mod tests {
     fn test_get_daemon_job() {
         Spi::connect(|mut client| {
             // wait for daemon
-            std::thread::sleep(Duration::from_secs(5));
+            std::thread::sleep(Duration::from_secs(10));
             client.update(
                 "
                 CREATE TABLE t1 (id serial primary key, title text);
@@ -683,7 +683,7 @@ pub mod tests {
     fn test_get_daemon_jobs() {
         Spi::connect(|mut client| {
             // wait for daemon
-            std::thread::sleep(Duration::from_secs(5));
+            std::thread::sleep(Duration::from_secs(10));
             client.update(
                 "
                 CREATE TABLE t1 (id serial primary key, title text);
@@ -716,7 +716,7 @@ pub mod tests {
     fn test_cancel_daemon_job() {
         Spi::connect(|mut client| {
             // wait for daemon
-            std::thread::sleep(Duration::from_secs(5));
+            std::thread::sleep(Duration::from_secs(10));
             client.update(
                 "
                 CREATE TABLE t1 (id serial primary key, title text);
@@ -746,7 +746,7 @@ pub mod tests {
     fn test_resume_daemon_job() {
         Spi::connect(|mut client| {
             // wait for daemon
-            std::thread::sleep(Duration::from_secs(5));
+            std::thread::sleep(Duration::from_secs(10));
             client.update(
                 "
                 CREATE TABLE t1 (id serial primary key, title text);
