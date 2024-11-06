@@ -179,9 +179,8 @@ bytea *ldb_amoptions(Datum reloptions, bool validate)
     };
 
 #if PG_VERSION_NUM >= 130000
-    LDB_UNUSED(validate);
     return (bytea *)build_reloptions(
-        reloptions, true, ldb_hnsw_index_withopts, sizeof(ldb_HnswOptions), tab, lengthof(tab));
+        reloptions, validate, ldb_hnsw_index_withopts, sizeof(ldb_HnswOptions), tab, lengthof(tab));
 #else
     // clang-format off
     relopt_value *options;
