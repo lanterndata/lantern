@@ -37,6 +37,8 @@ pub static ENABLE_INDEXING_SERVER: GucSetting<bool> = GucSetting::<bool>::new(tr
 pub static DAEMON_DATABASES: GucSetting<Option<&'static CStr>> =
     GucSetting::<Option<&'static CStr>>::new(None);
 
+pub static BM25_DEFAULT_K1: GucSetting<f64> = GucSetting::<f64>::new(1.2);
+pub static BM25_DEFAULT_B: GucSetting<f64> = GucSetting::<f64>::new(0.75);
 pub static BM25_DEFAULT_APPROXIMATION_THRESHHOLD: GucSetting<i32> = GucSetting::<i32>::new(8000);
 
 #[allow(non_snake_case)]
@@ -110,6 +112,26 @@ pub unsafe extern "C" fn _PG_init() {
         "Flag to indicate if local indexing server is enabled or not",
         &ENABLE_INDEXING_SERVER,
         GucContext::Sighup,
+    GucRegistry::define_float_guc(
+        "lantern_extras.bm25_default_k1",
+        "BM25 default k1",
+        "BM25 default k1",
+        &BM25_DEFAULT_K1,
+        1.0,
+        3.0,
+        GucContext::Userset,
+        GucFlags::NO_SHOW_ALL,
+    );
+    GucRegistry::define_float_guc(
+        "lantern_extras.bm25_default_b",
+        "BM25 default b",
+        "BM25 default b",
+        &BM25_DEFAULT_B,
+        0.0,
+        1.0,
+        GucContext::Userset,
+        GucFlags::NO_SHOW_ALL,
+    );
     GucRegistry::define_int_guc(
         "lantern_extras.bm25_default_approximation_threshhold",
         "Term popularity threashold, after which approximation is used",
