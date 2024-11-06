@@ -1,4 +1,5 @@
 use crate::bloom::Bloom as PGBloom;
+use crate::{BM25_DEFAULT_APPROXIMATION_THRESHHOLD, BM25_DEFAULT_B, BM25_DEFAULT_K1};
 use fastbloom::BloomFilter;
 use std::collections::HashMap;
 
@@ -35,8 +36,8 @@ impl Default for BM25InternalState {
             limit: None,
             corpus_size: None,
             avg_doc_len: None,
-            k1: 1.2,
-            b: 0.75,
+            k1: BM25_DEFAULT_K1.get() as f32,
+            b: BM25_DEFAULT_B.get() as f32,
             blooms: Vec::new(),
         }
     }
