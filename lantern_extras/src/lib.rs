@@ -27,6 +27,8 @@ pub static ENABLE_DAEMON: GucSetting<bool> = GucSetting::<bool>::new(false);
 pub static DAEMON_DATABASES: GucSetting<Option<&'static CStr>> =
     GucSetting::<Option<&'static CStr>>::new(None);
 
+pub static BM25_DEFAULT_APPROXIMATION_THRESHHOLD: GucSetting<i32> = GucSetting::<i32>::new(8000);
+
 #[allow(non_snake_case)]
 #[pg_guard]
 pub unsafe extern "C" fn _PG_init() {
@@ -88,6 +90,16 @@ pub unsafe extern "C" fn _PG_init() {
         "Flag to indicate if daemon is enabled or not",
         &ENABLE_DAEMON,
         GucContext::Sighup,
+        GucFlags::NO_SHOW_ALL,
+    );
+    GucRegistry::define_int_guc(
+        "lantern_extras.bm25_default_approximation_threshhold",
+        "Term popularity threashold, after which approximation is used",
+        "Term popularity threashold, after which approximation is used",
+        &BM25_DEFAULT_APPROXIMATION_THRESHHOLD,
+        5000,
+        100_000,
+        GucContext::Userset,
         GucFlags::NO_SHOW_ALL,
     );
 }

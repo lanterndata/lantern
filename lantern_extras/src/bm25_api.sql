@@ -5,7 +5,10 @@ DECLARE
     src_table_exists BOOLEAN;
     dest_table_exists BOOLEAN;
     drop_if_exists_sql TEXT := '';
+    bm25_threshold integer;
 BEGIN
+    -- Read the GUC into a variable
+    SELECT current_setting('lantern_extras.bm25_default_approximation_threshhold')::integer INTO bm25_threshold;
     -- Concatenate the index columns into a single source column
     source_column := index_columns[1];
     IF cardinality(index_columns) > 1 THEN
@@ -49,8 +52,8 @@ BEGIN
         CREATE INDEX ON %1$I_bm25 USING hash(term);
         -- make random access to the NULL row very very fast, since we use it in every call of bm25_agg to retrieve corpus-wide stats
         CREATE INDEX ON %1$I_bm25 ((true)) WHERE term IS NULL;
-        UPDATE %1$I_bm25 SET doc_ids_bloom = array_to_bloom(doc_ids) WHERE cardinality(doc_ids) > 8000;
-    ', table_name, id_column, source_column, drop_if_exists_sql);
+        UPDATE %1$I_bm25 SET doc_ids_bloom = array_to_bloom(doc_ids) WHERE cardinality(doc_ids) > %5$L;
+    ', table_name, id_column, source_column, drop_if_exists_sql, bm25_threshold);
 END;
 $$ LANGUAGE plpgsql;
 
@@ -111,7 +114,10 @@ DECLARE
     merged_fqs integer[];
     merged_doc_lens integer[];
     new_doc_ids_bloom bloom;
+    bm25_threshold integer;
 BEGIN
+    -- Read the GUC into a variable
+    SELECT current_setting('lantern_extras.bm25_default_approximation_threshhold')::integer INTO bm25_threshold;
     -- Loop through each term that appears more than once
     FOR term_dup IN
         EXECUTE format('SELECT term
@@ -142,7 +148,7 @@ BEGIN
         -- Delete original rows
         EXECUTE format('DELETE FROM %I_bm25
         WHERE term = term_record.term', table_name);
-        IF cardinality(merged_doc_ids) > 8000 THEN
+        IF cardinality(merged_doc_ids) > bm25_threshold THEN
             new_doc_ids_bloom := array_to_bloom(merged_doc_ids);
         END IF;
         -- Insert the consolidated row
