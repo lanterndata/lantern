@@ -1,6 +1,5 @@
 use crate::bloom::Bloom as PGBloom;
 use crate::{BM25_DEFAULT_APPROXIMATION_THRESHHOLD, BM25_DEFAULT_B, BM25_DEFAULT_K1};
-use fastbloom::BloomFilter;
 use std::collections::HashMap;
 
 use pgrx::datum::Internal;
@@ -26,7 +25,7 @@ struct BM25InternalState {
     k1: f32,
     b: f32,
     // approximate bm25 parameters
-    blooms: Vec<(f32, BloomFilter)>,
+    blooms: Vec<(f32, PGBloom)>,
 }
 
 impl Default for BM25InternalState {
@@ -161,12 +160,10 @@ impl BM25InternalState {
         avg_doc_len: f32,
         corpus_size: u64,
         term_freq: f32,
-    ) -> Option<(f32, BloomFilter)> {
+    ) -> Option<(f32, PGBloom)> {
         // we need to try to read pgbloom first, since the mere act of trying to get an
         // array via get_by_index causes pgrx to detoast the row, which is expensive
         if let Ok(Some(pgbloom)) = heap_row.get_by_name::<PGBloom>("doc_ids_bloom") {
-            let bloom: BloomFilter = pgbloom.into();
-
             let fq = 1.;
             let doc_len = avg_doc_len;
             let bm25 = calculate_bm25(
@@ -178,7 +175,7 @@ impl BM25InternalState {
                 self.k1,
                 self.b,
             );
-            return Some((bm25, bloom));
+            return Some((bm25, pgbloom));
         }
         return None;
     }
@@ -341,7 +338,7 @@ impl BM25InternalState {
                         bm25 + self
                             .blooms
                             .iter()
-                            .filter(|(_, b)| b.contains(&doc_id))
+                            .filter(|(_, b)| b.contains(&(doc_id as u64)))
                             .map(|(bm25, _)| *bm25)
                             .sum::<f32>(),
                     )

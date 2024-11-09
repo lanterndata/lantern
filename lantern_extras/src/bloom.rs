@@ -2,6 +2,7 @@ use fastbloom::BloomFilter;
 use pgrx::prelude::*;
 use pgrx::PostgresType;
 use serde::{Deserialize, Serialize};
+use xorf::{BinaryFuse8, Filter};
 
 const BLOOM_HASHER_SEED: u128 = 42;
 
@@ -10,68 +11,72 @@ const BLOOM_HASHER_SEED: u128 = 42;
 pub struct Bloom {
     #[serde(with = "serde_bytes")]
     bitmap: Vec<u8>,
+    xorf: BinaryFuse8,
     num_hashes: u32,
 }
 
-impl From<BloomFilter> for Bloom {
-    fn from(bloom_filter: BloomFilter) -> Self {
-        let v = bloom_filter.as_slice().to_vec();
-        let bitmap =
-            unsafe { Vec::from_raw_parts(v.as_ptr() as *mut u8, v.len() * 8, v.capacity() * 8) };
-        std::mem::forget(v);
+impl Bloom {
+    pub fn contains(&self, elem: &u64) -> bool {
+        self.xorf.contains(elem)
+    }
+}
+impl From<BinaryFuse8> for Bloom {
+    fn from(bloom_filter: BinaryFuse8) -> Self {
+        // let v = bloom_filter.as_slice().to_vec();
+        // let bitmap =
+        //     unsafe { Vec::from_raw_parts(v.as_ptr() as *mut u8, v.len() * 8, v.capacity() * 8) };
+        // std::mem::forget(v);
         Bloom {
-            bitmap,
-            num_hashes: bloom_filter.num_hashes(),
+            bitmap: Vec::new(),
+            xorf: bloom_filter,
+            num_hashes: 0,
+            // num_hashes: bloom_filter.num_hashes(),
         }
     }
 }
 
-impl From<Bloom> for BloomFilter {
+impl From<Bloom> for BinaryFuse8 {
     #[inline(never)]
     fn from(bloom: Bloom) -> Self {
-        let bitmap = unsafe {
-            Vec::from_raw_parts(
-                bloom.bitmap.as_ptr() as *mut u64,
-                bloom.bitmap.len() / 8,
-                bloom.bitmap.capacity() / 8,
-            )
-        };
-        std::mem::forget(bloom.bitmap);
-        BloomFilter::from_vec(bitmap)
-            .seed(&BLOOM_HASHER_SEED)
-            .hashes(bloom.num_hashes)
+        bloom.xorf
     }
 }
 
-fn array_to_bloom<T: std::hash::Hash>(arr: Vec<T>) -> Bloom {
-    let mut bloom = BloomFilter::with_false_pos(0.01)
-        .seed(&BLOOM_HASHER_SEED)
-        .expected_items(arr.len());
-    for i in arr {
-        bloom.insert(&i);
-    }
+fn array_to_bloom<T: Into<u64>>(arr: Vec<T>) -> Bloom {
+    // let mut bloom = BinaryFuse8::::with_false_pos(0.01)
+    //     .seed(&BLOOM_HASHER_SEED)
+    //     .expected_items(arr.len());
+    //
+    // for i in arr {
+    //     bloom.insert(&i);
+    // }
+    let arr_u64: Vec<u64> = arr.into_iter().map(|x| x.into()).collect();
+    let bloom = BinaryFuse8::try_from(arr_u64).unwrap();
     return bloom.into();
 }
 
 #[pg_extern(immutable, parallel_safe, name = "array_to_bloom")]
 fn array_to_bloom_smallint(arr: Vec<i16>) -> Bloom {
-    return array_to_bloom(arr);
+    let arr_u64: Vec<u64> = arr.iter().map(|&x| x as u64).collect();
+    return array_to_bloom(arr_u64);
 }
 
 #[pg_extern(immutable, parallel_safe, name = "array_to_bloom")]
 fn array_to_bloom_integer(arr: Vec<i32>) -> Bloom {
-    return array_to_bloom(arr);
+    let arr_u64: Vec<u64> = arr.iter().map(|&x| x as u64).collect();
+    return array_to_bloom(arr_u64);
 }
 
 #[pg_extern(immutable, parallel_safe, name = "array_to_bloom")]
 fn array_to_bloom_bigint(arr: Vec<i64>) -> Bloom {
-    return array_to_bloom(arr);
+    let arr_u64: Vec<u64> = arr.iter().map(|&x| x as u64).collect();
+    return array_to_bloom(arr_u64);
 }
 
 #[pg_extern(requires = [Bloom])]
 fn elem_in_bloom(elem: i32, bloom: Bloom) -> bool {
-    let bloom: BloomFilter = bloom.into();
-    bloom.contains(&elem)
+    let bloom: BinaryFuse8 = bloom.into();
+    bloom.contains(&(elem as u64))
 }
 
 extension_sql!(
