@@ -162,3 +162,11 @@ CREATE INDEX ON small_world4 USING lantern_hnsw (vector) WITH (M=14, ef=22, ef_c
 INFO:  done init usearch index
 ERROR:  Wrong number of dimensions: 3 instead of 4 expected
 \set ON_ERROR_STOP on
+\set ON_ERROR_STOP off
+SET lantern.external_index_port=65535; -- this should fail if it will try to connect
+CREATE TABLE empty(v REAL[]);
+CREATE INDEX ON empty USING lantern_hnsw (v) WITH (dim=3, external=true); -- should success
+INFO:  done init usearch index
+INFO:  inserted 0 elements
+INFO:  done saving 0 vectors
+\set ON_ERROR_STOP on

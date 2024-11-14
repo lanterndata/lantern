@@ -520,6 +520,10 @@ static void BuildIndex(Relation heap, Relation index, IndexInfo *indexInfo, ldb_
 
     uint32_t estimated_row_count = EstimateRowCount(heap);
 
+    if(estimated_row_count < EXTERNAL_INDEX_MIN_TUPLES) {
+        buildstate->external = false;
+    }
+
     if(buildstate->external) {
         buildstate->external_socket = palloc0(sizeof(external_index_socket_t));
         create_external_index_session(ldb_external_index_host,

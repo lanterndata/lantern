@@ -83,3 +83,9 @@ UPDATE small_world4 SET vector = '{0,0,0}' WHERE id = '001';
 \set ON_ERROR_STOP off
 CREATE INDEX ON small_world4 USING lantern_hnsw (vector) WITH (M=14, ef=22, ef_construction=2);
 \set ON_ERROR_STOP on
+
+\set ON_ERROR_STOP off
+SET lantern.external_index_port=65535; -- this should fail if it will try to connect
+CREATE TABLE empty(v REAL[]);
+CREATE INDEX ON empty USING lantern_hnsw (v) WITH (dim=3, external=true); -- should success
+\set ON_ERROR_STOP on
