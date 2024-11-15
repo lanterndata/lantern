@@ -189,6 +189,8 @@ jobs:
         run: |
           sudo chmod 777 -R "/usr/lib/postgresql/${PG_VERSION}/lib/"
           sudo chmod 777 -R "/usr/share/postgresql/${PG_VERSION}/extension/"
+          # make sure the rust function exposing custom dict API can change the dictionary files
+          sudo chown -R postgres:postgres /usr/share/postgresql/${PG_VERSION}/tsearch_data/
         env:
           PG_VERSION: ${{ matrix.postgres }}
       - name: Run tests
