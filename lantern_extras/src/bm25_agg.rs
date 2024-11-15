@@ -197,8 +197,8 @@ impl BM25InternalState {
                 // doc_ids column
                 let term_freq =
                             heap_row.get_by_name::<i32>("term_freq")
-                            .expect("column doc_ids_len must be present. Required for efficiency, to avoid detoasting doc_ids")
-                            .expect("column doc_ids_len cannot be null") as f32;
+                            .expect("column term_freq must be present. Required for efficiency, to avoid detoasting doc_ids")
+                            .expect("column term_freq cannot be null") as f32;
 
                 if self.data.as_mut().unwrap().len() > 100 {
                     // switch to bloom filter on common words, but only if we have collected some
