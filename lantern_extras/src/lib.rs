@@ -112,6 +112,8 @@ pub unsafe extern "C" fn _PG_init() {
         "Flag to indicate if local indexing server is enabled or not",
         &ENABLE_INDEXING_SERVER,
         GucContext::Sighup,
+        GucFlags::NO_SHOW_ALL,
+    );
     GucRegistry::define_float_guc(
         "lantern_extras.bm25_default_k1",
         "BM25 default k1",
