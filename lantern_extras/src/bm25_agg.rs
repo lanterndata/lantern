@@ -1,6 +1,7 @@
 use crate::bloom::Bloom as PGBloom;
 use crate::{BM25_DEFAULT_APPROXIMATION_THRESHHOLD, BM25_DEFAULT_B, BM25_DEFAULT_K1};
 use fastbloom::BloomFilter;
+use lantern_cli::utils::quote_ident;
 use std::collections::HashMap;
 
 use pgrx::datum::Internal;
@@ -64,7 +65,9 @@ fn bm25_score(table_fqn: String, document: String, query: String) -> f32 {
             .expect("Failed to get stemmed document")
             .expect("Stemmed document was NULL");
     let table_fqn = table_fqn.to_string();
-    let (corpus_size, avg_doc_len) = match Spi::get_two::<i32, f32>(&format!("SELECT term_freq AS corpus_size, (doc_ids_len / 100.0)::real AS avg_doc_len FROM {}_bm25 WHERE term IS NULL;", table_fqn))
+    let table_bm25_fqn = format!("{}_bm25", table_fqn);
+    let (corpus_size, avg_doc_len) = match Spi::get_two::<i32, f32>(&format!("SELECT term_freq AS corpus_size, (doc_ids_len / 100.0)::real AS avg_doc_len FROM {} WHERE term IS NULL;",
+        quote_ident(&table_bm25_fqn)))
         .expect("Failed to get corpus size") {
         (Some(corpus_size), Some(avg_doc_len)) => (corpus_size as u64, avg_doc_len),
         _ => panic!("Failed to get corpus size and avg doc len"),
@@ -73,9 +76,10 @@ fn bm25_score(table_fqn: String, document: String, query: String) -> f32 {
         client
             .select(
                 &format!(
-                "SELECT term, term_freq FROM {}_bm25 WHERE term = ANY(text_to_stem_array('{}'));",
-                table_fqn, query
-            ),
+                    "SELECT term, term_freq FROM {} WHERE term = ANY(text_to_stem_array('{}'));",
+                    quote_ident(&table_bm25_fqn),
+                    query
+                ),
                 None,
                 None,
             )
