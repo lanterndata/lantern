@@ -21,6 +21,10 @@ pub mod dotvecs;
 pub mod embeddings;
 pub mod stemmers;
 
+// ensure lantern_extras schema is created
+#[pg_schema]
+mod lantern_extras {}
+
 // this will be deprecated and removed on upcoming releases
 pub static OPENAI_TOKEN: GucSetting<Option<&'static CStr>> =
     GucSetting::<Option<&'static CStr>>::new(None);
