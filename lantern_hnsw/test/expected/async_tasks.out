@@ -183,12 +183,19 @@ SELECT jobid, query, pg_cron_job_name, job_name, duration IS NOT NULL AS is_done
 -- NOTE: the test finishes but the async index creation may still be in progress
 -- create non superuser and test the function
 SET client_min_messages = WARNING;
+-- drop any dependencies on the new role
+-- these can be left around from the last time the test ran
+\set ON_ERROR_STOP off
+DROP OWNED BY test_user_async;
+ERROR:  role "test_user_async" does not exist
+\set ON_ERROR_STOP on
 -- suppress NOTICE:  role "test_user" does not exist, skipping
 DROP USER IF EXISTS test_user_async;
 SET client_min_messages = NOTICE;
 CREATE USER test_user_async WITH PASSWORD 'test_password';
 GRANT SELECT ON "sift_base1k_UpperCase" TO test_user_async;
 GRANT SELECT ON sift_base1k_id_seq TO test_user_async;
+GRANT CREATE ON SCHEMA public TO test_user_async;
 SET ROLE test_user_async;
 SELECT lantern.async_task($$SELECT 1$$, 'simple job');
 NOTICE:  Job scheduled with pg_cron name: 'async_task_5'
@@ -223,10 +230,27 @@ NOTICE:  Job scheduled with pg_cron name: 'async_task_9'
 ------------
           9
 
+-- clean up table in case the last test has failed. note that we are on postgres DB for async tasks,
+-- so we need to clean up individual resources as we will not be dropping the whole DB between tests
+-- Async task should succeed creating a table and inserting a row.
+-- Tests that single async_task can have multiple statements
+SELECT lantern.async_task($$CREATE TABLE async_created_table(c text);
+  INSERT INTO async_created_table(c) VALUES ('async_inserted_value');$$,
+  'Multi-stmt job');
+NOTICE:  Job scheduled with pg_cron name: 'async_task_10'
+ async_task 
+------------
+         10
+
 SELECT pg_sleep(4);
  pg_sleep 
 ----------
  
+
+SELECT * FROM async_created_table;
+          c           
+----------------------
+ async_inserted_value
 
 SELECT jobid, query, pg_cron_job_name, job_name, duration IS NOT NULL AS is_done, status, error_message FROM lantern.tasks ORDER BY jobid;
  jobid |                                          query                                           | pg_cron_job_name |      job_name      | is_done |  status   |                    error_message                     
@@ -237,4 +261,9 @@ SELECT jobid, query, pg_cron_job_name, job_name, duration IS NOT NULL AS is_done
      7 | DROP TABLE "sift_base1k_UpperCase";                                                      | async_task_7     | Dropping Table Job | t       | failed    | ERROR:  must be owner of table sift_base1k_UpperCase+
        |                                                                                          |                  |                    |         |           | 
      9 | SELECT 42                                                                                | async_task_9     | Life               | t       | succeeded | 
+    10 | CREATE TABLE async_created_table(c text);                                               +| async_task_10    | Multi-stmt job     | t       | succeeded | 
+       |   INSERT INTO async_created_table(c) VALUES ('async_inserted_value');                    |                  |                    |         |           | 
 
+SET ROLE postgres;
+DROP OWNED BY test_user_async;
+DROP USER IF EXISTS test_user_async;
