@@ -79,6 +79,10 @@ SELECT lantern.async_task($$CREATE TABLE async_created_table(c text);
   INSERT INTO async_created_table(c) VALUES ('async_inserted_value');$$,
   'Multi-stmt job');
 
+-- Reproduce a bug where tasks table reports succeeded for some failed tasks
+-- Below is a task similar to the one in the very top of the file.
+-- But it has a succeeding statement followed by a failing one.
+SELECT lantern.async_task($$SELECT 1; SELECT pg_sleep(haha); $$, 'Status issue');
 SELECT pg_sleep(4);
 SELECT * FROM async_created_table;
 SELECT jobid, query, pg_cron_job_name, job_name, duration IS NOT NULL AS is_done, status, error_message FROM lantern.tasks ORDER BY jobid;

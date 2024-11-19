@@ -242,6 +242,15 @@ NOTICE:  Job scheduled with pg_cron name: 'async_task_10'
 ------------
          10
 
+-- Reproduce a bug where tasks table reports succeeded for some failed tasks
+-- Below is a task similar to the one in the very top of the file.
+-- But it has a succeeding statement followed by a failing one.
+SELECT lantern.async_task($$SELECT 1; SELECT pg_sleep(haha); $$, 'Status issue');
+NOTICE:  Job scheduled with pg_cron name: 'async_task_11'
+ async_task 
+------------
+         11
+
 SELECT pg_sleep(4);
  pg_sleep 
 ----------
@@ -263,6 +272,7 @@ SELECT jobid, query, pg_cron_job_name, job_name, duration IS NOT NULL AS is_done
      9 | SELECT 42                                                                                | async_task_9     | Life               | t       | succeeded | 
     10 | CREATE TABLE async_created_table(c text);                                               +| async_task_10    | Multi-stmt job     | t       | succeeded | 
        |   INSERT INTO async_created_table(c) VALUES ('async_inserted_value');                    |                  |                    |         |           | 
+    11 | SELECT 1; SELECT pg_sleep(haha);                                                         | async_task_11    | Status issue       | t       | succeeded | 
 
 SET ROLE postgres;
 DROP OWNED BY test_user_async;
