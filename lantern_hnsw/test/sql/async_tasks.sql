@@ -50,6 +50,7 @@ SET client_min_messages = NOTICE;
 CREATE USER test_user_async WITH PASSWORD 'test_password';
 GRANT SELECT ON "sift_base1k_UpperCase" TO test_user_async;
 GRANT SELECT ON sift_base1k_id_seq TO test_user_async;
+GRANT CREATE ON SCHEMA public TO test_user_async;
 
 SET ROLE test_user_async;
 
@@ -65,5 +66,16 @@ SELECT lantern.async_task('DROP TABLE "sift_base1k_UpperCase";', 'Dropping Table
 SELECT nextval('lantern.tasks_jobid_seq');
 SELECT lantern.async_task($$SELECT 42$$, 'Life');
 
+-- clean up table in case the last test has failed. note that we are on postgres DB for async tasks,
+-- so we need to clean up individual resources as we will not be dropping the whole DB between tests
+DROP TABLE IF EXISTS async_created_table;
+-- Async task should succeed creating a table and inserting a row.
+-- Tests that single async_task can have multiple statements
+SELECT lantern.async_task($$CREATE TABLE async_created_table(c text);
+  INSERT INTO async_created_table(c) VALUES ('async_inserted_value');$$,
+  'Multi-stmt job');
+
 SELECT pg_sleep(4);
+SELECT * FROM async_created_table;
+DROP TABLE async_created_table;
 SELECT jobid, query, pg_cron_job_name, job_name, duration IS NOT NULL AS is_done, status, error_message FROM lantern.tasks ORDER BY jobid;
