@@ -497,9 +497,8 @@ BEGIN
     -- Call the job finalizer if corresponding job exists BOTH in lantern async tasks AND
     -- active cron jobs
     UPDATE lantern.tasks t SET
-        (duration, status, error_message, pg_cron_job_name) = (run.end_time - t.started_at, NEW.status,
-        CASE WHEN NEW.status = 'failed' THEN return_message ELSE NULL END,
-        c.jobname )
+        (duration, status, error_message) = (run.end_time - t.started_at, NEW.status,
+        CASE WHEN NEW.status = 'failed' THEN return_message ELSE NULL END)
     FROM cron.job c
     LEFT JOIN cron.job_run_details run
     ON c.jobid = run.jobid
