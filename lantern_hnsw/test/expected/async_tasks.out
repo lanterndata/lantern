@@ -272,7 +272,10 @@ SELECT jobid, query, pg_cron_job_name, job_name, duration IS NOT NULL AS is_done
      9 | SELECT 42                                                                                | async_task_9     | Life               | t       | succeeded | 
     10 | CREATE TABLE async_created_table(c text);                                               +| async_task_10    | Multi-stmt job     | t       | succeeded | 
        |   INSERT INTO async_created_table(c) VALUES ('async_inserted_value');                    |                  |                    |         |           | 
-    11 | SELECT 1; SELECT pg_sleep(haha);                                                         | async_task_11    | Status issue       | t       | succeeded | 
+    11 | SELECT 1; SELECT pg_sleep(haha);                                                         | async_task_11    | Status issue       | t       | failed    | ERROR:  column "haha" does not exist                +
+       |                                                                                          |                  |                    |         |           | LINE 1: SELECT 1; SELECT pg_sleep(haha);            +
+       |                                                                                          |                  |                    |         |           |                                   ^                 +
+       |                                                                                          |                  |                    |         |           | 
 
 SET ROLE postgres;
 DROP OWNED BY test_user_async;
