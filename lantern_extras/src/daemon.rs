@@ -226,126 +226,182 @@ fn add_completion_job<'a>(
     Ok(id.unwrap())
 }
 
-#[pg_extern(immutable, parallel_safe, security_definer)]
-fn get_embedding_job_status<'a>(
-    job_id: i32,
-) -> Result<
-    TableIterator<
-        'static,
-        (
-            name!(status, Option<String>),
-            name!(progress, Option<i16>),
-            name!(error, Option<String>),
-        ),
-    >,
-    anyhow::Error,
-> {
-    let tuple = Spi::get_three_with_args(
-        r#"
-          SELECT
-          CASE
-            WHEN init_failed_at IS NOT NULL THEN 'failed'
-            WHEN canceled_at IS NOT NULL THEN 'canceled'
-            WHEN init_finished_at IS NOT NULL THEN 'enabled'
-            WHEN init_started_at IS NOT NULL THEN 'in_progress'
-            ELSE 'queued'
-          END AS status,
-          init_progress as progress,
-          init_failure_reason as error
-          FROM _lantern_extras_internal.embedding_generation_jobs
-          WHERE id=$1;
-        "#,
-        vec![(PgBuiltInOids::INT4OID.oid(), job_id.into_datum())],
-    );
+extension_sql!(
+    r#"
+CREATE OR REPLACE FUNCTION get_embedding_job_status(job_id INT)
+RETURNS TABLE (status TEXT, progress SMALLINT, error TEXT)
+STRICT IMMUTABLE PARALLEL SAFE
+SECURITY DEFINER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+  CASE
+    WHEN init_failed_at IS NOT NULL THEN 'failed'
+    WHEN canceled_at IS NOT NULL THEN 'canceled'
+    WHEN init_finished_at IS NOT NULL THEN 'enabled'
+    WHEN init_started_at IS NOT NULL THEN 'in_progress'
+    ELSE 'queued'
+  END AS status,
+  init_progress as progress,
+  init_failure_reason as error
+  FROM _lantern_extras_internal.embedding_generation_jobs
+  WHERE id=job_id;
+END
+$$;
+"#,
+    name = "get_embedding_job_status"
+);
 
-    if tuple.is_err() {
-        return Ok(TableIterator::once((None, None, None)));
-    }
+extension_sql!(
+    r#"
+CREATE OR REPLACE FUNCTION get_completion_job_status(job_id INT)
+RETURNS TABLE (status TEXT, progress SMALLINT, error TEXT)
+STRICT IMMUTABLE PARALLEL SAFE
+SECURITY DEFINER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT * FROM get_embedding_job_status(job_id);
+END
+$$;
+"#,
+    name = "get_completion_job_status",
+    requires = ["get_embedding_job_status"]
+);
 
-    Ok(TableIterator::once(tuple.unwrap()))
-}
+extension_sql!(
+    r#"
+CREATE OR REPLACE FUNCTION get_completion_job_failures(job_id INT)
+RETURNS TABLE (row_id INT, value TEXT)
+STRICT IMMUTABLE PARALLEL SAFE
+SECURITY DEFINER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT info.row_id, info.value 
+  FROM _lantern_extras_internal.embedding_failure_info info
+  WHERE info.job_id=get_completion_job_failures.job_id;
+END
+$$;
+"#,
+    name = "get_completion_job_failures",
+);
 
-#[pg_extern(immutable, parallel_safe, security_definer)]
-fn get_completion_job_failures<'a>(
-    job_id: i32,
-) -> Result<
-    TableIterator<'static, (name!(row_id, Option<i32>), name!(value, Option<String>))>,
-    anyhow::Error,
-> {
-    Spi::connect(|client| {
-        client.select("SELECT row_id, value FROM _lantern_extras_internal.embedding_failure_info WHERE job_id=$1", None, Some(vec![(PgBuiltInOids::INT4OID.oid(), job_id.into_datum())]))?
-            .map(|row| Ok((row["row_id"].value()?, row["value"].value()?)))
-            .collect::<Result<Vec<_>, _>>()
-    }).map(TableIterator::new)
-}
+extension_sql!(
+    r#"
+CREATE OR REPLACE FUNCTION get_embedding_jobs()
+RETURNS TABLE (id INT, status TEXT, progress SMALLINT, error TEXT)
+STRICT IMMUTABLE PARALLEL SAFE
+SECURITY DEFINER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT jobs.id, (get_embedding_job_status(jobs.id)).* 
+  FROM _lantern_extras_internal.embedding_generation_jobs jobs
+  WHERE jobs.job_type = 'embedding_generation';
+END
+$$;
+"#,
+    name = "get_embedding_jobs",
+    requires = ["get_embedding_job_status"]
+);
 
-#[pg_extern(immutable, parallel_safe, security_definer)]
-fn get_embedding_jobs<'a>() -> Result<
-    TableIterator<
-        'static,
-        (
-            name!(id, Option<i32>),
-            name!(status, Option<String>),
-            name!(progress, Option<i16>),
-            name!(error, Option<String>),
-        ),
-    >,
-    anyhow::Error,
-> {
-    Spi::connect(|client| {
-        client.select("SELECT id, (get_embedding_job_status(id)).* FROM _lantern_extras_internal.embedding_generation_jobs WHERE job_type = 'embedding_generation'", None, None)?
-            .map(|row| Ok((row["id"].value()?, row["status"].value()?, row["progress"].value()?, row["error"].value()?)))
-            .collect::<Result<Vec<_>, _>>()
-    }).map(TableIterator::new)
-}
+extension_sql!(
+    r#"
+CREATE OR REPLACE FUNCTION get_completion_jobs()
+RETURNS TABLE (id INT, status TEXT, progress SMALLINT, error TEXT)
+STRICT IMMUTABLE PARALLEL SAFE
+SECURITY DEFINER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT jobs.id, (get_completion_job_status(jobs.id)).* 
+  FROM _lantern_extras_internal.embedding_generation_jobs jobs
+  WHERE jobs.job_type = 'completion';
+END
+$$;
+"#,
+    name = "get_completion_jobs",
+    requires = ["get_completion_job_status"]
+);
 
-#[pg_extern(immutable, parallel_safe, security_definer)]
-fn get_completion_jobs<'a>() -> Result<
-    TableIterator<
-        'static,
-        (
-            name!(id, Option<i32>),
-            name!(status, Option<String>),
-            name!(progress, Option<i16>),
-            name!(error, Option<String>),
-        ),
-    >,
-    anyhow::Error,
-> {
-    Spi::connect(|client| {
-        client.select("SELECT id, (get_embedding_job_status(id)).* FROM _lantern_extras_internal.embedding_generation_jobs WHERE job_type = 'completion'", None, None)?
-            .map(|row| Ok((row["id"].value()?, row["status"].value()?, row["progress"].value()?, row["error"].value()?)))
-            .collect::<Result<Vec<_>, _>>()
-    }).map(TableIterator::new)
-}
+extension_sql!(
+    r#"
+CREATE OR REPLACE FUNCTION cancel_embedding_job(job_id INT)
+RETURNS VOID
+STRICT VOLATILE
+SECURITY DEFINER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  UPDATE _lantern_extras_internal.embedding_generation_jobs
+  SET canceled_at=NOW()
+  WHERE id=job_id;
+END
+$$;
+"#,
+    name = "cancel_embedding_job",
+);
 
-#[pg_extern(immutable, parallel_safe, security_definer)]
-fn cancel_embedding_job<'a>(job_id: i32) -> AnyhowVoidResult {
-    Spi::run_with_args(
-        r#"
-          UPDATE _lantern_extras_internal.embedding_generation_jobs
-          SET canceled_at=NOW()
-          WHERE id=$1;
-        "#,
-        Some(vec![(PgBuiltInOids::INT4OID.oid(), job_id.into_datum())]),
-    )?;
+extension_sql!(
+    r#"
+CREATE OR REPLACE FUNCTION cancel_completion_job(job_id INT)
+RETURNS VOID
+STRICT VOLATILE
+SECURITY DEFINER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  UPDATE _lantern_extras_internal.embedding_generation_jobs
+  SET canceled_at=NOW()
+  WHERE id=job_id;
+END
+$$;
+"#,
+    name = "cancel_completion_job",
+);
 
-    Ok(())
-}
+extension_sql!(
+    r#"
+CREATE OR REPLACE FUNCTION resume_embedding_job(job_id INT)
+RETURNS VOID
+STRICT VOLATILE
+SECURITY DEFINER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  UPDATE _lantern_extras_internal.embedding_generation_jobs
+  SET canceled_at=NULL
+  WHERE id=job_id;
+END
+$$;
+"#,
+    name = "resume_embedding_job",
+);
 
-#[pg_extern(immutable, parallel_safe, security_definer)]
-fn resume_embedding_job<'a>(job_id: i32) -> AnyhowVoidResult {
-    Spi::run_with_args(
-        r#"
-          UPDATE _lantern_extras_internal.embedding_generation_jobs
-          SET canceled_at=NULL
-          WHERE id=$1;
-        "#,
-        Some(vec![(PgBuiltInOids::INT4OID.oid(), job_id.into_datum())]),
-    )?;
-
-    Ok(())
-}
+extension_sql!(
+    r#"
+CREATE OR REPLACE FUNCTION resume_completion_job(job_id INT)
+RETURNS VOID
+STRICT VOLATILE
+SECURITY DEFINER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  UPDATE _lantern_extras_internal.embedding_generation_jobs
+  SET canceled_at=NULL
+  WHERE id=job_id;
+END
+$$;
+"#,
+    name = "resume_completion_job",
+);
 
 #[cfg(any(test, feature = "pg_test"))]
 #[pg_schema]

@@ -178,7 +178,7 @@ To add a new embedding job, use the `add_embedding_job` function:
 
 ```sql
 SELECT add_embedding_job(
-    table => 'articles', -- Name of the table
+    table_name => 'articles', -- Name of the table
     src_column => 'content', -- Source column for embeddings
     dst_column => 'content_embedding', -- Destination column for embeddings (will be created automatically)
     model => 'text-embedding-3-small', -- Model for runtime to use (default: 'text-embedding-3-small')
@@ -224,7 +224,7 @@ To add a new completion job, use the `add_completion_job` function:
 
 ```sql
 SELECT add_completion_job(
-    table => 'articles', -- Name of the table
+    table_name => 'articles', -- Name of the table
     src_column => 'content', -- Source column for embeddings
     dst_column => 'content_summary', -- Destination column for llm response (will be created automatically)
     system_prompt => 'Provide short summary for the given text', -- System prompt for LLM (default: '')
