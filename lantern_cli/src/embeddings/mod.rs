@@ -512,6 +512,7 @@ async fn db_exporter_worker(
                 // if job is run in streaming mode
                 // it will write results to target table each 10 seconds (if collected rows are
                 // more than 50) or if collected row count is more than 1000 rows
+                let copy_start = Instant::now();
                 if !buf.is_empty() {
                     writer_sink.send(buf.split().freeze()).await?;
                 }
@@ -519,6 +520,10 @@ async fn db_exporter_worker(
                 transaction.batch_execute(&update_sql).await?;
                 transaction.commit().await?;
                 transaction = client.transaction().await?;
+
+                let duration = copy_start.elapsed().as_millis();
+                logger.debug(&format!("Copied {collected_row_cnt} rows in {duration}ms"));
+
                 writer_sink = Box::pin(
                     transaction
                         .copy_in(&format!("COPY {temp_table_name} FROM stdin"))
@@ -546,12 +551,15 @@ async fn db_exporter_worker(
             return Ok(processed_row_cnt);
         }
 
+        let copy_start = Instant::now();
         if !buf.is_empty() {
             writer_sink.send(buf.split().freeze()).await?
         }
         writer_sink.as_mut().finish().await?;
         transaction.batch_execute(&update_sql).await?;
         transaction.commit().await?;
+        let duration = copy_start.elapsed().as_millis();
+        logger.debug(&format!("Copied {collected_row_cnt} rows in {duration}ms"));
         logger.info(&format!(
             "Embeddings exported to table {} under column {}",
             &table, &column
