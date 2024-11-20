@@ -1,6 +1,6 @@
 use pgrx::extension_sql_file;
 
-extension_sql_file!("./bm25_api.sql", requires = [Bloom]);
+extension_sql_file!("./bm25_api.sql", requires = [Bloom, "bloom_type_casts"]);
 
 #[cfg(any(test, feature = "pg_test"))]
 #[pgrx::pg_schema]
