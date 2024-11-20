@@ -268,6 +268,7 @@ set (_update_files
   sql/updates/0.3.4--0.4.0.sql
   sql/updates/0.4.0--0.4.1.sql
   sql/updates/0.4.1--0.5.0.sql
+  sql/updates/0.5.0--0.6.0.sql
 )
 
 # Generate version information for the binary
