@@ -231,7 +231,6 @@ extension_sql!(
 CREATE OR REPLACE FUNCTION get_embedding_job_status(job_id INT)
 RETURNS TABLE (status TEXT, progress SMALLINT, error TEXT)
 STRICT IMMUTABLE PARALLEL SAFE
-SECURITY DEFINER
 LANGUAGE plpgsql
 AS $$
 BEGIN
@@ -259,7 +258,6 @@ extension_sql!(
 CREATE OR REPLACE FUNCTION get_completion_job_status(job_id INT)
 RETURNS TABLE (status TEXT, progress SMALLINT, error TEXT)
 STRICT IMMUTABLE PARALLEL SAFE
-SECURITY DEFINER
 LANGUAGE plpgsql
 AS $$
 BEGIN
@@ -277,7 +275,6 @@ extension_sql!(
 CREATE OR REPLACE FUNCTION get_completion_job_failures(job_id INT)
 RETURNS TABLE (row_id INT, value TEXT)
 STRICT IMMUTABLE PARALLEL SAFE
-SECURITY DEFINER
 LANGUAGE plpgsql
 AS $$
 BEGIN
@@ -296,7 +293,6 @@ extension_sql!(
 CREATE OR REPLACE FUNCTION get_embedding_jobs()
 RETURNS TABLE (id INT, status TEXT, progress SMALLINT, error TEXT)
 STRICT IMMUTABLE PARALLEL SAFE
-SECURITY DEFINER
 LANGUAGE plpgsql
 AS $$
 BEGIN
@@ -316,7 +312,6 @@ extension_sql!(
 CREATE OR REPLACE FUNCTION get_completion_jobs()
 RETURNS TABLE (id INT, status TEXT, progress SMALLINT, error TEXT)
 STRICT IMMUTABLE PARALLEL SAFE
-SECURITY DEFINER
 LANGUAGE plpgsql
 AS $$
 BEGIN
@@ -528,6 +523,8 @@ pub mod tests {
                 "
                 CREATE TABLE t1 (id serial primary key, title text);
                 SET lantern_extras.openai_token='test';
+                CREATE ROLE test_role1;
+                SET ROLE test_role1;
                 ",
                 None,
                 None,
@@ -569,6 +566,8 @@ pub mod tests {
                 (1, 1, '1test1'),
                 (1, 2, '1test2'),
                 (2, 1, '2test1');
+                CREATE ROLE test_role1;
+                SET ROLE test_role1;
                 ",
                 None,
                 None,
@@ -657,6 +656,7 @@ pub mod tests {
             client.update(
                 "
                 CREATE TABLE t1 (id serial primary key, title text);
+                CREATE ROLE test_role1;
                 ",
                 None,
                 None,
@@ -666,7 +666,9 @@ pub mod tests {
             let id: i32 = id.first().get(1)?.unwrap();
 
             // queued
+            client.update("SET ROLE test_role1;", None, None,)?;
             let rows = client.select("SELECT status, progress, error FROM get_embedding_job_status($1)", None, Some(vec![(PgBuiltInOids::INT4OID.oid(), id.into_datum())]))?;
+            client.update("RESET ROLE;", None, None,)?;
             let job = rows.first();
 
             let status: &str = job.get(1)?.unwrap();
