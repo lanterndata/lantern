@@ -21,7 +21,7 @@ cd $WORKDIR/lantern_hnsw/build
 
 export DATABASE_URL=postgresql://localhost:5432/postgres
 export LANTERN_DATABASE_URL=postgresql://localhost:5432/postgres
-git clone https://github.com/lanterndata/benchmark
+git clone https://github.com/lanterndata/benchmark -b varik/fix-external-indexing
 cd benchmark
 pip install -r core/requirements.txt
 pip install -r external/requirements.txt
