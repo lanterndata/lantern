@@ -21,7 +21,7 @@ jobs:
 
       - name: Build
         id: build
-        run: sudo su -c "PG_VERSION=15 USE_SOURCE=1 USE_SSL=1 ./ci/scripts/build.sh"
+        run: sudo su -c "PG_VERSION=17 USE_SOURCE=1 USE_SSL=1 ./ci/scripts/build.sh"
         env:
           BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
 
