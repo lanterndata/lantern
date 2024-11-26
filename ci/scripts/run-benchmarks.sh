@@ -17,11 +17,17 @@ echo "host    all             all             ::1/128                 trust" >> 
 
 POSTGRES_HOST_AUTH_METHOD=trust /usr/lib/postgresql/$PG_VERSION/bin/postgres 1>/tmp/pg-out.log 2>/tmp/pg-error.log &
 wait_for_pg
+
+# wait for external indexing server
+while ! nc -z localhost 8998; do
+  sleep 0.1
+done
+
 cd $WORKDIR/lantern_hnsw/build
 
 export DATABASE_URL=postgresql://localhost:5432/postgres
 export LANTERN_DATABASE_URL=postgresql://localhost:5432/postgres
-git clone https://github.com/lanterndata/benchmark -b varik/fix-external-indexing
+git clone https://github.com/lanterndata/benchmark
 cd benchmark
 pip install -r core/requirements.txt
 pip install -r external/requirements.txt
