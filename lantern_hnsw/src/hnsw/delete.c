@@ -12,6 +12,15 @@
 #include "hnsw/utils.h"
 #include "usearch_storage.hpp"
 
+/*
+ * PostgreSQL 18 changed vacuum_delay_point() to take an is_analyze argument
+ * (postgres commit e5b0b0c). Index vacuum paths are not analyze, so pass false.
+ * Keep the zero-arg call on older majors via this compatibility shim.
+ */
+#if PG_VERSION_NUM >= 180000
+#define vacuum_delay_point() vacuum_delay_point(false)
+#endif
+
 IndexBulkDeleteResult *ldb_ambulkdelete(IndexVacuumInfo        *info,
                                         IndexBulkDeleteResult  *stats,
                                         IndexBulkDeleteCallback callback,
