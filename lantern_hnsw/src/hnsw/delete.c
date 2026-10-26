@@ -39,7 +39,11 @@ IndexBulkDeleteResult *ldb_ambulkdelete(IndexVacuumInfo        *info,
 
     for(BlockNumber blockno = 1; blockno <= header.last_data_block; blockno++) {
         bool block_modified = false;
+#if PG_VERSION_NUM >= 180000
+        vacuum_delay_point(false);
+#else
         vacuum_delay_point();
+#endif
         buf = ReadBufferExtended(info->index, MAIN_FORKNUM, blockno, RBM_NORMAL, GetAccessStrategy(BAS_BULKREAD));
         LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
         gxlogState = GenericXLogStart(info->index);
