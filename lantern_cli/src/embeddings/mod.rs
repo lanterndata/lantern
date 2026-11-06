@@ -246,7 +246,7 @@ async fn embedding_worker(
                 ));
 
                 if tx.send(response_data).await.is_err() {
-                    // Error occured in exporter worker and channel has been closed
+                    // Error occurred in exporter worker and channel has been closed
                     break;
                 }
             },
