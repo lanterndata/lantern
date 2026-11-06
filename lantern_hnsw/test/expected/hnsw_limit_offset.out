@@ -1,0 +1,94 @@
+------------------------------------------------------------------------------
+-- Test HNSW index scans with LIMIT and OFFSET
+-- Note: Vectors along the diagonal have unique squared Euclidean distances
+-- from {0,0}, reducing ordering ambiguity during index scans across search batches.
+------------------------------------------------------------------------------
+CREATE TABLE test_limit_offset (
+    id INTEGER PRIMARY KEY,
+    is_even BOOLEAN,
+    v REAL[2]
+);
+INSERT INTO test_limit_offset (id, is_even, v)
+SELECT i, (i % 2 = 0), ARRAY[i::real, i::real]
+FROM generate_series(0, 24) AS i;
+CREATE INDEX ON test_limit_offset USING lantern_hnsw (v dist_l2sq_ops) WITH (dim=2, M=4, ef=30, ef_construction=30);
+INFO:  done init usearch index
+INFO:  inserted 25 elements
+INFO:  done saving 25 vectors
+SET enable_seqscan = FALSE;
+-- Verify that the query planner selects an index scan for LIMIT ... OFFSET
+SELECT has_index_scan('EXPLAIN SELECT id FROM test_limit_offset ORDER BY v <-> ''{0,0}'' LIMIT 3 OFFSET 2');
+ has_index_scan 
+----------------
+ t
+
+-- 1. Baseline: LIMIT with OFFSET 0
+SELECT id FROM test_limit_offset ORDER BY v <-> '{0,0}' LIMIT 3 OFFSET 0;
+ id 
+----
+  0
+  1
+  2
+
+-- 2. LIMIT with small OFFSET staying within initial batch (offset 2, limit 3)
+SELECT id FROM test_limit_offset ORDER BY v <-> '{0,0}' LIMIT 3 OFFSET 2;
+ id 
+----
+  2
+  3
+  4
+
+-- 3. LIMIT + OFFSET crossing initial batch boundary (offset 8, limit 5, total 13 > init_k 10)
+SELECT id FROM test_limit_offset ORDER BY v <-> '{0,0}' LIMIT 5 OFFSET 8;
+ id 
+----
+  8
+  9
+ 10
+ 11
+ 12
+
+-- 4. OFFSET large enough to discard across multiple search batches (offset 15, limit 4)
+SELECT id FROM test_limit_offset ORDER BY v <-> '{0,0}' LIMIT 4 OFFSET 15;
+ id 
+----
+ 15
+ 16
+ 17
+ 18
+
+-- 5. OFFSET near end of table returning fewer rows than LIMIT (offset 22, limit 5)
+SELECT id FROM test_limit_offset ORDER BY v <-> '{0,0}' LIMIT 5 OFFSET 22;
+ id 
+----
+ 22
+ 23
+ 24
+
+-- 6. OFFSET at or beyond total row count (offset 25 and offset 30, limit 5)
+SELECT id FROM test_limit_offset ORDER BY v <-> '{0,0}' LIMIT 5 OFFSET 25;
+ id 
+----
+
+SELECT id FROM test_limit_offset ORDER BY v <-> '{0,0}' LIMIT 5 OFFSET 30;
+ id 
+----
+
+-- 7. LIMIT and OFFSET combined with filtering predicate
+SELECT id FROM test_limit_offset WHERE is_even IS TRUE ORDER BY v <-> '{0,0}' LIMIT 3 OFFSET 2;
+ id 
+----
+  4
+  6
+  8
+
+-- 8. Controlled batch expansion via lantern_hnsw.init_k (batch size 3)
+SET lantern_hnsw.init_k = 3;
+SELECT id FROM test_limit_offset ORDER BY v <-> '{0,0}' LIMIT 3 OFFSET 4;
+ id 
+----
+  4
+  5
+  6
+
+RESET lantern_hnsw.init_k;
