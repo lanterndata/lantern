@@ -28,7 +28,7 @@
 #include <unistd.h>
 #endif
 
-// reloption for lantern hnsw index creation paramters in
+// reloption for lantern hnsw index creation parameters in
 // CREATE INDEX ... WITH (...)
 //                       ^^^^
 static relopt_kind ldb_hnsw_index_withopts;
